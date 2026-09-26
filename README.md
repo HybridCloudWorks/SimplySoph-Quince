@@ -31,6 +31,8 @@ Try **SOPHIA-DEMO** on the RSVP page. Two fictional guests can respond separatel
 | `PAGE-SCOPE.md` | Final keep/merge/defer decisions for all 28 proposed pages |
 | `EMAIL-PLAN.md` | Resend, alternatives, domain, sender, queue, and delivery workflow |
 | `GOOGLE-SETUP.md` | Current Google-first hosting, Workspace/Gmail, domain, and Secret Manager plan; supersedes Resend as the default |
+| `CLEANUP.md` | End-of-event shutdown, export, resource removal and verification workflow |
+| `ops/event-resources.json` | Exact inventory of event-created resources and reversible changes; currently empty |
 | `WEBSITE-PLAN.md` | Research, sources, event inventory, and launch checklist |
 | `NOTION-INTEGRATION.md` | Schema, secure endpoint contract, and reconciliation design |
 | `GOOGLE-AI-STUDIO-PROMPT.md` | Ready-to-paste continuation instructions |
@@ -61,4 +63,8 @@ The website is English. English/Spanish email drafts are included; a bilingual w
 
 ## Google setup in progress
 
-The family selected Google for hosting and email. Cloud Run startup support (`PORT`, platform bind address, health endpoint) is prepared and locally checked. No cloud project, billing link, domain, Workspace subscription, secret, or deployment has been created. See `GOOGLE-SETUP.md` for the provisioning sequence and pending account/domain/Notion inputs. Use **Secret Manager** for integration credentials; Google Vault is a different Workspace retention product.
+The family selected Google for hosting and email. The target is **misxv.simplysoph.com** in existing project **simplysoph-66c78**; account access and enabled billing have been verified. Existing infrastructure is protected. Cloud Run startup support (`PORT`, platform bind address, health endpoint) is prepared and locally checked. No new cloud resource, DNS record, Workspace subscription, secret, or deployment has been created. See `GOOGLE-SETUP.md` for pending DNS/Workspace/Notion inputs. Use **Secret Manager** for integration credentials; Google Vault is a different Workspace retention product.
+
+## End-of-event cleanup
+
+Every new resource must be registered with ownership evidence and exact removal steps. Run `npm run cleanup:plan` to generate a local review, or run **Prepare event cleanup review** manually in GitHub Actions. This only prepares a checklist: it never deletes anything or accesses Google. Follow `CLEANUP.md` for export, live reconciliation, reviewed removal and final billing checks. Preserve the root domain and existing project. Nothing is scheduled for automatic deletion.

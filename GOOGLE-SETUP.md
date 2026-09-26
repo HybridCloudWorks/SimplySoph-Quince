@@ -1,6 +1,15 @@
 # Google hosting, mail, and secrets
 
-The family approved continuing on Google, including a Google-managed domain workflow and Workspace email where practical. This supersedes the Resend-first recommendation. No cloud resource, domain registration, Workspace subscription, or live email has been created by this change.
+The family approved continuing on Google with Workspace email where practical. This supersedes the Resend-first recommendation. The family already owns `simplysoph.com`; the event will use **misxv.simplysoph.com**. No domain purchase or transfer is needed. No cloud resource, DNS record, Workspace subscription, or live email has been created by this buildout.
+
+## Confirmed target and discovery — September 26, 2026
+
+- Account: `saulpatinojr@gmail.com`. Browser sign-in refreshed successfully.
+- Existing project: **SimplySoph**, `simplysoph-66c78`, project number `424903425639`. Live reads confirm ACTIVE and billing enabled; do not create a replacement project or attach a different billing account.
+- Explicitly set both `--project=simplysoph-66c78` and `--billing-project=simplysoph-66c78` alongside the account in commands. The workstation has an unrelated inherited quota-project setting; per-command overrides resolved it without changing the global configuration.
+- Existing infrastructure includes three Cloud Run services in us-central1, two artifact repositories, ten global secrets, a default Firestore database, service identities, and six storage buckets. They predate this event and are protected. Only metadata was read, not secret values or guest records. A partial baseline is saved locally outside the repository. Full baseline and shared-resource checks remain pending.
+- Public DNS reports `ns1.dns-parking.com` and `ns2.dns-parking.com` for the root domain; the event hostname does not currently resolve. Keep the existing DNS provider and add only the necessary event records after obtaining verified hosting values.
+- **Every new resource/change must have a cleanup record.** See `CLEANUP.md` and `ops/event-resources.json`; use dedicated event resources and preserve this shared project.
 
 ## Selected direction
 
@@ -13,10 +22,12 @@ The family approved continuing on Google, including a Google-managed domain work
 | Durable coordination | Small server-only Cloud Firestore store, planned | Commit RSVP snapshots, deduplicate writes/email intents, and coordinate Notion sync; not implemented yet |
 | Email and replies | One Google Workspace Gmail mailbox | Monitored family inbox and authenticated sender; aliases where useful |
 | Sending transport | Gmail API with narrowly scoped authorization | Default for this low-volume app; SMTP relay remains an alternative |
-| Domain registration | Cloud Domains, subject to name/price approval | Registration managed and billed through the Google Cloud project; Squarespace is involved |
-| DNS | Cloud DNS | Domain verification, website, mail authentication, and routing records |
+| Domain registration | Existing simplysoph.com registration | Preserve ownership, registrar and renewal settings |
+| DNS | Existing authoritative DNS provider | Add misxv subdomain and verified service records; preserve root website/mail |
 
-Google Cloud uses a **project linked to a billing account**. Google Workspace is a **separate subscription**. Purchasing a domain does not automatically buy a mailbox or host the website. Cloud Domains can bill through Cloud Billing but involves Squarespace terms/registration. [Cloud Domains overview](https://docs.cloud.google.com/domains/docs/overview).
+Google Cloud uses a **project linked to a billing account**. Google Workspace is a **separate subscription**. Owning a domain does not automatically provide a mailbox or hosting. First inspect existing Workspace/mail configuration before purchasing a seat or changing MX records.
+
+The custom-domain hosting path must be selected before DNS changes. Cloud Run's direct domain mapping is still Preview/limited availability; assess Firebase Hosting in front of Cloud Run or a supported load balancer against the lean-site budget. Do not point an arbitrary CNAME directly at a run.app URL and assume TLS will work. [Google custom-domain options](https://docs.cloud.google.com/run/docs/mapping-custom-domains).
 
 Google Vault is for Workspace retention/eDiscovery. It is not the place to store Notion tokens or API keys; Secret Manager is the appropriate service. No Vault license is needed solely for website secrets. [Vault](https://support.google.com/vault/answer/2462365), [Secret Manager](https://docs.cloud.google.com/secret-manager/docs/overview).
 
@@ -30,18 +41,18 @@ Google Vault is for Workspace retention/eDiscovery. It is not the place to store
 
 ## Provisioning sequence
 
-1. Confirm the owning Google account, intended project (or create one named SimplySoph Quince), monthly operating budget, domain names, annual domain budget, and existing Workspace status.
-2. Create/select a dedicated project using that explicit account. The family attaches its chosen billing account through Google's billing interface.
+1. Account, existing project, billing attachment and hostname are confirmed above. Resolve monthly operating budget, DNS management access and existing Workspace status/sender.
+2. Complete the private baseline and keep the existing project. Reserve an event prefix, record exact resource identities and removal steps in the inventory as provisioning proceeds; do not reuse existing application secrets or service identities by convenience.
 3. Set budget alerts, scoped service identities, and resource limits. Start with request-based billing, minimum instances zero and a low maximum for the preview. Budget alerts are not a hard spending cap. Pricing depends on the final region and traffic; do not promise zero spend.
 4. Enable the required APIs and prepare build/runtime identities. Do not use broad runtime Owner/Editor roles. Give the runtime access only to the specific secrets and server-side data it requires.
 5. Create empty secret containers for the needed integration values. Enter the Notion integration token through Secret Manager's secure UI; do not paste it into chat, GitHub, frontend configuration, or CLI command arguments. Map a pinned secret version to the service when deploying.
 6. Inspect the Notion database after access is supplied. Map property types/IDs and preserve the records; test on one sample household. A website integration token and a chat connector are separate forms of access.
 7. Deploy an authenticated preview first, verify the revision and logs, then configure the guest-facing access path when real invitations are ready. Do not mistake robots/noindex for authentication. The existing source contains invitation/event details and should not acquire real guest data.
-8. Confirm domain availability and actual price; complete registration with accurate registrant details and chosen renewal/privacy settings. The family completes billing inputs, required terms acceptance, and contact-email verification. Configure only verified DNS values.
+8. Configure the selected custom-domain hosting path and only its verified DNS records for `misxv.simplysoph.com`. Record prior DNS state, exact name/type/value, certificate/mapping resources and their cleanup steps. Do not transfer the domain or change nameservers.
 9. Add/reuse one Workspace mailbox, verify the domain and Gmail, configure SPF/DKIM/DMARC, and establish the narrow Gmail sending authorization described below.
 10. Implement/test private invitation access, durable RSVP commits, Notion reconciliation, and approved email dispatch before opening live RSVPs. Verify one full end-to-end journey with an authorized test recipient.
 
-Account, project ID, region, billing account, domain, and mailbox must be resolved before filling in resource commands. Do not use the CLI's active account/project as an implicit deployment target.
+Account, project and hostname are now known. Finalize region, limits, custom-domain hosting path and sender before their respective resource commands. Do not use the CLI's active account/project as an implicit deployment target.
 
 ## Gmail API first, SMTP if needed
 
@@ -64,4 +75,4 @@ Workspace sending/trial limits must be checked for the actual account before sel
 
 ## Inputs still needed
 
-Owning Google account; project choice; billing attachment; domain candidates and annual limit; monthly Workspace/hosting budget; existing Workspace status; sender mailbox; Notion page/database URL and integration access. No secret value is requested in chat.
+DNS management access; monthly Workspace/hosting budget; existing Workspace status; sender mailbox; Notion page/database URL and integration access; preferred retention window after the event. No secret value is requested in chat. Google account/project/billing/domain inputs are already resolved.

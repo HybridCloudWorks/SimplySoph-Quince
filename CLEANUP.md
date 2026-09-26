@@ -1,0 +1,41 @@
+# Event lifecycle and cleanup
+
+The family requires a way to remove everything added for Sophia's event. The event is Friday, January 15, 2027. Cleanup is **on demand**, after the family chooses its photo/thank-you and data-retention window. There is no scheduled deletion date.
+
+Target: `misxv.simplysoph.com`, in the **existing** Google project `simplysoph-66c78`. Protect the `simplysoph.com` registration, existing DNS zone/nameservers, existing Google project/billing, existing mail and Notion records. Do not delete a shared service to remove this event's use of it.
+
+## Before creating anything
+
+1. Authenticate to the family-selected Google account, then verify the exact project and billing state. Capture a dated, private baseline of services, repositories, secrets, identities and permissions, jobs/queues, buckets/databases, DNS, mail, and Notion objects relevant to the event. Keep full exports in restricted storage outside this public repository. Do not mark the baseline verified until this is done.
+2. Use `misxv-2027` as the event tag and `misxv-` for dedicated resource names where supported. Labels help discovery but **are not proof of ownership**. Prefer dedicated resources where practical; for shared resources record exact changes and their prior state.
+3. Record every created resource/change immediately in `ops/event-resources.json`, before proceeding to the next resource. Include exact immutable/full identity, region where applicable, creation receipt reference, dependencies, ownership checks, removal/reversal steps and verification. Record partial deployments too. Never add tokens, private guest IDs, addresses, or exported data to the public inventory; use references to restricted evidence.
+4. Set `baselineVerifiedAt` after baseline completion. Each entry has `id`, `type`, `projectId`, `ownership`, `resource`, `creationEvidence`, `verifyBeforeCleanup`, `cleanupSteps`, `verifyAfterCleanup`, `dependsOn`, and `status`. Scoped changes also require `exactScope`; DNS requires `dnsName`. See validator for supported types. Extend the inventory/plan tests before adding a new kind of resource. Project deletion and domain-registration deletion are deliberately unsupported.
+5. Provisioning is incomplete until its cleanup entry exists. Do not rely on Cloud Run service deletion to remove images, secrets, logs, or other independently billed resources. Reconcile the inventory after each deployment.
+
+## Run the workflow at the end
+
+1. **Close intake and stop outgoing work.** Close RSVP/photo submissions, turn off event reminders, stop new queue items, drain or cancel pending work, and confirm no in-flight writes or messages remain. Remove only event schedules/triggers. Keep the site available long enough to show the agreed closing message.
+2. **Choose and verify exports.** Export wanted guest/RSVP information, seating, approved photos, and any necessary correspondence to a family-controlled private destination. Test opening the export. Decide what to keep in Notion versus delete and record an export deletion date. Never put exports in GitHub or workflow logs.
+3. **Generate the review.** Run `npm run cleanup:plan`, then open `work/cleanup/plan.md`. Alternatively use GitHub → Actions → **Prepare event cleanup review** → Run workflow; read its job summary. The workflow has read-only repository access, no cloud credentials, no deletion capability, and no schedule. It lists dependents before their dependencies and fingerprints the inventory being reviewed.
+4. **Reconcile against live systems.** Authenticate as the intended account; inspect each exact resource and compare its creation evidence to the baseline. Check for resources created after the inventory snapshot. If a resource is shared, changed owners, or differs from the record, stop that item's deletion and resolve ownership. Review the final checklist with the family; choose the retention disposition before deleting data.
+5. **Perform the recorded removal steps.** Use the provider's current console/CLI against exact IDs, checking command help before each new command. The report is a checklist, not an executable script. Remove dependencies only after their users are stopped. Mark an entry `removed` only after verification, with `removalEvidence` (timestamp and restricted receipt reference). Preserve failure records and resume only incomplete entries.
+6. **Verify shutdown and remaining costs.** Regenerate the report; active entries should be empty or explicitly retained. Verify the hostname no longer routes to a removed endpoint, event endpoints are unavailable, credentials are revoked, jobs cannot send, and event resources are absent. Review billing after usage reporting catches up and again on the next statement. Existing domain/Workspace subscriptions and retained storage may continue charging.
+
+## Resource-specific removal rules
+
+| Resource | Cleanup boundary |
+|---|---|
+| Website DNS | Remove only `misxv.simplysoph.com` records and owned verification records beneath that hostname, matching the recorded type/value. Do this before deleting the destination to avoid a dangling record. Preserve root DNS, mail records, nameservers and registration. Root-domain mail verification changes need a separate reviewed reversal plan because other mail may depend on them. |
+| Cloud Run | Remove only the dedicated event service/domain mapping after closing intake and handling DNS. Record region. Service deletion is not a full project teardown. |
+| Builds and images | Remove dedicated event Artifact Registry repositories/images, temporary source archives and event build triggers. Never delete a shared repository wholesale. Record managed ancillary resources discovered during deployment too. |
+| Secrets and OAuth | Revoke the event's provider tokens/grants before destroying stored secrets; remove exact event secrets/versions. Secret deletion alone does not revoke an externally issued token. Keep credentials available until their required revocations complete. |
+| IAM/service identities | Remove exact event-added role bindings before deleting dedicated accounts. Reverse only the event grant, preserving other principals/roles. Remove event GitHub deployment access and identity-provider bindings. Do not disable shared APIs. |
+| Storage/Firestore | Export as agreed, then remove exact event objects/collections or a verified exclusive event bucket/database. Respect retention locks and soft-delete policies; confirm deferred deletion and charges. Never delete a shared/default database wholesale. |
+| Notion | Preserve the existing database and pre-existing records. Remove only approved event-created rows/properties by private ID list, or retain them as the family chooses. Disconnect/revoke only the dedicated event integration. Notion trash/backups may retain data under its policies. |
+| Gmail/Workspace | Revoke only app-specific OAuth access; remove event aliases or a dedicated mailbox only after reviewing stored mail and license implications. Preserve existing mailboxes/subscriptions. Sending mail cannot be undone; copies already received by guests remain. |
+| Logs and budget alerts | Set appropriate log retention up front; preserve shared logs and sinks. Remove event-only alert/sink configuration after final cost review. Provider audit/billing records may remain under provider retention policies. |
+| Repository/local files | Preserve this source by default. Separately archive or delete the event repo, ZIPs, local previews, exports and backups if requested. Remove deployed access first. Confirm the exact local path before deletion; do not delete the parent workspace or original invitation. |
+
+## Current status
+
+No cloud resource or DNS record has been created by this buildout. The inventory is intentionally empty, and its baseline is not yet verified. The existing Google project's contents cannot be inferred from this inventory. The plan generator and manual GitHub workflow are ready; cloud removal steps will be recorded as actual resources are provisioned. This is not an automated teardown engine.

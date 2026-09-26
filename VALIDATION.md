@@ -18,7 +18,7 @@ The browser check caught and fixed a malformed attending option before delivery.
 
 ## Not yet verified / not implemented
 
-Google preparation follow-up: seven local tests now pass, including a new HTTP server check for injected port, health, homepage, HEAD, method rejection, and themed 404. Cloud Run platform bind/startup support and Google Buildpacks Node 24 selection were added. Tests ran on the workstation's Node 26; an actual Node 24 Cloud Build and deployed revision remain unverified. No Google account selection or cloud mutation has been made.
+Google preparation follow-up: eleven local tests now pass, including the HTTP server check and four cleanup inventory tests for empty/unverified state, dependency order, protected targets, and invalid dependency graphs. The local cleanup report generated successfully. Cloud Run platform bind/startup support and Google Buildpacks Node 24 selection were added. Tests ran on the workstation's Node 26; an actual Node 24 Cloud Build and deployed revision remain unverified. The family-selected Google account is authenticated; live reads verify the existing project and enabled billing. Metadata-only discovery found existing resources that must be preserved. No cloud mutation has been made. The cleanup GitHub workflow still requires its first remote run after push; it has no cloud credentials or deletion capability.
 
 Live Notion writes, guest authorization, durable persistence, concurrent edits, rate limiting, sender/domain/DNS configuration, real email deliverability, signed webhook processing, privacy retention operations, full English/Spanish website parity, all email-client rendering, 200% text zoom, complete accessibility audit, and production hosting. No real guest response or email was transmitted.
 
