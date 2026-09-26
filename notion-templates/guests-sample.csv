@@ -1,0 +1,3 @@
+Guest name,Guest ID,Household ID (map to relation),Guest category,Invited to ceremony,Invited to dinner,Invited to dance,Ceremony RSVP,Dinner RSVP,Dance RSVP,Dietary notes,Accessibility request,Table
+SAMPLE - Alex,sample-1,sample-household,Adult,TRUE,TRUE,TRUE,Pending,Pending,Pending,,,
+SAMPLE - Jordan,sample-2,sample-household,Adult,TRUE,TRUE,TRUE,Pending,Pending,Pending,,,

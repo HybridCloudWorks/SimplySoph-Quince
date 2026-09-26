@@ -1,0 +1,2 @@
+Household,Household ID,Contact name,Email,Phone,Address line 1,Address line 2,City,State,Postal code,Country,Preferred language,Invitation status,RSVP status,Needs follow-up
+SAMPLE - Demo household,sample-household,Alex,alex@example.com,,,,,,,,English,Draft,Pending,FALSE

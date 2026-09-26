@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {renderEmail,templateKeys} from '../emails/templates.mjs';
+const base={type:'invitation',url:'https://simplysophia.example/rsvp/',preview:true};
+test('all templates have English/Spanish HTML and text',()=>{for(const locale of ['en','es'])for(const type of templateKeys){const r=renderEmail({...base,type,locale,updateText:type==='change'?'Approved sample change':''});assert.ok(r.subject&&r.text&&r.html);assert.ok(r.html.includes(`lang="${locale}"`));}});
+test('personalized fields are escaped',()=>{const r=renderEmail({...base,household:'<img src=x onerror=alert(1)>'});assert.ok(!r.html.includes('<img'));assert.ok(r.html.includes('&lt;img'));});
+test('unsafe link schemes and credentials are rejected',()=>{for(const url of ['javascript:alert(1)','http://example.com','https://user:pass@example.com'])assert.throws(()=>renderEmail({...base,url}));});
+test('live invitation requires confirmed event and deadline',()=>{assert.throws(()=>renderEmail({...base,preview:false}));assert.throws(()=>renderEmail({...base,url:'https://example.com',preview:false,dateConfirmed:true,eventDate:'Confirmed date'}));});
+test('receipt requires durable acceptance before rendering live copy',()=>{assert.throws(()=>renderEmail({...base,type:'receipt',url:'https://example.com',preview:false,dateConfirmed:true,eventDate:'Confirmed date'}));});
+test('change notice requires specific change copy',()=>{assert.throws(()=>renderEmail({...base,type:'change'}));});
