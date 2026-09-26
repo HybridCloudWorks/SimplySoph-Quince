@@ -1,6 +1,6 @@
 # Invitations and email delivery
 
-**Current decision:** the family selected Google Workspace email and Google hosting. Use `GOOGLE-SETUP.md` as the implementation authority: Gmail API first, Secret Manager for credentials, application-owned delivery tracking, and no Resend dependency. The Resend comparison and provider-specific flow below are retained as an evaluated fallback, not the active provider plan. Message types, audience rules, and reusable templates remain applicable.
+**Current decision:** Hostinger manages the existing simplysoph.com domain; the family confirmed Microsoft 365 hosts its email. Use `M365-EMAIL.md` for the current Graph/shared-mailbox plan and `GOOGLE-SETUP.md` for hosting/secrets. The Resend comparison and example domain/provider flow below are historical fallback research. Message types, audience rules, and reusable templates remain applicable.
 
 ## Domain structure
 

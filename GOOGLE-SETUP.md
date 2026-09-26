@@ -1,6 +1,6 @@
 # Google hosting, mail, and secrets
 
-The family approved continuing on Google with Workspace email where practical. This supersedes the Resend-first recommendation. The family already owns `simplysoph.com`; the event will use **misxv.simplysoph.com**. No domain purchase or transfer is needed. No cloud resource, DNS record, Workspace subscription, or live email has been created by this buildout.
+The family approved Google hosting and subsequently confirmed its existing Microsoft 365 email; preserve that mail setup. This supersedes the Resend-first recommendation. The family already owns `simplysoph.com`; the event will use **misxv.simplysoph.com**. No domain purchase or transfer is needed. No cloud resource, DNS record, Workspace subscription, or live email has been created by this buildout.
 
 ## Confirmed target and discovery — September 26, 2026
 
@@ -20,12 +20,12 @@ The family approved continuing on Google with Workspace email where practical. T
 | Runtime secrets | Google Secret Manager | Store Notion token and application-specific signing/OAuth credentials |
 | Organizer workspace | Existing Notion database | Preserve existing records and map their actual schema |
 | Durable coordination | Small server-only Cloud Firestore store, planned | Commit RSVP snapshots, deduplicate writes/email intents, and coordinate Notion sync; not implemented yet |
-| Email and replies | One Google Workspace Gmail mailbox | Monitored family inbox and authenticated sender; aliases where useful |
-| Sending transport | Gmail API with narrowly scoped authorization | Default for this low-volume app; SMTP relay remains an alternative |
+| Email and replies | Existing Microsoft 365 tenant; proposed event shared mailbox | Monitored event inbox without migrating existing domain mail |
+| Sending transport | Microsoft Graph with mailbox-scoped authorization | Send from the Google backend; no SMTP relay required |
 | Domain registration | Existing simplysoph.com registration | Preserve ownership, registrar and renewal settings |
-| DNS | Existing authoritative DNS provider | Add misxv subdomain and verified service records; preserve root website/mail |
+| DNS | Hostinger (family confirmed) | Add misxv subdomain and verified service records; preserve root website/mail |
 
-Google Cloud uses a **project linked to a billing account**. Google Workspace is a **separate subscription**. Owning a domain does not automatically provide a mailbox or hosting. First inspect existing Workspace/mail configuration before purchasing a seat or changing MX records.
+Google Cloud uses a **project linked to a billing account**. Google Workspace is a **separate subscription**. Owning a domain does not automatically provide a mailbox or hosting. The family already has Microsoft 365 mail. Inspect its licensing before buying another seat; preserve its MX records. No Workspace subscription is planned.
 
 The custom-domain hosting path must be selected before DNS changes. Cloud Run's direct domain mapping is still Preview/limited availability; assess Firebase Hosting in front of Cloud Run or a supported load balancer against the lean-site budget. Do not point an arbitrary CNAME directly at a run.app URL and assume TLS will work. [Google custom-domain options](https://docs.cloud.google.com/run/docs/mapping-custom-domains).
 
@@ -41,7 +41,7 @@ Google Vault is for Workspace retention/eDiscovery. It is not the place to store
 
 ## Provisioning sequence
 
-1. Account, existing project, billing attachment and hostname are confirmed above. Resolve monthly operating budget, DNS management access and existing Workspace status/sender.
+1. Account, existing project, billing attachment and hostname are confirmed above. Resolve monthly operating budget, Hostinger DNS management access and Microsoft 365 sender/admin access.
 2. Complete the private baseline and keep the existing project. Reserve an event prefix, record exact resource identities and removal steps in the inventory as provisioning proceeds; do not reuse existing application secrets or service identities by convenience.
 3. Set budget alerts, scoped service identities, and resource limits. Start with request-based billing, minimum instances zero and a low maximum for the preview. Budget alerts are not a hard spending cap. Pricing depends on the final region and traffic; do not promise zero spend.
 4. Enable the required APIs and prepare build/runtime identities. Do not use broad runtime Owner/Editor roles. Give the runtime access only to the specific secrets and server-side data it requires.
@@ -49,30 +49,15 @@ Google Vault is for Workspace retention/eDiscovery. It is not the place to store
 6. Inspect the Notion database after access is supplied. Map property types/IDs and preserve the records; test on one sample household. A website integration token and a chat connector are separate forms of access.
 7. Deploy an authenticated preview first, verify the revision and logs, then configure the guest-facing access path when real invitations are ready. Do not mistake robots/noindex for authentication. The existing source contains invitation/event details and should not acquire real guest data.
 8. Configure the selected custom-domain hosting path and only its verified DNS records for `misxv.simplysoph.com`. Record prior DNS state, exact name/type/value, certificate/mapping resources and their cleanup steps. Do not transfer the domain or change nameservers.
-9. Add/reuse one Workspace mailbox, verify the domain and Gmail, configure SPF/DKIM/DMARC, and establish the narrow Gmail sending authorization described below.
+9. Inspect the existing Microsoft 365 tenant/licenses; add an event shared mailbox if appropriate, preserve existing mail DNS and establish mailbox-scoped Graph sending access. See `M365-EMAIL.md`.
 10. Implement/test private invitation access, durable RSVP commits, Notion reconciliation, and approved email dispatch before opening live RSVPs. Verify one full end-to-end journey with an authorized test recipient.
 
 Account, project and hostname are now known. Finalize region, limits, custom-domain hosting path and sender before their respective resource commands. Do not use the CLI's active account/project as an implicit deployment target.
 
-## Gmail API first, SMTP if needed
+## Email follows the existing Microsoft 365 setup
 
-The Gmail API can send through a Workspace mailbox using OAuth and the `gmail.send` scope. SMTP is a transport alternative, not a prerequisite for sending event emails. A Cloud Run service account alone cannot send as a mailbox. [Sending email](https://developers.google.com/workspace/gmail/api/guides/sending), [send permission](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/send).
-
-Prefer one internal Workspace OAuth app authorized by the dedicated sender, if the project/organization setup allows it. Store the client secret and refresh token in Secret Manager, with failure/revocation handling. Confirm the account's consent-screen and verification requirements. External OAuth apps left in Testing can have refresh tokens expire after seven days; do not ship that setup as unattended production email. Avoid domain-wide delegation for this single-mailbox project unless a specific need justifies its broader authority. [OAuth expiration](https://developers.google.com/identity/protocols/oauth2#expiration).
-
-If the existing Workspace environment requires SMTP relay instead, verify its supported authentication and TLS configuration. IP-allowlisted relay would require stable egress from Cloud Run and may add networking cost; do not add NAT/static egress by default. [Google SMTP relay](https://support.google.com/a/answer/2956491).
-
-Workspace sending/trial limits must be checked for the actual account before selecting a batch size. Queue and pace messages. Keep invitations, reminders, and changes subject to the family's approved audience/schedule; general infrastructure approval is not an instruction to send invitations immediately.
-
-## Differences from the earlier Resend plan
-
-- Reuse the existing English/Spanish HTML/text templates; they are provider-independent.
-- Keep a durable application outbox with a unique message-intent key, current eligibility check, and approval record.
-- Gmail's send API does not provide the Resend idempotency-key contract. If sending times out after acceptance may have occurred, mark the item **unknown / needs reconciliation**; do not blindly retry and claim exactly-once delivery. A custom Message-ID alone does not guarantee deduplication.
-- Store Gmail's returned message ID and mark the request accepted. This is not proof of inbox delivery or reading.
-- Do not claim Resend-style bounce/delivery webhooks are available from Gmail send. Initially use the monitored sender inbox for bounce follow-up. Automated bounce processing would need an explicitly scoped mailbox-read integration and a separate review.
-- For reminders, recheck current RSVP and recipient suppression immediately before sending. Do not put private household tokens into link-tracking services.
+Use `M365-EMAIL.md` as the current email implementation plan. It supersedes the earlier Gmail/Workspace and Resend proposals. Hostinger manages DNS; Microsoft 365 handles mail; Google hosts the app and stores integration credentials. Reuse the provider-independent email templates and durable outbox design, with Graph-specific acceptance/retry handling.
 
 ## Inputs still needed
 
-DNS management access; monthly Workspace/hosting budget; existing Workspace status; sender mailbox; Notion page/database URL and integration access; preferred retention window after the event. No secret value is requested in chat. Google account/project/billing/domain inputs are already resolved.
+Hostinger DNS access; monthly hosting budget; Microsoft 365 tenant/admin access and sender mailbox; Notion page/database URL and integration access; preferred retention window after the event. No secret value is requested in chat. Google account/project/billing/domain inputs are already resolved.

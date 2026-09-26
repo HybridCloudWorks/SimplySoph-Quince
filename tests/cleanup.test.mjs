@@ -30,3 +30,10 @@ test('reject dependencies that cannot form a valid removal sequence', () => {
   data.resources = [resource('a', ['b']), resource('b', ['a'])];
   assert.throws(() => validateInventory(data), /cycle/);
 });
+test('Microsoft mailbox/app grants need an exact scope and are removed before the app', () => {
+  const data = inventory();
+  data.resources = [{...resource('app'), type:'entra-application'}, {...resource('grant', ['app']), type:'exchange-role-assignment'}];
+  assert.throws(() => validateInventory(data), /Exact records/);
+  data.resources[1].exactScope = 'Example tenant, role assignment ID and event mailbox ID';
+  assert.deepEqual(validateInventory(data).map(r => r.id), ['grant', 'app']);
+});
