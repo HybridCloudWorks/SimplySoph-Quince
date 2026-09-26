@@ -1,6 +1,6 @@
 # Invitations and email delivery
 
-Recommendation: one domain + Resend's server-side HTTPS API + Notion tracking. SMTP is available for compatibility but unnecessary for a new JavaScript backend. Do not buy multiple sending services for this event.
+**Current decision:** the family selected Google Workspace email and Google hosting. Use `GOOGLE-SETUP.md` as the implementation authority: Gmail API first, Secret Manager for credentials, application-owned delivery tracking, and no Resend dependency. The Resend comparison and provider-specific flow below are retained as an evaluated fallback, not the active provider plan. Message types, audience rules, and reusable templates remain applicable.
 
 ## Domain structure
 

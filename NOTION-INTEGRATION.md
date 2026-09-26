@@ -2,6 +2,8 @@
 
 **Status: proposed, not connected or implemented.** Inspect the user's existing database and preserve its records before mapping or extending anything. The static starter deliberately has no Notion token, guest database export, or fake live-save endpoint.
 
+**Hosting decision:** see GOOGLE-SETUP.md. The family selected Google; Secret Manager will hold the Notion token and Cloud Run will host the secure adapter. A small server-only Firestore store is planned for durable coordination. Neither the adapter nor that store is implemented yet.
+
 ## Smallest useful architecture
 
 ```text

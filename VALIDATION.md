@@ -18,6 +18,8 @@ The browser check caught and fixed a malformed attending option before delivery.
 
 ## Not yet verified / not implemented
 
+Google preparation follow-up: seven local tests now pass, including a new HTTP server check for injected port, health, homepage, HEAD, method rejection, and themed 404. Cloud Run platform bind/startup support and Google Buildpacks Node 24 selection were added. Tests ran on the workstation's Node 26; an actual Node 24 Cloud Build and deployed revision remain unverified. No Google account selection or cloud mutation has been made.
+
 Live Notion writes, guest authorization, durable persistence, concurrent edits, rate limiting, sender/domain/DNS configuration, real email deliverability, signed webhook processing, privacy retention operations, full English/Spanish website parity, all email-client rendering, 200% text zoom, complete accessibility audit, and production hosting. No real guest response or email was transmitted.
 
 The family subsequently confirmed Friday, January 15, 2027. Website copy, configuration, email previews, and planning documents now use the confirmed date. The original invitation artwork still says Saturday and is explicitly identified as incorrect on the website. Preview/demo notices remain because live RSVP is not connected. Calendar/countdown remain unimplemented. Map target is based on supplied invitation text; venue identity and directions still need family verification.

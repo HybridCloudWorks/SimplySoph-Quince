@@ -5,6 +5,7 @@ Lean, invitation-inspired website starter for continued development in Google AI
 ## Preview locally
 
 Requires Node.js 22 or newer. No dependencies to install.
+Deployment now targets Node.js 24 through Google Buildpacks. Local validation was run with the workstation's Node.js 26 runtime.
 
 ```powershell
 npm run build
@@ -29,6 +30,7 @@ Try **SOPHIA-DEMO** on the RSVP page. Two fictional guests can respond separatel
 | `emails/templates.mjs` | Seven email types in English/Spanish, HTML and plain text; rendering only |
 | `PAGE-SCOPE.md` | Final keep/merge/defer decisions for all 28 proposed pages |
 | `EMAIL-PLAN.md` | Resend, alternatives, domain, sender, queue, and delivery workflow |
+| `GOOGLE-SETUP.md` | Current Google-first hosting, Workspace/Gmail, domain, and Secret Manager plan; supersedes Resend as the default |
 | `WEBSITE-PLAN.md` | Research, sources, event inventory, and launch checklist |
 | `NOTION-INTEGRATION.md` | Schema, secure endpoint contract, and reconciliation design |
 | `GOOGLE-AI-STUDIO-PROMPT.md` | Ready-to-paste continuation instructions |
@@ -56,3 +58,7 @@ Import/sync this repository through AI Studio's documented GitHub workflow, then
 Confirm church identity/address (invitation: “Lady of Guadalupe Church”; later list: “Our Lady of Guadalupe”), dinner venue, deadline, family contact, attire, guest policies, and language. The reception address is transcribed from the invitation, not independently venue-verified.
 
 The website is English. English/Spanish email drafts are included; a bilingual website remains a follow-up after language/copy confirmation. Replace preview privacy copy with actual practices before real collection. `noindex` and robots exclusions do not secure the site.
+
+## Google setup in progress
+
+The family selected Google for hosting and email. Cloud Run startup support (`PORT`, platform bind address, health endpoint) is prepared and locally checked. No cloud project, billing link, domain, Workspace subscription, secret, or deployment has been created. See `GOOGLE-SETUP.md` for the provisioning sequence and pending account/domain/Notion inputs. Use **Secret Manager** for integration credentials; Google Vault is a different Workspace retention product.

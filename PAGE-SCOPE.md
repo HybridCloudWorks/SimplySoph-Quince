@@ -56,4 +56,4 @@ Households, Guests, RSVP Submissions, Email Queue, and Email Delivery Log. Saved
 
 ## Domain and service decision
 
-One custom domain can serve the website, a sending subdomain, and an API. Use one email provider, not several relays. **Resend API is the recommended default** for this code-led project, with Postmark and Brevo as alternatives. Domain availability, purchase, provider setup, DNS changes, and real dispatch are not part of this starter. See EMAIL-PLAN.md for the concrete workflow.
+One custom domain can serve the website, mail, and an API. The family selected **Google Workspace email**, with **Gmail API** as the proposed transport, **Cloud Run** for hosting, **Cloud Domains/Cloud DNS** for the domain workflow, and **Secret Manager** for credentials. Domain availability/purchase, account provisioning, DNS changes, and real dispatch remain pending concrete account/domain/budget inputs. See GOOGLE-SETUP.md for the current setup sequence; EMAIL-PLAN.md retains message workflows and provider comparisons.

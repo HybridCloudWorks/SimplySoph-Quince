@@ -1,0 +1,9 @@
+.gcloudignore
+.git/
+node_modules/
+dist/
+work/
+.env
+.env.*
+*.log
+notion-templates/
