@@ -8,14 +8,14 @@ This document supersedes the earlier one-page recommendation in WEBSITE-PLAN.md.
 
 | Route | Page | Contents and use |
 |---|---|---|
-| `/` | Home | Invitation, Sophia's introduction, date/city, short schedule, RSVP link. Countdown only after date confirmation |
+| `/` | Home | Invitation, Sophia's introduction, date/city, short schedule, RSVP link. Date confirmed: Friday, January 15, 2027; countdown remains a follow-up |
 | `/details/` | Event Details | Full schedule, ceremony/reception addresses, maps, dress code, parking, accessibility, arrival and travel information |
 | `/rsvp/` | RSVP | Secure household access in live version; named guest attendance by event; relevant contact corrections; optional dietary/accessibility requests; review, receipt, and edit in one flow |
 | `/faq/` | FAQ & Contact | Deadline, children/plus-ones, attire, arrival, photography, and a monitored family contact. No extra contact-form backend initially |
 | `/privacy/` | Guest privacy | Plain-language data use, organizer contact, retention, service providers, and guest correction/removal process. Current preview notice must be replaced with actual live practices before collecting data |
 | `/404.html` | Not found | Useful links to Home, Details, and RSVP; server/host must return HTTP 404 |
 
-The routes are directory-based static pages so links work without a client router. The RSVP confirmation is not an independently accessible public page: it requires a verified save result. Add `.ics`/Google Calendar only after the date is resolved; do not invent event end times.
+The routes are directory-based static pages so links work without a client router. The RSVP confirmation is not an independently accessible public page: it requires a verified save result. Date is confirmed as Friday, January 15, 2027. Add `.ics`/Google Calendar in the calendar implementation phase; do not invent event end times.
 
 ## Decision on every proposed page
 

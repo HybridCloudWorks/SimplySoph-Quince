@@ -11,6 +11,6 @@ for(const page of pages){
     const info=await stat(target);
     if(info.isDirectory())await stat(path.join(target,'index.html'));
   }
-  if(!html.includes('Date awaiting confirmation'))throw new Error(`Missing draft guard in ${page}`);
+  if(!html.includes('RSVP demonstration only'))throw new Error(`Missing draft guard in ${page}`);
 }
 console.log('All six pages and local links/assets passed.');

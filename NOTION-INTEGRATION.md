@@ -153,7 +153,7 @@ Use a test household first. Required live tests: invalid token; cross-household 
 1. The existing Notion database/page link and access to inspect it; identify who should have organizer access.
 2. A schema mapping approved against the actual records; avoid replacing the database with CSV samples.
 3. Host selection for the static site and small API, plus server-side secret configuration through the host's secure settings.
-4. Confirmed date, RSVP deadline, eligible event rules, and a real organizer contact.
+4. Date is confirmed as Friday, January 15, 2027 (America/Chicago). Still needed: RSVP deadline, eligible event rules, and a real organizer contact.
 5. One test household for end-to-end verification before real invitations are enabled.
 
 The sample CSVs only illustrate columns. Notion CSV import does not establish relations, formulas, rollups, API permissions, or correct property types automatically. Configure those deliberately. Remove sample rows before importing real guests.

@@ -42,7 +42,7 @@ Recommended adaptation: invitation-led warmth with practical guest logistics. Do
 | Item | Supplied information | Treatment |
 |---|---|---|
 | Honoree | Sophia; Mis XV | Used as supplied |
-| Date | Saturday, January 15, 2027 | Conflict: January 15 is Friday; Saturday is January 16. Await family decision. Do not silently correct |
+| Date | Printed artwork: Saturday, January 15, 2027 | Family confirmed Friday, January 15, 2027. Website updated; original artwork weekday still needs correction |
 | Ceremony | 4:00 PM, Lady of Guadalupe Church | Keep exact supplied name; full church identity/address still needed |
 | Dinner | 6:30–7:30 PM | Dinner venue not explicitly stated; confirm whether AMZ hosts it |
 | Dance | Starts 7:30 PM, AMZ Event Center | Used as supplied; ending time unknown |
@@ -50,7 +50,7 @@ Recommended adaptation: invitation-led warmth with practical guest logistics. Do
 | Timezone | Event is in Fort Worth | Use `America/Chicago` for calendar and deadline logic |
 | Language | Invitation mostly English | English starter; bilingual English/Spanish is an available next step after preference confirmed |
 
-Do not publish a calendar file until the date is confirmed. Use real start/end details rather than guessing a party ending time. Do not guess a church location from its name.
+The family confirmed Friday, January 15, 2027. Future calendar files must use this date and real start/end details rather than guessing a party ending time. Do not guess a church location from its name.
 
 ## Guest journey
 
@@ -73,7 +73,7 @@ Use optional planning databases for **Tasks** (owner, due date, status), **Vendo
 ## Build sequence
 
 1. **Starter — delivered:** invitation-derived design; responsive guest sections; household RSVP demo; this research and implementation handoff.
-2. **Content completion:** resolve date and venues; add deadline, family contact, attire, language, children/plus-one policy, parking, and accessibility details. Confirm meal options only if the caterer requires them.
+2. **Content completion:** date confirmed as Friday, January 15, 2027; resolve venues and add deadline, family contact, attire, language, children/plus-one policy, parking, and accessibility details. Confirm meal options only if the caterer requires them.
 3. **Notion connection:** inspect the existing database before changing it; map field IDs/types and relations; create a separate test household; implement authenticated invitation access, persistence, and edits using the contract in `NOTION-INTEGRATION.md`.
 4. **Guest launch:** choose hosting/domain; verify final address pins and calendar; test on mobile and with a family member; send one test invitation and verify saved Notion results; open real RSVPs only after that passes.
 5. **Event operations:** family checks pending replies and meal counts, sends authorized reminders, finalizes the caterer count, and exports a restricted day-of list.
@@ -81,7 +81,7 @@ Use optional planning databases for **Tasks** (owner, due date, status), **Vendo
 
 ## Launch checks
 
-- Confirm event date and update the original invitation image as well as website text.
+- Date confirmed as Friday, January 15, 2027. Website text is updated; correct the original invitation artwork weekday before distribution.
 - Remove provisional answers only after supplying confirmed replacements.
 - Test invited and uninvited access, mixed household attendance, declined-all response, plus-one limits, edit-after-save, and closed-deadline behavior.
 - Verify a guest can never retrieve or change another household's record.

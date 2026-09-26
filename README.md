@@ -51,8 +51,8 @@ Import/sync this repository through AI Studio's documented GitHub workflow, then
 
 ## Unresolved details
 
-The invitation says **Saturday, January 15, 2027**, but January 15 is **Friday**; Saturday is January 16. Date remains unconfirmed. No countdown/calendar file is generated. Original artwork is unchanged.
+**Confirmed by the family: Friday, January 15, 2027**, in America/Chicago. Website text, configuration, and sample emails use this date. The original invitation artwork still incorrectly says Saturday and must be corrected before distribution. Countdown/calendar functionality is not yet implemented; do not guess event end times.
 
-Confirm date, church identity/address (invitation: “Lady of Guadalupe Church”; later list: “Our Lady of Guadalupe”), dinner venue, deadline, family contact, attire, guest policies, and language. The reception address is transcribed from the invitation, not independently venue-verified.
+Confirm church identity/address (invitation: “Lady of Guadalupe Church”; later list: “Our Lady of Guadalupe”), dinner venue, deadline, family contact, attire, guest policies, and language. The reception address is transcribed from the invitation, not independently venue-verified.
 
 The website is English. English/Spanish email drafts are included; a bilingual website remains a follow-up after language/copy confirmation. Replace preview privacy copy with actual practices before real collection. `noindex` and robots exclusions do not secure the site.

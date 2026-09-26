@@ -17,7 +17,7 @@ Known facts from the invitation:
 - Ceremony: 4:00 PM at Lady of Guadalupe Church. Exact church address is unknown.
 - Dinner: 6:30–7:30 PM. Location needs confirmation.
 - Reception & dance: starts 7:30 PM at AMZ Event Center, 5103 Azle Ave, Unit 200, Fort Worth, TX 76114.
-- The printed date is inconsistent: it says Saturday, January 15, 2027, but January 15 is Friday. Do not choose a date on your own. Keep date unconfirmed until the family supplies the answer; Saturday would be January 16. Update both website and invitation artwork only after confirmation.
+- The family has confirmed Friday, January 15, 2027. Use 2027-01-15 everywhere. The original invitation artwork incorrectly says Saturday; correct that artwork before distributing invitations. The website text and configuration already use the confirmed Friday date.
 - Use America/Chicago for all event/deadline calculations.
 - Do not invent an RSVP deadline, ending time, dress code, children/plus-one policy, email, phone number, hotel, parking, or accessibility details.
 - English is the current starter language. Add bilingual English/Spanish only if requested, with complete matching navigation, form, error, and confirmation translations.
