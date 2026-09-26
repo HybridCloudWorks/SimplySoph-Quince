@@ -21,10 +21,12 @@ export function validateInventory(data) {
   requireField(data.projectId === 'simplysoph-66c78', 'Unexpected project');
   requireField(data.hostname === 'misxv.simplysoph.com', 'Unexpected hostname');
   requireField(Array.isArray(data.resources), 'resources must be an array');
-  if (data.resources.length) requireField(safeText(data.baselineVerifiedAt)
-    && !Number.isNaN(Date.parse(data.baselineVerifiedAt)), 'Verify the baseline before registering resources');
   const ids = new Set();
   for (const r of data.resources) {
+    const baselineDate = r.baseline?.verifiedAt ?? data.baselineVerifiedAt;
+    requireField(safeText(baselineDate) && !Number.isNaN(Date.parse(baselineDate)), 'Verify the baseline before registering resources');
+    if (r.baseline) requireField(safeText(r.baseline.scope) && safeText(r.baseline.evidence)
+      && Array.isArray(r.baseline.allowedTypes) && r.baseline.allowedTypes.includes(r.type), `Baseline does not cover resource type: ${r.id}`);
     requireField(safeText(r.id) && /^[a-z0-9-]+$/.test(r.id) && !ids.has(r.id), 'Invalid or duplicate inventory ID');
     ids.add(r.id);
     requireField(types.has(r.type), `Unsupported resource type: ${r.id}`);
@@ -65,7 +67,7 @@ export function renderPlan(data) {
     '**PLAN ONLY. This report does not authenticate, change, or delete anything.**', '',
     `Project: ${data.projectId}. Host: ${data.hostname}.`, '',
     `Inventory SHA-256: ${fingerprint}`, '',
-    `Baseline: ${data.baselineVerifiedAt ?? 'NOT YET VERIFIED — do not provision until existing resources are recorded privately.'}`, '',
+    `Global baseline: ${data.baselineVerifiedAt ?? 'NOT YET VERIFIED — each recorded resource needs its own verified scoped baseline.'}`, '',
     'Protect: simplysoph.com registration, existing project and billing account, existing DNS zone/nameservers, existing Notion database, shared mailboxes and data.', '',
     'Before removal: follow CLEANUP.md to stop intake/sending, export wanted data privately, review live resources and ownership, and resolve untracked resources.', '',
     'This inventory is not a live cloud discovery. An empty list does not prove that the project is empty.', ''];
@@ -75,6 +77,7 @@ export function renderPlan(data) {
       `- Type: ${r.type}; ownership: ${r.ownership}.`,
       `- Exact resource: ${cell(r.resource)}`,
       `- Creation evidence: ${cell(r.creationEvidence)}`,
+      ...(r.baseline ? [`- Scoped baseline: ${cell(r.baseline.scope)}; verified ${cell(r.baseline.verifiedAt)}; evidence: ${cell(r.baseline.evidence)}`] : []),
       ...(r.exactScope ? [`- Exact scope: ${cell(r.exactScope)}`] : []),
       `- [ ] Verify ownership and current state: ${cell(r.verifyBeforeCleanup)}`,
       `- [ ] Reviewed removal/reversal: ${cell(r.cleanupSteps)}`,

@@ -4,5 +4,27 @@
   "projectId": "simplysoph-66c78",
   "hostname": "misxv.simplysoph.com",
   "baselineVerifiedAt": null,
-  "resources": []
+  "resources": [
+    {
+      "id": "misxv-m365-mailbox",
+      "type": "m365-shared-mailbox",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "Microsoft 365 simplysoph.com tenant / mailbox 6d086684-0c76-404d-be9f-ef9a7992a8c5 / misxv@simplysoph.com",
+      "baseline": {
+        "verifiedAt": "2026-09-26T23:32:04.246Z",
+        "scope": "Microsoft 365 simplysoph.com shared-mailbox inventory and organizer license only",
+        "allowedTypes": [
+          "m365-shared-mailbox"
+        ],
+        "evidence": "Private work/m365-mailbox-baseline.txt: unfiltered list had zero shared mailboxes; administrator had Exchange Online Plan 1"
+      },
+      "creationEvidence": "Created September 26, 2026 in Microsoft 365 admin center; private work/m365-mailbox-created.txt and outputs/mailbox-created.png; verified detail link contains mailbox ID",
+      "verifyBeforeCleanup": "Match mailbox ID 6d086684-0c76-404d-be9f-ef9a7992a8c5 and primary misxv@simplysoph.com in the simplysoph.com tenant; confirm still exclusively used for this event; choose export/retention and stop app sending",
+      "cleanupSteps": "After removing recorded event app/delegate grants and exporting wanted mail, select this exact mailbox in Microsoft 365 admin center Shared mailboxes and use Delete shared mailbox; preserve existing administrator and Sophia mailboxes and tenant subscription; review applicable retention and recoverability before deletion",
+      "verifyAfterCleanup": "Verify exact mailbox is absent from active mailboxes and no event send/delegate grants remain; record any retained soft-deleted mailbox or policy holds separately; do not purge without a separate decision",
+      "dependsOn": [],
+      "status": "active"
+    }
+  ]
 }

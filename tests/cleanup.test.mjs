@@ -37,3 +37,11 @@ test('Microsoft mailbox/app grants need an exact scope and are removed before th
   data.resources[1].exactScope = 'Example tenant, role assignment ID and event mailbox ID';
   assert.deepEqual(validateInventory(data).map(r => r.id), ['grant', 'app']);
 });
+test('scoped mailbox baseline does not claim the Google project was verified', () => {
+  const data = inventory(); data.baselineVerifiedAt = null;
+  data.resources = [{...resource('mailbox'), type:'m365-shared-mailbox', baseline:{verifiedAt:'2026-09-26T12:00:00Z', scope:'Microsoft shared mailboxes only', evidence:'Private mailbox baseline receipt', allowedTypes:['m365-shared-mailbox']}}];
+  assert.match(renderPlan(data), /Global baseline: NOT YET VERIFIED/);
+  assert.match(renderPlan(data), /Scoped baseline: Microsoft shared mailboxes only/);
+  data.resources[0].type = 'cloud-run-service';
+  assert.throws(() => validateInventory(data), /Baseline does not cover/);
+});

@@ -33,7 +33,7 @@ Try **SOPHIA-DEMO** on the RSVP page. Two fictional guests can respond separatel
 | `GOOGLE-SETUP.md` | Current Google hosting, Hostinger DNS, and Secret Manager plan |
 | `M365-EMAIL.md` | Existing Microsoft 365 mail, proposed event shared mailbox and scoped Graph delivery |
 | `CLEANUP.md` | End-of-event shutdown, export, resource removal and verification workflow |
-| `ops/event-resources.json` | Exact inventory of event-created resources and reversible changes; currently empty |
+| `ops/event-resources.json` | Exact inventory of event-created resources and reversible changes; includes the event shared mailbox |
 | `WEBSITE-PLAN.md` | Research, sources, event inventory, and launch checklist |
 | `NOTION-INTEGRATION.md` | Schema, secure endpoint contract, and reconciliation design |
 | `GOOGLE-AI-STUDIO-PROMPT.md` | Ready-to-paste continuation instructions |
@@ -69,3 +69,5 @@ The family selected Google hosting, Hostinger DNS, and its existing Microsoft 36
 ## End-of-event cleanup
 
 Every new resource must be registered with ownership evidence and exact removal steps. Run `npm run cleanup:plan` to generate a local review, or run **Prepare event cleanup review** manually in GitHub Actions. This only prepares a checklist: it never deletes anything or accesses Google. Follow `CLEANUP.md` for export, live reconciliation, reviewed removal and final billing checks. Preserve the root domain and existing project. Nothing is scheduled for automatic deletion.
+
+Microsoft 365 follow-up: `misxv@simplysoph.com` (Sophia Mis XV) is created and recorded for cleanup. Organizer permissions and application email integration remain pending; no live email was sent.

@@ -1,10 +1,10 @@
 # Event email using the existing Microsoft 365 tenant
 
-The family confirmed that **Hostinger manages simplysoph.com DNS** and **Microsoft 365 already hosts its email**. This supersedes the proposed Google Workspace/Gmail sender. Keep website hosting and application secrets in Google; keep existing mail in Microsoft 365. No additional domain or Workspace purchase is needed for this architecture. Actual tenant licensing and sender availability still need inspection.
+The family confirmed that **Hostinger manages simplysoph.com DNS** and **Microsoft 365 already hosts its email**. This supersedes the proposed Google Workspace/Gmail sender. Keep website hosting and application secrets in Google; keep existing mail in Microsoft 365. No additional domain or Workspace purchase is needed for this architecture. The admin session and organizer Exchange Online Plan 1 assignment have now been verified. The event shared mailbox has been created without purchasing another license.
 
 ## Recommended sender
 
-Use a dedicated event shared mailbox, proposed **misxv@simplysoph.com**, with a licensed organizer able to monitor replies. Confirm address availability before creation. A shared mailbox generally needs no separate mailbox license up to 50 GB, but users accessing it need licensed Exchange Online mailboxes; archive/hold or other advanced features can change licensing requirements. Do not buy another subscription before checking the existing plan. [Microsoft shared-mailbox requirements](https://learn.microsoft.com/en-us/microsoft-365/admin/email/about-shared-mailboxes).
+**Created September 26, 2026: Sophia Mis XV — misxv@simplysoph.com.** Signed in as the family-designated administrator. The shared-mailbox list was empty before creation. Mailbox ID: `6d086684-0c76-404d-be9f-ef9a7992a8c5`. It is registered in `ops/event-resources.json` with a scoped baseline and cleanup steps. Organizer membership/send-as access and app sending are not configured yet. A shared mailbox generally needs no separate mailbox license up to 50 GB, but users accessing it need licensed Exchange Online mailboxes; archive/hold or other advanced features can change licensing requirements. Do not buy another subscription before checking the existing plan. [Microsoft shared-mailbox requirements](https://learn.microsoft.com/en-us/microsoft-365/admin/email/about-shared-mailboxes).
 
 An alias is an alternative if all replies should go into an existing inbox. It provides less separation for cleanup, and sending from an alias requires tenant configuration to be checked. The dedicated shared mailbox is the preferred event boundary.
 
@@ -22,4 +22,4 @@ Preserve Microsoft 365 MX records and existing SPF, DKIM and DMARC. Check them b
 
 At event end, stop queued messages, export wanted correspondence, revoke the dedicated app's access/credentials, remove the exact event RBAC grants/app registration, remove the event alias/mailbox if approved, and remove its stored credentials. Do not cancel the tenant subscription or delete an existing organizer mailbox. Retention policies and recipients' copies may remain. Add exact IDs and evidence to the event inventory before provisioning is considered complete.
 
-Pending: Microsoft 365 tenant/admin identity, mailbox choice/availability, existing licenses, Hostinger DNS access, Notion database access, and final retention window. No passwords, access tokens or private keys should be pasted into chat or committed.
+Pending: organizer mailbox permissions, mailbox-scoped application sending, Hostinger DNS access, Notion database access, and final retention window. No email was sent. No passwords, access tokens or private keys should be pasted into chat or committed.
