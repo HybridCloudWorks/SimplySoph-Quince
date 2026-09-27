@@ -416,6 +416,27 @@
         "misxv-deploy-provider"
       ],
       "status": "active"
+    },
+    {
+      "id": "misxv-app-key",
+      "type": "secret",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "projects/424903425639/secrets/misxv-app-key (version 1; replica us-central1)",
+      "baseline": {
+        "verifiedAt": "2026-09-27T21:32:57.690Z",
+        "scope": "Exact misxv-app-key secret before creation",
+        "allowedTypes": [
+          "secret"
+        ],
+        "evidence": "Private work/app-key-baseline.txt records NOT_FOUND before creation"
+      },
+      "creationEvidence": "gcloud created version 1; 32 random bytes encoded as base64 passed through stdin without local secret file or output; event=misxv-2027 label",
+      "verifyBeforeCleanup": "Match secret identity and creation metadata; stop all event services; export wanted data in readable form because deleting this key prevents decrypting MFA seeds and sealed email bodies",
+      "cleanupSteps": "Remove event runtime secret-access bindings, preserve key until agreed exports and credential revocations are verified, then disable and delete only this event secret and its versions after final review",
+      "verifyAfterCleanup": "Verify exact secret and versions unavailable; confirm exports do not rely on a destroyed key; preserve all other secrets",
+      "dependsOn": [],
+      "status": "active"
     }
   ]
 }

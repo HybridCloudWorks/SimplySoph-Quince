@@ -2,6 +2,8 @@
 
 This is implementation and local-test evidence, **not a claim that production RSVP/email is live**.
 
+Activation follow-up: 61 tests now pass, including production startup rejection for each missing Microsoft mail credential. The Docker image was built and started locally: health reported preview, Details returned 200, runtime uid was 1000, and private work/Git/skill directories were absent. The test container was stopped and removed. No real guest registration or email was attempted.
+
 ## Automated checks
 
 - 53 guest/admin routes plus root 404 document build; every generated local link and asset resolves.

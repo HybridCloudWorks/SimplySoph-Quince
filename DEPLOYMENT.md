@@ -21,6 +21,16 @@ Copy `.env.example` only to a private, ignored local file when needed. In Cloud 
 
 No EVENT_BUCKET means preview mode with unavailable API, not in-memory production storage. Partial live configuration stops startup. Notion failures never silently revert to a demo.
 
+Production startup also requires all three Microsoft sender settings: email verification is part of guest access, so missing sender credentials must stop startup rather than fail after a guest registers. The Dockerfile copies only the build script, site, server and email templates; work files, local credentials and skill installations are excluded from build uploads.
+
+## Activation preparation — September 27, 2026
+
+- `misxv-app-key` version 1 now exists in Google Secret Manager with a replica in us-central1. It contains a generated 32-byte key encoded as base64, passed directly through stdin without a local key file or log output. The key and retirement requirements are in the event inventory. Runtime access has not been granted yet.
+- The dedicated Notion connection still showed no page access. Only Invitations was selected in its access dialog; saving the grant awaits the browser-required confirmation. Secret Manager still has the original `misxv-notion-token` version 1; store the dedicated connection token as a new version after access is confirmed, then verify its identity and schema before granting runtime access.
+- The single-tenant Microsoft application is prepared under administrator@simplysoph.com, awaiting final registration/terms confirmation. No application credential or mailbox role assignment exists yet. The retention review date and one test-email recipient confirmation are also pending.
+- No event Cloud Run service or event Artifact Registry repository existed at the activation baseline. Do not configure a Hosting API rewrite until a real service is deployed and verified.
+- Local container `misxv-api:activation-check` built successfully on Node 24. Its temporary test container served preview health and Details successfully, ran as uid 1000, included required email templates, and excluded work, .git and .agents. The test container was stopped and automatically removed. The local image/build cache may be removed at retirement; it contains no guest data or credentials.
+
 ## Provisioning boundaries
 
 1. Verify Google account/project and capture scoped baselines before each resource creation. Record every object and grant in `ops/event-resources.json`, including build repositories/source archives and Secret Manager versions. Preserve the existing project, default Hosting site and billing.

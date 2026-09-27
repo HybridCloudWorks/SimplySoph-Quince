@@ -17,6 +17,9 @@ if (env.EVENT_BUCKET) {
     !env.NOTION_SOURCE_ID ||
     !env.ADMIN_GOOGLE_CLIENT_ID ||
     !env.ADMIN_EMAILS ||
+    !env.M365_TENANT_ID ||
+    !env.M365_CLIENT_ID ||
+    !env.M365_CLIENT_SECRET ||
     !env.DATA_RETENTION_DATE ||
     env.SCOPED_NOTION_CONNECTION_CONFIRMED !== "true" ||
     !/^\d{4}-\d{2}-\d{2}$/.test(env.DATA_RETENTION_DATE) ||

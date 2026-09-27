@@ -7,3 +7,6 @@ outputs
 .env.*
 *.log
 .firebase
+.agents
+skills-lock.json
+gha-creds-*.json
