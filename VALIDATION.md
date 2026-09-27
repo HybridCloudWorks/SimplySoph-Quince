@@ -8,7 +8,7 @@ This is implementation and local-test evidence, **not a claim that production RS
 - 58 Node tests cover durable-save failure, concurrent ledger updates, idempotent responses, household allocation, stale forms, origin/CSRF, revocation, MFA attempt/replay limits, Notion projection isolation, moderation, seating, stale email drafts and Microsoft timeout ambiguity, plus email registration/return/expiry/single use, code invalidation, private-page grants/revocation, delegated admin MFA, profile identity isolation and private replies.
 - Dependency audit: zero known vulnerabilities at the latest local check. CI uses Node 24; local checks used Node 26.5.0.
 - Cleanup inventory and dependent-first review generation pass, protecting the existing domain, Google project/default site, Microsoft tenant and original Notion database.
-- The first pushed commit passed GitHub Node 24 checks and GitGuardian. Qlty reports success but its description says one blocking issue; its detailed report requires a separate Qlty sign-in. Treat that report as unresolved until inspected.
+- Guest-account commit 6cfcf60 passed both GitHub Node 24 checks and GitGuardian. Qlty reports success but its description says one blocking issue; its detailed report requires a separate Qlty sign-in. Treat that report as unresolved until inspected.
 
 ## Browser verification
 
