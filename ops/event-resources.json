@@ -49,6 +49,100 @@
         "misxv-m365-mailbox"
       ],
       "status": "active"
+    },
+    {
+      "id": "misxv-firebase-hosting",
+      "type": "firebase-hosting-site",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "projects/simplysoph-66c78/sites/misxv-simplysoph",
+      "baseline": {
+        "verifiedAt": "2026-09-27T02:35:08.088073+00:00",
+        "scope": "Firebase Hosting sites in simplysoph-66c78 only",
+        "allowedTypes": [
+          "firebase-hosting-site"
+        ],
+        "evidence": "Private work/firebase-hosting-baseline.json: only the protected default site existed"
+      },
+      "creationEvidence": "Firebase CLI 15.31.0 hosting:sites:create succeeded; USER_SITE misxv-simplysoph; default URL https://misxv-simplysoph.web.app",
+      "verifyBeforeCleanup": "Verify exact project/site name, USER_SITE type, event ownership and exports; never select default site simplysoph-66c78",
+      "cleanupSteps": "Remove event DNS and custom-domain association first. To take offline reversibly use Firebase Hosting disable on target misxv; to permanently remove deployed files/history delete only site misxv-simplysoph after final review. Site deletion is irreversible and its ID cannot be reused. Preserve default site and project",
+      "verifyAfterCleanup": "Verify site absent if permanently deleted, custom domain detached, event DNS removed and event URLs unavailable; retain provider deletion receipt",
+      "dependsOn": [],
+      "status": "active"
+    },
+    {
+      "id": "misxv-custom-domain",
+      "type": "firebase-custom-domain",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "projects/simplysoph-66c78/sites/misxv-simplysoph/customDomains/misxv.simplysoph.com",
+      "baseline": {
+        "verifiedAt": "2026-09-27T02:37:33.241079+00:00",
+        "scope": "Exact event custom-domain association",
+        "allowedTypes": [
+          "firebase-custom-domain"
+        ],
+        "evidence": "Private work/firebase-domain-baseline.json returned 404 before creation"
+      },
+      "creationEvidence": "Created September 26, 2026 local time; verified through provider API or Hostinger DNS table and authoritative DNS",
+      "verifyBeforeCleanup": "Match the full domain resource and event site; preserve default site domain mappings",
+      "cleanupSteps": "After removing event DNS, delete only this custom-domain association from site misxv-simplysoph",
+      "verifyAfterCleanup": "GET of exact custom-domain resource returns not found; default site remains",
+      "dependsOn": [
+        "misxv-firebase-hosting"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "misxv-dns-cname",
+      "type": "dns-record",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "Hostinger simplysoph.com DNS / CNAME misxv = misxv-simplysoph.web.app TTL 300",
+      "baseline": {
+        "verifiedAt": "2026-09-27T02:38:04.155Z",
+        "scope": "Hostinger simplysoph.com DNS records before event changes",
+        "allowedTypes": [
+          "dns-record"
+        ],
+        "evidence": "Private work/hostinger-dns-baseline.txt: neither event record existed; after-state work/hostinger-dns-after.txt"
+      },
+      "creationEvidence": "Created September 26, 2026 local time; verified through provider API or Hostinger DNS table and authoritative DNS",
+      "verifyBeforeCleanup": "Match exact name, type and current value; ensure still event-owned",
+      "cleanupSteps": "Delete only this recorded DNS record before detaching the event domain; preserve all pre-existing records",
+      "verifyAfterCleanup": "Query both authoritative nameservers and confirm the exact event record is absent",
+      "dependsOn": [
+        "misxv-custom-domain"
+      ],
+      "status": "active",
+      "dnsName": "misxv.simplysoph.com",
+      "exactScope": "CNAME misxv.simplysoph.com -> misxv-simplysoph.web.app; TTL 300; prior state absent"
+    },
+    {
+      "id": "misxv-dns-certificate",
+      "type": "dns-record",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "Hostinger simplysoph.com DNS / TXT _acme-challenge.misxv = GgMeXlKk-yzZzIsPylLvlucbfegUX8oCxv0mSBZJamk TTL 300",
+      "baseline": {
+        "verifiedAt": "2026-09-27T02:38:04.155Z",
+        "scope": "Hostinger simplysoph.com DNS records before event changes",
+        "allowedTypes": [
+          "dns-record"
+        ],
+        "evidence": "Private work/hostinger-dns-baseline.txt: neither event record existed; after-state work/hostinger-dns-after.txt"
+      },
+      "creationEvidence": "Created September 26, 2026 local time; verified through provider API or Hostinger DNS table and authoritative DNS",
+      "verifyBeforeCleanup": "Match exact name, type and current value; ensure still event-owned",
+      "cleanupSteps": "Delete only this recorded DNS record before detaching the event domain; preserve all pre-existing records",
+      "verifyAfterCleanup": "Query both authoritative nameservers and confirm the exact event record is absent",
+      "dependsOn": [
+        "misxv-custom-domain"
+      ],
+      "status": "active",
+      "dnsName": "_acme-challenge.misxv.simplysoph.com",
+      "exactScope": "TXT _acme-challenge.misxv.simplysoph.com -> GgMeXlKk-yzZzIsPylLvlucbfegUX8oCxv0mSBZJamk; TTL 300; prior state absent"
     }
   ]
 }

@@ -1,11 +1,11 @@
 # SimplySoph · Sophia's Mis XV
 
-Lean, invitation-inspired website starter for continued development in Google AI Studio. Burgundy, gold, parchment, and the supplied invitation artwork. **Preview only: no live Notion connection, RSVP storage, email sending, or deployment is enabled.**
+Lean, invitation-inspired website starter for continued development in Google AI Studio. Burgundy, gold, parchment, and the supplied invitation artwork. **Published design preview:** https://misxv-simplysoph.web.app . Custom domain: `misxv.simplysoph.com` (DNS configured; certificate activation being verified). No live Notion connection, RSVP storage or automated email sending. See `PUBLISHING.md`.
 
 ## Preview locally
 
 Requires Node.js 22 or newer. No dependencies to install.
-Deployment now targets Node.js 24 through Google Buildpacks. Local validation was run with the workstation's Node.js 26 runtime.
+Production serves static files through Firebase Hosting. Node is used only to build/check locally; Node 24 is used in CI. Local validation used Node 26.
 
 ```powershell
 npm run build
@@ -26,7 +26,8 @@ Try **SOPHIA-DEMO** on the RSVP page. Two fictional guests can respond separatel
 |---|---|
 | `site/` | Shared HTML sections, styles, demo behavior, original artwork |
 | `scripts/build.mjs` | Generates static pages in `dist/` |
-| `scripts/serve.mjs` | Loopback-only preview server with themed 404 |
+| `scripts/serve.mjs` | Local preview server with themed 404; also supports a future Cloud Run runtime |
+| `PUBLISHING.md` | Live hosting target, DNS, repeatable deployment and rollback |
 | `emails/templates.mjs` | Seven email types in English/Spanish, HTML and plain text; rendering only |
 | `PAGE-SCOPE.md` | Final keep/merge/defer decisions for all 28 proposed pages |
 | `EMAIL-PLAN.md` | Resend, alternatives, domain, sender, queue, and delivery workflow |
@@ -62,9 +63,9 @@ Confirm church identity/address (invitation: “Lady of Guadalupe Church”; lat
 
 The website is English. English/Spanish email drafts are included; a bilingual website remains a follow-up after language/copy confirmation. Replace preview privacy copy with actual practices before real collection. `noindex` and robots exclusions do not secure the site.
 
-## Google setup in progress
+## Published on Google
 
-The family selected Google hosting, Hostinger DNS, and its existing Microsoft 365 email. The target is **misxv.simplysoph.com** in existing project **simplysoph-66c78**; account access and enabled billing have been verified. Existing infrastructure is protected. Cloud Run startup support (`PORT`, platform bind address, health endpoint) is prepared and locally checked. No new cloud resource, DNS record, Workspace subscription, secret, or deployment has been created. See `GOOGLE-SETUP.md` for pending DNS/Microsoft 365/Notion inputs. Use **Secret Manager** for integration credentials; Google Vault is a different Workspace retention product.
+The event uses dedicated Firebase Hosting site **misxv-simplysoph** inside the existing **simplysoph-66c78** project. Hosting, custom-domain association and two Hostinger DNS records are inventoried for cleanup. The existing default site and Microsoft 365 mail records are preserved. No Workspace purchase is needed. Use Google **Secret Manager** for future integration credentials; Google Vault is a separate retention product. See `PUBLISHING.md` for the current domain status and deployment command.
 
 ## End-of-event cleanup
 

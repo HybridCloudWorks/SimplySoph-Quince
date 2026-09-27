@@ -1,6 +1,6 @@
 # Google hosting, mail, and secrets
 
-The family approved Google hosting and subsequently confirmed its existing Microsoft 365 email; preserve that mail setup. This supersedes the Resend-first recommendation. The family already owns `simplysoph.com`; the event will use **misxv.simplysoph.com**. No domain purchase or transfer is needed. No cloud resource, DNS record, Workspace subscription, or live email has been created by this buildout.
+The family approved Google hosting and subsequently confirmed its existing Microsoft 365 email; preserve that mail setup. This supersedes the Resend-first recommendation. The family already owns `simplysoph.com`; the event will use **misxv.simplysoph.com**. No domain purchase or transfer is needed. The static design preview is published on dedicated Firebase Hosting site `misxv-simplysoph`; the event custom-domain association and two DNS records have been created. No Workspace subscription was purchased or live email sent. See `PUBLISHING.md` for current status; the API plan below remains future work.
 
 ## Confirmed target and discovery — September 26, 2026
 
@@ -8,15 +8,16 @@ The family approved Google hosting and subsequently confirmed its existing Micro
 - Existing project: **SimplySoph**, `simplysoph-66c78`, project number `424903425639`. Live reads confirm ACTIVE and billing enabled; do not create a replacement project or attach a different billing account.
 - Explicitly set both `--project=simplysoph-66c78` and `--billing-project=simplysoph-66c78` alongside the account in commands. The workstation has an unrelated inherited quota-project setting; per-command overrides resolved it without changing the global configuration.
 - Existing infrastructure includes three Cloud Run services in us-central1, two artifact repositories, ten global secrets, a default Firestore database, service identities, and six storage buckets. They predate this event and are protected. Only metadata was read, not secret values or guest records. A partial baseline is saved locally outside the repository. Full baseline and shared-resource checks remain pending.
-- Public DNS reports `ns1.dns-parking.com` and `ns2.dns-parking.com` for the root domain; the event hostname does not currently resolve. Keep the existing DNS provider and add only the necessary event records after obtaining verified hosting values.
+- Public DNS reports `ns1.dns-parking.com` and `ns2.dns-parking.com` for the root domain; the event CNAME and certificate TXT now resolve from Hostinger's authoritative nameserver. Existing DNS records were preserved.
 - **Every new resource/change must have a cleanup record.** See `CLEANUP.md` and `ops/event-resources.json`; use dedicated event resources and preserve this shared project.
 
 ## Selected direction
 
 | Component | Choice | Role |
 |---|---|---|
-| Website and secure API | Cloud Run | Serve the static guest pages and, once implemented, same-origin RSVP endpoints |
-| Build and images | Cloud Build / Artifact Registry | Build this repository and retain deployable images |
+| Static website | Firebase Hosting, dedicated event site | Published static guest preview and managed custom-domain HTTPS |
+| Secure API (future) | Cloud Run behind a Hosting rewrite | Implement server-only RSVP, Notion and Graph endpoints when ready |
+| Build | Local Node static build | Deploy only dist/; Cloud Build and container images are unnecessary for this release |
 | Runtime secrets | Google Secret Manager | Store Notion token and application-specific signing/OAuth credentials |
 | Organizer workspace | Existing Notion database | Preserve existing records and map their actual schema |
 | Durable coordination | Small server-only Cloud Firestore store, planned | Commit RSVP snapshots, deduplicate writes/email intents, and coordinate Notion sync; not implemented yet |
@@ -27,7 +28,7 @@ The family approved Google hosting and subsequently confirmed its existing Micro
 
 Google Cloud uses a **project linked to a billing account**. Google Workspace is a **separate subscription**. Owning a domain does not automatically provide a mailbox or hosting. The family already has Microsoft 365 mail. Inspect its licensing before buying another seat; preserve its MX records. No Workspace subscription is planned.
 
-The custom-domain hosting path must be selected before DNS changes. Cloud Run's direct domain mapping is still Preview/limited availability; assess Firebase Hosting in front of Cloud Run or a supported load balancer against the lean-site budget. Do not point an arbitrary CNAME directly at a run.app URL and assume TLS will work. [Google custom-domain options](https://docs.cloud.google.com/run/docs/mapping-custom-domains).
+Firebase Hosting supplies the event domain mapping and managed HTTPS. No load balancer or Cloud Run service was created for this static release. [Firebase custom domains](https://firebase.google.com/docs/hosting/custom-domain).
 
 Google Vault is for Workspace retention/eDiscovery. It is not the place to store Notion tokens or API keys; Secret Manager is the appropriate service. No Vault license is needed solely for website secrets. [Vault](https://support.google.com/vault/answer/2462365), [Secret Manager](https://docs.cloud.google.com/secret-manager/docs/overview).
 
@@ -39,7 +40,7 @@ Google Vault is for Workspace retention/eDiscovery. It is not the place to store
 - `.gcloudignore` keeps Git history, scratch files, local environment files, and sample CSVs out of source upload. The application only serves `dist/`.
 - Local checks exercise ephemeral port startup, health, homepage, HEAD, method rejection, and 404 responses. Cloud Build and a deployed revision have not been tested yet.
 
-## Provisioning sequence
+## Future API provisioning sequence (static publication completed)
 
 1. Account, existing project, billing attachment and hostname are confirmed above. Resolve monthly operating budget, Hostinger DNS management access and Microsoft 365 sender/admin access.
 2. Complete the private baseline and keep the existing project. Reserve an event prefix, record exact resource identities and removal steps in the inventory as provisioning proceeds; do not reuse existing application secrets or service identities by convenience.
@@ -60,6 +61,6 @@ Use `M365-EMAIL.md` as the current email implementation plan. It supersedes the 
 
 ## Inputs still needed
 
-Hostinger DNS access; monthly hosting budget; Microsoft 365 app authorization (event mailbox and organizer permissions are configured); Notion page/database URL and integration access; preferred retention window after the event. No secret value is requested in chat. Google account/project/billing/domain inputs are already resolved.
+Monthly hosting budget for future API work; Microsoft 365 app authorization (event mailbox and organizer permissions are configured); Notion page/database URL and integration access; preferred retention window after the event. No secret value is requested in chat. Google account/project/billing/domain inputs are already resolved.
 
 Microsoft 365 mailbox discovery and creation are recorded in `M365-EMAIL.md`. This does not complete the broader Google resource baseline.

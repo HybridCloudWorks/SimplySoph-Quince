@@ -4,6 +4,18 @@ import { renderPlan, validateInventory } from '../scripts/cleanup-plan.mjs';
 
 const inventory = () => ({schemaVersion:1, event:'misxv-2027', projectId:'simplysoph-66c78', hostname:'misxv.simplysoph.com', baselineVerifiedAt:'2026-09-26T12:00:00Z', resources:[]});
 const resource = (id, dependsOn = []) => ({id, type:'secret', projectId:'simplysoph-66c78', ownership:'created-for-event', resource:`projects/simplysoph-66c78/secrets/${id}`, creationEvidence:'Example creation receipt; no secret value', verifyBeforeCleanup:'Verify exact name and ownership against baseline', cleanupSteps:'Remove this exact event secret after service removal', verifyAfterCleanup:'Verify exact resource no longer exists', dependsOn, status:'active'});
+
+test('event DNS is removed before domain and Hosting site; default site is protected', () => {
+  const data = inventory();
+  data.resources = [
+    {...resource('site'), type:'firebase-hosting-site', resource:'projects/simplysoph-66c78/sites/misxv-simplysoph'},
+    {...resource('domain', ['site']), type:'firebase-custom-domain', resource:'projects/simplysoph-66c78/sites/misxv-simplysoph/customDomains/misxv.simplysoph.com'},
+    {...resource('dns', ['domain']), type:'dns-record', dnsName:'misxv.simplysoph.com', exactScope:'CNAME misxv to misxv-simplysoph.web.app'}
+  ];
+  assert.deepEqual(validateInventory(data).map(r => r.id), ['dns', 'domain', 'site']);
+  data.resources[0].resource = 'projects/simplysoph-66c78/sites/simplysoph-66c78';
+  assert.throws(() => validateInventory(data), /dedicated event Hosting/);
+});
 test('empty inventory is honest about unverified baseline and never claims discovery', () => {
   const data = inventory(); data.baselineVerifiedAt = null;
   assert.match(renderPlan(data), /NOT YET VERIFIED/);

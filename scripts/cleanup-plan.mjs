@@ -9,7 +9,8 @@ const types = new Set(['cloud-run-service', 'artifact-repository', 'secret',
   'storage-bucket', 'firestore-data', 'dns-record', 'oauth-grant',
   'workspace-mailbox', 'workspace-alias', 'notion-records', 'budget-alert',
   'github-deployment-access', 'entra-application', 'exchange-role-assignment',
-  'm365-shared-mailbox', 'm365-alias', 'm365-mailbox-delegate']);
+  'm365-shared-mailbox', 'm365-alias', 'm365-mailbox-delegate',
+  'firebase-hosting-site', 'firebase-custom-domain']);
 const safeText = value => typeof value === 'string' && value.trim().length > 0
   && value.length <= 2000 && !/[\r\n\x00-\x1f]/.test(value);
 const requireField = (condition, message) => { if (!condition) throw new Error(message); };
@@ -35,6 +36,8 @@ export function validateInventory(data) {
     requireField(['resource', 'creationEvidence', 'verifyBeforeCleanup', 'cleanupSteps', 'verifyAfterCleanup'].every(key => safeText(r[key])), `Missing lifecycle evidence or instructions: ${r.id}`);
     requireField(Array.isArray(r.dependsOn) && r.dependsOn.every(safeText), `Invalid dependencies: ${r.id}`);
     requireField(r.status === 'active' || r.status === 'removed', `Invalid status: ${r.id}`);
+    if (r.type === 'firebase-hosting-site') requireField(r.resource === 'projects/simplysoph-66c78/sites/misxv-simplysoph', 'Only the dedicated event Hosting site is allowed');
+    if (r.type === 'firebase-custom-domain') requireField(r.resource === 'projects/simplysoph-66c78/sites/misxv-simplysoph/customDomains/misxv.simplysoph.com', 'Only the event custom domain is allowed');
     if (r.type === 'dns-record') requireField(
       r.dnsName === data.hostname || (typeof r.dnsName === 'string' && r.dnsName.endsWith(`.${data.hostname}`)),
       'Root-domain or unrelated DNS changes require a separate reviewed plan');

@@ -27,3 +27,9 @@ The family subsequently confirmed Friday, January 15, 2027. Website copy, config
 Mailbox follow-up: all 13 local checks pass, including scoped baseline validation. The cleanup report now lists the real event mailbox; a mailbox-scoped baseline cannot validate a Google resource. Previous Node 24 GitHub run passed all 12 then-current checks: https://github.com/saulpatinojr/SimplySoph-Quince/actions/runs/36279527886 . Organizer Read and Manage and Send As permissions were subsequently approved, applied and individually verified for administrator@simplysoph.com. No mail was sent; app sending remains unconfigured.
 
 Delegation follow-up: all 14 local checks passed. Cleanup validates the exact mailbox/principal/permissions and orders delegate removal before mailbox removal. Read and Manage plus Send As identity panels both showed administrator@simplysoph.com.
+
+## Published static preview — September 26, 2026 (local time)
+
+Firebase CLI 15.31.0 deployed only target `hosting:misxv` (site `misxv-simplysoph`). All 14 then-current checks passed during predeploy; 11 static files released. Live HTTPS checks returned 200 for Home, Details, RSVP, FAQ and Privacy; unknown route returned the themed HTTP 404. The invitation asset and event configuration loaded. The live browser showed the correct Friday date, loaded invitation and no horizontal overflow at its desktop viewport. Screenshot: `outputs/published-website.png` in the parent workspace.
+
+The dedicated custom-domain association was created after a 404 baseline. Hostinger saved CNAME `misxv` and TXT `_acme-challenge.misxv`, both TTL 300, using values returned by Firebase. Authoritative DNS returned both values; the table retained all 12 pre-existing records. Certificate/domain activation is recorded in PUBLISHING.md. No real RSVP or email was sent. An additional cleanup test now protects the default Hosting site and verifies DNS-before-domain-before-site removal order.

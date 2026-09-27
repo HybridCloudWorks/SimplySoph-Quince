@@ -1,0 +1,8 @@
+{
+  "projects": { "default": "simplysoph-66c78" },
+  "targets": {
+    "simplysoph-66c78": {
+      "hosting": { "misxv": ["misxv-simplysoph"] }
+    }
+  }
+}
