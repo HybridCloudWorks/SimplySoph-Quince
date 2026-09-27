@@ -69,8 +69,7 @@ export const copy = {
     pending: "The family will share this detail here soon.",
     time: "All times are local to Fort Worth, Texas.",
     contact: "Questions? Contact the family",
-    dateCorrection:
-      "The original artwork says Saturday. The confirmed date is Friday, January 15, 2027.",
+    invitationCaption: "Open the full invitation ↗",
     deadlineLabel: "Please RSVP by",
     footer: "With love,",
     loading: "Loading…",
@@ -91,8 +90,7 @@ export const copy = {
     pending: "La familia compartirá este detalle aquí pronto.",
     time: "Todos los horarios son de Fort Worth, Texas.",
     contact: "¿Preguntas? Contacta a la familia",
-    dateCorrection:
-      "La invitación original dice sábado. La fecha confirmada es viernes, 15 de enero de 2027.",
+    invitationCaption: "Abre la invitación completa ↗",
     deadlineLabel: "Confirma antes del",
     footer: "Con cariño,",
     loading: "Cargando…",
