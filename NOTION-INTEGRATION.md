@@ -1,6 +1,6 @@
 # Notion integration blueprint
 
-**Status: signed in and existing Invitations database identified; API connection pending.** `server/` contains invitation/session validation, named-guest and household-count RSVP validation, and a read-only schema inspector. See `server/README.md`. The connection form is prepared in the planning workspace. An empty event Notion secret container is prepared in Google Secret Manager. The public website remains a demo with no guest records or live-save endpoint.
+**Status: real Invitations API metadata successfully read using the user-stored secret.** `server/` contains invitation/session validation, named-guest and household-count RSVP validation, and a read-only schema inspector. See `server/README.md`. Secret Manager version 1 is enabled. The observed credential is the user's `simplysoph` personal access token, not a dedicated Invitations-only connection; review/restrict runtime access before deployment. The public website remains a demo with no guest records or live-save endpoint. The requested complete multi-page scope is tracked in `TEAM-HANDOFF.md`.
 
 **Hosting decision:** see GOOGLE-SETUP.md. The family selected Google; Secret Manager will hold the Notion token and Cloud Run will host the secure adapter. A small server-only Firestore store is planned for durable coordination. Neither the adapter nor that store is implemented yet.
 
@@ -33,7 +33,7 @@ Use immutable IDs, not names or email addresses, as identity. More than one pers
 
 ### Selected first-release model: existing Invitations
 
-Browser inspection confirmed these column labels. API types, property IDs and all select options still need inspection; do not infer them from labels. Keep private source/page IDs out of this public repository.
+API metadata inspection confirmed the types: Guest title, Adults/Teens number, Kids rich_text, Email email, Phone phone_number, RSVP select, Role select and Invited by people. Property IDs are mapped in a private metadata file. All select options and data quality still need inspection. Keep private source/page IDs out of this public repository.
 
 | Existing column | Intended use |
 |---|---|
@@ -179,7 +179,7 @@ Use a test household first. Required live tests: invalid token; cross-household 
 1. Create the prepared dedicated connection, grant Invitations access and store its token securely; browser sign-in and source selection are complete.
 2. Inspect API metadata and finalize the household mapping; avoid replacing the database with CSV samples.
 3. Implement/deploy the small Google-hosted API with durable storage; static Firebase Hosting is already live.
-4. Date is confirmed as Friday, January 15, 2027 (America/Chicago). Still needed: RSVP deadline, eligible event rules, and a real organizer contact.
+4. Event date is Friday, January 15, 2027. RSVP deadline is October 31, 2026, using 11:59 PM America/Chicago (`2026-10-31T23:59:00-05:00`, still daylight time). Still needed: eligible event rules and a real organizer contact.
 5. One test household for end-to-end verification before real invitations are enabled.
 
 The sample CSVs only illustrate columns. Notion CSV import does not establish relations, formulas, rollups, API permissions, or correct property types automatically. Configure those deliberately. Remove sample rows before importing real guests.

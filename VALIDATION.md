@@ -39,3 +39,9 @@ Delegation follow-up: all 14 local checks passed. Cleanup validates the exact ma
 Firebase CLI 15.31.0 deployed only target `hosting:misxv` (site `misxv-simplysoph`). All 14 then-current checks passed during predeploy; 11 static files released. Live HTTPS checks returned 200 for Home, Details, RSVP, FAQ and Privacy; unknown route returned the themed HTTP 404. The invitation asset and event configuration loaded. The live browser showed the correct Friday date, loaded invitation and no horizontal overflow at its desktop viewport. Screenshot: `outputs/published-website.png` in the parent workspace.
 
 The dedicated custom-domain association was created after a 404 baseline. Hostinger saved CNAME `misxv` and TXT `_acme-challenge.misxv`, both TTL 300, using values returned by Firebase. Authoritative DNS returned both values; the table retained all 12 pre-existing records. Certificate/domain activation is recorded in PUBLISHING.md. No real RSVP or email was sent. An additional cleanup test now protects the default Hosting site and verifies DNS-before-domain-before-site removal order.
+
+## Deadline and Notion access follow-up
+
+The October 31, 2026 RSVP deadline was published at 11:59 PM Central (UTC-05:00 on that date). Firebase predeploy passed all 30 checks and released the 11-file static build to hosting:misxv. The live RSVP page visibly shows the deadline. English/Spanish email previews were regenerated; nothing was sent.
+
+User-added Secret Manager version 1 is ENABLED. A metadata-only Notion API inspection succeeded for Invitations; Kids is rich_text and Adults/Teens is number. No guest row was changed. The browser identifies the supplied token as a personal access token named simplysoph; Invitations-only runtime scope remains unverified. No API service or real RSVP storage is deployed. TEAM-HANDOFF.md records the full page scope and unfinished features for team collaboration.

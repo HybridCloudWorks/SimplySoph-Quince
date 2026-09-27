@@ -12,12 +12,12 @@ Provide `NOTION_TOKEN` through an authorized secret injection mechanism and `NOT
 
 Browser sign-in is complete. The planning page's actual **Invitations** source database has been identified, with household rows and Adults/Teens and Kids counts. A planning page or linked-view ID is not automatically the source database ID. Grant the connection explicit access to Invitations and map actual API property IDs before any writes. See `NOTION-INTEGRATION.md` for the observed columns and proposed mapping.
 
-Google Secret Manager container `projects/424903425639/secrets/misxv-notion-token` is created with no version/value. It has no new runtime access grant. Enter the existing dedicated Notion connection token through the Google console; record the version number without exposing the value. Do not reuse a broadly authorized unrelated connection.
+Google Secret Manager secret `misxv-notion-token` has user-added enabled version 1. Read-only metadata inspection succeeded using the secret in process memory, without logging its value. No runtime access grant exists. The supplied credential is a personal access token named `simplysoph`; confirm and restrict its scope, preferably replacing it with a dedicated Invitations-only connection, before attaching it to a public service.
 
 ## Remaining launch work
 
 1. Create the prepared dedicated API-token connection with read/update access only to Invitations; store its token securely and inspect API metadata. No insert-content, workspace-user email or comment access is required for the selected projection design.
-2. Confirm the RSVP deadline and actual invited events. Map database/data-source/property IDs privately.
+2. Use the confirmed October 31, 2026 deadline at 11:59 PM Central (`2026-10-31T23:59:00-05:00`). Confirm actual invited events and map database/data-source/property IDs privately.
 3. Implement durable household transactions, idempotency, shared rate limits, reconciliation/outbox and privacy retention. Add access tests against the real store and a fixture household.
 4. Deploy a dedicated API identity/service with access only to its event secret and storage. Use Hosting `/api/**` rewrites only once the service exists. API responses must be `private, no-store`; Hosting passes only the `__session` cookie to Cloud Run.
 5. Wire the frontend to the live API and verify the complete saved-response journey, including concurrent/stale edits and provider failures. Keep demo mode until that passes.

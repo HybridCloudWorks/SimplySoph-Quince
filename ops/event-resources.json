@@ -158,9 +158,9 @@
         ],
         "evidence": "gcloud secrets describe returned NOT_FOUND immediately before creation; existing secrets untouched"
       },
-      "creationEvidence": "gcloud secrets create returned createTime 2026-09-27T02:53:39.595525Z and exact numeric-project resource; automatic replication; empty container without versions or new IAM grants",
+      "creationEvidence": "Container created 2026-09-27T02:53:39.595525Z; user added version 1 at 2026-09-27T04:06:38.156516Z, verified ENABLED. Read-only Notion schema inspection succeeded. No new runtime IAM grant. Credential is user-created PAT named simplysoph, not yet a scoped API-token connection",
       "verifyBeforeCleanup": "Confirm exact secret name and project number, event labels and runtime references; stop sync before revocation",
-      "cleanupSteps": "Revoke or disconnect the dedicated event Notion connection first, then remove event runtime access and this exact secret after final review; preserve existing secrets and integrations",
+      "cleanupSteps": "Identify the active Notion credential. If the user-created simplysoph PAT remains exclusively event-owned, have its owner revoke it; if replaced, revoke the dedicated event connection instead. Stop sync, remove event runtime access, then remove this exact secret and its versions after final review. Preserve unrelated tokens, secrets, integrations and the original Invitations database",
       "verifyAfterCleanup": "Verify Notion connection revoked and exact secret absent; record any retained versions or provider retention",
       "dependsOn": [],
       "status": "active"
