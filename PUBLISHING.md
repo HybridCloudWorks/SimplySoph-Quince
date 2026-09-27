@@ -1,3 +1,5 @@
+> Historical planning/deployment record. The new multi-page branch is described by README.md, PAGE-SCOPE.md and DEPLOYMENT.md. Five-page/demo-only descriptions below refer to the earlier published release, not the current implementation.
+
 # Published website
 
 The design preview is live at **https://misxv.simplysoph.com** and **https://misxv-simplysoph.web.app**. Normal HTTPS validation and a browser page load succeeded at 2026-09-27 02:56 UTC (September 26 local time). Firebase reports active host mapping and ownership. Its certificate status was still propagating globally at the most recent API read; the local HTTPS endpoint is verified working.

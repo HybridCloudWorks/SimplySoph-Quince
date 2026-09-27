@@ -164,6 +164,28 @@
       "verifyAfterCleanup": "Verify Notion connection revoked and exact secret absent; record any retained versions or provider retention",
       "dependsOn": [],
       "status": "active"
+    },
+    {
+      "id": "misxv-notion-connection",
+      "type": "oauth-grant",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "Notion connection SimplySoph Mis XV Website / 3e80982b-27b6-81cd-b57e-0027b509671c",
+      "baseline": {
+        "verifiedAt": "2026-09-27T04:49:24.806Z",
+        "scope": "Main workspace developer Connections list before creating the event connection",
+        "allowedTypes": [
+          "oauth-grant"
+        ],
+        "evidence": "Private work/notion-connection-baseline.txt records an empty Connections table; existing PAT preserved"
+      },
+      "creationEvidence": "Created through Notion developer portal after user accepted Developer Terms and approved Invitations-only read/update/insert; capabilities verified, content-access setup in progress",
+      "exactScope": "Only Invitations source database; read/update/insert content; no comments, agents or user profiles. Content access verification pending.",
+      "verifyBeforeCleanup": "Match connection ID and workspace in private evidence; inspect page scope and runtime secret reference; stop intake first",
+      "cleanupSteps": "Revoke this dedicated connection after export and stopping the event API; remove associated stored secret versions separately. Preserve original Invitations database and unrelated PATs.",
+      "verifyAfterCleanup": "Verify dedicated connection absent and its token rejected; preserve unrelated connections",
+      "dependsOn": [],
+      "status": "active"
     }
   ]
 }
