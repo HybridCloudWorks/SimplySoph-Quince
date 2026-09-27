@@ -1,6 +1,6 @@
 # Notion integration blueprint
 
-**Status: server foundations implemented and tested; live connection pending.** `server/` contains invitation/session validation, RSVP validation, and a read-only schema inspector. See `server/README.md`. The family supplied its private planning page; browser sign-in and selection of the actual guest database are pending. An empty event Notion secret container is prepared in Google Secret Manager. The public website remains a demo with no guest records or live-save endpoint.
+**Status: signed in and existing Invitations database identified; API connection pending.** `server/` contains invitation/session validation, named-guest and household-count RSVP validation, and a read-only schema inspector. See `server/README.md`. The connection form is prepared in the planning workspace. An empty event Notion secret container is prepared in Google Secret Manager. The public website remains a demo with no guest records or live-save endpoint.
 
 **Hosting decision:** see GOOGLE-SETUP.md. The family selected Google; Secret Manager will hold the Notion token and Cloud Run will host the secure adapter. A small server-only Firestore store is planned for durable coordination. Neither the adapter nor that store is implemented yet.
 
@@ -15,7 +15,7 @@ Small server endpoint — auth, validation, deadline, retries, persistence check
        |
        | private Notion API connection
        v
-Private Notion workspace — Households + Guests + RSVP Submissions
+Private Notion workspace — existing Invitations database
        ^
        |
 Family organizers use Notion's own authenticated interface
@@ -30,6 +30,29 @@ The future Notion connector granted to this chat will help inspect/map the datab
 ## Data model
 
 Use immutable IDs, not names or email addresses, as identity. More than one person may share a name, and a household's email can change. Preserve property IDs once mapped. Resolve the existing database's actual data source(s) and API version during implementation instead of assuming a legacy database-query endpoint or inventing identifiers.
+
+### Selected first-release model: existing Invitations
+
+Browser inspection confirmed these column labels. API types, property IDs and all select options still need inspection; do not infer them from labels. Keep private source/page IDs out of this public repository.
+
+| Existing column | Intended use |
+|---|---|
+| Guest | Household display label; identity uses immutable Notion page ID |
+| Adults/Teens | Organizer-owned adult/teen invitation capacity, subject to family review |
+| Kids | Organizer-owned child invitation capacity; blank is unresolved until a mapping rule is confirmed |
+| Phone / Email | Contact fields; empty contacts must not trigger sending |
+| RSVP | Preserve current values, including `Not sent`; separate delivery status from attendance |
+| Role / Invited by | Internal organizer fields; do not expose to the guest |
+
+Use bounded household counts for ceremony, dinner and dance, with separate adult/teen and child counts for each. Confirmed attendance must never overwrite invited capacity. Zero for every event means declined. The validator rejects missing capacity or eligibility and enforces current organizer limits again on submission. Blank capacity is not unlimited capacity. Court placeholder rows remain drafts until reviewed.
+
+Proposed additions after API schema inspection: six attendance count properties; response status and timestamp; last synced submission ID; invitation readiness and eligible-event flags. Reuse compatible properties if they already exist. These are proposals, not fields already created. Store tokens, durable response history, idempotency and sync state privately on the server. Notion is the organizer interface and attendance projection; the durable server receipt is the acceptance point. Preserve existing properties and values when applying a projection.
+
+Scope the dedicated API-token connection to **Invitations only**, with read and update content. No budget, to-do list, workspace-user email or comment access is needed. Record connection identity, page grant and secret version in the cleanup inventory once actually created. Revoke the event connection and runtime grants during cleanup while preserving the family's original Invitations database.
+
+### Optional later expansion
+
+The three-table design below is a reference for a future named-person roster. It is **not required for launch** and must not replace the existing household database. `validateHouseholdRsvp` is the selected backend validator; `validateRsvp` remains available for an explicitly adopted named-guest model. The current public demo still illustrates named guests until the live household flow is implemented.
 
 ### Households — one row per invitation
 
@@ -71,7 +94,7 @@ Store token hashes in restricted server storage, or a separately restricted inte
 | Table | Rich text | Organizer-owned, optional later |
 | Last synced submission ID | Rich text | Reconciliation marker |
 
-For first release, use named guests and no open-ended guest-count input. Plus-ones should be explicitly allocated by the family, with server enforcement. A dropdown maximum in the browser alone is insufficient.
+If the family later adopts named guests, plus-ones should be explicitly allocated with server enforcement. In the selected household-count model, enforce separate adult/teen and child capacities on the server. A dropdown maximum in the browser alone is insufficient.
 
 ### RSVP Submissions — one immutable response snapshot per successful attempt
 
@@ -113,19 +136,20 @@ These endpoints are a specification for the next phase, not working routes in th
 | Endpoint | Request | Response / behavior |
 |---|---|---|
 | `POST /api/invitation-session` | `{ token }` in body | Validate random household token; issue short-lived Secure, HttpOnly session cookie; generic rejection for invalid/expired/revoked tokens |
-| `GET /api/invitation` | Session cookie | Return only household display name, eligible guest IDs/names/events, guest-editable contact fields, last accepted answers, deadline, and response version |
+| `GET /api/invitation` | Session cookie | Return only household display name, adult/teen and child capacities, eligible events, guest-editable contact fields, last accepted answers, deadline, and response version |
 | `POST /api/rsvp` | Session + CSRF protection + idempotency key + prior version + validated answers | Commit response; return receipt only after durable acceptance; replays return the same logical receipt |
 | `DELETE /api/invitation-session` | Session | Clear guest session |
 
-Example request body, with sample IDs only:
+Selected household request body, using fictional sample data:
 
 ```json
 {
   "previousSubmissionId": null,
-  "guests": [
-    {"guestId":"sample-1","ceremony":"yes","dinner":"yes","dance":"yes"},
-    {"guestId":"sample-2","ceremony":"no","dinner":"yes","dance":"yes"}
-  ],
+  "attendance": {
+    "ceremony": {"adultsTeens":1,"kids":0},
+    "dinner": {"adultsTeens":2,"kids":1},
+    "dance": {"adultsTeens":2,"kids":0}
+  },
   "contact": {"email":"alex@example.com","phone":"","address":null},
   "requests": ""
 }
@@ -152,9 +176,9 @@ Use a test household first. Required live tests: invalid token; cross-household 
 
 ## What is needed next
 
-1. The existing Notion database/page link and access to inspect it; identify who should have organizer access.
-2. A schema mapping approved against the actual records; avoid replacing the database with CSV samples.
-3. Host selection for the static site and small API, plus server-side secret configuration through the host's secure settings.
+1. Create the prepared dedicated connection, grant Invitations access and store its token securely; browser sign-in and source selection are complete.
+2. Inspect API metadata and finalize the household mapping; avoid replacing the database with CSV samples.
+3. Implement/deploy the small Google-hosted API with durable storage; static Firebase Hosting is already live.
 4. Date is confirmed as Friday, January 15, 2027 (America/Chicago). Still needed: RSVP deadline, eligible event rules, and a real organizer contact.
 5. One test household for end-to-end verification before real invitations are enabled.
 

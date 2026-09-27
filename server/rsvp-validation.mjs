@@ -14,12 +14,21 @@ export const events = Object.freeze(['ceremony', 'dinner', 'dance']);
 
 // invitation is trusted server data freshly read at submission, never client input.
 // The durable transaction MUST repeat the version/entitlement checks before commit.
-export function validateRsvp(input, invitation, now = Date.now()) {
+function validateInvitation(invitation, now) {
   if (!invitation || invitation.active !== true) fail(403, 'INVITATION_INACTIVE');
   const deadline = invitation.deadline;
   if (typeof deadline !== 'string' || !/(?:Z|[+-]\d{2}:\d{2})$/.test(deadline)
     || !Number.isFinite(Date.parse(deadline))) fail(503, 'DEADLINE_NOT_CONFIGURED');
   if (now >= Date.parse(deadline)) fail(403, 'RSVP_CLOSED');
+}
+function validateContact(value) {
+  keys(value, ['email', 'phone', 'address']);
+  const email = text(value.email, 254);
+  if (email && (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || /[\r\n]/.test(email))) fail(422, 'INVALID_EMAIL');
+  return {email, phone:text(value.phone, 40), address:value.address === null ? null : text(value.address, 500)};
+}
+export function validateRsvp(input, invitation, now = Date.now()) {
+  validateInvitation(invitation, now);
   keys(input, ['previousSubmissionId', 'guests', 'contact', 'requests']);
   if (!Object.hasOwn(input, 'previousSubmissionId') || input.previousSubmissionId !== (invitation.latestSubmissionId ?? null)) fail(409, 'RESPONSE_CHANGED');
   if (!Array.isArray(invitation.guests) || !invitation.guests.length || invitation.guests.length > 50
@@ -45,9 +54,31 @@ export function validateRsvp(input, invitation, now = Date.now()) {
     }
     return result;
   });
-  keys(input.contact, ['email', 'phone', 'address']);
-  const email = text(input.contact.email, 254);
-  if (email && (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || /[\r\n]/.test(email))) fail(422, 'INVALID_EMAIL');
-  const contact = {email, phone:text(input.contact.phone, 40), address:input.contact.address === null ? null : text(input.contact.address, 500)};
+  const contact = validateContact(input.contact);
   return {previousSubmissionId:input.previousSubmissionId, guests, contact, requests:text(input.requests, 1000)};
+}
+
+// Existing Notion Invitations rows represent households, not a roster of people.
+// Organizer-owned capacities are independent of each event's attendance counts.
+export function validateHouseholdRsvp(input, invitation, now = Date.now()) {
+  validateInvitation(invitation, now);
+  keys(input, ['previousSubmissionId', 'attendance', 'contact', 'requests']);
+  if (!Object.hasOwn(input, 'previousSubmissionId') || input.previousSubmissionId !== (invitation.latestSubmissionId ?? null)) fail(409, 'RESPONSE_CHANGED');
+  const categories = ['adultsTeens', 'kids'];
+  const capacity = invitation.capacity;
+  if (!object(capacity) || categories.some(k => !Number.isSafeInteger(capacity[k]) || capacity[k] < 0 || capacity[k] > 50)
+    || capacity.adultsTeens + capacity.kids < 1 || capacity.adultsTeens + capacity.kids > 50) fail(503, 'INVITATION_NOT_CONFIGURED');
+  keys(input.attendance, events);
+  const attendance = {};
+  for (const event of events) {
+    if (typeof invitation.invited?.[event] !== 'boolean') fail(503, 'INVITATION_NOT_CONFIGURED');
+    const answer = input.attendance[event];
+    keys(answer, categories);
+    for (const category of categories) {
+      if (!Number.isSafeInteger(answer[category]) || answer[category] < 0 || answer[category] > capacity[category]) fail(422, 'INVALID_ATTENDANCE_COUNT');
+      if (!invitation.invited[event] && answer[category] !== 0) fail(422, 'EVENT_NOT_INVITED');
+    }
+    attendance[event] = {adultsTeens:answer.adultsTeens, kids:answer.kids};
+  }
+  return {previousSubmissionId:input.previousSubmissionId, attendance, contact:validateContact(input.contact), requests:text(input.requests, 1000)};
 }
