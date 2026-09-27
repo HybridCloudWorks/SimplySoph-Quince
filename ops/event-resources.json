@@ -164,6 +164,258 @@
       "verifyAfterCleanup": "Verify Notion connection revoked and exact secret absent; record any retained versions or provider retention",
       "dependsOn": [],
       "status": "active"
+    },
+    {
+      "id": "misxv-notion-connection",
+      "type": "oauth-grant",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "Notion connection SimplySoph Mis XV Website / 3e80982b-27b6-81cd-b57e-0027b509671c",
+      "baseline": {
+        "verifiedAt": "2026-09-27T04:49:24.806Z",
+        "scope": "Main workspace developer Connections list before creating the event connection",
+        "allowedTypes": [
+          "oauth-grant"
+        ],
+        "evidence": "Private work/notion-connection-baseline.txt records an empty Connections table; existing PAT preserved"
+      },
+      "creationEvidence": "Created through Notion developer portal after user accepted Developer Terms and approved Invitations-only read/update/insert; capabilities verified, content-access setup in progress",
+      "exactScope": "Only Invitations source database; read/update/insert content; no comments, agents or user profiles. Content access verification pending.",
+      "verifyBeforeCleanup": "Match connection ID and workspace in private evidence; inspect page scope and runtime secret reference; stop intake first",
+      "cleanupSteps": "Revoke this dedicated connection after export and stopping the event API; remove associated stored secret versions separately. Preserve original Invitations database and unrelated PATs.",
+      "verifyAfterCleanup": "Verify dedicated connection absent and its token rejected; preserve unrelated connections",
+      "dependsOn": [],
+      "status": "active"
+    },
+    {
+      "id": "misxv-private-storage",
+      "type": "storage-bucket",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "gs://misxv-2027-simplysoph-66c78 / us-central1",
+      "baseline": {
+        "verifiedAt": "2026-09-27T05:08:00Z",
+        "scope": "Exact event storage bucket metadata",
+        "allowedTypes": [
+          "storage-bucket"
+        ],
+        "evidence": "Private work/google-event-bucket-baseline.txt: exact bucket returned NOT_FOUND before creation"
+      },
+      "creationEvidence": "Created 2026-09-27T05:09:12Z; generation 1790485752689878522, uniform bucket access and enforced public access prevention verified; 7-day soft delete",
+      "verifyBeforeCleanup": "Match bucket name, project and creation timestamp; stop API and sending, export approved ledger/photos privately; verify no unrelated data",
+      "cleanupSteps": "After reviewed export, remove exact event objects and bucket. Account for seven-day soft-delete retention and charges; do not change or remove other buckets.",
+      "verifyAfterCleanup": "Verify live bucket absent and soft-deleted versions accounted for until expiration; verify exports have family-selected retention",
+      "dependsOn": [],
+      "status": "active"
+    },
+    {
+      "id": "misxv-google-login-client",
+      "type": "oauth-grant",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "Google OAuth web client 424903425639-p4re47qiolq9kabd0cnjalub9b3q6h99.apps.googleusercontent.com",
+      "baseline": {
+        "verifiedAt": "2026-09-27T05:11:17.760Z",
+        "scope": "Google Auth Platform clients in simplysoph-66c78 before creating the event client",
+        "allowedTypes": [
+          "oauth-grant"
+        ],
+        "evidence": "Private work/google-login-baseline.txt records the one pre-existing SimplySoph WebApp client; it was preserved"
+      },
+      "creationEvidence": "Google OAuth client created confirmation verified after explicit user approval; public client ID recorded, generated client secret not downloaded or used",
+      "exactScope": "Mis XV family administration web client; sole JavaScript origin https://misxv.simplysoph.com; no redirect URIs requested; identity verification only, no Gmail/Drive/billing scopes",
+      "verifyBeforeCleanup": "Match exact client ID and name; stop family sign-in and revoke event sessions first; preserve existing SimplySoph WebApp OAuth client",
+      "cleanupSteps": "Delete only the exact event OAuth client after stopping the event service; preserve shared OAuth branding and unrelated clients",
+      "verifyAfterCleanup": "Verify event client absent and Google login cannot use it; inspect any provider recovery/retention period",
+      "dependsOn": [],
+      "status": "active"
+    },
+    {
+      "id": "misxv-runtime-identity",
+      "type": "service-account",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "projects/simplysoph-66c78/serviceAccounts/103996477968657268212 (misxv-runtime@simplysoph-66c78.iam.gserviceaccount.com)",
+      "baseline": {
+        "verifiedAt": "2026-09-27T05:11:38.407Z",
+        "scope": "Exact runtime service account",
+        "allowedTypes": [
+          "service-account"
+        ],
+        "evidence": "Private work/google-runtime-identity-baseline.txt records NOT_FOUND before creation"
+      },
+      "creationEvidence": "gcloud create returned unique ID 103996477968657268212; dedicated display name and event description verified",
+      "verifyBeforeCleanup": "Match immutable unique ID and email; verify no non-event workload uses this identity",
+      "cleanupSteps": "Stop dedicated event workloads; remove only inventoried event grants; delete exact runtime service account after export and credential revocation",
+      "verifyAfterCleanup": "Verify exact service account deleted and event workloads cannot impersonate it; preserve all other identities",
+      "dependsOn": [],
+      "status": "active"
+    },
+    {
+      "id": "misxv-runtime-storage-grant",
+      "type": "iam-binding",
+      "projectId": "simplysoph-66c78",
+      "ownership": "event-change-to-existing",
+      "resource": "gs://misxv-2027-simplysoph-66c78 IAM roles/storage.objectUser",
+      "baseline": {
+        "verifiedAt": "2026-09-27T05:12:53.160Z",
+        "scope": "Exact dedicated event bucket IAM policy before runtime grant",
+        "allowedTypes": [
+          "iam-binding"
+        ],
+        "evidence": "Private work/google-storage-iam-baseline.txt records no runtime identity grant; four default project convenience bindings preserved"
+      },
+      "creationEvidence": "gcloud returned etag CAI= and the exact runtime objectUser member; no public principals added",
+      "exactScope": "roles/storage.objectUser for serviceAccount:misxv-runtime@simplysoph-66c78.iam.gserviceaccount.com on only gs://misxv-2027-simplysoph-66c78; unconditional; previous grant absent",
+      "verifyBeforeCleanup": "Match bucket, principal, role and condition; stop event runtime and verify export completed",
+      "cleanupSteps": "Remove only this exact bucket-level runtime binding before deleting runtime identity or bucket; preserve unrelated roles and members",
+      "verifyAfterCleanup": "Confirm runtime principal has no event objectUser binding on this bucket",
+      "dependsOn": [
+        "misxv-private-storage",
+        "misxv-runtime-identity"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "misxv-deploy-identity",
+      "type": "service-account",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "projects/simplysoph-66c78/serviceAccounts/115441035984989105396 (misxv-hosting-deploy@simplysoph-66c78.iam.gserviceaccount.com)",
+      "baseline": {
+        "verifiedAt": "2026-09-27T09:05:18.799Z",
+        "scope": "Dedicated misxv CI deployment identities, roles and trust",
+        "allowedTypes": [
+          "service-account"
+        ],
+        "evidence": "Private work/deployment-baseline.txt; exact identity, pool and custom role absent before provisioning; new identities had no grants"
+      },
+      "creationEvidence": "Created and confirmed by gcloud on 2026-09-27T09:05:18.800Z; no service account keys created",
+      "exactScope": "Dedicated keyless GitHub deploy identity; no guest data, secrets or email access",
+      "verifyBeforeCleanup": "Match exact identity and grant to this inventory; disable the GitHub production deploy job and wait for running releases to finish; preserve all unrelated resources",
+      "cleanupSteps": "Remove only this exact event resource or binding after its dependents: projects/simplysoph-66c78/serviceAccounts/115441035984989105396 (misxv-hosting-deploy@simplysoph-66c78.iam.gserviceaccount.com). For a binding remove only the recorded member/role/condition, preserving other policy entries. For the pool/provider disable before deleting.",
+      "verifyAfterCleanup": "Verify this exact resource or binding is absent and GitHub cannot use it; preserve shared project, default Hosting site, other roles and identities",
+      "dependsOn": [],
+      "status": "active"
+    },
+    {
+      "id": "misxv-deploy-pool",
+      "type": "github-deployment-access",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "projects/424903425639/locations/global/workloadIdentityPools/misxv-github",
+      "baseline": {
+        "verifiedAt": "2026-09-27T09:05:23.751Z",
+        "scope": "Dedicated misxv CI deployment identities, roles and trust",
+        "allowedTypes": [
+          "github-deployment-access"
+        ],
+        "evidence": "Private work/deployment-baseline.txt; exact identity, pool and custom role absent before provisioning; new identities had no grants"
+      },
+      "creationEvidence": "Created and confirmed by gcloud on 2026-09-27T09:05:23.751Z; no service account keys created",
+      "exactScope": "Dedicated event pool; no other workloads permitted",
+      "verifyBeforeCleanup": "Match exact identity and grant to this inventory; disable the GitHub production deploy job and wait for running releases to finish; preserve all unrelated resources",
+      "cleanupSteps": "Remove only this exact event resource or binding after its dependents: projects/424903425639/locations/global/workloadIdentityPools/misxv-github. For a binding remove only the recorded member/role/condition, preserving other policy entries. For the pool/provider disable before deleting.",
+      "verifyAfterCleanup": "Verify this exact resource or binding is absent and GitHub cannot use it; preserve shared project, default Hosting site, other roles and identities",
+      "dependsOn": [],
+      "status": "active"
+    },
+    {
+      "id": "misxv-deploy-provider",
+      "type": "github-deployment-access",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "projects/424903425639/locations/global/workloadIdentityPools/misxv-github/providers/github",
+      "baseline": {
+        "verifiedAt": "2026-09-27T09:06:03.949Z",
+        "scope": "Dedicated misxv CI deployment identities, roles and trust",
+        "allowedTypes": [
+          "github-deployment-access"
+        ],
+        "evidence": "Private work/deployment-baseline.txt; exact identity, pool and custom role absent before provisioning; new identities had no grants"
+      },
+      "creationEvidence": "Created and confirmed by gcloud on 2026-09-27T09:06:03.951Z; no service account keys created",
+      "exactScope": "GitHub OIDC; immutable repository 1389834350 owner 34853639; push only; refs/heads/main or refs/heads/feature/complete-quince-site; exact .github/workflows/check.yml workflow_ref",
+      "verifyBeforeCleanup": "Match exact identity and grant to this inventory; disable the GitHub production deploy job and wait for running releases to finish; preserve all unrelated resources",
+      "cleanupSteps": "Remove only this exact event resource or binding after its dependents: projects/424903425639/locations/global/workloadIdentityPools/misxv-github/providers/github. For a binding remove only the recorded member/role/condition, preserving other policy entries. For the pool/provider disable before deleting.",
+      "verifyAfterCleanup": "Verify this exact resource or binding is absent and GitHub cannot use it; preserve shared project, default Hosting site, other roles and identities",
+      "dependsOn": [
+        "misxv-deploy-pool"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "misxv-deploy-role",
+      "type": "github-deployment-access",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "projects/simplysoph-66c78/roles/misxvHostingPublisher",
+      "baseline": {
+        "verifiedAt": "2026-09-27T09:06:15.789Z",
+        "scope": "Dedicated misxv CI deployment identities, roles and trust",
+        "allowedTypes": [
+          "github-deployment-access"
+        ],
+        "evidence": "Private work/deployment-baseline.txt; exact identity, pool and custom role absent before provisioning; new identities had no grants"
+      },
+      "creationEvidence": "Created and confirmed by gcloud on 2026-09-27T09:06:15.789Z; no service account keys created",
+      "exactScope": "Custom role with only firebasehosting.sites.get and firebasehosting.sites.update. Hosting IAM is project-level; exact event site is enforced by the deployment script, not site-scoped IAM.",
+      "verifyBeforeCleanup": "Match exact identity and grant to this inventory; disable the GitHub production deploy job and wait for running releases to finish; preserve all unrelated resources",
+      "cleanupSteps": "Remove only this exact event resource or binding after its dependents: projects/simplysoph-66c78/roles/misxvHostingPublisher. For a binding remove only the recorded member/role/condition, preserving other policy entries. For the pool/provider disable before deleting.",
+      "verifyAfterCleanup": "Verify this exact resource or binding is absent and GitHub cannot use it; preserve shared project, default Hosting site, other roles and identities",
+      "dependsOn": [],
+      "status": "active"
+    },
+    {
+      "id": "misxv-deploy-hosting-grant",
+      "type": "iam-binding",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "projects/simplysoph-66c78 IAM projects/simplysoph-66c78/roles/misxvHostingPublisher",
+      "baseline": {
+        "verifiedAt": "2026-09-27T09:07:01.754Z",
+        "scope": "Dedicated misxv CI deployment identities, roles and trust",
+        "allowedTypes": [
+          "iam-binding"
+        ],
+        "evidence": "Private work/deployment-baseline.txt; exact identity, pool and custom role absent before provisioning; new identities had no grants"
+      },
+      "creationEvidence": "Created and confirmed by gcloud on 2026-09-27T09:07:01.755Z; no service account keys created",
+      "exactScope": "Unconditional custom publisher role for serviceAccount:misxv-hosting-deploy@simplysoph-66c78.iam.gserviceaccount.com; previous grant absent; etag BwZcc0T89wY=",
+      "verifyBeforeCleanup": "Match exact identity and grant to this inventory; disable the GitHub production deploy job and wait for running releases to finish; preserve all unrelated resources",
+      "cleanupSteps": "Remove only this exact event resource or binding after its dependents: projects/simplysoph-66c78 IAM projects/simplysoph-66c78/roles/misxvHostingPublisher. For a binding remove only the recorded member/role/condition, preserving other policy entries. For the pool/provider disable before deleting.",
+      "verifyAfterCleanup": "Verify this exact resource or binding is absent and GitHub cannot use it; preserve shared project, default Hosting site, other roles and identities",
+      "dependsOn": [
+        "misxv-deploy-identity",
+        "misxv-deploy-role",
+        "misxv-firebase-hosting"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "misxv-deploy-impersonation",
+      "type": "iam-binding",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "misxv-hosting-deploy@simplysoph-66c78.iam.gserviceaccount.com IAM roles/iam.workloadIdentityUser",
+      "baseline": {
+        "verifiedAt": "2026-09-27T09:07:26.271Z",
+        "scope": "Dedicated misxv CI deployment identities, roles and trust",
+        "allowedTypes": [
+          "iam-binding"
+        ],
+        "evidence": "Private work/deployment-baseline.txt; exact identity, pool and custom role absent before provisioning; new identities had no grants"
+      },
+      "creationEvidence": "Created and confirmed by gcloud on 2026-09-27T09:07:26.272Z; no service account keys created",
+      "exactScope": "Unconditional roles/iam.workloadIdentityUser for principalSet://iam.googleapis.com/projects/424903425639/locations/global/workloadIdentityPools/misxv-github/attribute.repository_id/1389834350; previous grant absent; etag BwZcc0Y_L7s=",
+      "verifyBeforeCleanup": "Match exact identity and grant to this inventory; disable the GitHub production deploy job and wait for running releases to finish; preserve all unrelated resources",
+      "cleanupSteps": "Remove only this exact event resource or binding after its dependents: misxv-hosting-deploy@simplysoph-66c78.iam.gserviceaccount.com IAM roles/iam.workloadIdentityUser. For a binding remove only the recorded member/role/condition, preserving other policy entries. For the pool/provider disable before deleting.",
+      "verifyAfterCleanup": "Verify this exact resource or binding is absent and GitHub cannot use it; preserve shared project, default Hosting site, other roles and identities",
+      "dependsOn": [
+        "misxv-deploy-identity",
+        "misxv-deploy-provider"
+      ],
+      "status": "active"
     }
   ]
 }

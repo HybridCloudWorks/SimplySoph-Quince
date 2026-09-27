@@ -6,7 +6,7 @@ import path from 'node:path';
 
 test('Cloud Run port binding, health, pages, and 404 remain usable in preview',async(t)=>{
   const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
-  const child=spawn(process.execPath,['scripts/serve.mjs'],{
+  const child=spawn(process.execPath,['server/start.mjs'],{
     cwd:root,env:{...process.env,PORT:'0',K_SERVICE:'local-contract-check',HOST:'127.0.0.1'},stdio:['ignore','pipe','pipe']
   });
   t.after(()=>child.kill());

@@ -1,3 +1,5 @@
+> Historical planning/deployment record. The new multi-page branch is described by README.md, PAGE-SCOPE.md and DEPLOYMENT.md. Five-page/demo-only descriptions below refer to the earlier published release, not the current implementation.
+
 # Google hosting, mail, and secrets
 
 The family approved Google hosting and subsequently confirmed its existing Microsoft 365 email; preserve that mail setup. This supersedes the Resend-first recommendation. The family already owns `simplysoph.com`; the event will use **misxv.simplysoph.com**. No domain purchase or transfer is needed. The static design preview is published on dedicated Firebase Hosting site `misxv-simplysoph`; the event custom-domain association and two DNS records have been created. No Workspace subscription was purchased or live email sent. See `PUBLISHING.md` for current status; the API plan below remains future work.

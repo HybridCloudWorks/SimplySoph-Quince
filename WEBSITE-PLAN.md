@@ -1,3 +1,5 @@
+> Historical planning/deployment record. The new multi-page branch is described by README.md, PAGE-SCOPE.md and DEPLOYMENT.md. Five-page/demo-only descriptions below refer to the earlier published release, not the current implementation.
+
 # Sophia's quinceañera website plan
 
 Prepared September 26, 2026. Scope: a lean guest site built with Google AI Studio, using Notion for private organizer records.

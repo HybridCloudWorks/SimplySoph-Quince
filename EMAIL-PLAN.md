@@ -1,3 +1,5 @@
+> Historical planning/deployment record. The new multi-page branch is described by README.md, PAGE-SCOPE.md and DEPLOYMENT.md. Five-page/demo-only descriptions below refer to the earlier published release, not the current implementation.
+
 # Invitations and email delivery
 
 **Current decision:** Hostinger manages the existing simplysoph.com domain; the family confirmed Microsoft 365 hosts its email. Use `M365-EMAIL.md` for the current Graph/shared-mailbox plan and `GOOGLE-SETUP.md` for hosting/secrets. The Resend comparison and example domain/provider flow below are historical fallback research. Message types, audience rules, and reusable templates remain applicable.
