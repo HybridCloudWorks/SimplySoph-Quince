@@ -70,4 +70,4 @@ The family selected Google hosting, Hostinger DNS, and its existing Microsoft 36
 
 Every new resource must be registered with ownership evidence and exact removal steps. Run `npm run cleanup:plan` to generate a local review, or run **Prepare event cleanup review** manually in GitHub Actions. This only prepares a checklist: it never deletes anything or accesses Google. Follow `CLEANUP.md` for export, live reconciliation, reviewed removal and final billing checks. Preserve the root domain and existing project. Nothing is scheduled for automatic deletion.
 
-Microsoft 365 follow-up: `misxv@simplysoph.com` (Sophia Mis XV) is created and recorded for cleanup. Organizer permissions and application email integration remain pending; no live email was sent.
+Microsoft 365 follow-up: `misxv@simplysoph.com` (Sophia Mis XV) is created and recorded for cleanup. Organizer Read and Manage plus Send As permissions are verified; application email integration remains pending; no live email was sent.

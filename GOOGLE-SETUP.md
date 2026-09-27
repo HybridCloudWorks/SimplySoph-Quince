@@ -60,6 +60,6 @@ Use `M365-EMAIL.md` as the current email implementation plan. It supersedes the 
 
 ## Inputs still needed
 
-Hostinger DNS access; monthly hosting budget; Microsoft 365 app authorization and organizer permissions (admin access verified and event mailbox created); Notion page/database URL and integration access; preferred retention window after the event. No secret value is requested in chat. Google account/project/billing/domain inputs are already resolved.
+Hostinger DNS access; monthly hosting budget; Microsoft 365 app authorization (event mailbox and organizer permissions are configured); Notion page/database URL and integration access; preferred retention window after the event. No secret value is requested in chat. Google account/project/billing/domain inputs are already resolved.
 
 Microsoft 365 mailbox discovery and creation are recorded in `M365-EMAIL.md`. This does not complete the broader Google resource baseline.

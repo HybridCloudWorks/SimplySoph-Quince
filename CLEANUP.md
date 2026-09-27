@@ -39,4 +39,4 @@ Target: `misxv.simplysoph.com`, in the **existing** Google project `simplysoph-6
 
 ## Current status
 
-The event Microsoft 365 shared mailbox misxv@simplysoph.com has been created and inventoried with exact identity and a verified mailbox-scoped baseline. No Google cloud resource or DNS record has been created. The global Google/DNS/Notion baseline remains incomplete. The plan generator and manual GitHub workflow produce a review checklist, not automated teardown.
+The event Microsoft 365 shared mailbox misxv@simplysoph.com and its approved administrator Read and Manage / Send As delegation are inventoried with exact identities and scoped baselines. Remove the delegation before deleting the mailbox. Preserve the existing administrator account. No Google cloud resource or DNS record has been created. The global Google/DNS/Notion baseline remains incomplete. The plan generator and manual GitHub workflow produce a review checklist, not automated teardown.

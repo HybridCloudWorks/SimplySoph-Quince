@@ -25,6 +25,30 @@
       "verifyAfterCleanup": "Verify exact mailbox is absent from active mailboxes and no event send/delegate grants remain; record any retained soft-deleted mailbox or policy holds separately; do not purge without a separate decision",
       "dependsOn": [],
       "status": "active"
+    },
+    {
+      "id": "misxv-mailbox-administrator-access",
+      "type": "m365-mailbox-delegate",
+      "projectId": "simplysoph-66c78",
+      "ownership": "event-change-to-existing",
+      "resource": "Microsoft 365 simplysoph.com tenant / mailbox 6d086684-0c76-404d-be9f-ef9a7992a8c5 / delegate administrator@simplysoph.com",
+      "baseline": {
+        "verifiedAt": "2026-09-26T23:35:56.893970+00:00",
+        "scope": "Delegates of the newly created event mailbox only; prior UI showed zero members, zero Read and Manage, zero Send As",
+        "allowedTypes": [
+          "m365-mailbox-delegate"
+        ],
+        "evidence": "Prior mailbox detail inspection and outputs/mailbox-access-review.png; user subsequently approved the exact read/manage and Send As grant"
+      },
+      "exactScope": "Mailbox 6d086684-0c76-404d-be9f-ef9a7992a8c5 (misxv@simplysoph.com); principal administrator@simplysoph.com; FullAccess (Read and Manage) and SendAs only",
+      "creationEvidence": "User approved permissions; Microsoft 365 reported Saved; both permission panels separately verified administrator@simplysoph.com; private work/m365-mailbox-delegation.txt and outputs/mailbox-access-granted.png",
+      "verifyBeforeCleanup": "Confirm the same mailbox ID and principal are still event-specific; export wanted correspondence and finish event sending before removing organizer access",
+      "cleanupSteps": "On this exact shared mailbox, remove administrator@simplysoph.com from Members and verify both Read and manage and Send as permissions; remove either residual grant individually if present. Do not delete or disable the administrator account or modify its access to any other mailbox",
+      "verifyAfterCleanup": "Verify this principal is absent from Members, Read and manage, and Send as lists on this mailbox; record receipt after provider propagation",
+      "dependsOn": [
+        "misxv-m365-mailbox"
+      ],
+      "status": "active"
     }
   ]
 }

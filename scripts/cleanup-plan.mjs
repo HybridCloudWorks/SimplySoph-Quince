@@ -9,7 +9,7 @@ const types = new Set(['cloud-run-service', 'artifact-repository', 'secret',
   'storage-bucket', 'firestore-data', 'dns-record', 'oauth-grant',
   'workspace-mailbox', 'workspace-alias', 'notion-records', 'budget-alert',
   'github-deployment-access', 'entra-application', 'exchange-role-assignment',
-  'm365-shared-mailbox', 'm365-alias']);
+  'm365-shared-mailbox', 'm365-alias', 'm365-mailbox-delegate']);
 const safeText = value => typeof value === 'string' && value.trim().length > 0
   && value.length <= 2000 && !/[\r\n\x00-\x1f]/.test(value);
 const requireField = (condition, message) => { if (!condition) throw new Error(message); };
@@ -38,7 +38,7 @@ export function validateInventory(data) {
     if (r.type === 'dns-record') requireField(
       r.dnsName === data.hostname || (typeof r.dnsName === 'string' && r.dnsName.endsWith(`.${data.hostname}`)),
       'Root-domain or unrelated DNS changes require a separate reviewed plan');
-    if (['dns-record', 'iam-binding', 'firestore-data', 'notion-records', 'oauth-grant', 'github-deployment-access', 'exchange-role-assignment'].includes(r.type)) {
+    if (['dns-record', 'iam-binding', 'firestore-data', 'notion-records', 'oauth-grant', 'github-deployment-access', 'exchange-role-assignment', 'm365-mailbox-delegate'].includes(r.type)) {
       requireField(safeText(r.exactScope), `Exact records, grant, or data scope required: ${r.id}`);
     }
     if (r.status === 'removed') requireField(safeText(r.removalEvidence), `Removal evidence required: ${r.id}`);

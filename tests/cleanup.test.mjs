@@ -45,3 +45,10 @@ test('scoped mailbox baseline does not claim the Google project was verified', (
   data.resources[0].type = 'cloud-run-service';
   assert.throws(() => validateInventory(data), /Baseline does not cover/);
 });
+test('mailbox delegate cleanup requires exact permissions and precedes mailbox removal', () => {
+  const data = inventory();
+  data.resources = [{...resource('mailbox'), type:'m365-shared-mailbox'}, {...resource('delegate', ['mailbox']), type:'m365-mailbox-delegate'}];
+  assert.throws(() => validateInventory(data), /Exact records/);
+  data.resources[1].exactScope = 'Example mailbox ID; organizer identity; FullAccess and SendAs only';
+  assert.deepEqual(validateInventory(data).map(r => r.id), ['delegate', 'mailbox']);
+});
