@@ -1,5 +1,9 @@
 # Validation record
 
+Latest backend preparation: 26 local tests pass. New checks cover invalid/expired/revoked invitation tokens, tampered/wrong-key/expired sessions, rotation and household isolation, exact-origin CSRF, restricted cookies, duplicate/extra/missing guests, uninvited events, all-declined and mixed responses, stale versions, deadline boundaries, input limits, Notion metadata-only reads, redirects, bounded retries and sanitized failures. These are isolated module tests; durable storage, endpoints, live Notion access and email remain unimplemented. An empty event Secret Manager container was created and its metadata verified; no guest data or token was accessed.
+
+Custom-domain follow-up at 2026-09-27 02:56 UTC: `https://misxv.simplysoph.com` returned HTTP 200 with normal TLS verification. Browser loaded the expected Sophia page, correct Friday date and demo banner. Firebase reports HOST_ACTIVE and OWNERSHIP_ACTIVE; certificate propagation may still be completing at other edges. Screenshot saved privately in the parent workspace outputs as `custom-domain-live.png`.
+
 September 26, 2026. This records local preview evidence, not production readiness.
 
 ## Passed

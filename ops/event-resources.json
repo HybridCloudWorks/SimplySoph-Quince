@@ -143,6 +143,27 @@
       "status": "active",
       "dnsName": "_acme-challenge.misxv.simplysoph.com",
       "exactScope": "TXT _acme-challenge.misxv.simplysoph.com -> GgMeXlKk-yzZzIsPylLvlucbfegUX8oCxv0mSBZJamk; TTL 300; prior state absent"
+    },
+    {
+      "id": "misxv-notion-token",
+      "type": "secret",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "projects/424903425639/secrets/misxv-notion-token",
+      "baseline": {
+        "verifiedAt": "2026-09-27",
+        "scope": "Exact event secret metadata only",
+        "allowedTypes": [
+          "secret"
+        ],
+        "evidence": "gcloud secrets describe returned NOT_FOUND immediately before creation; existing secrets untouched"
+      },
+      "creationEvidence": "gcloud secrets create returned createTime 2026-09-27T02:53:39.595525Z and exact numeric-project resource; automatic replication; empty container without versions or new IAM grants",
+      "verifyBeforeCleanup": "Confirm exact secret name and project number, event labels and runtime references; stop sync before revocation",
+      "cleanupSteps": "Revoke or disconnect the dedicated event Notion connection first, then remove event runtime access and this exact secret after final review; preserve existing secrets and integrations",
+      "verifyAfterCleanup": "Verify Notion connection revoked and exact secret absent; record any retained versions or provider retention",
+      "dependsOn": [],
+      "status": "active"
     }
   ]
 }

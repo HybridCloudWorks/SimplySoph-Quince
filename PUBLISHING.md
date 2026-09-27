@@ -1,6 +1,6 @@
 # Published website
 
-The design preview is live at **https://misxv-simplysoph.web.app**. The custom hostname **misxv.simplysoph.com** is configured; DNS is verified and managed certificate activation is pending as of the latest publication check on September 26, 2026 (America/Chicago).
+The design preview is live at **https://misxv.simplysoph.com** and **https://misxv-simplysoph.web.app**. Normal HTTPS validation and a browser page load succeeded at 2026-09-27 02:56 UTC (September 26 local time). Firebase reports active host mapping and ownership. Its certificate status was still propagating globally at the most recent API read; the local HTTPS endpoint is verified working.
 
 RSVP is a demonstration only. It does not save responses, connect to Notion or send email. The site announces this prominently. Do not distribute it as a working RSVP service until the secure integration has passed an end-to-end test.
 

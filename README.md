@@ -1,6 +1,6 @@
 # SimplySoph · Sophia's Mis XV
 
-Lean, invitation-inspired website starter for continued development in Google AI Studio. Burgundy, gold, parchment, and the supplied invitation artwork. **Published design preview:** https://misxv-simplysoph.web.app . Custom domain: `misxv.simplysoph.com` (DNS configured; certificate activation being verified). No live Notion connection, RSVP storage or automated email sending. See `PUBLISHING.md`.
+Lean, invitation-inspired website starter for continued development in Google AI Studio. Burgundy, gold, parchment, and the supplied invitation artwork. **Published design preview:** https://misxv.simplysoph.com (HTTPS verified). Firebase URL: https://misxv-simplysoph.web.app . No live Notion connection, RSVP storage or automated email sending. See `PUBLISHING.md`.
 
 ## Preview locally
 
@@ -37,6 +37,7 @@ Try **SOPHIA-DEMO** on the RSVP page. Two fictional guests can respond separatel
 | `ops/event-resources.json` | Exact inventory of event-created resources and reversible changes; includes the event shared mailbox |
 | `WEBSITE-PLAN.md` | Research, sources, event inventory, and launch checklist |
 | `NOTION-INTEGRATION.md` | Schema, secure endpoint contract, and reconciliation design |
+| `server/README.md` | Tested invitation/RSVP foundations and read-only Notion schema inspector; not deployed |
 | `GOOGLE-AI-STUDIO-PROMPT.md` | Ready-to-paste continuation instructions |
 | `notion-templates/` | Fictitious CSV examples; configure Notion relations/types separately |
 

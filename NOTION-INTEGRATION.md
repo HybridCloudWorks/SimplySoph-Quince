@@ -1,6 +1,6 @@
 # Notion integration blueprint
 
-**Status: proposed, not connected or implemented.** Inspect the user's existing database and preserve its records before mapping or extending anything. The static starter deliberately has no Notion token, guest database export, or fake live-save endpoint.
+**Status: server foundations implemented and tested; live connection pending.** `server/` contains invitation/session validation, RSVP validation, and a read-only schema inspector. See `server/README.md`. The family supplied its private planning page; browser sign-in and selection of the actual guest database are pending. An empty event Notion secret container is prepared in Google Secret Manager. The public website remains a demo with no guest records or live-save endpoint.
 
 **Hosting decision:** see GOOGLE-SETUP.md. The family selected Google; Secret Manager will hold the Notion token and Cloud Run will host the secure adapter. A small server-only Firestore store is planned for durable coordination. Neither the adapter nor that store is implemented yet.
 

@@ -22,7 +22,7 @@ Preserve Microsoft 365 MX records and existing SPF, DKIM and DMARC. Check them b
 
 At event end, stop queued messages, export wanted correspondence, revoke the dedicated app's access/credentials, remove the exact event RBAC grants/app registration, remove the event alias/mailbox if approved, and remove its stored credentials. Do not cancel the tenant subscription or delete an existing organizer mailbox. Retention policies and recipients' copies may remain. Add exact IDs and evidence to the event inventory before provisioning is considered complete.
 
-Pending: mailbox-scoped application sending, Hostinger DNS access, Notion database access, and final retention window. No email was sent. No passwords, access tokens or private keys should be pasted into chat or committed.
+Pending: mailbox-scoped application sending, email authentication review, Notion database access, and final retention window. Hostinger access and website DNS are configured. No email was sent. No passwords, access tokens or private keys should be pasted into chat or committed.
 
 ## DNS follow-up before live sending
 
