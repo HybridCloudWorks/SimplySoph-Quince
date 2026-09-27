@@ -1,0 +1,9 @@
+.git
+node_modules
+work
+dist
+outputs
+.env
+.env.*
+*.log
+.firebase

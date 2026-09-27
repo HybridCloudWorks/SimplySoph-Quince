@@ -4,14 +4,26 @@
   "private": true,
   "description": "Static quinceanera website and secure integration handoff",
   "type": "module",
-  "engines": { "node": "24.x" },
+  "engines": {
+    "node": "24.x"
+  },
   "scripts": {
-    "build": "node scripts/build.mjs",
-    "start": "node scripts/serve.mjs",
+    "build": "node scripts/build-pages.mjs",
+    "start": "node server/start.mjs",
     "test": "node --test tests/*.test.mjs",
     "emails:preview": "node scripts/preview-emails.mjs",
     "notion:inspect": "node scripts/inspect-notion.mjs",
     "cleanup:plan": "node scripts/cleanup-plan.mjs",
-    "check": "node scripts/build.mjs && node scripts/check.mjs && node --test tests/*.test.mjs"
+    "check": "node scripts/build-pages.mjs && node scripts/check.mjs && node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "@google-cloud/storage": "^8.2.0",
+    "google-auth-library": "^11.1.0",
+    "sharp": "^0.35.4"
+  },
+  "overrides": {
+    "gaxios": {
+      "uuid": "^11.1.1"
+    }
   }
 }
