@@ -32,3 +32,12 @@ Using the actual browser against the local build:
 - Family content and retention date remain outstanding. Routes with missing content state that it is pending. Menu choices cannot be finalized until supplied.
 
 Follow DEPLOYMENT.md’s live acceptance gate before distributing working invitations. Keep this PR draft while provider setup and these tests remain incomplete.
+
+## Site review — September 27, 2026
+
+- Verified origin contains the complete implementation on `feature/complete-quince-site` through f1e5cb2 before this review. Both GitHub Node 24 checks and GitGuardian passed. Qlty's success status still carries a one-blocking-issue description; its authenticated report remains unresolved.
+- Re-ran all 58 tests, all 54 generated-document/local-link checks and the production dependency audit (zero reported vulnerabilities).
+- Reviewed the desktop home page and 390px expanded phone navigation. The dropdown stays within the viewport. At 320px, checked English/Spanish Home, Details, Ceremony, Reception, RSVP, Account, Gifts, Spanish FAQ, Gallery, Admin Login, Privacy and 404; no horizontal overflow was found. Spanish home navigation also stayed within 768/820/900/1024/1440px viewports. Temporary browser size overrides were cleared afterward.
+- Unconfigured preview RSVP/account/admin requests correctly show unavailable notices. This review did not send email or access real guest data. Earlier synthetic authenticated-flow coverage remains documented above.
+- Refreshed the public custom-domain RSVP page: it still explicitly displays the earlier design preview and sample invitation. A Git push does not deploy this branch. Production rollout remains blocked on provider configuration/acceptance, the Notion source grant and scoped secret, Microsoft sender registration/permissions, approved retention date, and missing family content.
+- No additional layout/navigation defect was found in the reviewed pages. The main issues are launch readiness and incomplete content, not missing route files.
