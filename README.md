@@ -2,7 +2,7 @@
 
 Multi-page English/Spanish guest website and private family administration for **Friday, January 15, 2027**, Fort Worth. RSVP deadline: **October 31, 2026, 11:59 PM Central**.
 
-This branch replaces the original scrolling/demo site. It builds 53 routes plus `404.html`. It includes the server implementation, but **a successful build is not a live-service launch**. The existing production site has not been replaced by this branch. Review PR #1 and `VALIDATION.md` for current verification.
+The multi-page site is live at **https://misxv.simplysoph.com**. It builds 53 routes plus `404.html`, including the corrected invitation. Pushes to `feature/complete-quince-site` and `main` automatically publish after the Node checks and dependency audit pass. Other branches and pull requests only run checks. Production RSVP, email and private administration still require provider activation; static publication does not enable them. Review PR #1 and `VALIDATION.md` for verification.
 
 ## Run and check
 
@@ -33,7 +33,7 @@ Open http://127.0.0.1:4173/. Without production configuration, the site serves e
 
 ## Team workflow
 
-Use the GitHub repository as the shared code source. Give collaborators repository access separately from ChatGPT project access. Work on individual branches, use pull requests and require the Node 24 checks. Keep deployments coordinated by one maintainer. Shared ChatGPT context does not grant Google, Microsoft or Notion permissions. Never put guest exports, invitation links or credentials into chats, GitHub issues, commits or CI artifacts.
+Use the GitHub repository as the shared code source. Give collaborators repository access separately from ChatGPT project access. Work on individual branches, use pull requests and require the Node 24 checks. The current release branch and main automatically publish checked pushes; see PUBLISHING.md. Shared ChatGPT context does not grant Google, Microsoft or Notion permissions. Never put guest exports, invitation links or credentials into chats, GitHub issues, commits or CI artifacts.
 
 ## Content still needed from the family
 

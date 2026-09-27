@@ -40,6 +40,8 @@ Target: `misxv.simplysoph.com`, in the **existing** Google project `simplysoph-6
 
 ## Current status
 
+The keyless GitHub Hosting publisher is inventoried: dedicated service account, workload identity pool/provider, minimal custom role and two exact IAM bindings. Disable the production deployment job and wait for active runs before removing its trust/grants, then remove the dedicated identities and role. Preserve the shared Google project and default Hosting site. No service-account key was created.
+
 The dedicated Google web login client, private event bucket, runtime service account and bucket-scoped objectUser grant are now inventoried. Remove the exact bucket grant before the identity/bucket. Preserve the pre-existing Google web client. Include verified guest accounts, link challenges, private page content and message replies in the ledger export/retirement review (ACCOUNT-ACCESS.md).
 
 The `misxv-notion-token` Secret Manager container and user-added version 1 are registered with a scoped baseline. A dedicated SimplySoph Mis XV Website Notion connection was created with explicit approval and is separately inventoried. Runtime IAM and new-connection token storage remain pending. Revoke the eventual dedicated Notion connection before removing its stored credential; disconnecting the website alone does not revoke that connection.

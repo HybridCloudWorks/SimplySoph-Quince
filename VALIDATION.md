@@ -24,7 +24,7 @@ Using the actual browser against the local build:
 
 ## Provider state and remaining acceptance
 
-- Existing domain/site remain the prior production release; this branch has not replaced them.
+- The multi-page static release replaced the earlier demo on September 27, 2026. The custom-domain Details page returned HTTP 200 after publication. Automatic publishing is now part of the checked push workflow; release identity and commit verification are recorded by the production job.
 - Notion API schema was previously read successfully through the user’s stored personal token. A dedicated event connection has now been created with explicit approval. Its Invitations-only access and replacement secret version still need verification; no guest rows or schema columns were written by this branch.
 - Google OAuth client “Mis XV family administration” was created after explicit approval, using only the event JavaScript origin; its public client ID is inventoried. No client secret was retrieved or used. Real login acceptance remains pending.
 - Dedicated private bucket `misxv-2027-simplysoph-66c78`, runtime service account, and bucket-only objectUser binding were created and inventoried. Public access prevention and uniform access were verified. Cloud Run, application secret and runtime provider-secret bindings remain pending.
