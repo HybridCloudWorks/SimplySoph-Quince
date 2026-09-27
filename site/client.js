@@ -14,6 +14,30 @@ export function setCsrf(value) {
   csrf = value;
 }
 const messages = {
+  EMAIL_SIGN_IN_UNAVAILABLE: [
+    "Email sign-in is not open yet. Please contact the family.",
+    "El acceso por correo aún no está disponible. Contacta a la familia.",
+  ],
+  EMAIL_SIGN_IN_REQUIRED: [
+    "This invitation is registered. Use your email to request a sign-in link.",
+    "Esta invitación está registrada. Usa tu correo para solicitar un enlace de acceso.",
+  ],
+  EMAIL_LINK_INVALID: [
+    "This link is expired or already used. Request a new sign-in link.",
+    "Este enlace venció o ya se utilizó. Solicita uno nuevo.",
+  ],
+  RSVP_FIRST: [
+    "Save your RSVP before registering your email.",
+    "Guarda tu respuesta antes de registrar tu correo.",
+  ],
+  PAGE_NOT_ALLOWED: [
+    "The family has not granted your account access to this page.",
+    "La familia no le ha dado acceso a esta página a tu cuenta.",
+  ],
+  OWNER_REQUIRED: [
+    "Only the site owner can change administrator access.",
+    "Solo el propietario puede cambiar el acceso de administradores.",
+  ],
   MAIL_DRAFT_STALE: [
     "This invitation or recipient changed. Create and review a new email draft.",
     "La invitación o el destinatario cambió. Crea y revisa un nuevo borrador.",

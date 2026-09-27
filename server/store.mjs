@@ -2,6 +2,7 @@ import { Storage } from "@google-cloud/storage";
 export const initialState = () => ({
   version: 1,
   invitations: {},
+  profiles: {},
   sessions: {},
   challenges: {},
   admins: {},

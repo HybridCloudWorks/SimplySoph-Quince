@@ -11,11 +11,13 @@ All routes below exist. Guest routes have matching `/es/` versions and language 
 | `/reception/` | AMZ address and map directions |
 | `/rsvp/` | Exchange high-entropy invitation link; use current Notion household allocations; review per-event attendance and contact corrections |
 | `/rsvp/confirmed/` | Show only a durably saved receipt; edit response and add calendar |
+| `/account/` | First-time verified email registration, returning one-time email links, contact editing, allowed pages and private family replies |
+| `/costs/` | Private family-entered cost details; account permission required |
 | `/court/` | Approved court names, roles and portraits |
-| `/padrinos/` | Approved sponsor names and roles |
+| `/padrinos/` | Private sponsor details; account permission required |
 | `/gallery/` | Moderated photographs |
 | `/share/` | Private-invitation photo upload; printable generic QR for tables |
-| `/gifts/` | Family-approved registry links |
+| `/gifts/` | Private registry details and links; account permission required |
 | `/travel/` | Travel guidance and approved hotel links |
 | `/faq/` | Invitation allocation, deadline, editing, photos and pending attire |
 | `/guestbook/` | Authenticated well-wishes; only approved messages are public |
@@ -27,6 +29,8 @@ All routes below exist. Guest routes have matching `/es/` versions and language 
 | `/admin/login/` | Google account allowlist plus TOTP MFA |
 | `/admin/` | Latest active-household counts by event; pending Notion sync and dietary/accessibility/song requests |
 | `/admin/guests/` | Current Notion households; direct Notion editing; CSV import/export; invitation generation, rotation, revocation and invitation drafts |
+| `/admin/access/` | Per-account enable/disable and page checkboxes; owner-only administration grant |
+| `/admin/content/` | Private English/Spanish registry, padrinos and costs editor |
 | `/admin/seating/` | Whole-household dinner seating, duplicate/capacity checks |
 | `/admin/photos/` | Review private uploads before publishing |
 | `/admin/guestbook/` | Moderate well-wishes and view private contact messages |

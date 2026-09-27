@@ -40,6 +40,8 @@ Target: `misxv.simplysoph.com`, in the **existing** Google project `simplysoph-6
 
 ## Current status
 
+The dedicated Google web login client, private event bucket, runtime service account and bucket-scoped objectUser grant are now inventoried. Remove the exact bucket grant before the identity/bucket. Preserve the pre-existing Google web client. Include verified guest accounts, link challenges, private page content and message replies in the ledger export/retirement review (ACCOUNT-ACCESS.md).
+
 The `misxv-notion-token` Secret Manager container and user-added version 1 are registered with a scoped baseline. A dedicated SimplySoph Mis XV Website Notion connection was created with explicit approval and is separately inventoried. Runtime IAM and new-connection token storage remain pending. Revoke the eventual dedicated Notion connection before removing its stored credential; disconnecting the website alone does not revoke that connection.
 
 The event Microsoft 365 shared mailbox misxv@simplysoph.com and its approved administrator Read and Manage / Send As delegation are inventoried with exact identities and scoped baselines. Remove the delegation before deleting the mailbox. Preserve the existing administrator account. The dedicated Firebase Hosting site, event custom-domain association, CNAME and certificate TXT record are also inventoried. Cleanup orders DNS before the domain association and the site. The validator rejects the protected default Hosting site. The global Google/DNS/Notion baseline remains incomplete. The plan generator and manual GitHub workflow produce a review checklist, not automated teardown.

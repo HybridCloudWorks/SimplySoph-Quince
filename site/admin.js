@@ -64,6 +64,18 @@ function parseCsv(text) {
   );
 }
 async function login() {
+  const session = await api("session");
+  if (session.kind === "admin") {
+    location.assign("/admin/");
+    return;
+  }
+  if (session.verified && session.permissions.includes("admin")) {
+    root.innerHTML =
+      '<p>Verify your authenticator to enter family administration.</p><button id="step-up" class="button burgundy">Continue with verified email</button><div id="mfa"></div>';
+    document.querySelector("#step-up").onclick = () =>
+      run(async () => showMfa(await api("auth/step-up", {})));
+    return;
+  }
   const cfg = await api("config");
   if (!cfg.clientId) {
     root.innerHTML =
@@ -71,7 +83,7 @@ async function login() {
     return;
   }
   root.innerHTML =
-    '<p>Use your authorized Google account, then your authenticator app.</p><div id="google-signin"></div><div id="mfa"></div>';
+    '<p>Use your authorized Google account, then your authenticator app. Invited administrators can first <a href="/account/">sign in by email</a>, then return here for authenticator verification.</p><div id="google-signin"></div><div id="mfa"></div>';
   const script = document.createElement("script");
   script.src = "https://accounts.google.com/gsi/client";
   script.onload = () => {
@@ -82,15 +94,7 @@ async function login() {
           const data = await api("auth/google", {
             credential: result.credential,
           });
-          document.querySelector("#mfa").innerHTML =
-            `<form id="mfa-form">${data.enrollmentSecret ? `<p class="notice">Set up an authenticator app for SimplySoph. Keep this setup key private:</p><code class="break">${esc(data.enrollmentSecret)}</code><p>Add a time-based account with this key, then enter its current six-digit code.</p>` : ""}${field("Authenticator code", "code", { required: true, max: 6 })}${formEnd("Verify and sign in")}`;
-          submit(document.querySelector("#mfa-form"), async (f) => {
-            await api("auth/mfa", {
-              challenge: data.challenge,
-              code: f.get("code"),
-            });
-            location.assign("/admin/");
-          });
+          showMfa(data);
         }),
     });
     google.accounts.id.renderButton(document.querySelector("#google-signin"), {
@@ -100,6 +104,78 @@ async function login() {
   };
   script.onerror = () => notify("Google sign-in could not load. Please retry.");
   document.head.append(script);
+}
+function showMfa(data) {
+  document.querySelector("#mfa").innerHTML =
+    `<form id="mfa-form">${data.enrollmentSecret ? `<p class="notice">Add a time-based SimplySoph account in your authenticator using this private setup key:</p><code class="break">${esc(data.enrollmentSecret)}</code>` : ""}${field("Authenticator code", "code", { required: true, max: 6 })}${formEnd("Verify and sign in")}`;
+  submit(document.querySelector("#mfa-form"), async (f) => {
+    await api("auth/mfa", { challenge: data.challenge, code: f.get("code") });
+    location.assign("/admin/");
+  });
+}
+async function accountAccess() {
+  const data = await api("admin/accounts"),
+    labels = {
+      gifts: "Registry / gifts",
+      padrinos: "Godparents / sponsors",
+      costs: "Costs",
+      admin: "Family administration (MFA required)",
+    };
+  root.innerHTML = `<p>Each household registers one verified contact account after its RSVP. Checked pages are available; unchecked pages are denied by the server. Only the site owner can grant or remove full administration.</p><div class="cards">${data.accounts.map((a) => `<form class="card access-form" data-id="${esc(a.id)}"><h2>${esc(a.name)}</h2><p>${esc(a.email)}</p><label class="check"><input type="checkbox" name="active" ${a.active ? "checked" : ""}${!data.owner && a.permissions.includes("admin") ? " disabled" : ""}>Account enabled</label><fieldset><legend>Page access</legend>${data.permissions.map((p) => `<label class="check"><input type="checkbox" name="permission" value="${p}" ${a.permissions.includes(p) ? "checked" : ""}${p === "admin" && !data.owner ? " disabled" : ""}>${labels[p]}</label>`).join("")}</fieldset>${formEnd("Save access")}`).join("") || "<p>No verified guest accounts yet.</p>"}</div>`;
+  for (const form of root.querySelectorAll(".access-form"))
+    submit(form, async (f) => {
+      const a = data.accounts.find((a) => a.id === form.dataset.id),
+        permissions = f.getAll("permission");
+      if (!data.owner && a.permissions.includes("admin"))
+        permissions.push("admin");
+      await api("admin/accounts", {
+        id: a.id,
+        version: a.version,
+        active:
+          !data.owner && a.permissions.includes("admin")
+            ? a.active
+            : f.has("active"),
+        permissions,
+      });
+      await accountAccess();
+      notify("Access saved. Changes apply to current sessions.");
+    });
+}
+async function privatePages() {
+  const data = await api("admin/pages");
+  root.innerHTML = `<p>These details are stored privately and returned only to guests with the matching page permission. Do not put private budget or sponsor details in public site assets.</p>${[
+    "gifts",
+    "padrinos",
+    "costs",
+  ]
+    .map((page) => {
+      const c = data.pages[page] || { en: "", es: "", links: [] };
+      return `<form class="card private-page-form" data-page="${page}"><h2>${page}</h2><label>English content<textarea name="en" maxlength="10000">${esc(c.en)}</textarea></label><label>Spanish content<textarea name="es" maxlength="10000">${esc(c.es)}</textarea></label><label>Links (one per line: Label | https://address)<textarea name="links">${esc(c.links.map((l) => l.label + " | " + l.url).join("\n"))}</textarea></label>${formEnd("Save private page")}`;
+    })
+    .join("")}`;
+  for (const form of root.querySelectorAll(".private-page-form"))
+    submit(form, async (f) => {
+      const links = f
+        .get("links")
+        .split("\n")
+        .filter((l) => l.trim())
+        .map((line) => {
+          const at = line.indexOf("|");
+          if (at < 1)
+            throw new Error("Use Label | https://address for each link.");
+          return {
+            label: line.slice(0, at).trim(),
+            url: line.slice(at + 1).trim(),
+          };
+        });
+      await api("admin/pages", {
+        page: form.dataset.page,
+        en: f.get("en"),
+        es: f.get("es"),
+        links,
+      });
+      notify("Private page saved.");
+    });
 }
 async function dashboard() {
   const d = await api("admin/dashboard");
@@ -161,7 +237,7 @@ function invitationEditor(id) {
       ),
       locale: f.get("locale"),
     });
-    box.innerHTML = `<div class="notice success"><p>Save this private link securely. It is shown once and grants access to this household.</p><textarea id="private-link" readonly>${esc(result.link)}</textarea><p>No email has been sent.</p>${button("Draft invitation email", "draft-invitation", id)}</div>`;
+    box.innerHTML = `<div class="notice success"><p>Save this private link and code securely. They are shown once and open this household’s first RSVP. Registered guests return using a verified email link.</p><textarea id="private-link" readonly>${esc(result.link)}</textarea><p>Invitation code: <code>${esc(result.code)}</code></p><p>No email has been sent.</p>${button("Draft invitation email", "draft-invitation", id)}</div>`;
   });
   box.scrollIntoView({ block: "nearest" });
 }
@@ -219,6 +295,21 @@ async function moderation() {
     photos = view === "admin/photos",
     rows = photos ? d.photos : d.messages;
   root.innerHTML = `<p>${photos ? "Photos remain private until approved." : "Contact messages always remain private. Guestbook messages require approval before publication."}</p><div class="cards">${rows.map((r) => `<article class="card">${photos ? `<img src="/api/photo/${esc(r.id)}" alt="Pending photo"><p>${esc(r.caption)}</p>` : `<h3>${esc(r.name)}</h3><p>${esc(r.text)}</p><span class="badge">${esc(r.kind)}</span>`}<p>Status: ${esc(r.state)}</p><div class="row-actions">${r.kind !== "contact" ? button("Approve", "approve", r.id) : ""}${button("Remove from display", "reject", r.id)}</div></article>`).join("") || "<p>No submissions yet.</p>"}</div>`;
+  if (!photos) {
+    const cards = root.querySelectorAll(".cards > .card");
+    rows.forEach((r, i) => {
+      if (r.kind !== "contact") return;
+      cards[i].insertAdjacentHTML(
+        "beforeend",
+        `${(r.replies || []).map((reply) => `<blockquote>${esc(reply.text)}</blockquote>`).join("")}<form class="reply-form"><label>Private reply<textarea name="text" required maxlength="2000"></textarea></label>${formEnd("Reply in guest account")}`,
+      );
+      submit(cards[i].querySelector(".reply-form"), async (f) => {
+        await api("admin/message-reply", { id: r.id, text: f.get("text") });
+        await moderation();
+        notify("Reply saved in the guest account. No email sent.");
+      });
+    });
+  }
 }
 async function updates() {
   const d = await api("admin/updates");
@@ -329,6 +420,8 @@ try {
     } else {
       if (view === "admin") await dashboard();
       if (view === "admin/guests") await guestList();
+      if (view === "admin/access") await accountAccess();
+      if (view === "admin/content") await privatePages();
       if (view === "admin/seating") await seating();
       if (["admin/photos", "admin/guestbook"].includes(view))
         await moderation();

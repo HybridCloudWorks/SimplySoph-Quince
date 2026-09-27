@@ -332,3 +332,10 @@ textarea {
     transform: none;
   }
 }
+.private-copy {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+[hidden] {
+  display: none !important;
+}

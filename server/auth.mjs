@@ -8,6 +8,14 @@ import {
 } from "node:crypto";
 import { OAuth2Client } from "google-auth-library";
 export const token = () => randomBytes(32).toString("base64url");
+export const invitationCode = () => base32(randomBytes(10));
+export function invitationCredential(value) {
+  if (typeof value !== "string") return null;
+  const raw = value.trim();
+  if (/^[A-Za-z0-9_-]{43}$/.test(raw)) return raw;
+  const code = raw.replace(/[\s-]/g, "").toUpperCase();
+  return /^[A-Z2-7]{16}$/.test(code) ? code : null;
+}
 export const hash = (value) => createHash("sha256").update(value).digest("hex");
 export const error = (status, code) =>
   Object.assign(new Error(code), { status, code });

@@ -10,7 +10,7 @@ Before issuing links, the family reviews each household and marks eligible cerem
 
 ## Response projection
 
-The admin schema action adds only missing, compatible website columns: Website RSVP, response ID/time, ceremony/dinner/dance adult and child counts, contact email, phone, address and requests. It rejects existing columns with incompatible types. The family can compare contact corrections with original contact fields before merging them; the integration does not silently overwrite the invitation allocation or delivery status.
+The admin schema action adds only missing, compatible website columns: Website RSVP, response ID/time, ceremony/dinner/dance adult and child counts, contact email, phone, address, requests and Website account. It rejects existing columns with incompatible types. The family can compare contact corrections with original contact fields before merging them; the integration does not silently overwrite the invitation allocation or delivery status. Website account projects the verified contact name/email and access settings; editing this Notion projection does not grant website access. See ACCOUNT-ACCESS.md.
 
 The API commits a response in the private durable Google ledger before acknowledging it or drafting a receipt. Idempotency keys prevent repeated submissions from duplicating responses/outbox items. Optimistic previous-response checks prevent two open forms overwriting one another. Notion projection failures leave the committed receipt accepted and visibly pending; the admin dashboard retries pending records. Latest ledger responses drive dashboard totals. Original Notion source rows are preserved.
 

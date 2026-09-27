@@ -41,7 +41,8 @@ The repository’s static `firebase.json` intentionally has no live rewrite unti
 - Verify a Notion outage keeps the saved receipt pending; retry from the dashboard and compare projection to the latest ledger response. There is no unattended retry worker in this version: the family must review pending sync.
 - Upload a disposable image, confirm metadata stripping and private pending status, approve and remove it, and verify no contact message can become public.
 - Only after the organizer identifies a test recipient, send one reviewed message; verify Sent Items, receipt and headers. Graph 202 means accepted, not delivered. No real invitations during testing.
-- Confirm church/dinner details, real content, retention date and privacy copy. Review artwork’s incorrect weekday. Verify guest links are never logged, exported to public artifacts or shared as demo links.
+- Confirm church/dinner details, real content, retention date and privacy copy. Verify the corrected invitation artwork. Verify guest links are never logged, exported to public artifacts or shared as demo links.
+- Complete the email registration, returning sign-in and private-page acceptance in ACCOUNT-ACCESS.md. Requested sign-in links send immediately through the configured mailbox; they are separate from reviewed campaign/receipt drafts. Verify owner grants and email-plus-MFA delegated administration.
 
 ## Reliability and limits
 

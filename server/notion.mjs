@@ -49,6 +49,7 @@ export const projectionSchema = {
   "Website phone": { phone_number: {} },
   "Website address": { rich_text: {} },
   "Website requests": { rich_text: {} },
+  "Website account": { rich_text: {} },
 };
 export function notionClient({ token, sourceId, fetchImpl = fetch }) {
   async function call(path, method = "GET", body) {
@@ -153,6 +154,35 @@ export function notionClient({ token, sourceId, fetchImpl = fetch }) {
         },
       });
       return normalizeInvitation(result);
+    },
+    async projectContact(id, contact) {
+      await this.read(id);
+      await call("pages/" + id, "PATCH", {
+        properties: {
+          "Website contact email": { email: contact.email || null },
+          "Website phone": { phone_number: contact.phone || null },
+          "Website address": {
+            rich_text: contact.address
+              ? [{ text: { content: contact.address } }]
+              : [],
+          },
+        },
+      });
+    },
+    async projectAccount(id, account) {
+      await this.read(id);
+      const content = JSON.stringify({
+        name: account.name,
+        email: account.email,
+        active: account.active,
+        permissions: account.permissions,
+        verifiedAt: new Date(account.verifiedAt).toISOString(),
+      });
+      await call("pages/" + id, "PATCH", {
+        properties: {
+          "Website account": { rich_text: [{ text: { content } }] },
+        },
+      });
     },
   };
 }

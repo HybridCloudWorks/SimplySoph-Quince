@@ -186,6 +186,95 @@
       "verifyAfterCleanup": "Verify dedicated connection absent and its token rejected; preserve unrelated connections",
       "dependsOn": [],
       "status": "active"
+    },
+    {
+      "id": "misxv-private-storage",
+      "type": "storage-bucket",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "gs://misxv-2027-simplysoph-66c78 / us-central1",
+      "baseline": {
+        "verifiedAt": "2026-09-27T05:08:00Z",
+        "scope": "Exact event storage bucket metadata",
+        "allowedTypes": [
+          "storage-bucket"
+        ],
+        "evidence": "Private work/google-event-bucket-baseline.txt: exact bucket returned NOT_FOUND before creation"
+      },
+      "creationEvidence": "Created 2026-09-27T05:09:12Z; generation 1790485752689878522, uniform bucket access and enforced public access prevention verified; 7-day soft delete",
+      "verifyBeforeCleanup": "Match bucket name, project and creation timestamp; stop API and sending, export approved ledger/photos privately; verify no unrelated data",
+      "cleanupSteps": "After reviewed export, remove exact event objects and bucket. Account for seven-day soft-delete retention and charges; do not change or remove other buckets.",
+      "verifyAfterCleanup": "Verify live bucket absent and soft-deleted versions accounted for until expiration; verify exports have family-selected retention",
+      "dependsOn": [],
+      "status": "active"
+    },
+    {
+      "id": "misxv-google-login-client",
+      "type": "oauth-grant",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "Google OAuth web client 424903425639-p4re47qiolq9kabd0cnjalub9b3q6h99.apps.googleusercontent.com",
+      "baseline": {
+        "verifiedAt": "2026-09-27T05:11:17.760Z",
+        "scope": "Google Auth Platform clients in simplysoph-66c78 before creating the event client",
+        "allowedTypes": [
+          "oauth-grant"
+        ],
+        "evidence": "Private work/google-login-baseline.txt records the one pre-existing SimplySoph WebApp client; it was preserved"
+      },
+      "creationEvidence": "Google OAuth client created confirmation verified after explicit user approval; public client ID recorded, generated client secret not downloaded or used",
+      "exactScope": "Mis XV family administration web client; sole JavaScript origin https://misxv.simplysoph.com; no redirect URIs requested; identity verification only, no Gmail/Drive/billing scopes",
+      "verifyBeforeCleanup": "Match exact client ID and name; stop family sign-in and revoke event sessions first; preserve existing SimplySoph WebApp OAuth client",
+      "cleanupSteps": "Delete only the exact event OAuth client after stopping the event service; preserve shared OAuth branding and unrelated clients",
+      "verifyAfterCleanup": "Verify event client absent and Google login cannot use it; inspect any provider recovery/retention period",
+      "dependsOn": [],
+      "status": "active"
+    },
+    {
+      "id": "misxv-runtime-identity",
+      "type": "service-account",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "projects/simplysoph-66c78/serviceAccounts/103996477968657268212 (misxv-runtime@simplysoph-66c78.iam.gserviceaccount.com)",
+      "baseline": {
+        "verifiedAt": "2026-09-27T05:11:38.407Z",
+        "scope": "Exact runtime service account",
+        "allowedTypes": [
+          "service-account"
+        ],
+        "evidence": "Private work/google-runtime-identity-baseline.txt records NOT_FOUND before creation"
+      },
+      "creationEvidence": "gcloud create returned unique ID 103996477968657268212; dedicated display name and event description verified",
+      "verifyBeforeCleanup": "Match immutable unique ID and email; verify no non-event workload uses this identity",
+      "cleanupSteps": "Stop dedicated event workloads; remove only inventoried event grants; delete exact runtime service account after export and credential revocation",
+      "verifyAfterCleanup": "Verify exact service account deleted and event workloads cannot impersonate it; preserve all other identities",
+      "dependsOn": [],
+      "status": "active"
+    },
+    {
+      "id": "misxv-runtime-storage-grant",
+      "type": "iam-binding",
+      "projectId": "simplysoph-66c78",
+      "ownership": "event-change-to-existing",
+      "resource": "gs://misxv-2027-simplysoph-66c78 IAM roles/storage.objectUser",
+      "baseline": {
+        "verifiedAt": "2026-09-27T05:12:53.160Z",
+        "scope": "Exact dedicated event bucket IAM policy before runtime grant",
+        "allowedTypes": [
+          "iam-binding"
+        ],
+        "evidence": "Private work/google-storage-iam-baseline.txt records no runtime identity grant; four default project convenience bindings preserved"
+      },
+      "creationEvidence": "gcloud returned etag CAI= and the exact runtime objectUser member; no public principals added",
+      "exactScope": "roles/storage.objectUser for serviceAccount:misxv-runtime@simplysoph-66c78.iam.gserviceaccount.com on only gs://misxv-2027-simplysoph-66c78; unconditional; previous grant absent",
+      "verifyBeforeCleanup": "Match bucket, principal, role and condition; stop event runtime and verify export completed",
+      "cleanupSteps": "Remove only this exact bucket-level runtime binding before deleting runtime identity or bucket; preserve unrelated roles and members",
+      "verifyAfterCleanup": "Confirm runtime principal has no event objectUser binding on this bucket",
+      "dependsOn": [
+        "misxv-private-storage",
+        "misxv-runtime-identity"
+      ],
+      "status": "active"
     }
   ]
 }

@@ -2,7 +2,7 @@
 
 Multi-page English/Spanish guest website and private family administration for **Friday, January 15, 2027**, Fort Worth. RSVP deadline: **October 31, 2026, 11:59 PM Central**.
 
-This branch replaces the original scrolling/demo site. It builds 47 routes plus `404.html`. It includes the server implementation, but **a successful build is not a live-service launch**. The existing production site has not been replaced by this branch. Review PR #1 and `VALIDATION.md` for current verification.
+This branch replaces the original scrolling/demo site. It builds 53 routes plus `404.html`. It includes the server implementation, but **a successful build is not a live-service launch**. The existing production site has not been replaced by this branch. Review PR #1 and `VALIDATION.md` for current verification.
 
 ## Run and check
 
@@ -28,6 +28,7 @@ Open http://127.0.0.1:4173/. Without production configuration, the site serves e
 - `server/mail.mjs`: Microsoft Graph sender; records accepted, failed or uncertain outcomes without blind retries.
 - `DEPLOYMENT.md`: service configuration, release gates, provider setup and rollback.
 - `PAGE-SCOPE.md`: all requested pages and their responsibilities.
+- `ACCOUNT-ACCESS.md`: invitation onboarding, verified email links, per-account private pages and MFA administration.
 - `CLEANUP.md` and `ops/event-resources.json`: export, ownership checks and retirement inventory.
 
 ## Team workflow
@@ -36,4 +37,4 @@ Use the GitHub repository as the shared code source. Give collaborators reposito
 
 ## Content still needed from the family
 
-Church identity/address and parking; dinner venue; dress code; Sophia/parent messages; court and padrino names/photos; gift links; travel recommendations; event portraits; approved retention date. The source keeps these unset rather than inventing them. The original artwork still says Saturday; surrounding text correctly says Friday. After-event highlights are configured when available.
+Church identity/address and parking; dinner venue; dress code; Sophia/parent messages; court and padrino names/photos; gift links; travel recommendations; event portraits; approved retention date. The source keeps these unset rather than inventing them. The corrected family-supplied Designer.png is now the home invitation; clicking it opens the full original image. It correctly says Friday. After-event highlights are configured when available. Registry/padrino/cost details belong in the private admin editor, not the static content file.
