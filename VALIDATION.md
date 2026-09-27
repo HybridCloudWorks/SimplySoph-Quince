@@ -33,11 +33,20 @@ Using the actual browser against the local build:
 
 Follow DEPLOYMENT.md’s live acceptance gate before distributing working invitations. Keep this PR draft while provider setup and these tests remain incomplete.
 
-## Site review — September 27, 2026
+## Earlier site review — September 27, 2026 (before publication)
 
 - Verified origin contains the complete implementation on `feature/complete-quince-site` through f1e5cb2 before this review. Both GitHub Node 24 checks and GitGuardian passed. Qlty's success status still carries a one-blocking-issue description; its authenticated report remains unresolved.
 - Re-ran all 58 tests, all 54 generated-document/local-link checks and the production dependency audit (zero reported vulnerabilities).
 - Reviewed the desktop home page and 390px expanded phone navigation. The dropdown stays within the viewport. At 320px, checked English/Spanish Home, Details, Ceremony, Reception, RSVP, Account, Gifts, Spanish FAQ, Gallery, Admin Login, Privacy and 404; no horizontal overflow was found. Spanish home navigation also stayed within 768/820/900/1024/1440px viewports. Temporary browser size overrides were cleared afterward.
 - Unconfigured preview RSVP/account/admin requests correctly show unavailable notices. This review did not send email or access real guest data. Earlier synthetic authenticated-flow coverage remains documented above.
-- Refreshed the public custom-domain RSVP page: it still explicitly displays the earlier design preview and sample invitation. A Git push does not deploy this branch. Production rollout remains blocked on provider configuration/acceptance, the Notion source grant and scoped secret, Microsoft sender registration/permissions, approved retention date, and missing family content.
+- At that earlier review, the public custom-domain RSVP page still displayed the design preview. Publication was incorrectly held with backend activation. The publication record below supersedes that state; the provider gates now apply only to activating live RSVP/email.
 - No additional layout/navigation defect was found in the reviewed pages. The main issues are launch readiness and incomplete content, not missing route files.
+
+## Publication and automatic release — September 27, 2026
+
+- Manually published the current multi-page build, then added and exercised automatic publishing on a push. GitHub run [36308570469](https://github.com/saulpatinojr/SimplySoph-Quince/actions/runs/36308570469) passed both checks and production deployment. It published commit `1bb6f7916d762ac91f74325ee1d37bbbcec127ef`, release `sites/misxv-simplysoph/releases/1790500356008000` at 09:12:36 UTC.
+- The suite now has 60 passing tests, including two deployment guards. A credential-free dry run validated the complete 64-file upload manifest. PR runs correctly skip the deployment job.
+- All 54 public HTML documents matched the generated local files byte-for-byte; an unknown route returned HTTP 404. The public invitation hash exactly matches the corrected original.
+- The custom-domain X-Release-Commit header matched the pushed commit. Browser navigation from Home to Details to Spanish Details showed the Friday date and separate pages on the public domain.
+- The dedicated GitHub identity used short-lived federation successfully with only Hosting get/update permissions. No service-account key, API-key viewer grant, guest-data access or default-site deployment was needed. Created identities, trust and grants are recorded for cleanup.
+- Live Notion-backed RSVP, email links and family administration remain unactivated, as described in the provider acceptance section. Static publication no longer waits on those integrations.
