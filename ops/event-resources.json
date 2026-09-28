@@ -639,7 +639,7 @@
         "allowedTypes": ["secret"],
         "evidence": "gcloud secrets describe returned NOT_FOUND before creation on 2026-09-28; newly created secret had no existing runtime grant"
       },
-      "creationEvidence": "gcloud created empty us-central1 secret and granted secret-level access on 2026-09-28. No credential version or runtime binding yet; owner handoff pending.",
+      "creationEvidence": "Created 2026-09-28; owner stored enabled version 1 at 18:59:19 UTC. Sandbox validation passed and two approved owner tests were accepted. Revision misxv-api-00008-qt7 pins version 1 as SENDGRID_API_KEY; fallback enabled with Microsoft primary.",
       "exactScope": "Event SendGrid key versions only; replica us-central1",
       "verifyBeforeCleanup": "Disable SendGrid dispatch/fallback, reconcile pending mail, export wanted records and revoke dedicated SendGrid API key before removing runtime configuration",
       "cleanupSteps": "After review, remove event runtime binding, destroy exact event secret versions and delete this secret only",
@@ -659,7 +659,7 @@
         "allowedTypes": ["iam-binding"],
         "evidence": "gcloud secrets describe returned NOT_FOUND before creation on 2026-09-28; newly created secret had no existing runtime grant"
       },
-      "creationEvidence": "gcloud created empty us-central1 secret and granted secret-level access on 2026-09-28. No credential version or runtime binding yet; owner handoff pending.",
+      "creationEvidence": "Secret-level runtime access granted 2026-09-28. Revision misxv-api-00008-qt7 successfully starts with version 1 pinned. No project-wide secret grant.",
       "exactScope": "roles/secretmanager.secretAccessor for serviceAccount:misxv-runtime@simplysoph-66c78.iam.gserviceaccount.com on only this secret, unconditional",
       "verifyBeforeCleanup": "Disable SendGrid dispatch/fallback, reconcile pending mail, export wanted records and revoke dedicated SendGrid API key before removing runtime configuration",
       "cleanupSteps": "Remove only this runtime principal and secretAccessor role from this secret, preserving other policy bindings",
