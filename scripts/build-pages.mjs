@@ -1,9 +1,11 @@
+import { registryDefaults } from "../server/registry-settings.mjs";
 import { policies } from "../site/policies.mjs";
 import {
   celebration,
   timeRange,
   venueSection,
   albumCards,
+  registryCards,
   calendar,
   calendarLink,
 } from "../site/celebration.mjs";
@@ -52,7 +54,9 @@ function contents(route, lang) {
       )
       .join("")}</div><div data-announcements></div></section>`;
   const heading = `<div class="page-heading"><p class="eyebrow">SOPHIA · MIS XV</p><h1>${routes.find((r) => r[0] === route)?.[es ? 2 : 1] || "Sophia"}</h1></div>`;
-  if (["gifts", "registry", "padrinos", "costs", "account"].includes(route))
+  if (["gifts", "registry"].includes(route))
+    return `<section class="page section">${heading}<p class="lead">${say("Your presence is the greatest gift. If you would like to celebrate with a gift, here are Sophia’s wishes.", "Tu presencia es el mejor regalo. Si deseas celebrar con un regalo, aquí están los deseos de Sophia.")}</p><div data-public-registries>${registryCards(registryDefaults, lang)}</div></section>`;
+  if (["padrinos", "costs", "account"].includes(route))
     return `<section class="page section">${heading}<div class="portal" id="portal" data-view="${route}"><p role="status">${t.loading}</p></div></section>`;
   let body = "";
   if (textContent[route]) {
@@ -232,7 +236,7 @@ function navigation(lang, current) {
   ]
     .map(
       ([name, items]) =>
-        `<details class="nav-group"><summary>${name}</summary><div>${items.map((r) => `<a href="${href(r, lang)}"${["gifts", "registry", "padrinos"].includes(r) ? ` data-permission="${r === "registry" ? "gifts" : r}" hidden` : ""}${r === current ? ' aria-current="page"' : ""}>${label(r)}</a>`).join("")}</div></details>`,
+        `<details class="nav-group"><summary>${name}</summary><div>${items.map((r) => `<a href="${href(r, lang)}"${["padrinos"].includes(r) ? ` data-permission="${r === "registry" ? "gifts" : r}" hidden` : ""}${r === current ? ' aria-current="page"' : ""}>${label(r)}</a>`).join("")}</div></details>`,
     )
     .join(
       "",

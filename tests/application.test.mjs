@@ -666,7 +666,7 @@ test("a valid photo remains private until a family administrator approves it", a
   );
 });
 
-test("site settings require admin, prevent stale saves, and keep registry details private", async () => {
+test("site settings require admin, prevent stale saves, and publish registry edits", async () => {
   const f = await fixture(),
     { site } = await f.admin("site");
   await assert.rejects(
@@ -683,7 +683,10 @@ test("site settings require admin, prevent stale saves, and keep registry detail
     (e) => e.code === "SETTINGS_CHANGED",
   );
   const pub = await f.app.dispatch({ path: "/api/site" });
-  assert.equal(pub.site.registries, undefined);
+  assert.equal(
+    pub.site.registries[0].url,
+    "https://www.target.com/gift-registry/example",
+  );
   const ics = await f.app.dispatch({ path: "/api/calendar/ceremony.ics" });
   assert.match(ics.binary.toString(), /DTEND:20270115T230000Z/);
   await assert.rejects(
@@ -783,7 +786,7 @@ test("video uploads are normalized before storage, moderated, album-aware, and a
   );
 });
 
-test("approved Target destination is available only with registry permission", async () => {
+test("Target registry is public while private gift notes still require permission", async () => {
   const f = await registeredFixture();
   await assert.rejects(
     () => f.verified("pages/gifts"),
@@ -791,7 +794,7 @@ test("approved Target destination is available only with registry permission", a
   );
   await f.admin("accounts", {
     id: f.account.id,
-    version:f.account.version,
+    version: f.account.version,
     active: true,
     permissions: ["gifts"],
   });
@@ -801,7 +804,7 @@ test("approved Target destination is available only with registry permission", a
     "https://www.target.com/gift-registry/gift/quincenera",
   );
   assert.equal(
-    (await f.app.dispatch({ path: "/api/site" })).site.registries,
-    undefined,
+    (await f.app.dispatch({ path: "/api/site" })).site.registries[0].url,
+    "https://www.target.com/gift-registry/gift/quincenera",
   );
 });

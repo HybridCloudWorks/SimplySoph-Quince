@@ -117,16 +117,30 @@ function showMfa(data) {
 async function accountAccess() {
   const data = await api("admin/accounts"),
     labels = {
-      gifts: "Registry / gifts",
+      gifts: "Legacy private gift notes",
       padrinos: "Godparents / sponsors",
       costs: "Costs",
       admin: "Family administration (MFA required)",
     };
-  root.innerHTML = `<p>Each household registers one verified contact account after its RSVP. Checked pages are available; unchecked pages are denied by the server. Only the site owner can grant or remove full administration.</p><div class="cards">${data.accounts.map((a) => `<form class="card access-form" data-id="${esc(a.id)}"><h2>${esc(a.name)}</h2><p>${esc(a.email)}</p><label class="check"><input type="checkbox" name="active" ${a.active ? "checked" : ""}${!data.owner && a.permissions.includes("admin") ? " disabled" : ""}>Account enabled</label><fieldset><legend>Page access</legend>${data.permissions.map((p) => `<label class="check"><input type="checkbox" name="permission" value="${p}" ${a.permissions.includes(p) ? "checked" : ""}${p === "admin" && !data.owner ? " disabled" : ""}>${labels[p]}</label>`).join("")}</fieldset>${formEnd("Save access")}`).join("") || "<p>No verified guest accounts yet.</p>"}</div>`;
+  root.innerHTML = `<p>Each household registers one verified contact account after its RSVP. Checked pages are available; unchecked pages are denied by the server. Only the site owner can grant or remove full administration. The registry is public and does not require page access.</p><div class="cards">${
+    data.accounts
+      .map(
+        (a) =>
+          `<form class="card access-form" data-id="${esc(a.id)}"><h2>${esc(a.name)}</h2><p>${esc(a.email)}</p><label class="check"><input type="checkbox" name="active" ${a.active ? "checked" : ""}${!data.owner && a.permissions.includes("admin") ? " disabled" : ""}>Account enabled</label><fieldset><legend>Page access</legend>${data.permissions
+            .filter((p) => p !== "gifts")
+            .map(
+              (p) =>
+                `<label class="check"><input type="checkbox" name="permission" value="${p}" ${a.permissions.includes(p) ? "checked" : ""}${p === "admin" && !data.owner ? " disabled" : ""}>${labels[p]}</label>`,
+            )
+            .join("")}</fieldset>${formEnd("Save access")}`,
+      )
+      .join("") || "<p>No verified guest accounts yet.</p>"
+  }</div>`;
   for (const form of root.querySelectorAll(".access-form"))
     submit(form, async (f) => {
       const a = data.accounts.find((a) => a.id === form.dataset.id),
         permissions = f.getAll("permission");
+      if (a.permissions.includes("gifts")) permissions.push("gifts");
       if (!data.owner && a.permissions.includes("admin"))
         permissions.push("admin");
       await api("admin/accounts", {
@@ -145,7 +159,6 @@ async function accountAccess() {
 async function privatePages() {
   const data = await api("admin/pages");
   root.innerHTML = `<p>These details are stored privately and returned only to guests with the matching page permission. Do not put private budget or sponsor details in public site assets.</p>${[
-    "gifts",
     "padrinos",
     "costs",
   ]

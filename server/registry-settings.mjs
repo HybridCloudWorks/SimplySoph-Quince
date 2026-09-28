@@ -1,5 +1,5 @@
-// Registry destinations are returned only through the permission-checked guest API.
-// Keep this module out of the public Hosting bundle.
+// Public registry destinations, approved for anonymous visitors.
+// Private family notes remain in the separate permission-checked pages API.
 export const registryDefaults = [
   {
     id: "target",

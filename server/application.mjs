@@ -285,8 +285,7 @@ export function createApplication({
         live: true,
       };
     if (path === "/api/site" && method === "GET") {
-      const { registries, ...site } = siteSettings(await ledger.read());
-      return { site };
+      return { site: siteSettings(await ledger.read()) };
     }
     if (path.startsWith("/api/calendar/") && method === "GET") {
       const kind = path.slice(14).replace(/\.ics$/, "");

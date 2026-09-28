@@ -2,6 +2,7 @@ import {
   celebration,
   venueSection,
   albumCards,
+  registryCards,
   calendarLink,
   localTime,
   timeRange,
@@ -77,6 +78,9 @@ export const experienceReady = (async () => {
     eventContent = { ...celebration, ...site };
     liveContent = true;
     const c = eventContent;
+    const registries = document.querySelector("[data-public-registries]");
+    if (registries && Array.isArray(c.registries))
+      registries.innerHTML = registryCards(c.registries, lang);
     const quote = document.querySelector("[data-home-quote]");
     if (quote)
       quote.innerHTML = `<p>“${esc(c.quote[lang])}”</p><cite>— ${esc(c.name)}</cite>`;
