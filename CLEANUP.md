@@ -53,3 +53,5 @@ The private event bucket now has object versioning enabled for ledger/media reco
 ## Approved review date
 
 February 1, 2027 (2027-02-01) is the family-approved review date only. No deletion is scheduled. Review exports, guest data retention and exact event resources with the organizer before any removal.
+
+Shared sender DNS corrections are tracked separately in ops/shared-domain-changes.json. Preserve the Microsoft/Firebase SPF record and both Microsoft DKIM selectors after this event: they support the existing domain mail service. Reversing them requires a separate review of all current senders and explicit authorization, not the event cleanup plan.

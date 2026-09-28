@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "domain": "simplysoph.com",
+  "purpose": "Shared Microsoft 365 sender authentication; preserve at event retirement",
+  "automaticDeletion": false,
+  "changes": [
+    {
+      "id": "m365-spf",
+      "type": "TXT",
+      "name": "@",
+      "ttl": 14400,
+      "before": "v=spf1 include:_spf.firebasemail.com ~all",
+      "after": "v=spf1 include:spf.protection.outlook.com include:_spf.firebasemail.com ~all",
+      "approval": "Organizer explicitly approved the exact SPF update in chat",
+      "verification": "Hostinger saved value and authoritative ns1.dns-parking.com TXT answer matched on 2026-09-28",
+      "retirement": "Retain while Microsoft 365 and Firebase remain domain senders. Do not include in event DNS deletion. Restore prior value only after reviewing all current domain senders and obtaining separate authorization.",
+      "status": "active"
+    },
+    {
+      "id": "m365-dkim-selector1",
+      "type": "CNAME",
+      "name": "selector1._domainkey",
+      "ttl": 14400,
+      "before": null,
+      "after": "selector1-simplysoph-com._domainkey.NETORG17952765.a-v1.dkim.mail.microsoft",
+      "approval": "Organizer explicitly approved both exact DKIM records in chat",
+      "verification": "Hostinger saved both records; authoritative ns1.dns-parking.com answers matched on 2026-09-28",
+      "retirement": "Retain for the existing Microsoft 365 tenant after this event. Remove only under a separately reviewed domain sender migration; do not include in event cleanup.",
+      "status": "active"
+    },
+    {
+      "id": "m365-dkim-selector2",
+      "type": "CNAME",
+      "name": "selector2._domainkey",
+      "ttl": 14400,
+      "before": null,
+      "after": "selector2-simplysoph-com._domainkey.NETORG17952765.a-v1.dkim.mail.microsoft",
+      "approval": "Organizer explicitly approved both exact DKIM records in chat",
+      "verification": "Hostinger saved both records; authoritative ns1.dns-parking.com answers matched on 2026-09-28",
+      "retirement": "Retain for the existing Microsoft 365 tenant after this event. Remove only under a separately reviewed domain sender migration; do not include in event cleanup.",
+      "status": "active"
+    }
+  ]
+}
