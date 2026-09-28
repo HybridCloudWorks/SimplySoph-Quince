@@ -1,3 +1,4 @@
+import { planningFields } from "./planning.mjs";
 import { error } from "./auth.mjs";
 const version = "2025-09-03";
 const text = (p) =>
@@ -22,6 +23,14 @@ export function normalizeInvitation(page) {
     email: p.Email?.email ?? "",
     phone: p.Phone?.phone_number ?? "",
     role: p.Role?.select?.name ?? "",
+    firstName: text(p["First Name"]),
+    lastName: text(p["Last Name"]),
+    distributionGroups: (p["Distribution Groups"]?.multi_select || []).map(
+      (x) => x.name,
+    ),
+    smsConsent: p["SMS Consent"]?.checkbox === true,
+    smsConsentAt: p["SMS Consent Date"]?.date?.start || null,
+    smsOptOut: p["SMS Opt Out"]?.checkbox === true,
     invitationStatus: p.RSVP?.select?.name ?? "",
     archived: page.archived || page.in_trash || false,
     validCapacity: valid,
@@ -29,6 +38,12 @@ export function normalizeInvitation(page) {
   };
 }
 export const projectionSchema = {
+  "Distribution Groups": { multi_select: {} },
+  "First Name": { rich_text: {} },
+  "Last Name": { rich_text: {} },
+  "SMS Consent": { checkbox: {} },
+  "SMS Consent Date": { date: {} },
+  "SMS Opt Out": { checkbox: {} },
   "Website RSVP": {
     select: {
       options: [
@@ -74,6 +89,72 @@ export function notionClient({ token, sourceId, fetchImpl = fetch }) {
     return r.json();
   }
   return {
+    async planning(kind, id) {
+      const aliases = {
+        item: ["Item", "Name", "Expense"],
+        quantity: ["Qty"],
+        unitPrice: ["Unit price"],
+        costOwner: ["Cost owner"],
+        sponsor: ["Sponsor"],
+        name: ["Name", "Text"],
+        category: ["Category"],
+        vendor: ["Vendor"],
+        contact: ["Contact"],
+        email: ["Email"],
+        phone: ["Phone"],
+        estimated: ["Estimated Cost", "Estimate", "Estimated total"],
+        finalCost: ["Final Cost", "Cost"],
+        deposit: ["Deposit"],
+        additionalPaid: ["Additional Paid", "Amount paid"],
+        dueDate: ["Due Date", "Payment due"],
+        status: ["Status"],
+        notes: ["Notes"],
+        firstName: ["First Name"],
+        lastName: ["Last Name"],
+        gift: ["Gift"],
+        role: ["Role"],
+        pledged: ["Pledged"],
+        received: ["Received"],
+        contacted: ["Contacted"],
+        contactedAt: ["Contacted Date"],
+        followUp: ["Follow Up"],
+      };
+      let cursor,
+        rows = [];
+      do {
+        const r = await call(`data_sources/${id}/query`, "POST", {
+          page_size: 100,
+          ...(cursor ? { start_cursor: cursor } : {}),
+        });
+        for (const page of r.results.filter(
+          (p) => !p.archived && !p.in_trash,
+        )) {
+          const fields = {};
+          for (const key of planningFields[kind]) {
+            const p = (aliases[key] || [key])
+              .map((n) => page.properties[n])
+              .find(Boolean);
+            fields[key] =
+              key === "contacted"
+                ? !!p?.checkbox
+                : ((key === "quantity" && p?.number != null
+                    ? String(p.number)
+                    : undefined) ??
+                  p?.number ??
+                  p?.email ??
+                  p?.phone_number ??
+                  p?.date?.start?.slice(0, 10) ??
+                  p?.select?.name ??
+                  p?.status?.name ??
+                  text(p));
+          }
+          rows.push({ id: page.id, fields });
+        }
+        if (rows.length > 1000) throw error(422, "PLANNING_LIMIT");
+        cursor = r.has_more ? r.next_cursor : null;
+      } while (cursor);
+      return rows;
+    },
     async list() {
       let cursor,
         rows = [];

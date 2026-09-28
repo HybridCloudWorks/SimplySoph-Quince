@@ -1,3 +1,5 @@
+import { planningEditor, documentWorkspace } from "./admin-planning.js";
+import { audienceComposer } from "./admin-audience.js";
 import { websiteEditor, notificationInbox } from "./admin-experience.js";
 import { api, esc, field, submit, notify } from "./client.js";
 const root = document.querySelector("#admin-app"),
@@ -77,14 +79,26 @@ async function login() {
       run(async () => showMfa(await api("auth/step-up", {})));
     return;
   }
-  const cfg = await api("config");
-  if (!cfg.clientId) {
+  const fragment = location.hash.slice(1);
+  if (fragment) {
+    history.replaceState(null, "", location.pathname);
     root.innerHTML =
-      '<p class="notice">Family sign-in is not configured yet. No guest information is available on this page.</p>';
+      '<p>Verify Your Email To Continue To MFA.</p><button id="verify-admin-email" class="button burgundy">Verify Email</button><div id="mfa"></div>';
+    document.querySelector("#verify-admin-email").onclick = () =>
+      run(async () => {
+        showMfa(await api("auth/admin-email/verify", { token: fragment }));
+        document.querySelector("#verify-admin-email").remove();
+      });
     return;
   }
-  root.innerHTML =
-    '<p>Use your authorized Google account, then your authenticator app. Invited administrators can first <a href="/account/">sign in by email</a>, then return here for authenticator verification.</p><div id="google-signin"></div><div id="mfa"></div>';
+  const cfg = await api("config");
+  root.innerHTML = `<form id="admin-email-login" class="card"><h2>Sign In By Email</h2><p>Enter your approved email. Follow the one-time link, then enter your authenticator code.</p>${field("Email", "email", { type: "email", required: true, max: 254 })}<p id="admin-email-result" role="status"></p>${formEnd("Email My Sign-In Link")}${cfg.clientId ? '<p>Or use your authorized Google account, followed by your authenticator.</p><div id="google-signin"></div>' : ""}<div id="mfa"></div>`;
+  submit(document.querySelector("#admin-email-login"), async (f) => {
+    await api("auth/admin-email/request", { email: f.get("email") });
+    document.querySelector("#admin-email-result").textContent =
+      "If this email has administrator access, a sign-in link will arrive shortly. The link expires in 15 minutes.";
+  });
+  if (!cfg.clientId) return;
   const script = document.createElement("script");
   script.src = "https://accounts.google.com/gsi/client";
   script.onload = () => {
@@ -154,41 +168,6 @@ async function accountAccess() {
       });
       await accountAccess();
       notify("Access saved. Changes apply to current sessions.");
-    });
-}
-async function privatePages() {
-  const data = await api("admin/pages");
-  root.innerHTML = `<p>These details are stored privately and returned only to guests with the matching page permission. Do not put private budget or sponsor details in public site assets.</p>${[
-    "padrinos",
-    "costs",
-  ]
-    .map((page) => {
-      const c = data.pages[page] || { en: "", es: "", links: [] };
-      return `<form class="card private-page-form" data-page="${page}"><h2>${page}</h2><label>English content<textarea name="en" maxlength="10000">${esc(c.en)}</textarea></label><label>Spanish content<textarea name="es" maxlength="10000">${esc(c.es)}</textarea></label><label>Links (one per line: Label | https://address)<textarea name="links">${esc(c.links.map((l) => l.label + " | " + l.url).join("\n"))}</textarea></label>${formEnd("Save private page")}`;
-    })
-    .join("")}`;
-  for (const form of root.querySelectorAll(".private-page-form"))
-    submit(form, async (f) => {
-      const links = f
-        .get("links")
-        .split("\n")
-        .filter((l) => l.trim())
-        .map((line) => {
-          const at = line.indexOf("|");
-          if (at < 1)
-            throw new Error("Use Label | https://address for each link.");
-          return {
-            label: line.slice(0, at).trim(),
-            url: line.slice(at + 1).trim(),
-          };
-        });
-      await api("admin/pages", {
-        page: form.dataset.page,
-        en: f.get("en"),
-        es: f.get("es"),
-        links,
-      });
-      notify("Private page saved.");
     });
 }
 async function dashboard() {
@@ -327,7 +306,7 @@ async function moderation() {
 }
 async function updates() {
   const d = await api("admin/updates");
-  root.innerHTML = `${d.mailConfigured ? "" : '<p class="notice">Email sending is not configured. Drafts can be reviewed, but cannot be sent yet.</p>'}<form id="announcement" class="card"><h2>Publish a website announcement</h2>${field("English title", "title", { required: true, max: 140 })}<label>English message<textarea name="text" required maxlength="2000"></textarea></label>${field("Spanish title", "titleEs", { max: 140 })}<label>Spanish message<textarea name="textEs" maxlength="2000"></textarea></label>${formEnd("Publish on website")}<h2>Announcements</h2>${d.announcements.map((a) => `<article class="card"><h3>${esc(a.title)}</h3><p>${esc(a.text)}</p></article>`).join("")}<h2>Email outbox</h2><p>Review each recipient and message before sending. Accepted means Microsoft accepted the request, not confirmed delivery. Unknown results require checking Sent Items before any manual retry.</p>${table(
+  root.innerHTML = `${d.mailConfigured ? "" : '<p class="notice">Email sending is not configured. Drafts can be reviewed, but cannot be sent yet.</p>'}<form id="announcement" class="card"><h2>Publish a website announcement</h2>${field("English title", "title", { required: true, max: 140 })}<label>English message<textarea name="text" required maxlength="2000"></textarea></label>${field("Spanish title", "titleEs", { max: 140 })}<label>Spanish message<textarea name="textEs" maxlength="2000"></textarea></label>${formEnd("Publish on website")}<h2>Announcements</h2>${d.announcements.map((a) => `<article class="card"><h3>${esc(a.title)}</h3><p>${esc(a.text)}</p></article>`).join("")}<h2>Emails Outbox</h2><p>Review each recipient and message before sending. Accepted means Microsoft accepted the request, not confirmed delivery. Unknown results require checking Sent Items before any manual retry.</p>${table(
     ["Recipient", "Subject", "State", "Review"],
     d.outbox.map(
       (m) =>
@@ -339,12 +318,17 @@ async function updates() {
     notify("Announcement published. No email sent.");
     await updates();
   });
-  const households = (await api("admin/guests")).guests.filter(
-    (r) => r.active && r.email,
-  );
+  const groupComposer = document.createElement("section");
+  root.querySelector("#announcement").after(groupComposer);
+  await audienceComposer(groupComposer, updates);
+  const households = (await api("admin/guests")).guests
+    .filter((r) => r.active && r.email)
+    .sort((a, b) =>
+      (a.displayName || a.name).localeCompare(b.displayName || b.name),
+    );
   const composer = document.createElement("div");
-  composer.innerHTML = `<form id="compose-mail" class="card"><h2>Draft an event email</h2><label>Household<select name="id" required><option value="">Choose a recipient</option>${households.map((r) => `<option value="${esc(r.id)}">${esc(r.name)} · ${esc(r.email)}</option>`).join("")}</select></label><label>Message type<select name="type"><option value="reminder">RSVP reminder</option><option value="details">Event details</option><option value="change">Schedule or parking update</option><option value="thanks">After-event thank you</option></select></label>${field("Current private invitation link (required for reminders)", "link", { max: 1000 })}<label>Update message (required for schedule/parking changes)<textarea name="updateText" maxlength="2000"></textarea></label><p>Each draft is addressed to the selected household only. Review its language and contents below before sending.</p>${formEnd("Save email draft")}`;
-  root.querySelector("#announcement").after(composer);
+  composer.innerHTML = `<form id="compose-mail" class="card"><h2>Draft an event email</h2><label>Household<select name="id" required><option value="">Choose a recipient</option>${households.map((r) => `<option value="${esc(r.id)}">${esc(r.displayName || r.name)} · ${esc(r.email)}</option>`).join("")}</select></label><label>Message type<select name="type"><option value="reminder">RSVP reminder</option><option value="details">Event details</option><option value="change">Schedule or parking update</option><option value="thanks">After-event thank you</option></select></label>${field("Current private invitation link (required for reminders)", "link", { max: 1000 })}<label>Update message (required for schedule/parking changes)<textarea name="updateText" maxlength="2000"></textarea></label><p>Each draft is addressed to the selected household only. Review its language and contents below before sending.</p>${formEnd("Save email draft")}`;
+  groupComposer.after(composer);
   submit(document.querySelector("#compose-mail"), async (f) => {
     await api("admin/mail/draft", Object.fromEntries(f));
     notify(
@@ -398,7 +382,9 @@ root.addEventListener("click", (e) => {
         type: "invitation",
         link: document.querySelector("#private-link").value,
       });
-      notify("Draft saved. Review it in Announcements & email before sending.");
+      notify(
+        "Draft saved. Review it in Announcements & Emails before sending.",
+      );
     }
     if (action === "sync") {
       await api("admin/sync", {});
@@ -438,7 +424,8 @@ try {
       if (view === "admin") await dashboard();
       if (view === "admin/guests") await guestList();
       if (view === "admin/access") await accountAccess();
-      if (view === "admin/content") await privatePages();
+      if (view === "admin/content") await planningEditor(root);
+      if (view === "admin/documents") await documentWorkspace(root);
       if (view === "admin/seating") await seating();
       if (["admin/photos", "admin/guestbook"].includes(view))
         await moderation();

@@ -672,3 +672,117 @@ textarea {
     height: 145px;
   }
 }
+
+/* Consistent breathing room for account controls, MFA, and table actions. */
+.row-actions {
+  align-items: center;
+  column-gap: 18px;
+  row-gap: 12px;
+  margin: 20px 0 28px;
+}
+.row-actions > a:not(.button),
+.row-actions > .plain-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 8px 4px;
+}
+#mfa:not(:empty) {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+form > button[type="submit"] {
+  margin-top: 16px;
+}
+.portal form + div,
+.portal form + section {
+  margin-top: 32px;
+}
+#admin-app > .card + .card {
+  margin-top: 24px;
+}
+td .table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 18px;
+  min-width: 240px;
+}
+td .table-actions a {
+  display: inline-block;
+  padding: 8px 0;
+}
+.admin-entry {
+  max-width: 850px;
+  margin: 28px auto;
+}
+.admin-entry h2 {
+  margin-top: 0;
+}
+h1:not(.hero h1),
+h2,
+h3,
+legend,
+th,
+.admin-shell aside a,
+.nav-group summary {
+  text-transform: capitalize;
+}
+.planning-table {
+  min-width: 1100px;
+}
+.planning-table td {
+  min-width: 100px;
+}
+.planning-table .money {
+  white-space: nowrap;
+}
+.planning-editor {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 20px;
+}
+.planning-editor .full {
+  grid-column: 1 / -1;
+}
+.document-dialog {
+  max-width: 900px;
+  max-height: 90dvh;
+  overflow: auto;
+}
+.document-dialog .doc-preview {
+  width: 100%;
+  height: 55dvh;
+  border: 1px solid var(--line);
+  object-fit: contain;
+}
+.recipient-list {
+  max-height: 340px;
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid var(--line);
+}
+@media (max-width: 650px) {
+  .planning-editor {
+    grid-template-columns: 1fr;
+  }
+  .row-actions {
+    gap: 12px 18px;
+  }
+}
+
+.planning-table th:last-child,
+.planning-table td:last-child {
+  position: sticky;
+  right: 0;
+  background: #fffcf5;
+  box-shadow: -3px 0 4px #0001;
+  min-width: 180px;
+}
+.planning-table th:last-child {
+  background: #eddfc5;
+}
+.planning-table .table-actions {
+  min-width: 150px;
+}

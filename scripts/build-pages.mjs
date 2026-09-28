@@ -57,7 +57,7 @@ function contents(route, lang) {
   if (["gifts", "registry"].includes(route))
     return `<section class="page section">${heading}<p class="lead">${say("Your presence is the greatest gift. If you would like to celebrate with a gift, here are Sophia’s wishes.", "Tu presencia es el mejor regalo. Si deseas celebrar con un regalo, aquí están los deseos de Sophia.")}</p><div data-public-registries>${registryCards(registryDefaults, lang)}</div></section>`;
   if (["padrinos", "costs", "account"].includes(route))
-    return `<section class="page section">${heading}<div class="portal" id="portal" data-view="${route}"><p role="status">${t.loading}</p></div></section>`;
+    return `<section class="page section">${heading}${route === "account" ? `<p class="account-admin-link"><a href="/admin/login/">${say("Administrator Login", "Acceso De Administradores")}</a></p>` : ""}<div class="portal" id="portal" data-view="${route}"><p role="status">${t.loading}</p></div>${route === "account" ? `<section class="card admin-entry"><h2>${say("Administrator Login", "Acceso De Administradores")}</h2><p>${say("Family organizers can sign in with their approved email address and authenticator.", "Los organizadores pueden entrar con su correo autorizado y autenticador.")}</p><a class="button burgundy" href="/admin/login/">${say("Administrator Login", "Acceso De Administradores")}</a></section>` : ""}</section>`;
   let body = "";
   if (textContent[route]) {
     const c = textContent[route];
@@ -247,7 +247,7 @@ function document({ route, title, lang = "en", admin = false }) {
   return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer"><meta name="description" content="${esc(t.tagline)}"><title>${esc(title)} · Sophia</title><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/pages.css"><script type="module" src="/${admin ? "admin" : "guest"}.js"></script></head><body data-route="${route}"><a class="skip" href="#main">${lang === "es" ? "Ir al contenido" : "Skip to content"}</a>${navigation(lang, admin ? "" : route)}<main id="main">${
     admin
       ? `<section class="section admin-shell"><aside aria-label="Family administration">${adminRoutes
-          .filter(([r]) => r !== "admin/login")
+          .filter(([r]) => !["admin/login", "admin/documents"].includes(r))
           .map(
             ([r, t]) =>
               `<a href="/${r}/"${r === route ? ' aria-current="page"' : ""}>${t}</a>`,
@@ -310,6 +310,8 @@ for (const file of [
   "celebration.mjs",
   "experience.js",
   "admin-experience.js",
+  "admin-planning.js",
+  "admin-audience.js",
 ])
   await copyFile(
     new URL("../site/" + file, import.meta.url),

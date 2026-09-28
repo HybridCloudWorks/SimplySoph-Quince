@@ -47,17 +47,18 @@ export const routes = [
   ["404", "Page not found", "Página no encontrada"],
 ];
 export const adminRoutes = [
-  ["admin/login", "Family sign-in"],
+  ["admin/login", "Administrator Login"],
   ["admin", "Overview"],
   ["admin/guests", "Invitations"],
   ["admin/access", "Guest access"],
-  ["admin/content", "Private pages"],
+  ["admin/content", "Accounting & Godparents"],
+  ["admin/documents", "Documents"],
   ["admin/site", "Website & event"],
   ["admin/notifications", "Notifications"],
   ["admin/seating", "Seating"],
   ["admin/photos", "Photo & video review"],
   ["admin/guestbook", "Messages"],
-  ["admin/updates", "Announcements & email"],
+  ["admin/updates", "Announcements & Emails"],
 ];
 export const copy = {
   en: {

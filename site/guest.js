@@ -163,6 +163,34 @@ async function showPortal() {
       ),
       c = data.content;
     portal.innerHTML = `<div class="private-copy">${esc((es ? c.es : c.en) || c.en || tr("The family will add these details soon.", "La familia agregará los detalles pronto.")).replaceAll("\n", "<br>")}</div><div class="row-actions">${c.links.map((l) => `<a href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">${esc(l.label)} ↗</a>`).join("")}</div>`;
+    if (data.planning?.length) {
+      const costs = portal.dataset.view === "costs";
+      const money = (n) =>
+        n == null
+          ? "—"
+          : new Intl.NumberFormat(es ? "es-US" : "en-US", {
+              style: "currency",
+              currency: "USD",
+            }).format(n);
+      const heads = costs
+        ? [
+            tr("Item", "Concepto"),
+            tr("Vendor", "Proveedor"),
+            tr("Final Cost", "Costo Final"),
+            tr("Paid", "Pagado"),
+            tr("Due Date", "Fecha Límite"),
+          ]
+        : [
+            tr("Name", "Nombre"),
+            tr("Gift", "Regalo"),
+            tr("Contacted", "Contactado"),
+            tr("Status", "Estado"),
+          ];
+      portal.insertAdjacentHTML(
+        "beforeend",
+        `<div class="table-wrap"><table><thead><tr>${heads.map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${data.planning.map((r) => `<tr>${(costs ? [r.item, r.vendor, money(r.finalCost), money((r.deposit || 0) + (r.additionalPaid || 0)), r.dueDate] : [r.name, r.gift, r.contacted ? tr("Yes", "Sí") : tr("No", "No"), r.status]).map((v) => `<td>${esc(v)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`,
+      );
+    }
     if (data.registries)
       portal.insertAdjacentHTML(
         "beforeend",

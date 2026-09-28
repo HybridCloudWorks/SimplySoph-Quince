@@ -65,6 +65,7 @@ async function fixture(options = {}) {
     adminEmails: ["organizer@gmail.com"],
     now: () => clock,
     ...options,
+    notion: { ...notion, ...options.notion },
   });
   await ledger.transaction((s) => {
     s.sessions[hash(adminToken)] = {
@@ -83,9 +84,10 @@ async function fixture(options = {}) {
       invited: { ceremony: true, dinner: true, dance: false },
     };
   });
-  const admin = (path, body) =>
+  const admin = (path, body, query) =>
     app.dispatch({
       path: "/api/admin/" + path,
+      query,
       method: body ? "POST" : "GET",
       body,
       headers: {
@@ -295,9 +297,10 @@ test("guest administration requires owner grant and MFA; revoking grant rejects 
     challenge: c.challenge,
     code: totp(c.enrollmentSecret, Math.floor(at / 30000)),
   });
-  const delegated = (path, body) =>
+  const delegated = (path, body, query) =>
     f.app.dispatch({
       path: "/api/admin/" + path,
+      query,
       method: body ? "POST" : "GET",
       body,
       headers: {
@@ -806,5 +809,222 @@ test("Target registry is public while private gift notes still require permissio
   assert.equal(
     (await f.app.dispatch({ path: "/api/site" })).site.registries[0].url,
     "https://www.target.com/gift-registry/gift/quincenera",
+  );
+});
+
+test("administrator email links conceal eligibility, require MFA, expire and cannot be replayed", async () => {
+  const f = await fixture();
+  const post = (path, body) =>
+    f.app.dispatch({
+      path: "/api/" + path,
+      method: "POST",
+      headers: { origin },
+      body,
+    });
+  assert.deepEqual(
+    await post("auth/admin-email/request", { email: "unknown@example.com" }),
+    { requested: true },
+  );
+  assert.equal(f.sent.length, 0);
+  await post("auth/admin-email/request", { email: "organizer@gmail.com" });
+  const raw = f.sent.at(-1).html.match(/login\/#([A-Za-z0-9_-]{43})/)[1];
+  const c = await post("auth/admin-email/verify", { token: raw });
+  assert.equal(c.setCookie, undefined);
+  await assert.rejects(
+    () => post("auth/admin-email/verify", { token: raw }),
+    (e) => e.code === "EMAIL_LINK_INVALID",
+  );
+  await assert.rejects(
+    () => post("auth/mfa", { challenge: c.challenge, code: "bad" }),
+    (e) => e.code === "INVALID_MFA",
+  );
+  const signed = await post("auth/mfa", {
+    challenge: c.challenge,
+    code: totp(c.enrollmentSecret, Math.floor(at / 30000)),
+  });
+  assert.ok(signed.setCookie);
+  const google = await post("auth/google", { credential: "fixture" });
+  assert.equal(
+    google.enrollmentSecret,
+    undefined,
+    "Google reuses the enrolled authenticator",
+  );
+  await post("auth/admin-email/request", { email: "organizer@gmail.com" });
+  const stale = f.sent.at(-1).html.match(/login\/#([A-Za-z0-9_-]{43})/)[1];
+  f.advance(900001);
+  await assert.rejects(
+    () => post("auth/admin-email/verify", { token: stale }),
+    (e) => e.code === "EMAIL_LINK_INVALID",
+  );
+});
+
+test("accounting edits reject stale saves; documents stay admin-only and support trash/restore", async () => {
+  const objects = new Map();
+  const f = await fixture({
+    documents: {
+      put: async (id, b) => objects.set(id, b),
+      get: async (id) => objects.get(id),
+    },
+  });
+  const saved = await f.admin("planning", {
+    kind: "costs",
+    row: {
+      item: "Venue",
+      finalCost: 1200,
+      deposit: 300,
+      dueDate: "2027-01-01",
+    },
+  });
+  await assert.rejects(
+    () => f.guest("admin/planning"),
+    (e) => e.code === "SIGN_IN_REQUIRED",
+  );
+  await assert.rejects(
+    () =>
+      f.admin("planning", {
+        kind: "costs",
+        id: saved.row.id,
+        version: 0,
+        row: { item: "Venue" },
+      }),
+    (e) => e.code === "SETTINGS_CHANGED",
+  );
+  const q = { kind: "costs", rowId: saved.row.id };
+  const doc = await f.admin("documents/upload", {
+    ...q,
+    name: "bill.pdf",
+    data: Buffer.from("%PDF-1.4\nTest").toString("base64"),
+  });
+  await assert.rejects(
+    () =>
+      f.admin("documents/upload", {
+        ...q,
+        name: "bad.html",
+        data: Buffer.from("<script>evil</script>").toString("base64"),
+      }),
+    (e) => e.code === "INVALID_DOCUMENT",
+  );
+  const openQuery = { ...q, id: doc.id };
+  const opened = await f.admin("documents/open", undefined, openQuery);
+  assert.equal(opened.binary.toString(), "%PDF-1.4\nTest");
+  assert.equal(opened.contentType, "application/pdf");
+  await assert.rejects(
+    () =>
+      f.app.dispatch({ path: "/api/admin/documents/open", query: openQuery }),
+    (e) => e.code === "SIGN_IN_REQUIRED",
+  );
+  const other = await f.admin("planning", {
+    kind: "costs",
+    row: { item: "Other expense" },
+  });
+  await assert.rejects(
+    () =>
+      f.admin("documents/open", undefined, {
+        ...openQuery,
+        rowId: other.row.id,
+      }),
+    (e) => e.code === "NOT_FOUND",
+  );
+  await f.admin("documents/state", { ...q, id: doc.id, deleted: true });
+  await assert.rejects(
+    () => f.admin("documents/open", undefined, openQuery),
+    (e) => e.code === "NOT_FOUND",
+  );
+  assert.equal((await f.ledger.read()).documents[doc.id].deleted, true);
+  await f.admin("documents/state", { ...q, id: doc.id, deleted: false });
+  assert.equal((await f.ledger.read()).documents[doc.id].deleted, false);
+  assert.equal(objects.size, 1);
+});
+
+test("distribution groups deduplicate recipients, drafts are idempotent, and stale recipients cannot send", async () => {
+  const f = await fixture();
+  f.row.distributionGroups = ["Family", "Godparents"];
+  const payload = {
+    requestId: "test-campaign-001",
+    groups: ["Family", "Godparents"],
+    ids: [household],
+    subject: "Event Update",
+    text: "Hello <friends>",
+  };
+  const result = await f.admin("mail/batch-draft", payload);
+  assert.equal(result.count, 1);
+  assert.equal(f.sends(), 0);
+  assert.deepEqual(await f.admin("mail/batch-draft", payload), result);
+  assert.equal(Object.keys((await f.ledger.read()).outbox).length, 1);
+  await f.admin("mail/send", { id: result.ids[0], confirm: true });
+  assert.equal(f.sends(), 1);
+  const second = await f.admin("mail/batch-draft", {
+    ...payload,
+    requestId: "test-campaign-002",
+  });
+  f.row.email = "changed@example.com";
+  await assert.rejects(
+    () => f.admin("mail/send", { id: second.ids[0], confirm: true }),
+    (e) => e.code === "MAIL_DRAFT_STALE",
+  );
+});
+
+test("SMS draft eligibility requires explicit consent and a date and respects opt out", async () => {
+  const f = await fixture();
+  f.row.phone = "+18175550100";
+  f.row.distributionGroups = ["Family"];
+  const p = {
+    requestId: "sms-draft-001",
+    groups: ["Family"],
+    ids: [],
+    subject: "Reminder",
+    text: "See you soon",
+    channel: "sms",
+  };
+  await assert.rejects(
+    () => f.admin("mail/batch-draft", p),
+    (e) => e.code === "NO_ELIGIBLE_RECIPIENTS",
+  );
+  f.row.smsConsent = true;
+  f.row.smsConsentAt = "2026-09-28";
+  assert.equal((await f.admin("mail/batch-draft", p)).count, 1);
+  assert.equal(f.sends(), 0);
+  f.row.smsOptOut = true;
+  await assert.rejects(
+    () => f.admin("mail/batch-draft", { ...p, requestId: "sms-draft-002" }),
+    (e) => e.code === "NO_ELIGIBLE_RECIPIENTS",
+  );
+});
+
+test("planning import preserves estimates and organizer edits on repeat imports", async () => {
+  const f = await fixture({
+    notion: {
+      planning: async () => [
+        {
+          id: household,
+          fields: { item: "Venue", estimated: 2500, additionalPaid: 500 },
+        },
+      ],
+    },
+  });
+  const p = { kind: "costs", sourceId: "5dbd1b32-9191-484b-85db-7b1d4663192e" };
+  assert.deepEqual(await f.admin("planning/import", p), {
+    added: 1,
+    skipped: 0,
+  });
+  const first = (await f.admin("planning", undefined, { kind: "costs" }))
+    .rows[0];
+  assert.equal(first.estimated, 2500);
+  assert.equal(first.finalCost, null);
+  assert.equal(first.deposit, null);
+  assert.equal(first.additionalPaid, 500);
+  await f.admin("planning", {
+    kind: "costs",
+    id: first.id,
+    version: first.version,
+    row: { ...first, finalCost: 2400 },
+  });
+  assert.deepEqual(await f.admin("planning/import", p), {
+    added: 0,
+    skipped: 1,
+  });
+  assert.equal(
+    (await f.admin("planning", undefined, { kind: "costs" })).rows[0].finalCost,
+    2400,
   );
 });

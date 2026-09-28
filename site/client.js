@@ -14,6 +14,30 @@ export function setCsrf(value) {
   csrf = value;
 }
 const messages = {
+  INVALID_AMOUNT: [
+    "Use A Nonnegative Amount With At Most Two Decimal Places.",
+    "Usa una cantidad positiva con hasta dos decimales.",
+  ],
+  INVALID_DOCUMENT: [
+    "Choose A Valid JPG, PNG, WebP, PDF, Text Or Office File Up To 8 MB.",
+    "Elige un archivo válido de hasta 8 MB.",
+  ],
+  NO_ELIGIBLE_RECIPIENTS: [
+    "Select Recipients With Valid Contact Details. SMS Also Requires Recorded Consent And A Consent Date.",
+    "Selecciona destinatarios con datos válidos y consentimiento para SMS.",
+  ],
+  INVALID_DATA_SOURCE: [
+    "Enter The Notion Data Source ID For This Table.",
+    "Ingresa el ID de la fuente de datos de Notion.",
+  ],
+  NAME_REQUIRED: [
+    "Enter An Item Or Person Name.",
+    "Ingresa el nombre del artículo o persona.",
+  ],
+  NOTION_404: [
+    "Share This Database With The Dedicated Notion Connection And Check Its Data Source ID.",
+    "Comparte esta base de datos con la conexión de Notion y verifica su ID.",
+  ],
   SETTINGS_CHANGED: [
     "Another organizer changed these settings. Reload before saving.",
     "Otro organizador cambió estos ajustes. Recarga antes de guardar.",
@@ -220,3 +244,22 @@ document.addEventListener("click", (e) => {
   for (const el of document.querySelectorAll(".nav-group[open]"))
     if (!el.contains(e.target)) el.open = false;
 });
+
+// Apply the shared action layout to dynamically rendered table cells.
+const spaceActions = () =>
+  document.querySelectorAll("td").forEach((td) => {
+    if (td.querySelector(":scope > .table-actions")) return;
+    const actions = Array.from(td.children).filter((el) =>
+      el.matches("a,button"),
+    );
+    if (actions.length < 2) return;
+    const group = document.createElement("div");
+    group.className = "table-actions";
+    td.insertBefore(group, actions[0]);
+    actions.forEach((el) => group.append(el));
+  });
+new MutationObserver(spaceActions).observe(document.querySelector("main"), {
+  childList: true,
+  subtree: true,
+});
+spaceActions();

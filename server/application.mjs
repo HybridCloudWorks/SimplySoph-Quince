@@ -1,6 +1,9 @@
+import { audience, recipientName, validEmail } from "./audience.mjs";
+import { createPlanning } from "./planning.mjs";
+import { createAdminEmail } from "./admin-email.mjs";
 import { createNotifications } from "./notifications.mjs";
 import { normalizeVideo, mediaResponse } from "./video.mjs";
-import { calendar, contactTopics } from "../site/celebration.mjs";
+import { calendar, contactTopics, escapeHtml } from "../site/celebration.mjs";
 import { siteSettings, validateSettings } from "./site-settings.mjs";
 import { randomUUID } from "node:crypto";
 import sharp from "sharp";
@@ -59,6 +62,7 @@ export function createApplication({
   mailer,
   verifyGoogle,
   media,
+  documents,
   videoProcessor = normalizeVideo,
   key,
   origin,
@@ -187,14 +191,21 @@ export function createApplication({
       if (!j) throw error(404, "NOT_FOUND");
       if (j.state !== "draft") throw error(409, "MAIL_ALREADY_ATTEMPTED");
       const invite = s.invitations[j.householdId];
-      if (!invite?.active || invite.generation !== j.generation)
+      if (j.type === "custom") {
+        if (
+          invite?.active === false ||
+          (!j.directlySelected &&
+            !currentGuest.distributionGroups?.some((g) => j.groups.includes(g)))
+        )
+          throw error(409, "MAIL_DRAFT_STALE");
+      } else if (!invite?.active || invite.generation !== j.generation)
         throw error(409, "MAIL_DRAFT_STALE");
       const expectedRecipient = j.responseId
         ? (s.profiles?.[j.householdId]?.contact.email ??
           s.responses[invite.latestSubmissionId]?.contact.email)
         : currentGuest.email;
       if (
-        expectedRecipient !== j.to ||
+        expectedRecipient?.trim().toLowerCase() !== j.to.trim().toLowerCase() ||
         (j.responseId && j.responseId !== invite.latestSubmissionId)
       )
         throw error(409, "MAIL_DRAFT_STALE");
@@ -271,6 +282,14 @@ export function createApplication({
     now,
     syncOne,
   });
+  const planning = createPlanning({ ledger, documents, notion, now });
+  const adminEmail = createAdminEmail({
+    ledger,
+    mailer,
+    adminEmails,
+    origin,
+    now,
+  });
   async function dispatch(req) {
     const { path, method = "GET", body = {}, headers = {} } = req;
     if (method !== "GET" && headers.origin !== origin)
@@ -311,13 +330,27 @@ export function createApplication({
         photos: [], // Media metadata and bytes require a registered guest or administrator.
       };
     }
-    if (path === "/api/auth/google" && method === "POST") {
+    if (path === "/api/auth/admin-email/request" && method === "POST")
+      return adminEmail.request(body);
+    if (
+      ["/api/auth/google", "/api/auth/admin-email/verify"].includes(path) &&
+      method === "POST"
+    ) {
       await rateLimit(ledger, "google-login", 60, 900000, now());
-      const identity = await verifyGoogle(safeText(body.credential, 10000)),
+      const identity =
+          path === "/api/auth/google"
+            ? await verifyGoogle(safeText(body.credential, 10000))
+            : await adminEmail.consume(body.token),
         challenge = token();
       const result = await ledger.transaction((s) => {
         for (const [id, c] of Object.entries(s.challenges))
           if (c.expiresAt <= now()) delete s.challenges[id];
+        if (!identity.accountId) {
+          const existing = Object.entries(s.admins).find(
+            ([, a]) => a.email === identity.email,
+          );
+          if (existing) identity.id = existing[0];
+        }
         const secret = newMfaSecret();
         const admin = s.admins[identity.id];
         s.challenges[hash(challenge)] = {
@@ -517,6 +550,9 @@ export function createApplication({
         page,
         ...(page === "gifts"
           ? { registries: siteSettings(ctx.state).registries }
+          : {}),
+        ...(["costs", "padrinos"].includes(page)
+          ? { planning: Object.values(ctx.state.planning?.[page] || {}) }
           : {}),
         content: ctx.state.privatePages?.[page] || {
           en: "",
@@ -849,6 +885,11 @@ export function createApplication({
             ))
         )
           throw error(422, "INVALID_ID");
+      if (
+        path.startsWith("/api/admin/planning") ||
+        path.startsWith("/api/admin/documents")
+      )
+        return planning(req, session);
       if (path === "/api/admin/site" && method === "GET")
         return { site: siteSettings(ctx.state) };
       if (path === "/api/admin/site" && method === "POST") {
@@ -953,6 +994,7 @@ export function createApplication({
         return {
           guests: rows.map((row) => ({
             ...row,
+            displayName: recipientName(row),
             ...(s.invitations[row.id]
               ? {
                   active: s.invitations[row.id].active,
@@ -1206,6 +1248,101 @@ export function createApplication({
           return { id };
         });
       }
+      if (path === "/api/admin/audience" && method === "GET") {
+        const rows = (await notion.list()).filter(
+          (r) => !r.archived && ctx.state.invitations[r.id]?.active !== false,
+        );
+        return {
+          groups: [
+            ...new Set(rows.flatMap((r) => r.distributionGroups || [])),
+          ].sort(),
+          recipients: rows
+            .filter((r) => validEmail(r.email))
+            .map((r) => ({
+              id: r.id,
+              name: recipientName(r),
+              email: r.email,
+              groups: r.distributionGroups || [],
+            }))
+            .sort((a, b) => a.name.localeCompare(b.name)),
+        };
+      }
+      if (path === "/api/admin/mail/batch-draft" && method === "POST") {
+        if (!uuid(body.requestId)) throw error(422, "IDEMPOTENCY_REQUIRED");
+        const subject = safeText(body.subject, 140),
+          text = safeText(body.text, 5000),
+          channel = body.channel || "email";
+        if (
+          !subject ||
+          !text ||
+          /[\r\n]/.test(subject) ||
+          !["email", "sms"].includes(channel)
+        )
+          throw error(422, "MESSAGE_REQUIRED");
+        const recipients = audience(
+          await notion.list(),
+          body,
+          await ledger.read(),
+          channel,
+        );
+        if (!recipients.length) throw error(422, "NO_ELIGIBLE_RECIPIENTS");
+        const fingerprint = hash(
+          JSON.stringify({
+            groups: body.groups,
+            ids: body.ids,
+            subject,
+            text,
+            channel,
+          }),
+        );
+        return ledger.transaction((s) => {
+          s.campaigns ??= {};
+          if (s.campaigns[body.requestId]) {
+            if (s.campaigns[body.requestId].fingerprint !== fingerprint)
+              throw error(409, "SETTINGS_CHANGED");
+            return s.campaigns[body.requestId].result;
+          }
+          const ids = [];
+          s.smsDrafts ??= {};
+          for (const row of recipients) {
+            const id = randomUUID();
+            ids.push(id);
+            if (channel === "sms")
+              s.smsDrafts[id] = {
+                id,
+                to: row.destination,
+                name: row.displayName,
+                text,
+                state: "draft",
+                at: now(),
+              };
+            else
+              s.outbox[id] = {
+                id,
+                type: "custom",
+                householdId: row.id,
+                to: row.destination,
+                subject,
+                content: seal(
+                  `<p>${escapeHtml(text).replaceAll("\n", "<br>")}</p>`,
+                  key,
+                ),
+                state: "draft",
+                createdAt: now(),
+                groups: body.groups,
+                directlySelected: body.ids.includes(row.id),
+              };
+          }
+          const result = { ids, count: ids.length, channel };
+          s.campaigns[body.requestId] = { fingerprint, result };
+          return result;
+        });
+      }
+      if (path === "/api/admin/sms/drafts" && method === "GET")
+        return {
+          drafts: Object.values(ctx.state.smsDrafts || {}),
+          sendingEnabled: false,
+        };
       if (path === "/api/admin/mail/preview" && method === "GET") {
         const row = ctx.state.outbox[req.query?.id];
         if (!row) throw error(404, "NOT_FOUND");

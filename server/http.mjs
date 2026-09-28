@@ -57,7 +57,11 @@ export function createHttpServer({ app = null, root, origin }) {
             size += chunk.length;
             if (
               size >
-              (["/api/photos", "/api/videos"].includes(url.pathname)
+              ([
+                "/api/photos",
+                "/api/videos",
+                "/api/admin/documents/upload",
+              ].includes(url.pathname)
                 ? 12_000_000
                 : 120_000)
             )

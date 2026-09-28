@@ -47,6 +47,20 @@ if (env.EVENT_BUCKET) {
       sender: "misxv@simplysoph.com",
     }),
     verifyGoogle: googleVerifier(env.ADMIN_GOOGLE_CLIENT_ID, adminEmails),
+    documents: {
+      async put(id, bytes) {
+        await adapter.bucket.file("private/documents/" + id).save(bytes, {
+          resumable: false,
+          contentType: "application/octet-stream",
+          preconditionOpts: { ifGenerationMatch: 0 },
+        });
+      },
+      async get(id) {
+        return (
+          await adapter.bucket.file("private/documents/" + id).download()
+        )[0];
+      },
+    },
     media: {
       async put(id, bytes, kind = "photo") {
         await adapter.bucket
