@@ -213,10 +213,16 @@ export function createApplication({
       j.attemptAt = now();
       return structuredClone(j);
     });
+    let provider = null;
     let state = "accepted",
       code = null;
     try {
-      await mailer.send({ ...job, id, html: unseal(job.content, key) });
+      const result = await mailer.send({
+        ...job,
+        id,
+        html: unseal(job.content, key),
+      });
+      provider = result?.provider || null;
     } catch (e) {
       code = e.code;
       state = code === "MAIL_DELIVERY_UNKNOWN" ? "unknown" : "failed";
@@ -224,6 +230,7 @@ export function createApplication({
     await ledger.transaction((s) => {
       s.outbox[id].state = state;
       s.outbox[id].error = code;
+      s.outbox[id].provider = provider;
       s.outbox[id].finishedAt = now();
     });
     return { id, state };
@@ -1310,6 +1317,9 @@ export function createApplication({
             if (channel === "sms")
               s.smsDrafts[id] = {
                 id,
+                householdId: row.id,
+                groups: body.groups,
+                directlySelected: body.ids.includes(row.id),
                 to: row.destination,
                 name: row.displayName,
                 text,

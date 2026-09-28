@@ -24,7 +24,10 @@ test("Graph acceptance is recorded without claiming delivery; sender stays fixed
         : new Response(null, { status: 202 });
     },
   });
-  assert.deepEqual(await mail.send(message), { state: "accepted" });
+  assert.deepEqual(await mail.send(message), {
+    state: "accepted",
+    provider: "m365",
+  });
   assert.equal(calls.length, 2);
   assert.equal(
     calls[1].url,

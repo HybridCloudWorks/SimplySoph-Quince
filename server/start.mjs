@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { Ledger, cloudAdapter } from "./store.mjs";
 import { googleVerifier } from "./auth.mjs";
 import { notionClient } from "./notion.mjs";
-import { graphMailer } from "./mail.mjs";
+import { graphMailer, sendgridMailer, eventMailer } from "./mail.mjs";
 import { createApplication } from "./application.mjs";
 import { createHttpServer } from "./http.mjs";
 const env = process.env,
@@ -30,6 +30,12 @@ if (env.EVENT_BUCKET) {
     );
   if (!/^https:\/\/[^/]+$/.test(origin))
     throw new Error("HTTPS origin required");
+  if (
+    (env.MAIL_PROVIDER === "sendgrid" ||
+      env.SENDGRID_FALLBACK_ENABLED === "true") &&
+    !env.SENDGRID_API_KEY
+  )
+    throw new Error("SendGrid selected without SENDGRID_API_KEY");
   const adapter = cloudAdapter(env.EVENT_BUCKET),
     adminEmails = env.ADMIN_EMAILS.split(",").map((s) =>
       s.trim().toLowerCase(),
@@ -40,11 +46,19 @@ if (env.EVENT_BUCKET) {
       token: env.NOTION_TOKEN,
       sourceId: env.NOTION_SOURCE_ID,
     }),
-    mailer: graphMailer({
-      tenant: env.M365_TENANT_ID,
-      clientId: env.M365_CLIENT_ID,
-      clientSecret: env.M365_CLIENT_SECRET,
-      sender: "misxv@simplysoph.com",
+    mailer: eventMailer({
+      microsoft: graphMailer({
+        tenant: env.M365_TENANT_ID,
+        clientId: env.M365_CLIENT_ID,
+        clientSecret: env.M365_CLIENT_SECRET,
+        sender: "misxv@simplysoph.com",
+      }),
+      sendgrid: sendgridMailer({
+        apiKey: env.SENDGRID_API_KEY,
+        sender: "misxv@simplysoph.com",
+      }),
+      provider: env.MAIL_PROVIDER || "m365",
+      fallback: env.SENDGRID_FALLBACK_ENABLED === "true",
     }),
     verifyGoogle: googleVerifier(env.ADMIN_GOOGLE_CLIENT_ID, adminEmails),
     documents: {

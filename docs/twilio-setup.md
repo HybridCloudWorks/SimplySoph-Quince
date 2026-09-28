@@ -4,7 +4,7 @@ Prepared September 28, 2026. Owner will finish account/API setup in about 24 hou
 
 ## Current Status
 
-The website can prepare SMS drafts from selected Notion distribution groups/people with a phone, SMS consent/date and no opt-out. **It cannot send SMS.** No Twilio account, number, service, API key, Google secret or webhook was provisioned in this preparation step. There is no sending endpoint or live Twilio adapter yet. Adding credentials will not activate sending.
+The website can prepare SMS drafts from selected Notion distribution groups/people with a phone, SMS consent/date and no opt-out. **It cannot send SMS.** A tested server transport and webhook-signature validator are now implemented in `server/twilio.mjs`, with US/Canada phone-country validation, disabled-by-default sending and no retries on uncertain provider responses. They are not connected to production dispatch or HTTP callback routes yet. New drafts retain their household and audience selection for later fresh-consent checks. No Twilio account, number, service, API key, Google secret or webhook was provisioned in this preparation step. Adding credentials will not activate sending.
 
 Run `npm run sms:setup` to print an offline configuration checklist. It prints field names and presence/format status only, never credential values, and makes no network calls. A complete report is not proof of working credentials, verification or delivery. Do not paste values into terminal commands, chat or GitHub.
 
@@ -44,7 +44,7 @@ Example message, for registration/review only: “SimplySoph Mis XV: Please RSVP
 
 ## Activation Work After Credentials Are Ready
 
-- Implement a server-side Twilio transport and an admin/MFA-protected, reviewed send action. Persist a send attempt before dispatch, deduplicate overlapping audiences and never blindly retry a timeout or uncertain response. Provider acceptance is not delivery.
+- Connect the tested server-side Twilio transport to an admin/MFA-protected, reviewed send action. Persist a send attempt before dispatch, deduplicate overlapping audiences and never blindly retry a timeout or uncertain response. Provider acceptance is not delivery.
 - Keep sending off until sender approval, callback verification and acceptance tests pass. Preserve draft-only behavior when credentials are missing. Do not enable bulk sending merely because credentials exist.
 - Link SMS drafts to their Notion household/source selection. At dispatch, re-read the current phone, consent/date, group membership and opt-out; recheck access/revocation and deduplicate the final destination. Older drafts lacking this provenance must be regenerated.
 - Enforce US/Canada server-side and in Twilio Geo Permissions. A `+1` prefix alone is insufficient because it also covers other countries/territories. Use maintained phone-country metadata and fail closed for ambiguous destinations. Preview message segments and cost before sending.
