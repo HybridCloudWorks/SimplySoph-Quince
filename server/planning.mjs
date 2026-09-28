@@ -1,3 +1,4 @@
+import { planningSources } from "./planning-notion.mjs";
 import { randomUUID } from "node:crypto";
 import sharp from "sharp";
 import { error } from "./auth.mjs";
@@ -79,6 +80,12 @@ export function validatePlanning(kind, input) {
         throw error(422, "INVALID_FIELDS");
       row[k] = value.trim();
       if (
+        k === "quantity" &&
+        value &&
+        (!/^\d+(\.\d+)?$/.test(value) || Number(value) > 10000000)
+      )
+        throw error(422, "INVALID_QUANTITY");
+      if (
         dates.has(k) &&
         value &&
         (!/^\d{4}-\d{2}-\d{2}$/.test(value) ||
@@ -142,6 +149,65 @@ export async function validateDocument(body) {
   return { name: savedName, bytes, type };
 }
 export function createPlanning({ ledger, documents, notion, now }) {
+  async function sync(kind, id) {
+    const lock = randomUUID();
+    const claimed = await ledger.transaction((s) => {
+      const row = s.planning?.[kind]?.[id];
+      if (!row) throw error(404, "NOT_FOUND");
+      if (row.sync?.status === "synced" || !row.sync) return null;
+      if (row.sync.lockUntil > now()) throw error(409, "PLANNING_SYNC_BUSY");
+      row.sync = {
+        ...row.sync,
+        status: "syncing",
+        lock,
+        lockUntil: now() + 300000,
+      };
+      return structuredClone(row);
+    });
+    if (!claimed) return { row: (await ledger.read()).planning[kind][id] };
+    try {
+      const notionId = await notion.writePlanning(
+        kind,
+        planningSources[kind],
+        claimed,
+        claimed.sync.fields,
+        async () => {
+          await ledger.transaction((s) => {
+            const r = s.planning[kind][id];
+            if (r.sync.lock !== lock) throw error(409, "PLANNING_SYNC_BUSY");
+            r.sync.createAttempted = true;
+          });
+        },
+      );
+      await ledger.transaction((s) => {
+        const row = s.planning[kind][id];
+        if (row.sync.lock === lock) {
+          row.notionId = notionId;
+          row.sync = { status: "synced", at: now() };
+        }
+      });
+    } catch (e) {
+      await ledger.transaction((s) => {
+        const row = s.planning[kind][id];
+        if (row.sync.lock === lock)
+          row.sync = {
+            ...row.sync,
+            status: "pending",
+            lock: null,
+            lockUntil: 0,
+            error: [
+              "NOTION_CREATE_UNCERTAIN",
+              "NOTION_RECORD_UNAVAILABLE",
+              "PLANNING_SCHEMA_CONFLICT",
+              "NOTION_DUPLICATE_RECORD",
+            ].includes(e.code)
+              ? e.code
+              : "NOTION_SYNC_PENDING",
+          };
+      });
+    }
+    return { row: (await ledger.read()).planning[kind][id] };
+  }
   return async function handle(req, session) {
     const { path, method = "GET", body = {}, query = {} } = req;
     const kind = body.kind || query.kind;
@@ -151,25 +217,31 @@ export function createPlanning({ ledger, documents, notion, now }) {
       const s = await ledger.read();
       return {
         rows: Object.values(s.planning?.[kind] || {}),
-        sourceId:
-          s.planningSources?.[kind] ||
-          {
-            costs: "5dbd1b32-9191-484b-85db-7b1d4663192e",
-            padrinos: "8ad6b9ac-f2a4-4ee2-a9b6-958c41f7ecca",
-          }[kind],
+        sourceId: s.planningSources?.[kind] || planningSources[kind],
         syncAt: s.planningSync?.[kind] || null,
       };
     }
     if (path === "/api/admin/planning" && method === "POST") {
       const fields = validatePlanning(kind, body.row || {});
-      return ledger.transaction((s) => {
+      if (body.createId && !/^[a-f0-9-]{36}$/.test(body.createId))
+        throw error(422, "INVALID_ID");
+      const saved = await ledger.transaction((s) => {
         s.planning ??= {};
         s.planning[kind] ??= {};
-        const id = body.id || randomUUID(),
+        const id = body.id || body.createId || randomUUID(),
           previous = s.planning[kind][id];
         if (body.id && !previous) throw error(404, "NOT_FOUND");
+        if (body.createId && previous) return { row: previous };
         if (previous && previous.version !== body.version)
           throw error(409, "SETTINGS_CHANGED");
+        if (previous?.sync && previous.sync.status !== "synced")
+          throw error(409, "PLANNING_SYNC_PENDING");
+        const changed = planningFields[kind].filter(
+          (k) =>
+            !previous ||
+            JSON.stringify(previous[k] ?? "") !==
+              JSON.stringify(fields[k] ?? ""),
+        );
         const row = {
           ...previous,
           ...fields,
@@ -178,11 +250,15 @@ export function createPlanning({ ledger, documents, notion, now }) {
           updatedAt: now(),
           updatedBy: session.email,
           locallyEdited: true,
+          sync: { status: "pending", fields: changed },
         };
         s.planning[kind][id] = row;
         return { row };
       });
+      return sync(kind, saved.row.id);
     }
+    if (path === "/api/admin/planning/sync" && method === "POST")
+      return sync(kind, body.id);
     if (path === "/api/admin/planning/import" && method === "POST") {
       if (
         typeof body.sourceId !== "string" ||
@@ -192,6 +268,8 @@ export function createPlanning({ ledger, documents, notion, now }) {
       const sourceId = body.sourceId
         .replaceAll("-", "")
         .replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, "$1-$2-$3-$4-$5");
+      if (sourceId !== planningSources[kind])
+        throw error(403, "WRONG_DATA_SOURCE");
       const imported = await notion.planning(kind, sourceId);
       const checked = imported.map((r) => ({
         ...r,
@@ -207,7 +285,9 @@ export function createPlanning({ ledger, documents, notion, now }) {
         for (const r of checked) {
           // Never overwrite organizer edits during a repeat import.
           if (
-            Object.values(s.planning[kind]).some((x) => x.notionId === r.id)
+            Object.values(s.planning[kind]).some(
+              (x) => x.notionId === r.id || x.id === r.websiteId,
+            )
           ) {
             skipped++;
             continue;

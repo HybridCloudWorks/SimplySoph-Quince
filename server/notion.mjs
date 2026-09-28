@@ -1,3 +1,4 @@
+import { planningNotion } from "./planning-notion.mjs";
 import { planningFields } from "./planning.mjs";
 import { error } from "./auth.mjs";
 const version = "2025-09-03";
@@ -89,6 +90,7 @@ export function notionClient({ token, sourceId, fetchImpl = fetch }) {
     return r.json();
   }
   return {
+    ...planningNotion(call),
     async planning(kind, id) {
       const aliases = {
         item: ["Item", "Name", "Expense"],
@@ -107,7 +109,7 @@ export function notionClient({ token, sourceId, fetchImpl = fetch }) {
         deposit: ["Deposit"],
         additionalPaid: ["Additional Paid", "Amount paid"],
         dueDate: ["Due Date", "Payment due"],
-        status: ["Status"],
+        status: ["Website Status", "Status"],
         notes: ["Notes"],
         firstName: ["First Name"],
         lastName: ["Last Name"],
@@ -148,7 +150,17 @@ export function notionClient({ token, sourceId, fetchImpl = fetch }) {
                   p?.status?.name ??
                   text(p));
           }
-          rows.push({ id: page.id, fields });
+          if (
+            kind === "costs" &&
+            page.properties["Additional Paid"]?.number == null
+          )
+            fields.additionalPaid =
+              page.properties["Amount paid"]?.number ?? "";
+          rows.push({
+            id: page.id,
+            websiteId: text(page.properties["Website Record ID"]),
+            fields,
+          });
         }
         if (rows.length > 1000) throw error(422, "PLANNING_LIMIT");
         cursor = r.has_more ? r.next_cursor : null;

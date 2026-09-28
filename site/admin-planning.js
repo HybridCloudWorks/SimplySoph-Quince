@@ -40,20 +40,20 @@ const dollars = (n) =>
   );
 export async function planningEditor(root) {
   root.innerHTML =
-    '<p>Track expenses and godparent arrangements here. Import adds new Notion records; it never overwrites website edits. Amounts are in USD. Document access is administrator-only.</p><div class="row-actions"><button class="button burgundy" data-kind="costs">Accounting</button><button class="button burgundy" data-kind="padrinos">Godparents</button></div><div id="planning-grid"></div>';
+    '<p>Track expenses and godparent arrangements here. Website saves update Notion. Pending syncs remain saved here and can be retried. Import adds new Notion records. Amounts are in USD. Document access is administrator-only.</p><div class="row-actions"><button class="button burgundy" data-kind="costs">Accounting</button><button class="button burgundy" data-kind="padrinos">Godparents</button></div><div id="planning-grid"></div>';
   const grid = root.querySelector("#planning-grid");
   async function draw(kind) {
     const data = await api("admin/planning?kind=" + kind),
       rows = data.rows;
     const amount = (key) => rows.reduce((sum, r) => sum + (r[key] || 0), 0);
-    grid.innerHTML = `<h2>${kind === "costs" ? "Accounting" : "Godparents"}</h2>${kind === "costs" ? `<div class="cards"><div class="card"><h3>Estimated Costs</h3><p class="stat">${dollars(amount("estimated"))}</p><h3>Final Costs</h3><p class="stat">${dollars(amount("finalCost"))}</p></div><div class="card"><h3>Paid</h3><p class="stat">${dollars(amount("deposit") + amount("additionalPaid"))}</p></div><div class="card"><h3>Balance Due</h3><p class="stat">${dollars(rows.reduce((s, r) => s + (r.finalCost == null ? 0 : r.finalCost - (r.deposit || 0) - (r.additionalPaid || 0)), 0))}</p><p>Only confirmed final costs are included.</p></div></div>` : ""}<details><summary>Import From Notion</summary><p>Share the corresponding database with the SimplySoph Mis XV Website connection, then enter its data source ID. Existing rows are skipped. Website edits are saved here; this is an import, not two-way synchronization.</p><form id="planning-import">${field("Notion Data Source ID", "sourceId", { value: data.sourceId, max: 36, required: true })}<p class="error" role="alert"></p><button type="submit" class="button burgundy">Import New Rows</button></form></details><div class="row-actions"><button id="new-record" class="button burgundy">Add ${kind === "costs" ? "Expense" : "Godparent"}</button></div><div class="table-wrap"><table class="planning-table"><thead><tr>${fields[
+    grid.innerHTML = `<h2>${kind === "costs" ? "Accounting" : "Godparents"}</h2>${kind === "costs" ? `<div class="cards"><div class="card"><h3>Estimated Costs</h3><p class="stat">${dollars(amount("estimated"))}</p><h3>Final Costs</h3><p class="stat">${dollars(amount("finalCost"))}</p></div><div class="card"><h3>Paid</h3><p class="stat">${dollars(amount("deposit") + amount("additionalPaid"))}</p></div><div class="card"><h3>Balance Due</h3><p class="stat">${dollars(rows.reduce((s, r) => s + (r.finalCost == null ? 0 : r.finalCost - (r.deposit || 0) - (r.additionalPaid || 0)), 0))}</p><p>Only confirmed final costs are included.</p></div></div>` : ""}<details><summary>Import From Notion</summary><p>Import new rows from the connected Notion database. Existing rows are skipped. Website edits update the linked Notion row. Direct edits made in Notion are not automatically imported into existing website rows.</p><form id="planning-import"><p class="error" role="alert"></p><button type="submit" class="button burgundy">Import New Rows</button></form></details><div class="row-actions"><button id="new-record" class="button burgundy">Add ${kind === "costs" ? "Expense" : "Godparent"}</button></div><div class="table-wrap"><table class="planning-table"><thead><tr>${fields[
       kind
     ]
       .filter(([k]) => k !== "notes")
       .map(([, label]) => `<th>${label}</th>`)
       .join(
         "",
-      )}${kind === "costs" ? "<th>Balance Due</th>" : ""}<th>Actions</th></tr></thead><tbody>${
+      )}${kind === "costs" ? "<th>Balance Due</th>" : ""}<th>Notion Sync</th><th>Actions</th></tr></thead><tbody>${
       rows
         .map(
           (r) =>
@@ -65,7 +65,7 @@ export async function planningEditor(root) {
               )
               .join(
                 "",
-              )}${kind === "costs" ? `<td class="money">${r.finalCost == null ? "—" : dollars(r.finalCost - (r.deposit || 0) - (r.additionalPaid || 0))}</td>` : ""}<td><div class="table-actions"><button class="plain-button" data-edit="${r.id}">Edit</button><a target="_blank" rel="noopener" aria-label="Documents For ${esc(r.item || r.name)}" href="/admin/documents/?kind=${kind}&rowId=${r.id}">📄 Documents</a></div></td></tr>`,
+              )}${kind === "costs" ? `<td class="money">${r.finalCost == null ? "—" : dollars(r.finalCost - (r.deposit || 0) - (r.additionalPaid || 0))}</td>` : ""}<td>${r.sync?.status === "synced" ? "Synced" : r.sync ? `<span>${r.sync.status === "syncing" ? "Syncing" : "Pending"}</span><p>${r.sync.error === "NOTION_CREATE_UNCERTAIN" ? "Checking for an existing Notion record; no duplicate will be created." : r.sync.error === "NOTION_RECORD_UNAVAILABLE" ? "The linked Notion record is unavailable." : r.sync.error === "PLANNING_SCHEMA_CONFLICT" ? "The Notion columns need a configuration check." : ""}</p><button class="plain-button" data-sync="${r.id}">Retry Sync</button>` : "Imported"}</td><td><div class="table-actions"><button class="plain-button" data-edit="${r.id}">Edit</button><a target="_blank" rel="noopener" aria-label="Documents For ${esc(r.item || r.name)}" href="/admin/documents/?kind=${kind}&rowId=${r.id}">📄 Documents</a></div></td></tr>`,
         )
         .join("") ||
       `<tr><td colspan="16">No records yet. Add a record or import from Notion.</td></tr>`
@@ -73,7 +73,7 @@ export async function planningEditor(root) {
     submit(grid.querySelector("#planning-import"), async (f) => {
       const result = await api("admin/planning/import", {
         kind,
-        sourceId: f.get("sourceId"),
+        sourceId: data.sourceId,
       });
       await draw(kind);
       notify(
@@ -81,21 +81,47 @@ export async function planningEditor(root) {
       );
     });
     function edit(row = {}) {
-      const panel = grid.querySelector("#planning-edit");
+      const panel = grid.querySelector("#planning-edit"),
+        createId = crypto.randomUUID();
       panel.innerHTML = `<form class="card planning-editor"><h3 class="full">${row.id ? "Edit" : "Add"} ${kind === "costs" ? "Expense" : "Godparent"}</h3>${fields[kind].map(([key, label, type]) => (type === "checkbox" ? `<label class="check"><input type="checkbox" name="${key}" ${row[key] ? "checked" : ""}>${label}</label>` : key === "notes" ? `<label class="full">Notes<textarea name="notes" maxlength="4000">${esc(row.notes || "")}</textarea></label>` : `<label>${label}<input name="${key}" type="${type || "text"}" value="${esc(row[key] ?? "")}" ${type === "number" ? 'min="0" step="0.01"' : 'maxlength="250"'} ${["item", "name"].includes(key) ? "required" : ""}></label>`)).join("")}<div class="full"><p class="error" role="alert"></p><button type="submit" class="button burgundy">Save Record</button></div></form>`;
       submit(panel.querySelector("form"), async (f) => {
         const values = Object.fromEntries(f);
         if (kind === "padrinos") values.contacted = f.has("contacted");
-        await api("admin/planning", {
+        const saved = await api("admin/planning", {
           kind,
-          ...(row.id ? { id: row.id, version: row.version } : {}),
+          ...(row.id ? { id: row.id, version: row.version } : { createId }),
           row: values,
         });
         await draw(kind);
-        notify("Record Saved.");
+        notify(
+          saved.row.sync?.status === "synced"
+            ? "Saved And Synced To Notion."
+            : "Saved On Website. Notion Sync Pending; Use Retry Sync.",
+        );
       });
       panel.scrollIntoView({ block: "nearest" });
     }
+    grid.querySelectorAll("[data-sync]").forEach(
+      (b) =>
+        (b.onclick = async () => {
+          b.disabled = true;
+          try {
+            const result = await api("admin/planning/sync", {
+              kind,
+              id: b.dataset.sync,
+            });
+            await draw(kind);
+            notify(
+              result.row.sync?.status === "synced"
+                ? "Synced To Notion."
+                : "Notion Sync Still Pending.",
+            );
+          } catch (e) {
+            notify(e.message);
+            b.disabled = false;
+          }
+        }),
+    );
     grid.querySelector("#new-record").onclick = () => edit();
     grid
       .querySelectorAll("[data-edit]")
