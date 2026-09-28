@@ -42,7 +42,10 @@ export function audience(rows, selection, state, channel = "email") {
     if (channel === "sms") {
       try {
         smsDestination(destination);
-        smsAllowed = !state.smsSuppression?.[hash(destination)];
+        smsAllowed =
+          !state.smsSuppression?.[hash(destination)] &&
+          (!state.smsConsentPhones?.[r.id] ||
+            state.smsConsentPhones[r.id] === destination);
       } catch {}
     }
     const eligible =

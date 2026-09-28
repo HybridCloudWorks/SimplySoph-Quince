@@ -49,6 +49,8 @@ export function createSms({
       !Number.isFinite(Date.parse(row.smsConsentAt)) ||
       Date.parse(row.smsConsentAt) > now() ||
       destination(row) !== draft.to ||
+      (state.smsConsentPhones?.[row.id] &&
+        state.smsConsentPhones[row.id] !== draft.to) ||
       state.invitations[row.id]?.active === false ||
       (!draft.directlySelected &&
         !row.distributionGroups?.some((g) => draft.groups.includes(g)))
@@ -129,9 +131,13 @@ export function createSms({
         if (row.archived || row.phone?.replace(/[ ()-]/g, "") !== phone)
           continue;
         matched++;
-        if (preference?.type === "START")
+        if (preference?.type === "START") {
+          await ledger.transaction((s) => {
+            s.smsConsentPhones ??= {};
+            s.smsConsentPhones[row.id] = phone;
+          });
           await notion.projectSmsConsent(row.id, preference.at);
-        else await notion.projectSmsOptOut(row.id);
+        } else await notion.projectSmsOptOut(row.id);
       }
       await ledger.transaction((s) => {
         // Never let an older projection clear a newer STOP or pending opt-in.
