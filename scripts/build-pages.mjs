@@ -131,9 +131,7 @@ function contents(route, lang) {
       '</p><div data-videos class="media-grid"></div></section>' +
       link("share", say("Share photos & videos", "Comparte fotos y videos"));
   if (route === "share")
-    body = `<p class="lead">${say("Share the celebration through your eyes.", "Comparte la celebración desde tu mirada.")}</p><p>${say("Photos and videos are reviewed by the family before appearing in the gallery for registered guests. Use your private invitation to sign in.", "La familia revisa las fotos y los videos antes de mostrarlos a los invitados registrados. Inicia sesión con tu invitación privada.")}</p><div class="portal" id="portal" data-view="share"></div><a href="${href("terms", lang)}">${say("Media Policy", "Política de medios")}</a>`;
-  if (route === "share")
-    body += `<details class="card"><summary>${say("QR code for the tables", "Código QR para las mesas")}</summary><img src="/assets/photo-upload-qr.svg" width="240" height="240" alt="${say("Photo sharing page QR code", "Código QR para compartir fotos")}"><p>${say("Guests still need their private invitation to upload.", "Los invitados necesitan su invitación privada para subir fotos.")}</p><a href="/assets/photo-upload-qr.svg" download>${say("Download printable QR", "Descargar QR para imprimir")}</a></details>`;
+    body = `<div class="share-intro"><p class="lead">${say("Share the celebration through your eyes.", "Comparte la celebración desde tu mirada.")}</p><p>${say("Choose your favorite photos and videos. The family reviews every upload before sharing it in the guest gallery.", "Elige tus fotos y videos favoritos. La familia revisa cada archivo antes de compartirlo en la galería de invitados.")}</p></div><div class="portal share-portal" id="portal" data-view="share"></div><aside class="media-reminder"><strong>${say("A Little Reminder", "Un Pequeño Recordatorio")}</strong><p>${say("Only share media you have permission to upload, including permission from a parent or guardian for children. Approved uploads are visible to registered guests.", "Comparte solo archivos que tengas permiso de subir, incluido el permiso de un padre o tutor para los menores. Los archivos aprobados son visibles para los invitados registrados.")} <a href="${href("terms", lang)}">${say("Read the Media Policy", "Lee la Política de Medios")}</a></p></aside>`;
   if (route === "guestbook" || route === "contact")
     body = `<p class="lead">${route === "guestbook" ? say("Leave Sophia a wish for the years ahead.", "Deja a Sophia un deseo para los años que vienen.") : say("We’re here to help with your invitation.", "Estamos aquí para ayudarte con tu invitación.")}</p>${route === "contact" ? `<p><a href="mailto:${event.sender}">${event.sender}</a></p>` : ""}<div class="portal" id="portal" data-view="${route}"></div>${route === "guestbook" ? '<div data-guestbook class="cards"></div>' : ""}`;
   if (route === "faq")
@@ -300,6 +298,8 @@ for (const file of [
   "styles.css",
   "pages.css",
   "guest.js",
+  "media-upload.js",
+  "upload-batch.mjs",
   "admin.js",
   "client.js",
   "event-config.js",

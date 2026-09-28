@@ -86,6 +86,122 @@ body > main {
   border: 1px solid var(--line);
   margin: 28px auto;
 }
+/* Keep the sharing heading, form, results and reminder on one compact grid. */
+body[data-route="share"] .page {
+  max-width: 1040px;
+}
+body[data-route="share"] .page h1 {
+  font-size: clamp(2.4rem, 4.2vw, 3.6rem);
+}
+body[data-route="share"] .page-heading {
+  margin-bottom: 28px;
+}
+.share-intro .lead {
+  margin: 0 0 12px;
+}
+.share-portal {
+  max-width: none;
+  width: 100%;
+  margin: 24px 0 0;
+  padding: clamp(20px, 3vw, 30px);
+}
+.share-portal h2 {
+  margin: 0 0 12px;
+  font-size: 1.8rem;
+}
+.share-portal #upload-help {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.upload-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 20px;
+}
+.upload-fields label,
+.upload-fields input,
+.upload-fields select {
+  min-width: 0;
+}
+.upload-consent {
+  gap: 10px;
+  align-items: flex-start;
+  font-weight: 400;
+}
+.upload-consent input[type="checkbox"] {
+  flex: 0 0 auto;
+  margin: 5px 0 0;
+}
+.upload-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px 24px;
+  margin-top: 20px;
+}
+.upload-actions a {
+  padding-block: 10px;
+}
+#upload-results {
+  list-style: none;
+  padding: 0;
+  margin: 20px 0 0;
+}
+#upload-results:empty,
+#upload-summary:empty,
+#photo .error:empty {
+  display: none;
+}
+.upload-result {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+.upload-result small {
+  display: block;
+}
+.media-reminder {
+  padding: 20px 0 0;
+  margin-top: 24px;
+  border-top: 1px solid var(--line);
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.media-reminder p {
+  margin: 8px 0 0;
+}
+.table-qr {
+  max-width: 720px;
+  margin-bottom: 24px;
+  padding: 20px;
+}
+.table-qr-content {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  gap: 24px;
+  align-items: center;
+  padding-top: 16px;
+}
+.table-qr-content img {
+  width: 160px;
+  height: 160px;
+}
+@media (max-width: 600px) {
+  .upload-fields,
+  .upload-result,
+  .table-qr-content {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+  .share-portal input[type="file"] {
+    font-size: 0.8rem;
+  }
+}
 .deadline {
   padding: 15px 20px;
   background: #eee0c5;

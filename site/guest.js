@@ -1,3 +1,4 @@
+import { mediaUpload } from "./media-upload.js";
 import { experienceReady, eventContent } from "./experience.js";
 import {
   registryCards,
@@ -229,30 +230,7 @@ async function showPortal() {
     return;
   }
   if (view === "share") {
-    portal.innerHTML = `<form id="photo"><p>${tr("Photos: JPEG, PNG or WebP. Videos: MP4 or WebM, up to 60 seconds. Maximum 8 MB per file. Videos are prepared for web playback.", "Fotos: JPEG, PNG o WebP. Videos: MP4 o WebM, hasta 60 segundos. Máximo 8 MB por archivo. Los videos se preparan para reproducirse en la web.")}</p><label>${tr("Photo or video", "Foto o video")}<input type="file" name="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" required></label><label>${tr("Album", "Álbum")}<select name="album">${eventContent.albums.map((a) => `<option value="${esc(a.id)}"${a.id === "event" ? " selected" : ""}>${esc(es ? a.es : a.en)}</option>`).join("")}</select></label>${field(tr("Caption (optional)", "Descripción (opcional)"), "caption", { max: 200 })}<label class="check"><input type="checkbox" name="consent" required>${tr("I have permission from the people pictured and agree to the Media Policy.", "Tengo permiso de las personas fotografiadas y acepto la Política de medios.")}</label><p class="error" role="alert"></p><button type="submit" class="button burgundy">${tr("Submit for review", "Enviar para revisión")}</button></form>`;
-    submit(document.querySelector("#photo"), async (data) => {
-      const file = data.get("file");
-      if (file.size > 8 * 1024 * 1024)
-        throw new Error(
-          tr(
-            "Choose a file smaller than 8 MB.",
-            "Elige un archivo de menos de 8 MB.",
-          ),
-        );
-      const base64 = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result.split(",")[1]);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-      await api(file.type.startsWith("video/") ? "videos" : "photos", {
-        album: data.get("album"),
-        base64,
-        caption: data.get("caption"),
-        consent: data.has("consent"),
-      });
-      portal.innerHTML = `<p class="notice success">${tr("File received for family review. Only approved media is shared with registered guests.", "Archivo recibido para revisión. Solo los archivos aprobados se comparten con invitados registrados.")}</p>`;
-    });
+    mediaUpload(portal, eventContent.albums);
     return;
   }
   if (["contact", "guestbook"].includes(view)) {

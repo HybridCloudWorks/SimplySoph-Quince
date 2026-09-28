@@ -76,3 +76,11 @@ All 58 generated documents were reviewed at 2560×1440 and 390×844 with browser
 | /404.html | Passed | Passed |
 
 Populated admin views: admin, admin/guests, admin/access, admin/content, admin/site, admin/notifications, admin/seating, admin/photos, admin/guestbook, admin/updates. Registered guest views cover RSVP, confirmation, account, costs, padrinos, gifts, registry, share, contact, guestbook and gallery in both languages. Screenshots and machine-readable observations are retained in the local user-facing layout-review output folder, not published with the website.
+
+## Photo Sharing Review — September 28, 2026
+
+- English and Spanish sharing pages use one compact width for the heading, upload panel and media-policy reminder. Consent links to the policy without leaving the selected-file form.
+- Multi-select supports up to 10 photos/videos, submitted sequentially with per-file progress/results. Existing 8 MB/file and 20 submissions/household/day limits remain enforced by the service. Failed or uncertain files do not trigger automatic resubmission of successful files.
+- Table QR moved from the guest page to a collapsed, compact tool in authenticated Photo & Video Review. Printable SVG remains available.
+- Browser review used an isolated local ledger with synthetic files and no external mail/Notion calls. Two selected PNG files each returned a receipt and appeared pending in moderation. Desktop 1440 px and mobile 390 px views had no horizontal overflow; desktop heading, upload panel and reminder had identical left/right bounds. Spanish mobile and expanded admin QR were checked too.
+- Automated batch tests cover sequential dispatch, partial/uncertain failures without repeat sends, file type/size rejection, and selection limits. Full suite: 87 tests; all 59 generated documents and local assets pass.

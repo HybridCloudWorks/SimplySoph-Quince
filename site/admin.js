@@ -290,6 +290,11 @@ async function moderation() {
     photos = view === "admin/photos",
     rows = photos ? d.photos : d.messages;
   root.innerHTML = `<p>${photos ? "Photos and videos are visible only to registered guests after approval. Rejected items remain hidden." : "Contact messages always remain private. Guestbook messages require approval before publication."}</p><div class="cards">${rows.map((r) => `<article class="card">${photos ? `${r.kind === "video" ? `<video controls playsinline preload="metadata" src="/api/photo/${esc(r.id)}"></video>` : `<img src="/api/photo/${esc(r.id)}" alt="Pending photo">`}<p>${esc(r.caption)}</p>` : `<h3>${esc(r.name)}</h3><p>${esc(r.topic || "")}</p><p>${esc(r.email || "")}</p><p>${esc(r.text)}</p><span class="badge">${esc(r.kind)}</span>`}<p>Status: ${esc(r.state)}</p>${photos ? `<label>Album<select data-media-album="${esc(r.id)}">${(d.albums || []).map((a) => `<option value="${esc(a.id)}"${a.id === (r.album || "event") ? " selected" : ""}>${esc(a.en)}</option>`).join("")}</select></label>` : ""}<div class="row-actions">${r.kind !== "contact" ? button("Approve", "approve", r.id) : ""}${button("Remove from display", "reject", r.id)}</div></article>`).join("") || "<p>No submissions yet.</p>"}</div>`;
+  if (photos)
+    root.insertAdjacentHTML(
+      "afterbegin",
+      `<details class="card table-qr"><summary>Table Photo-Sharing QR Code</summary><div class="table-qr-content"><img src="/assets/photo-upload-qr.svg" width="160" height="160" alt="QR code to the photo sharing page"><div><p>Print this for the tables so guests can open the sharing page. Guests sign in with their invitation or registered email before uploading.</p><a class="button burgundy" href="/assets/photo-upload-qr.svg" download>Download Printable QR</a></div></div></details>`,
+    );
   if (!photos) {
     const cards = root.querySelectorAll(".cards > .card");
     rows.forEach((r, i) => {
