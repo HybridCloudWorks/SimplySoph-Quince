@@ -18,6 +18,9 @@ test('publisher preserves security headers and cannot select the protected defau
   assert.equal(config.headers[0].headers['X-Frame-Options'],'DENY');
   assert.match(config.headers[0].headers['Content-Security-Policy'],/default-src 'self'/);
   assert.equal(config.headers.at(-1).headers['X-Release-Commit'],env.GITHUB_SHA);
+  const apiHeaders = config.headers.filter(rule => rule.glob === '/api/**');
+  assert.equal(apiHeaders.at(-1).headers['Cache-Control'],'private, no-store');
+  assert.equal(apiHeaders.at(-1).headers.Vary,'Cookie');
   const bad = structuredClone(targets);
   bad.targets['simplysoph-66c78'].hosting.misxv=['simplysoph-66c78'];
   assert.throws(() => servingConfig(firebase,bad,env.GITHUB_SHA),/unexpected Hosting target/);
