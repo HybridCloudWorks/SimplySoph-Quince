@@ -4,6 +4,7 @@ import {
   albumCards,
   calendarLink,
   localTime,
+  timeRange,
   localDate,
   escapeHtml as esc,
 } from "./celebration.mjs";
@@ -94,9 +95,7 @@ export const experienceReady = (async () => {
       el.textContent = localDate(c.ceremony.start, lang);
     for (const el of document.querySelectorAll("[data-event-time]")) {
       const v = c[el.dataset.eventTime];
-      el.textContent =
-        localTime(v.start, lang) +
-        (v.end ? " – " + localTime(v.end, lang) : "");
+      el.textContent = timeRange(v, lang);
     }
   } catch {
     /* The checked-in event details remain available during service outages. */

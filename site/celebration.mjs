@@ -1,5 +1,5 @@
 export const celebration = {
-  version: 0,
+  version: 1,
   name: "Sophia Isabel",
   quote: {
     en: "Turning 15 is such a special moment in my life, and I can’t imagine celebrating it without the people who have helped shape who I am. This day is about my faith, my family, and the friendships that mean so much to me. Whether you’ve been by my side for years or become part of my story more recently, I’d be honored to have you there as I begin this new chapter.",
@@ -11,7 +11,7 @@ export const celebration = {
     address: "4100 Blue Mound Rd, Fort Worth, TX 76106",
     image: "/assets/church.png",
     start: "2027-01-15T16:00:00-06:00",
-    end: null,
+    end: "2027-01-15T17:00:00-06:00",
     notes: {
       en: "Please silence your phone and follow the church’s guidance during the ceremony. Parking and arrival details will be shared here.",
       es: "Silencia tu teléfono y sigue las indicaciones de la iglesia durante la ceremonia. Compartiremos aquí los detalles de llegada y estacionamiento.",
@@ -22,7 +22,7 @@ export const celebration = {
     address: "5103 Azle Ave, Unit 200, Fort Worth, TX 76114",
     image: "/assets/reception.png",
     start: "2027-01-15T19:30:00-06:00",
-    end: null,
+    end: "2027-01-16T00:00:00-06:00",
     notes: {
       en: "Dinner and the reception take place at the same venue. Entrance, parking and accessibility details will be shared here.",
       es: "La cena y la recepción serán en el mismo lugar. Compartiremos los detalles de entrada, estacionamiento y accesibilidad.",
@@ -106,6 +106,21 @@ export const localDate = (value, lang = "en") =>
     month: "long",
     day: "numeric",
   }).format(new Date(value));
+export function timeRange(item, lang = "en") {
+  if (!item.end) return localTime(item.start, lang);
+  const next = localDate(item.start, lang) !== localDate(item.end, lang);
+  const day = new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", {
+    timeZone: "America/Chicago",
+    month: "short",
+    day: "numeric",
+  }).format(new Date(item.end));
+  return (
+    localTime(item.start, lang) +
+    " – " +
+    localTime(item.end, lang) +
+    (next ? " (" + day + ")" : "")
+  );
+}
 export function maps(address, lang = "en") {
   const q = encodeURIComponent(address),
     e = escapeHtml;
@@ -122,7 +137,7 @@ export function venueSection(kind, c = celebration, lang = "en", live = false) {
   const v = c[kind],
     e = escapeHtml;
   const image = `<figure class="venue-image"><img src="${e(v.image)}" width="980" height="650" alt="${e(v.name)}" loading="lazy"><figcaption>${e(v.name)}</figcaption></figure>`;
-  const details = `<article class="venue-details"><p class="eyebrow">${e(localDate(v.start, lang))}</p><h2>${e(v.name)}</h2><address>${e(v.address)}</address>${kind === "reception" ? `<dl class="venue-schedule"><dt>${label("Dinner", "Cena", lang)}</dt><dd>${e(localTime(c.dinner.start, lang))} – ${e(localTime(c.dinner.end, lang))}</dd><dt>${label("Reception & dance", "Recepción y baile", lang)}</dt><dd>${e(localTime(v.start, lang))}${v.end ? " – " + e(localTime(v.end, lang)) : ""}</dd></dl>` : `<p class="lead">${e(localTime(v.start, lang))}${v.end ? " – " + e(localTime(v.end, lang)) : ""}</p>`}${maps(v.address, lang)}<p>${e(v.notes[lang])}</p><div class="calendar-actions">${kind === "reception" ? `<div><strong>${label("Dinner", "Cena", lang)}</strong>${calendarLink("dinner", c, lang, live)}</div>` : ""}<div><strong>${label(kind === "ceremony" ? "Ceremony" : "Reception", kind === "ceremony" ? "Ceremonia" : "Recepción", lang)}</strong>${calendarLink(kind, c, lang, live)}</div></div></article>`;
+  const details = `<article class="venue-details"><p class="eyebrow">${e(localDate(v.start, lang))}</p><h2>${e(v.name)}</h2><address>${e(v.address)}</address>${kind === "reception" ? `<dl class="venue-schedule"><dt>${label("Dinner", "Cena", lang)}</dt><dd>${e(localTime(c.dinner.start, lang))} – ${e(localTime(c.dinner.end, lang))}</dd><dt>${label("Reception & dance", "Recepción y baile", lang)}</dt><dd>${e(timeRange(v, lang))}</dd></dl>` : `<p class="lead">${e(localTime(v.start, lang))}${v.end ? " – " + e(localTime(v.end, lang)) : ""}</p>`}${maps(v.address, lang)}<p>${e(v.notes[lang])}</p><div class="calendar-actions">${kind === "reception" ? `<div><strong>${label("Dinner", "Cena", lang)}</strong>${calendarLink("dinner", c, lang, live)}</div>` : ""}<div><strong>${label(kind === "ceremony" ? "Ceremony" : "Reception", kind === "ceremony" ? "Ceremonia" : "Recepción", lang)}</strong>${calendarLink(kind, c, lang, live)}</div></div></article>`;
   return `<div class="venue-layout">${kind === "ceremony" ? image + details : details + image}</div>`;
 }
 export function albumCards(c = celebration, lang = "en") {

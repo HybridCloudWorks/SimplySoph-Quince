@@ -1,6 +1,7 @@
 import { policies } from "../site/policies.mjs";
 import {
   celebration,
+  timeRange,
   venueSection,
   albumCards,
   calendar,
@@ -91,7 +92,7 @@ function contents(route, lang) {
     ]
       .map(
         ([r, time, label], i) =>
-          `<article class="card"><p class="eyebrow" data-event-time="${["ceremony", "dinner", "reception"][i]}">${time}</p><h2>${label}</h2><a href="${href(r, lang)}">${say("Venue details", "Detalles del lugar")} ↗</a></article>`,
+          `<article class="card"><p class="eyebrow" data-event-time="${["ceremony", "dinner", "reception"][i]}">${timeRange(celebration[["ceremony", "dinner", "reception"][i]], lang)}</p><h2>${label}</h2><a href="${href(r, lang)}">${say("Venue details", "Detalles del lugar")} ↗</a></article>`,
       )
       .join(
         "",

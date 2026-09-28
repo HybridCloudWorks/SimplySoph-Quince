@@ -10,8 +10,8 @@ import { validateSettings } from "../server/site-settings.mjs";
 import { normalizeVideo, mediaResponse } from "../server/video.mjs";
 test("separate calendars preserve Central-time instants, addresses and unique event identity", () => {
   const c = structuredClone(celebration);
-  c.ceremony.end = "2027-01-15T17:00:00-06:00";
-  c.reception.end = "2027-01-16T00:00:00-06:00";
+  assert.equal(c.ceremony.end, "2027-01-15T17:00:00-06:00");
+  assert.equal(c.reception.end, "2027-01-16T00:00:00-06:00");
   for (const kind of ["ceremony", "dinner", "reception"]) {
     const data = calendar(kind, c);
     assert.match(data, /SUMMARY:Sophia Isabel/);
@@ -28,8 +28,9 @@ test("separate calendars preserve Central-time instants, addresses and unique ev
   }
   assert.match(calendar("dinner", c), /DTSTART:20270116T003000Z/);
   assert.match(calendar("reception", c), /DTEND:20270116T060000Z/);
-  assert.throws(() => calendar("ceremony"), /Confirmed end/);
-  assert.ok(!calendarLink("ceremony").includes("href="));
+  c.ceremony.end = null;
+  assert.throws(() => calendar("ceremony", c), /Confirmed end/);
+  assert.ok(!calendarLink("ceremony", c).includes("href="));
 });
 test("calendar injection is escaped and maps use the full encoded address", () => {
   const c = structuredClone(celebration);

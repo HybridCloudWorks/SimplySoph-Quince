@@ -675,8 +675,9 @@ test("site settings require admin, prevent stale saves, and keep registry detail
   );
   site.registries[0].url = "https://www.target.com/gift-registry/example";
   site.ceremony.end = "2027-01-15T17:00:00-06:00";
+  site.reception.end = null;
   const saved = await f.admin("site", site);
-  assert.equal(saved.site.version, 1);
+  assert.equal(saved.site.version, site.version + 1);
   await assert.rejects(
     () => f.admin("site", site),
     (e) => e.code === "SETTINGS_CHANGED",
@@ -779,5 +780,28 @@ test("video uploads are normalized before storage, moderated, album-aware, and a
   await assert.rejects(
     () => f.verified("photo/" + row.id),
     (e) => e.code === "SIGN_IN_REQUIRED",
+  );
+});
+
+test("approved Target destination is available only with registry permission", async () => {
+  const f = await registeredFixture();
+  await assert.rejects(
+    () => f.verified("pages/gifts"),
+    (e) => e.code === "PAGE_NOT_ALLOWED",
+  );
+  await f.admin("accounts", {
+    id: f.account.id,
+    version:f.account.version,
+    active: true,
+    permissions: ["gifts"],
+  });
+  const result = await f.verified("pages/gifts");
+  assert.equal(
+    result.registries[0].url,
+    "https://www.target.com/gift-registry/gift/quincenera",
+  );
+  assert.equal(
+    (await f.app.dispatch({ path: "/api/site" })).site.registries,
+    undefined,
   );
 });

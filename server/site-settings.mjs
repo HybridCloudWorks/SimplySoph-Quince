@@ -1,7 +1,10 @@
 import { celebration } from "../site/celebration.mjs";
+import { registryDefaults } from "./registry-settings.mjs";
 import { error } from "./auth.mjs";
 export const siteSettings = (state) =>
-  structuredClone(state.site || celebration);
+  structuredClone(
+    state.site || { ...celebration, registries: registryDefaults },
+  );
 export function validateSettings(input) {
   const bad = () => {
     throw error(422, "INVALID_SITE_SETTINGS");
