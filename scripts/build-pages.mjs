@@ -1,3 +1,11 @@
+import { policies } from "../site/policies.mjs";
+import {
+  celebration,
+  venueSection,
+  albumCards,
+  calendar,
+  calendarLink,
+} from "../site/celebration.mjs";
 import { mkdir, writeFile, copyFile, rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -32,7 +40,7 @@ function contents(route, lang) {
     link = (r, label) =>
       `<a class="button burgundy" href="${href(r, lang)}">${label}</a>`;
   if (route === "")
-    return `<section class="hero"><div class="hero-copy"><p class="eyebrow">MIS XV · FORT WORTH</p><h1>Sophia</h1><p class="hero-line">${t.tagline}</p><p class="date">${t.date}</p><p>${t.intro}</p><div class="actions">${link("rsvp", t.rsvp)}<a href="${href("details", lang)}">${t.all} ↗</a></div><div class="countdown" data-countdown aria-label="${say("Days until the celebration", "Días hasta la celebración")}"></div></div><figure class="invitation"><a href="/assets/invitation.png" aria-label="${t.invitationCaption}"><img src="/assets/invitation.png" width="1024" height="1536" alt="${say("Sophia’s gold and burgundy invitation", "Invitación de Sophia en dorado y borgoña")}"></a><figcaption><a href="/assets/invitation.png">${t.invitationCaption}</a></figcaption></figure></section><section class="section"><p class="eyebrow">${say("THE NEXT CHAPTER", "EL PRÓXIMO CAPÍTULO")}</p><h2>${say("A day made for memories.", "Un día para crear recuerdos.")}</h2><div class="cards">${[
+    return `<section class="hero"><div class="hero-copy"><p class="eyebrow">Mis Quinceañera</p><h1>Sophia</h1><p class="hero-line">${t.tagline}</p><p class="date" data-event-date>${t.date}</p><blockquote class="sophia-quote" data-home-quote><p>“${esc(celebration.quote[lang])}”</p><cite>— ${esc(celebration.name)}</cite></blockquote><div class="actions">${link("rsvp", t.rsvp)}<a href="${href("details", lang)}">${t.all} ↗</a></div><div class="countdown" data-countdown data-start="${celebration.countdownAt}" aria-label="${say("Days until the celebration", "Días hasta la celebración")}"></div></div><figure class="invitation"><a href="/assets/invitation.png" aria-label="${t.invitationCaption}"><img src="/assets/invitation.png" width="1024" height="1536" alt="${say("Sophia’s gold and burgundy invitation", "Invitación de Sophia en dorado y borgoña")}"></a><figcaption><a href="/assets/invitation.png">${t.invitationCaption}</a></figcaption></figure></section><section class="section"><p class="eyebrow">${say("THE NEXT CHAPTER", "EL PRÓXIMO CAPÍTULO")}</p><h2>${say("A day made for memories.", "Un día para crear recuerdos.")}</h2><div class="cards home-cards">${[
       ["sophia", say("Meet Sophia", "Conoce a Sophia")],
       ["details", t.details],
       ["gallery", say("The moments", "Los momentos")],
@@ -43,7 +51,7 @@ function contents(route, lang) {
       )
       .join("")}</div><div data-announcements></div></section>`;
   const heading = `<div class="page-heading"><p class="eyebrow">SOPHIA · MIS XV</p><h1>${routes.find((r) => r[0] === route)?.[es ? 2 : 1] || "Sophia"}</h1></div>`;
-  if (["gifts", "padrinos", "costs", "account"].includes(route))
+  if (["gifts", "registry", "padrinos", "costs", "account"].includes(route))
     return `<section class="page section">${heading}<div class="portal" id="portal" data-view="${route}"><p role="status">${t.loading}</p></div></section>`;
   let body = "";
   if (textContent[route]) {
@@ -72,32 +80,53 @@ function contents(route, lang) {
   if (route === "thank-you" && family.highlightVideo)
     body += `<p><a class="button burgundy" href="${safeLink(family.highlightVideo)}" target="_blank" rel="noopener noreferrer">${say("Watch the highlights", "Ver los mejores momentos")}</a></p>`;
   if (route === "details")
-    body = `<p class="lead">${t.date}</p><p>${t.time}</p><div class="cards">${[
+    body = `<p class="lead" data-event-date>${t.date}</p><p>${t.time}</p><div class="cards">${[
       ["ceremony", "4:00 PM", say("Religious ceremony", "Ceremonia religiosa")],
       [
         "reception",
         "6:30–7:30 PM",
-        say("Dinner · location to be confirmed", "Cena · lugar por confirmar"),
+        say("Dinner at The AMZ Event Center", "Cena en The AMZ Event Center"),
       ],
       ["reception", "7:30 PM", say("Reception & dance", "Recepción y baile")],
     ]
       .map(
-        ([r, time, label]) =>
-          `<article class="card"><p class="eyebrow">${time}</p><h2>${label}</h2><a href="${href(r, lang)}">${say("Venue details", "Detalles del lugar")} ↗</a></article>`,
+        ([r, time, label], i) =>
+          `<article class="card"><p class="eyebrow" data-event-time="${["ceremony", "dinner", "reception"][i]}">${time}</p><h2>${label}</h2><a href="${href(r, lang)}">${say("Venue details", "Detalles del lugar")} ↗</a></article>`,
       )
       .join(
         "",
-      )}</div><div class="editorial"><h2>${say("Dress code", "Código de vestimenta")}</h2><p>${t.pending} ${say("Burgundy and gold are the site theme, not a required outfit.", "Borgoña y dorado son los colores del sitio, no una vestimenta obligatoria.")}</p><a href="/sophia-mis-xv.ics" download>${say("Save the date to your calendar", "Guarda la fecha en tu calendario")}</a></div>`;
-  if (route === "ceremony")
-    body = `<div class="editorial"><p class="eyebrow">4:00 PM · ${t.date}</p><h2>${say("A moment of faith", "Un momento de fe")}</h2><p>Lady of Guadalupe Church</p><p>${say("The exact church name, address, arrival time, parking and photography guidance are being confirmed. Directions will appear here once verified.", "Estamos confirmando el nombre exacto de la iglesia, la dirección, la hora de llegada, el estacionamiento y las indicaciones para fotografías. Publicaremos las indicaciones cuando estén verificadas.")}</p>${link("details", t.details)}</div>`;
-  if (route === "reception")
-    body = `<div class="split"><article><p class="eyebrow">${say("RECEPTION & DANCE · 7:30 PM", "RECEPCIÓN Y BAILE · 7:30 PM")}</p><h2>AMZ Event Center</h2><address>5103 Azle Ave, Unit 200<br>Fort Worth, TX 76114</address><a class="button burgundy" href="https://www.google.com/maps/search/?api=1&query=AMZ%20Event%20Center%205103%20Azle%20Ave%20Fort%20Worth%20TX%2076114" target="_blank" rel="noopener noreferrer">${say("Open map", "Abrir mapa")} ↗</a></article><article class="card"><h3>${say("Before you arrive", "Antes de llegar")}</h3><p>${say("Dinner is scheduled for 6:30–7:30 PM; its location is still being confirmed. Entrance, parking and accessibility details will be added here.", "La cena está programada de 6:30 a 7:30 p. m.; el lugar está por confirmar. Agregaremos los detalles de entrada, estacionamiento y accesibilidad.")}</p></article></div>`;
+      )}</div><div class="editorial"><h2>${say("Dress code", "Código de vestimenta")}</h2><p>${t.pending} ${say("Burgundy and gold are the site theme, not a required outfit.", "Borgoña y dorado son los colores del sitio, no una vestimenta obligatoria.")}</p><div class="calendar-actions" data-calendar-links>${["ceremony", "dinner", "reception"].map((k) => `<div><strong>${say({ ceremony: "Ceremony", dinner: "Dinner", reception: "Reception" }[k], { ceremony: "Ceremonia", dinner: "Cena", reception: "Recepción" }[k])}</strong>${calendarLink(k, celebration, lang)}</div>`).join("")}</div></div>`;
+  if (route === "ceremony" || route === "reception")
+    body =
+      '<div data-venue="' +
+      route +
+      '">' +
+      venueSection(route, celebration, lang) +
+      "</div>";
   if (route === "rsvp" || route === "rsvp/confirmed")
     body = `<p class="deadline">${t.deadlineLabel} <strong>${t.deadline}</strong></p><div class="portal" id="portal" data-view="${route}"><p role="status">${t.loading}</p></div>`;
   if (route === "gallery")
-    body = `<p class="lead">${say("Little moments, lasting memories.", "Pequeños momentos, recuerdos para siempre.")}</p><div data-gallery class="cards"></div><p>${say("Approved photographs will appear here.", "Aquí aparecerán las fotografías aprobadas.")}</p>${link("share", say("Share a photo", "Comparte una foto"))}`;
+    body =
+      '<p class="lead">' +
+      say(
+        "A lifetime of little moments. A new chapter to share.",
+        "Una vida de pequeños momentos. Un nuevo capítulo para compartir.",
+      ) +
+      "</p><div data-album-cards>" +
+      albumCards(celebration, lang) +
+      '</div><section class="gallery-section"><h2>' +
+      say("Photographs", "Fotografías") +
+      '</h2><p data-album-label></p><div data-gallery class="media-grid"></div></section><section class="gallery-section"><h2>' +
+      say("The video collection", "La colección de videos") +
+      "</h2><p>" +
+      say(
+        "Relive the laughter, the music, and the moments in between. Approved videos will appear here.",
+        "Revive las risas, la música y los momentos especiales. Aquí aparecerán los videos aprobados.",
+      ) +
+      '</p><div data-videos class="media-grid"></div></section>' +
+      link("share", say("Share photos & videos", "Comparte fotos y videos"));
   if (route === "share")
-    body = `<p class="lead">${say("Share the celebration through your eyes.", "Comparte la celebración desde tu mirada.")}</p><p>${say("Photos are reviewed by the family before appearing in the gallery. Use your private invitation to sign in.", "La familia revisa las fotos antes de publicarlas en la galería. Inicia sesión con tu invitación privada.")}</p><div class="portal" id="portal" data-view="share"></div><a href="${href("terms", lang)}">${say("Photo sharing terms", "Condiciones para compartir fotos")}</a>`;
+    body = `<p class="lead">${say("Share the celebration through your eyes.", "Comparte la celebración desde tu mirada.")}</p><p>${say("Photos and videos are reviewed by the family before appearing in the gallery for registered guests. Use your private invitation to sign in.", "La familia revisa las fotos y los videos antes de mostrarlos a los invitados registrados. Inicia sesión con tu invitación privada.")}</p><div class="portal" id="portal" data-view="share"></div><a href="${href("terms", lang)}">${say("Media Policy", "Política de medios")}</a>`;
   if (route === "share")
     body += `<details class="card"><summary>${say("QR code for the tables", "Código QR para las mesas")}</summary><img src="/assets/photo-upload-qr.svg" width="240" height="240" alt="${say("Photo sharing page QR code", "Código QR para compartir fotos")}"><p>${say("Guests still need their private invitation to upload.", "Los invitados necesitan su invitación privada para subir fotos.")}</p><a href="/assets/photo-upload-qr.svg" download>${say("Download printable QR", "Descargar QR para imprimir")}</a></details>`;
   if (route === "guestbook" || route === "contact")
@@ -140,8 +169,8 @@ function contents(route, lang) {
         [
           say("Can I share photos?", "¿Puedo compartir fotos?"),
           say(
-            "Use Share photos and agree to the photo terms. Only approved images appear publicly.",
-            "Usa Comparte tus fotos y acepta las condiciones. Solo se publicarán imágenes aprobadas.",
+            "Use Share photos and agree to the photo terms. Only approved photos and videos appear to registered guests.",
+            "Usa Comparte tus fotos y acepta las condiciones. Solo los invitados registrados pueden ver archivos aprobados.",
           ),
         ],
       ]
@@ -151,16 +180,37 @@ function contents(route, lang) {
         .join("") + `<p>${link("contact", t.contact)}</p>`;
   if (route === "privacy")
     body = `<article class="editorial"><h2>${say("Information for this celebration", "Información para esta celebración")}</h2><p>${say("Private invitations use household contact details and allocated spaces. Responses collect attendance, contact corrections and optional requests. Photos and guestbook submissions are held for family review.", "Las invitaciones privadas usan los datos de contacto y los lugares asignados a cada familia. Las respuestas incluyen asistencia, correcciones de contacto y solicitudes opcionales. Las fotos y mensajes se guardan para revisión de la familia.")}</p><p>${say("Authorized organizers use Notion and a private Google Cloud service to manage responses. Microsoft 365 is the planned email provider. Public pages never include the guest list.", "Los organizadores autorizados usan Notion y un servicio privado de Google Cloud para administrar respuestas. Microsoft 365 es el proveedor previsto de correos. Las páginas públicas nunca incluyen la lista de invitados.")}</p><p>${say("Firebase Hosting serves the site. Google Fonts receives normal network information when fonts load. Administrator sign-in uses Google. We have added no advertising or analytics trackers.", "Firebase Hosting aloja el sitio. Google Fonts recibe información de red al cargar fuentes. El acceso de administradores usa Google. No agregamos publicidad ni rastreadores de análisis.")}</p><h3>${say("Your choices", "Tus opciones")}</h3><p>${say("Optional requests, mailing addresses, messages and photos are voluntary. Keep invitation links private. Contact the family to correct or remove information. The family must finalize a retention date before live collection opens.", "Las solicitudes, direcciones postales, mensajes y fotos son opcionales. Mantén privados los enlaces de invitación. Contacta a la familia para corregir o eliminar información. La familia debe definir el plazo de retención antes de abrir la recopilación de datos.")}</p><a href="mailto:${event.sender}">${event.sender}</a></article>`;
+  if (route === "terms") body = "";
+  if (["privacy", "terms"].includes(route)) {
+    const notice =
+      '<article class="editorial">' +
+      policies[route][lang]
+        .map((p) => "<p>" + esc(p.replace(/^- /, "• ")) + "</p>")
+        .join("") +
+      "</article>";
+    body = notice + body;
+  }
   if (route === "terms")
-    body = `<article class="editorial"><h2>${say("Share with care", "Comparte con cuidado")}</h2><ul><li>${say("Upload only photos you took or have permission to share.", "Sube solo fotos que tomaste o tienes permiso de compartir.")}</li><li>${say("Get permission from recognizable people and a parent or guardian for children.", "Obtén permiso de las personas reconocibles y de un padre o tutor para menores.")}</li><li>${say("By submitting, you allow the family to review and display approved photos on this event website. The gallery may be publicly visible.", "Al enviar, permites que la familia revise y publique fotos aprobadas en este sitio. La galería puede ser pública.")}</li><li>${say("Do not upload private documents, inappropriate content or images of anyone who does not want them shared.", "No subas documentos privados, contenido inapropiado ni imágenes de personas que no quieran compartirlas.")}</li><li>${say("Images may be resized and metadata removed. Submissions can be declined or removed.", "Las imágenes pueden cambiar de tamaño y perder metadatos. Los envíos pueden rechazarse o eliminarse.")}</li></ul><p>${say("To request removal, contact", "Para solicitar la eliminación, escribe a")} <a href="mailto:${event.sender}">${event.sender}</a>.</p></article>`;
+    body +=
+      '<article class="editorial"><h2>' +
+      say("Approved guest downloads", "Descargas para invitados") +
+      "</h2><p>" +
+      say(
+        "Downloads made available to signed-in guests are permitted for personal event keepsakes. Other uses require written permission. Get permission from recognizable people and a parent or guardian for children before uploading. Contact the family to request removal.",
+        "Las descargas disponibles para invitados registrados se permiten como recuerdos personales del evento. Otros usos requieren permiso por escrito. Antes de subir contenido, pide permiso a las personas reconocibles y a un padre o tutor para menores. Contacta a la familia para solicitar su retirada.",
+      ) +
+      '</p><a href="' +
+      href("contact", lang) +
+      '">' +
+      say("Contact Us", "Contáctanos") +
+      "</a></article>";
   if (route === "404")
     body = `<p class="lead">${say("Let’s get you back to the celebration.", "Volvamos a la celebración.")}</p>${link("", t.home)}`;
   if (route === "gallery" && family.portraits.length)
     body =
       `<div class="cards">${family.portraits.map((photo) => `<figure class="card"><img loading="lazy" src="${safeLink(photo.src)}" alt="${esc(localized(photo.caption))}"><figcaption>${esc(localized(photo.caption))}</figcaption></figure>`).join("")}</div>` +
       body;
-  if (route === "ceremony" && family.churchAddress)
-    body = `<article class="editorial"><p class="eyebrow">4:00 PM · ${t.date}</p><h2>${esc(family.churchName || "Lady of Guadalupe Church")}</h2><address>${esc(family.churchAddress)}</address><a href="https://www.google.com/maps/search/?api=1&amp;query=${encodeURIComponent(family.churchAddress)}" target="_blank" rel="noopener noreferrer">${say("Open map", "Abrir mapa")}</a><p>${esc(localized(family.churchNotes))}</p></article>`;
+
   if (route === "privacy")
     body += `<article class="editorial"><h2>${say("Guest accounts", "Cuentas de invitados")}</h2><p>${say("We verify sign-in emails using one-time links. Account names, emails and access settings are synchronized to Notion. Our private backend also retains contact profiles, accepted responses, account permissions, sign-in records and private messages to operate the guest account. Optional private pages require the family’s permission. Contact-email changes do not change your verified sign-in email.", "Verificamos los correos de acceso con enlaces de un solo uso. Los nombres, correos y permisos de las cuentas se sincronizan con Notion. Nuestro servidor privado también guarda perfiles de contacto, respuestas, permisos, registros de acceso y mensajes privados para operar la cuenta. Las páginas privadas opcionales requieren permiso de la familia. Cambiar el correo de contacto no cambia tu correo de acceso verificado.")}</p></article>`;
   if (route === "details" && family.dressCode)
@@ -177,11 +227,11 @@ function navigation(lang, current) {
     [t.details, ["details", "ceremony", "reception"]],
     [t.people, ["court", "padrinos"]],
     [t.memories, ["gallery", "share", "guestbook", "thank-you"]],
-    [t.help, ["travel", "gifts", "faq", "contact"]],
+    [t.help, ["travel", "registry", "faq", "contact"]],
   ]
     .map(
       ([name, items]) =>
-        `<details class="nav-group"><summary>${name}</summary><div>${items.map((r) => `<a href="${href(r, lang)}"${["gifts", "padrinos"].includes(r) ? ` data-permission="${r}" hidden` : ""}${r === current ? ' aria-current="page"' : ""}>${label(r)}</a>`).join("")}</div></details>`,
+        `<details class="nav-group"><summary>${name}</summary><div>${items.map((r) => `<a href="${href(r, lang)}"${["gifts", "registry", "padrinos"].includes(r) ? ` data-permission="${r === "registry" ? "gifts" : r}" hidden` : ""}${r === current ? ' aria-current="page"' : ""}>${label(r)}</a>`).join("")}</div></details>`,
     )
     .join(
       "",
@@ -201,7 +251,7 @@ function document({ route, title, lang = "en", admin = false }) {
             "",
           )}<button class="plain-button" id="logout">Sign out</button></aside><div><p class="eyebrow">FAMILY ONLY</p><h1 class="page-title">${title}</h1><div id="admin-app" data-view="${route}"><p role="status">Loading secure workspace…</p></div></div></section>`
       : contents(route, lang)
-  }</main><footer><p>${t.footer}<em>Sophia</em></p><span>MIS XV · ${t.date}</span><div><a href="${href("privacy", lang)}">${lang === "es" ? "Privacidad" : "Privacy"}</a> · <a href="${href("terms", lang)}">${lang === "es" ? "Fotos" : "Photo terms"}</a> · <a href="/admin/login/">${lang === "es" ? "Familia" : "Family"}</a></div></footer><div id="status" role="status" aria-live="polite"></div></body></html>`;
+  }</main><footer><p class="copyright">© SimplySoph 2026. All Rights Reserved.</p><div><a href="${href("privacy", lang)}">${lang === "es" ? "Política de privacidad" : "Privacy Policy"}</a> · <a href="${href("terms", lang)}">${lang === "es" ? "Política de medios" : "Media Policy"}</a> · <a href="${href("contact", lang)}">${lang === "es" ? "Contáctanos" : "Contact Us"}</a></div></footer><div id="status" role="status" aria-live="polite"></div></body></html>`;
 }
 // Only remove the known generated directory inside this checkout, never a supplied path.
 const checkout = fileURLToPath(new URL("../", import.meta.url));
@@ -249,31 +299,23 @@ for (const file of [
   "client.js",
   "event-config.js",
   "assets/invitation.png",
+  "assets/church.png",
+  "assets/reception.png",
+  "assets/target.svg",
+  "celebration.mjs",
+  "experience.js",
+  "admin-experience.js",
 ])
   await copyFile(
     new URL("../site/" + file, import.meta.url),
     new URL(file, root),
   );
-await writeFile(
-  new URL("sophia-mis-xv.ics", root),
-  [
-    "BEGIN:VCALENDAR",
-    "VERSION:2.0",
-    "PRODID:-//SimplySoph//Mis XV//EN",
-    "CALSCALE:GREGORIAN",
-    "BEGIN:VEVENT",
-    "UID:misxv-20270115@simplysoph.com",
-    "DTSTAMP:20260927T000000Z",
-    "DTSTART:20270115T220000Z",
-    "SUMMARY:Sophia - Mis XV",
-    "DESCRIPTION:Ceremony 4 PM Central. Dinner 6:30-7:30 PM (location pending).",
-    " Reception 7:30 PM at AMZ Event Center. Check website for venue details.",
-    "URL:https://misxv.simplysoph.com/details/",
-    "END:VEVENT",
-    "END:VCALENDAR",
-    "",
-  ].join("\r\n"),
-);
+await mkdir(new URL("calendar/", root), { recursive: true });
+for (const kind of ["ceremony", "dinner", "reception"]) {
+  if (celebration[kind].end)
+    await writeFile(new URL("calendar/" + kind + ".ics", root), calendar(kind));
+}
+
 await writeFile(new URL("robots.txt", root), "User-agent: *\nDisallow: /\n");
 console.log(
   `Built ${count} pages, English/Spanish guest routes, private admin shells and calendar. Runtime features require the configured API.`,

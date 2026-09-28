@@ -48,16 +48,28 @@ if (env.EVENT_BUCKET) {
     }),
     verifyGoogle: googleVerifier(env.ADMIN_GOOGLE_CLIENT_ID, adminEmails),
     media: {
-      async put(id, bytes) {
-        await adapter.bucket.file("private/photos/" + id + ".jpg").save(bytes, {
-          resumable: false,
-          contentType: "image/jpeg",
-          preconditionOpts: { ifGenerationMatch: 0 },
-        });
+      async put(id, bytes, kind = "photo") {
+        await adapter.bucket
+          .file(
+            (kind === "video" ? "private/videos/" : "private/photos/") +
+              id +
+              (kind === "video" ? ".mp4" : ".jpg"),
+          )
+          .save(bytes, {
+            resumable: false,
+            contentType: kind === "video" ? "video/mp4" : "image/jpeg",
+            preconditionOpts: { ifGenerationMatch: 0 },
+          });
       },
-      async get(id) {
+      async get(id, kind = "photo") {
         return (
-          await adapter.bucket.file("private/photos/" + id + ".jpg").download()
+          await adapter.bucket
+            .file(
+              (kind === "video" ? "private/videos/" : "private/photos/") +
+                id +
+                (kind === "video" ? ".mp4" : ".jpg"),
+            )
+            .download()
         )[0];
       },
     },
@@ -76,7 +88,7 @@ const root = path.resolve(
 if (!Number.isInteger(port) || port < 0 || port > 65535)
   throw new Error("Invalid port");
 const server = createHttpServer({ app, root, origin });
-server.requestTimeout = 30000;
+server.requestTimeout = 120000;
 server.headersTimeout = 15000;
 server.listen(port, host, () =>
   console.log(

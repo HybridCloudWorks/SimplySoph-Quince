@@ -48,7 +48,7 @@ async function release(env = process.env) {
       if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.isSymbolicLink()) throw new Error('Unexpected hidden file or link in dist');
       if (entry.isDirectory()) await collect(`${folder}/${entry.name}`,path);
       else {
-        if (!/\.(html|css|js|png|svg|ics|txt)$/.test(path)) throw new Error('Unexpected deployment file type');
+        if (!/\.(html|css|js|mjs|png|svg|ics|txt)$/.test(path)) throw new Error('Unexpected deployment file type');
         const bytes = gzipSync(await readFile(`${folder}/${entry.name}`));
         const hash = createHash('sha256').update(bytes).digest('hex');
         files[path] = hash; blobs.set(hash,bytes);

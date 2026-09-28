@@ -1,3 +1,4 @@
+import { websiteEditor, notificationInbox } from "./admin-experience.js";
 import { api, esc, field, submit, notify } from "./client.js";
 const root = document.querySelector("#admin-app"),
   view = root.dataset.view;
@@ -294,7 +295,7 @@ async function moderation() {
   const d = await api("admin/moderation"),
     photos = view === "admin/photos",
     rows = photos ? d.photos : d.messages;
-  root.innerHTML = `<p>${photos ? "Photos remain private until approved." : "Contact messages always remain private. Guestbook messages require approval before publication."}</p><div class="cards">${rows.map((r) => `<article class="card">${photos ? `<img src="/api/photo/${esc(r.id)}" alt="Pending photo"><p>${esc(r.caption)}</p>` : `<h3>${esc(r.name)}</h3><p>${esc(r.text)}</p><span class="badge">${esc(r.kind)}</span>`}<p>Status: ${esc(r.state)}</p><div class="row-actions">${r.kind !== "contact" ? button("Approve", "approve", r.id) : ""}${button("Remove from display", "reject", r.id)}</div></article>`).join("") || "<p>No submissions yet.</p>"}</div>`;
+  root.innerHTML = `<p>${photos ? "Photos and videos are visible only to registered guests after approval. Rejected items remain hidden." : "Contact messages always remain private. Guestbook messages require approval before publication."}</p><div class="cards">${rows.map((r) => `<article class="card">${photos ? `${r.kind === "video" ? `<video controls playsinline preload="metadata" src="/api/photo/${esc(r.id)}"></video>` : `<img src="/api/photo/${esc(r.id)}" alt="Pending photo">`}<p>${esc(r.caption)}</p>` : `<h3>${esc(r.name)}</h3><p>${esc(r.topic || "")}</p><p>${esc(r.email || "")}</p><p>${esc(r.text)}</p><span class="badge">${esc(r.kind)}</span>`}<p>Status: ${esc(r.state)}</p>${photos ? `<label>Album<select data-media-album="${esc(r.id)}">${(d.albums || []).map((a) => `<option value="${esc(a.id)}"${a.id === (r.album || "event") ? " selected" : ""}>${esc(a.en)}</option>`).join("")}</select></label>` : ""}<div class="row-actions">${r.kind !== "contact" ? button("Approve", "approve", r.id) : ""}${button("Remove from display", "reject", r.id)}</div></article>`).join("") || "<p>No submissions yet.</p>"}</div>`;
   if (!photos) {
     const cards = root.querySelectorAll(".cards > .card");
     rows.forEach((r, i) => {
@@ -399,6 +400,7 @@ root.addEventListener("click", (e) => {
         id,
         collection: view === "admin/photos" ? "photos" : "messages",
         state: action === "approve" ? "approved" : "rejected",
+        album: root.querySelector(`[data-media-album="${id}"]`)?.value,
       });
       await moderation();
     }
@@ -418,6 +420,8 @@ try {
       root.innerHTML =
         '<p class="notice">Sign in with an authorized family account and MFA to access this page.</p><a class="button burgundy" href="/admin/login/">Family sign-in</a>';
     } else {
+      if (view === "admin/site") await websiteEditor(root);
+      if (view === "admin/notifications") await notificationInbox(root);
       if (view === "admin") await dashboard();
       if (view === "admin/guests") await guestList();
       if (view === "admin/access") await accountAccess();

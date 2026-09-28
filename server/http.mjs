@@ -5,6 +5,7 @@ const types = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
   ".png": "image/png",
   ".svg": "image/svg+xml",
   ".txt": "text/plain; charset=utf-8",
@@ -54,7 +55,12 @@ export function createHttpServer({ app = null, root, origin }) {
           let size = 0;
           for await (const chunk of req) {
             size += chunk.length;
-            if (size > (url.pathname === "/api/photos" ? 12_000_000 : 120_000))
+            if (
+              size >
+              (["/api/photos", "/api/videos"].includes(url.pathname)
+                ? 12_000_000
+                : 120_000)
+            )
               throw Object.assign(new Error(), {
                 status: 413,
                 code: "BODY_TOO_LARGE",
@@ -86,6 +92,12 @@ export function createHttpServer({ app = null, root, origin }) {
         }
         if (result.binary) {
           res.setHeader("Content-Type", result.contentType);
+          if (result.disposition)
+            res.setHeader("Content-Disposition", result.disposition);
+          if (result.status) res.statusCode = result.status;
+          if (result.contentRange)
+            res.setHeader("Content-Range", result.contentRange);
+          if (result.acceptRanges) res.setHeader("Accept-Ranges", "bytes");
           res.end(result.binary);
           return;
         }

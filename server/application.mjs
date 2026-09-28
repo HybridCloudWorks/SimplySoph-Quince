@@ -1,3 +1,7 @@
+import { createNotifications } from "./notifications.mjs";
+import { normalizeVideo, mediaResponse } from "./video.mjs";
+import { calendar, contactTopics } from "../site/celebration.mjs";
+import { siteSettings, validateSettings } from "./site-settings.mjs";
 import { randomUUID } from "node:crypto";
 import sharp from "sharp";
 import {
@@ -55,6 +59,7 @@ export function createApplication({
   mailer,
   verifyGoogle,
   media,
+  videoProcessor = normalizeVideo,
   key,
   origin,
   clientId = "",
@@ -64,6 +69,13 @@ export function createApplication({
 }) {
   if (!Buffer.isBuffer(key) || key.length !== 32)
     throw new Error("32-byte application key required");
+  const sendNotification = createNotifications({
+    ledger,
+    mailer,
+    adminEmails,
+    origin,
+    now,
+  });
   const sessionValid = (s, row) =>
     row &&
     row.expiresAt > now() &&
@@ -80,7 +92,7 @@ export function createApplication({
               (a) => a.householdId === row.householdId,
             )));
   async function context(req) {
-    const raw = (req.headers.cookie || "")
+    const raw = (req.headers?.cookie || "")
       .split(";")
       .map((v) => v.trim())
       .find((v) => v.startsWith("__session="))
@@ -272,6 +284,22 @@ export function createApplication({
         mailConfigured: mailer.configured,
         live: true,
       };
+    if (path === "/api/site" && method === "GET") {
+      const { registries, ...site } = siteSettings(await ledger.read());
+      return { site };
+    }
+    if (path.startsWith("/api/calendar/") && method === "GET") {
+      const kind = path.slice(14).replace(/\.ics$/, "");
+      if (!["ceremony", "dinner", "reception"].includes(kind))
+        throw error(404, "NOT_FOUND");
+      const site = siteSettings(await ledger.read());
+      if (!site[kind].end) throw error(409, "END_TIME_PENDING");
+      return {
+        binary: Buffer.from(calendar(kind, site)),
+        contentType: "text/calendar; charset=utf-8",
+        disposition: 'attachment; filename="sophia-' + kind + '.ics"',
+      };
+    }
     if (path === "/api/public" && method === "GET") {
       const s = await ledger.read();
       return {
@@ -281,13 +309,7 @@ export function createApplication({
         messages: Object.values(s.messages)
           .filter((r) => r.kind === "guestbook" && r.state === "approved")
           .map((r) => ({ id: r.id, name: r.name, text: r.text })),
-        photos: Object.values(s.photos)
-          .filter((r) => r.state === "approved")
-          .map((r) => ({
-            id: r.id,
-            caption: r.caption,
-            url: "/api/photo/" + r.id,
-          })),
+        photos: [], // Media metadata and bytes require a registered guest or administrator.
       };
     }
     if (path === "/api/auth/google" && method === "POST") {
@@ -428,6 +450,22 @@ export function createApplication({
       if (method !== "GET" && headers["x-csrf-token"] !== session.csrf)
         throw error(403, "CSRF_REJECTED");
     };
+    if (path === "/api/gallery" && method === "GET") {
+      requireAuth();
+      if (session.kind !== "admin" && !session.accountId)
+        throw error(403, "VERIFIED_ACCOUNT_REQUIRED");
+      return {
+        media: Object.values(ctx.state.photos)
+          .filter((r) => r.state === "approved")
+          .map((r) => ({
+            id: r.id,
+            kind: r.kind || "photo",
+            album: r.album || "event",
+            caption: r.caption,
+            url: "/api/photo/" + r.id,
+          })),
+      };
+    }
     if (path === "/api/auth/email/request" && method === "POST") {
       if (body.register === true) requireAuth("guest");
       return accounts.request(body, session);
@@ -478,6 +516,9 @@ export function createApplication({
         throw error(403, "PAGE_NOT_ALLOWED");
       return {
         page,
+        ...(page === "gifts"
+          ? { registries: siteSettings(ctx.state).registries }
+          : {}),
         content: ctx.state.privatePages?.[page] || {
           en: "",
           es: "",
@@ -667,8 +708,29 @@ export function createApplication({
         name = safeText(body.name, 100),
         text = safeText(body.text, 2000);
       if (!name || !text) throw error(422, "MESSAGE_REQUIRED");
+      const contactEmail =
+        body.kind === "contact"
+          ? email(
+              body.email ||
+                ctx.state.profiles?.[session.householdId]?.contact?.email ||
+                ctx.state.accounts?.[session.accountId]?.email ||
+                "",
+            )
+          : "";
+      const topic = body.kind === "contact" ? body.topic || "Other" : "";
+      if (body.kind === "contact" && !contactTopics.includes(topic))
+        throw error(422, "INVALID_TOPIC");
       await ledger.transaction((s) => {
+        s.notifications ??= {};
+        s.notifications[id] = {
+          id,
+          kind: body.kind === "contact" ? "contact" : "guestbook",
+          at: now(),
+          read: false,
+        };
         s.messages[id] = {
+          email: contactEmail,
+          topic,
           id,
           householdId: session.householdId,
           name,
@@ -678,9 +740,10 @@ export function createApplication({
           at: now(),
         };
       });
+      await sendNotification(id);
       return { id, state: "pending" };
     }
-    if (path === "/api/photos" && method === "POST") {
+    if (["/api/photos", "/api/videos"].includes(path) && method === "POST") {
       requireAuth("guest");
       await guestInvitation(session);
       if (body.consent !== true) throw error(422, "CONSENT_REQUIRED");
@@ -700,6 +763,10 @@ export function createApplication({
         bytes.toString("base64") !== body.base64
       )
         throw error(422, "INVALID_PHOTO");
+      const isVideo = path === "/api/videos";
+      const album = safeText(body.album || "event", 40);
+      if (!siteSettings(await ledger.read()).albums.some((a) => a.id === album))
+        throw error(422, "INVALID_ALBUM");
       const jpeg = bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
       const png = bytes
         .subarray(0, 8)
@@ -707,46 +774,70 @@ export function createApplication({
       const webp =
         bytes.toString("ascii", 0, 4) === "RIFF" &&
         bytes.toString("ascii", 8, 12) === "WEBP";
-      if (!jpeg && !png && !webp) throw error(422, "INVALID_PHOTO");
+      if (!isVideo && !jpeg && !png && !webp) throw error(422, "INVALID_PHOTO");
       const caption = safeText(body.caption || "", 200);
       let image;
       try {
-        image = await sharp(bytes, {
-          limitInputPixels: 25000000,
-          animated: false,
-        })
-          .rotate()
-          .resize({
-            width: 2000,
-            height: 2000,
-            fit: "inside",
-            withoutEnlargement: true,
-          })
-          .jpeg({ quality: 85 })
-          .toBuffer();
-      } catch {
+        image = isVideo
+          ? await videoProcessor(bytes)
+          : await sharp(bytes, {
+              limitInputPixels: 25000000,
+              animated: false,
+            })
+              .rotate()
+              .resize({
+                width: 2000,
+                height: 2000,
+                fit: "inside",
+                withoutEnlargement: true,
+              })
+              .jpeg({ quality: 85 })
+              .toBuffer();
+      } catch (e) {
+        if (isVideo) throw e;
         throw error(422, "INVALID_PHOTO");
       }
       const id = randomUUID();
-      await media.put(id, image);
+      await media.put(id, image, isVideo ? "video" : "photo");
       await ledger.transaction((s) => {
+        s.notifications ??= {};
+        s.notifications[id] = {
+          id,
+          kind: isVideo ? "video" : "photo",
+          at: now(),
+          read: false,
+        };
+        if (!siteSettings(s).albums.some((a) => a.id === album))
+          throw error(422, "INVALID_ALBUM");
         s.photos[id] = {
           id,
+          kind: isVideo ? "video" : "photo",
+          album,
           householdId: session.householdId,
           caption,
           state: "pending",
           consentAt: now(),
         };
       });
+      await sendNotification(id);
       return { id, state: "pending" };
     }
     if (path.startsWith("/api/photo/") && method === "GET") {
+      requireAuth();
+      if (session.kind !== "admin" && !session.accountId)
+        throw error(403, "VERIFIED_ACCOUNT_REQUIRED");
       const id = path.slice(11);
       if (!/^[a-f0-9-]{36}$/.test(id)) throw error(404, "NOT_FOUND");
       const row = ctx.state.photos[id];
       if (!row || (row.state !== "approved" && session?.kind !== "admin"))
         throw error(404, "NOT_FOUND");
-      return { binary: await media.get(id), contentType: "image/jpeg" };
+      return mediaResponse(
+        await media.get(id, row.kind || "photo"),
+        row.kind,
+        headers.range,
+        req.query?.download === "1",
+        id,
+      );
     }
     if (path.startsWith("/api/admin/")) {
       requireAuth("admin");
@@ -759,6 +850,39 @@ export function createApplication({
             ))
         )
           throw error(422, "INVALID_ID");
+      if (path === "/api/admin/site" && method === "GET")
+        return { site: siteSettings(ctx.state) };
+      if (path === "/api/admin/site" && method === "POST") {
+        const site = validateSettings(body);
+        return ledger.transaction((s) => {
+          if (site.version !== siteSettings(s).version)
+            throw error(409, "SETTINGS_CHANGED");
+          const albumIds = new Set(site.albums.map((a) => a.id));
+          if (
+            Object.values(s.photos).some(
+              (p) => !albumIds.has(p.album || "event"),
+            )
+          )
+            throw error(422, "ALBUM_HAS_MEDIA");
+          site.version++;
+          s.site = site;
+          audit(s, session.actor, "site-settings", "event", now());
+          return { site };
+        });
+      }
+      if (path === "/api/admin/notifications" && method === "GET")
+        return {
+          notifications: Object.values(ctx.state.notifications || {}).sort(
+            (a, b) => b.at - a.at,
+          ),
+        };
+      if (path === "/api/admin/notifications" && method === "POST")
+        return ledger.transaction((s) => {
+          const row = s.notifications?.[body.id];
+          if (!row) throw error(404, "NOT_FOUND");
+          row.read = true;
+          return { saved: true };
+        });
       if (path === "/api/admin/accounts" && method === "GET")
         return {
           accounts: Object.values(ctx.state.accounts || {}).map(
@@ -974,6 +1098,7 @@ export function createApplication({
         return {
           messages: Object.values(ctx.state.messages),
           photos: Object.values(ctx.state.photos),
+          albums: siteSettings(ctx.state).albums,
         };
       if (path === "/api/admin/message-reply" && method === "POST") {
         const text = safeText(body.text, 2000);
@@ -1000,6 +1125,11 @@ export function createApplication({
           if (!row) throw error(404, "NOT_FOUND");
           if (row.kind === "contact" && body.state === "approved")
             throw error(422, "CONTACT_IS_PRIVATE");
+          if (body.collection === "photos" && body.album) {
+            if (!siteSettings(s).albums.some((a) => a.id === body.album))
+              throw error(422, "INVALID_ALBUM");
+            row.album = body.album;
+          }
           row.state = body.state;
           audit(s, session.actor, "moderation", body.id, now());
           return { state: row.state };

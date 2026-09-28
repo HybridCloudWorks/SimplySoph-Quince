@@ -7,7 +7,7 @@ import sharp from "sharp";
 const origin = "https://misxv.simplysoph.com",
   at = Date.parse("2026-10-01T18:00:00Z");
 const household = "12345678-1234-1234-1234-123456789012";
-async function fixture() {
+async function fixture(options = {}) {
   const ledger = new Ledger(memoryAdapter()),
     adminToken = token(),
     guestToken = token();
@@ -64,6 +64,7 @@ async function fixture() {
     origin,
     adminEmails: ["organizer@gmail.com"],
     now: () => clock,
+    ...options,
   });
   await ledger.transaction((s) => {
     s.sessions[hash(adminToken)] = {
@@ -141,8 +142,8 @@ async function fixture() {
     },
   };
 }
-async function registeredFixture() {
-  const f = await fixture();
+async function registeredFixture(options) {
+  const f = await fixture(options);
   await f.guest("rsvp", f.input(), { "idempotency-key": "register-rsvp" });
   await f.guest("auth/email/request", {
     register: true,
@@ -627,13 +628,13 @@ test("CSV import requires explicit zero for child count", async () => {
 });
 
 test("a valid photo remains private until a family administrator approves it", async () => {
-  const f = await fixture();
+  const f = await registeredFixture();
   const bytes = await sharp({
     create: { width: 4, height: 4, channels: 3, background: "#651625" },
   })
     .png()
     .toBuffer();
-  const photo = await f.guest("photos", {
+  const photo = await f.verified("photos", {
     base64: bytes.toString("base64"),
     caption: "Synthetic test image",
     consent: true,
@@ -645,11 +646,138 @@ test("a valid photo remains private until a family administrator approves it", a
     collection: "photos",
     state: "approved",
   });
-  assert.equal((await visible()).photos.length, 1);
+  assert.equal((await visible()).photos.length, 0);
+  assert.equal((await f.verified("gallery")).media.length, 1);
+  assert.ok((await f.verified("photo/" + photo.id)).binary);
+  await assert.rejects(
+    () => f.app.dispatch({ path: "/api/photo/" + photo.id }),
+    (e) => e.code === "SIGN_IN_REQUIRED",
+  );
   await f.admin("moderation", {
     id: photo.id,
     collection: "photos",
     state: "rejected",
   });
   assert.equal((await visible()).photos.length, 0);
+  assert.equal((await f.verified("gallery")).media.length, 0);
+  await assert.rejects(
+    () => f.verified("photo/" + photo.id),
+    (e) => e.code === "NOT_FOUND",
+  );
+});
+
+test("site settings require admin, prevent stale saves, and keep registry details private", async () => {
+  const f = await fixture(),
+    { site } = await f.admin("site");
+  await assert.rejects(
+    () => f.guest("admin/site", site),
+    (e) => e.code === "SIGN_IN_REQUIRED",
+  );
+  site.registries[0].url = "https://www.target.com/gift-registry/example";
+  site.ceremony.end = "2027-01-15T17:00:00-06:00";
+  const saved = await f.admin("site", site);
+  assert.equal(saved.site.version, 1);
+  await assert.rejects(
+    () => f.admin("site", site),
+    (e) => e.code === "SETTINGS_CHANGED",
+  );
+  const pub = await f.app.dispatch({ path: "/api/site" });
+  assert.equal(pub.site.registries, undefined);
+  const ics = await f.app.dispatch({ path: "/api/calendar/ceremony.ics" });
+  assert.match(ics.binary.toString(), /DTEND:20270115T230000Z/);
+  await assert.rejects(
+    () => f.app.dispatch({ path: "/api/calendar/reception.ics" }),
+    (e) => e.code === "END_TIME_PENDING",
+  );
+  await assert.rejects(
+    () => f.guest("pages/gifts"),
+    (e) => e.code === "PAGE_NOT_ALLOWED",
+  );
+});
+
+test("contact fields stay private, create a durable notification, and email only the organizer", async () => {
+  const f = await fixture();
+  const result = await f.guest("messages", {
+    kind: "contact",
+    name: "Guest",
+    email: "guest@example.com",
+    topic: "Transportation",
+    text: "A private question.",
+  });
+  const { messages } = await f.admin("moderation");
+  assert.equal(messages[0].email, "guest@example.com");
+  assert.equal(messages[0].topic, "Transportation");
+  const { notifications } = await f.admin("notifications");
+  assert.equal(notifications[0].id, result.id);
+  assert.equal(notifications[0].emailState, "accepted");
+  assert.equal(f.sent.at(-1).to, "organizer@gmail.com");
+  assert.ok(!f.sent.at(-1).html.includes("private question"));
+  assert.equal(
+    (await f.app.dispatch({ path: "/api/public" })).messages.length,
+    0,
+  );
+  await f.admin("notifications", { id: result.id });
+  assert.equal((await f.admin("notifications")).notifications[0].read, true);
+  await assert.rejects(
+    () =>
+      f.guest("messages", {
+        kind: "contact",
+        name: "G",
+        text: "Hi",
+        topic: "invented",
+        email: "g@example.com",
+      }),
+    (e) => e.code === "INVALID_TOPIC",
+  );
+});
+
+test("video uploads are normalized before storage, moderated, album-aware, and access revocation blocks playback", async () => {
+  let normalized = false,
+    stored;
+  const f = await registeredFixture({
+    videoProcessor: async (bytes) => {
+      assert.equal(bytes.toString(), "synthetic-video");
+      normalized = true;
+      return Buffer.from("normalized");
+    },
+    media: {
+      put: async (id, bytes, kind) => {
+        stored = { id, bytes, kind };
+      },
+      get: async () => Buffer.from("normalized"),
+    },
+  });
+  const row = await f.verified("videos", {
+    base64: Buffer.from("synthetic-video").toString("base64"),
+    consent: true,
+    album: "friends",
+    caption: "A test clip",
+  });
+  assert.ok(normalized);
+  assert.equal(stored.kind, "video");
+  assert.equal(stored.bytes.toString(), "normalized");
+  assert.equal((await f.verified("gallery")).media.length, 0);
+  await assert.rejects(
+    () => f.verified("photo/" + row.id),
+    (e) => e.code === "NOT_FOUND",
+  );
+  await f.admin("moderation", {
+    id: row.id,
+    collection: "photos",
+    state: "approved",
+    album: "event",
+  });
+  assert.equal((await f.verified("gallery")).media[0].album, "event");
+  assert.equal((await f.verified("photo/" + row.id)).contentType, "video/mp4");
+  const { site } = await f.admin("site");
+  site.albums = site.albums.filter((a) => a.id !== "event");
+  await assert.rejects(
+    () => f.admin("site", site),
+    (e) => e.code === "ALBUM_HAS_MEDIA",
+  );
+  await f.admin("revoke", { id: household });
+  await assert.rejects(
+    () => f.verified("photo/" + row.id),
+    (e) => e.code === "SIGN_IN_REQUIRED",
+  );
 });

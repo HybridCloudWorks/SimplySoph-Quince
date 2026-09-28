@@ -14,6 +14,38 @@ export function setCsrf(value) {
   csrf = value;
 }
 const messages = {
+  SETTINGS_CHANGED: [
+    "Another organizer changed these settings. Reload before saving.",
+    "Otro organizador cambió estos ajustes. Recarga antes de guardar.",
+  ],
+  INVALID_SITE_SETTINGS: [
+    "Check the required fields, HTTPS links, and dates with an explicit time-zone offset. End times must follow start times.",
+    "Revisa los campos obligatorios, enlaces HTTPS y fechas con zona horaria explícita. La hora final debe ser posterior a la inicial.",
+  ],
+  ALBUM_HAS_MEDIA: [
+    "Move existing media to another album before removing or renaming its ID.",
+    "Mueve los archivos a otro álbum antes de eliminarlo o cambiar su ID.",
+  ],
+  VERIFIED_ACCOUNT_REQUIRED: [
+    "Verify your email in My account to view or download media.",
+    "Verifica tu correo en Mi cuenta para ver o descargar archivos.",
+  ],
+  INVALID_VIDEO: [
+    "Choose a valid MP4 or WebM video: up to 8 MB, 60 seconds and 4096 pixels per dimension.",
+    "Elige un video MP4 o WebM válido: hasta 8 MB, 60 segundos y 4096 píxeles por dimensión.",
+  ],
+  VIDEO_BUSY: [
+    "Another video is being prepared. Please try again shortly.",
+    "Se está preparando otro video. Inténtalo de nuevo en un momento.",
+  ],
+  VIDEO_UNAVAILABLE: [
+    "Video processing is not available yet. Contact the family.",
+    "El procesamiento de videos aún no está disponible. Contacta a la familia.",
+  ],
+  PHOTO_TOO_LARGE: [
+    "Choose a file up to 8 MB.",
+    "Elige un archivo de hasta 8 MB.",
+  ],
   EMAIL_SIGN_IN_UNAVAILABLE: [
     "Email sign-in is not open yet. Please contact the family.",
     "El acceso por correo aún no está disponible. Contacta a la familia.",

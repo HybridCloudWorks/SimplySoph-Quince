@@ -201,9 +201,9 @@
         ],
         "evidence": "Private work/google-event-bucket-baseline.txt: exact bucket returned NOT_FOUND before creation"
       },
-      "creationEvidence": "Created 2026-09-27T05:09:12Z; generation 1790485752689878522, uniform bucket access and enforced public access prevention verified; 7-day soft delete",
+      "creationEvidence": "Created 2026-09-27T05:09:12Z; generation 1790485752689878522, uniform bucket access and enforced public access prevention verified; 7-day soft delete; object versioning enabled 2026-09-27 for recoverable ledger/media revisions; prior metageneration 2 without versioning recorded in private work/media-backup-baseline.txt",
       "verifyBeforeCleanup": "Match bucket name, project and creation timestamp; stop API and sending, export approved ledger/photos privately; verify no unrelated data",
-      "cleanupSteps": "After reviewed export, remove exact event objects and bucket. Account for seven-day soft-delete retention and charges; do not change or remove other buckets.",
+      "cleanupSteps": "After reviewed private export of ledger, approved photos and approved videos, remove exact event objects including all noncurrent generations and then the bucket. Versioning was enabled for event backup support on 2026-09-27; no lifecycle deletion rules or retention lock were added. Account for seven-day soft-delete retention and charges. Preserve all other buckets.",
       "verifyAfterCleanup": "Verify live bucket absent and soft-deleted versions accounted for until expiration; verify exports have family-selected retention",
       "dependsOn": [],
       "status": "active"

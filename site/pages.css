@@ -339,3 +339,299 @@ textarea {
 [hidden] {
   display: none !important;
 }
+.sophia-quote {
+  margin: 26px 0;
+  padding-left: 20px;
+  border-left: 1px solid var(--gold);
+  max-width: 620px;
+  font: 400 clamp(1.15rem, 1.6vw, 1.4rem)/1.5 var(--serif);
+}
+.sophia-quote cite {
+  font:
+    400 2rem "Great Vibes",
+    cursive;
+  color: var(--gold);
+}
+.countdown {
+  display: flex;
+  gap: clamp(16px, 3vw, 32px);
+  margin-top: 30px;
+  font-variant-numeric: tabular-nums;
+}
+.countdown span {
+  display: grid;
+  min-width: 48px;
+}
+.countdown strong {
+  font: 500 2rem var(--serif);
+  color: var(--gold);
+}
+.countdown small {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.home-cards {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.home-cards .card {
+  min-height: 185px;
+}
+.venue-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: clamp(28px, 5vw, 72px);
+  align-items: start;
+}
+.venue-image {
+  margin: 0;
+}
+.venue-image img {
+  width: 100%;
+  display: block;
+  aspect-ratio: 4/3;
+  object-fit: cover;
+  border: 1px solid var(--line);
+}
+.venue-image figcaption {
+  font-size: 0.8rem;
+  margin-top: 12px;
+  color: var(--muted);
+}
+.venue-details h2 {
+  font-size: clamp(2.3rem, 3.4vw, 3.5rem);
+}
+.venue-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 24px 0;
+}
+.venue-actions .button {
+  font-size: 0.8rem;
+  padding: 12px 16px;
+  gap: 8px;
+}
+.outline {
+  border-color: var(--wine);
+}
+.venue-schedule {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.venue-schedule dd {
+  margin: 0;
+}
+.venue-schedule dt {
+  font-weight: 600;
+}
+.calendar-actions {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin: 25px 0;
+}
+.calendar-actions > div {
+  flex: 1;
+  min-width: 160px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+.calendar-actions strong,
+.calendar-link {
+  display: block;
+}
+.calendar-link {
+  margin-top: 12px;
+  font-size: 0.9rem;
+}
+.calendar-actions .hint {
+  font-size: 0.8rem;
+  margin-top: 12px;
+}
+.album-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+}
+.album-card {
+  position: relative;
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid var(--line);
+  background: #efe0c6;
+  color: var(--wine);
+  text-align: left;
+  min-height: 250px;
+}
+.album-art {
+  display: grid;
+  place-content: center;
+  height: 195px;
+  font: 5rem var(--serif);
+  background:
+    radial-gradient(ellipse at center, #fff4d2, transparent 65%),
+    linear-gradient(135deg, #d7b779, #ead8b7);
+}
+.album-1 .album-art {
+  background: radial-gradient(ellipse at center, #8e3f4c, #48111e);
+  color: var(--gold);
+}
+.album-2 .album-art {
+  background: radial-gradient(ellipse at center, #fcf5e5, #d3c0a0);
+}
+.album-title {
+  display: block;
+  padding: 18px 20px;
+  font: 600 1.6rem var(--serif);
+}
+.album-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  background: #360d16ed;
+  color: var(--gold);
+  opacity: 0;
+  transition: opacity 0.2s;
+  padding: 20px;
+}
+.album-card:hover .album-overlay,
+.album-card:focus-visible .album-overlay {
+  opacity: 1;
+}
+.album-card[aria-pressed="true"] {
+  outline: 3px solid var(--wine);
+  outline-offset: 3px;
+}
+.gallery-section {
+  margin: 55px 0;
+}
+.media-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+}
+.media-grid figure {
+  margin: 0;
+  min-width: 0;
+}
+.media-grid img,
+.media-grid video {
+  width: 100%;
+  max-height: 380px;
+  object-fit: contain;
+  background: #241218;
+}
+.media-grid figcaption {
+  padding: 12px 0;
+  overflow-wrap: anywhere;
+}
+.media-grid > p {
+  grid-column: 1/-1;
+}
+.registry-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
+  gap: 24px;
+}
+.registry-card {
+  padding: 32px;
+  border: 1px solid var(--line);
+  background: #fffaf1;
+}
+.registry-card img {
+  display: block;
+  object-fit: contain;
+  margin-bottom: 20px;
+}
+.registry-card h2 {
+  font-size: 2.5rem;
+}
+.gallery-section a {
+  display: inline-block;
+  margin: 8px 0;
+}
+.admin-shell video {
+  max-width: 100%;
+}
+.settings-form fieldset {
+  border: 1px solid var(--line);
+  margin: 24px 0;
+  padding: 20px;
+}
+.settings-form legend {
+  font-weight: 700;
+}
+.settings-form textarea {
+  min-height: 120px;
+}
+@media (max-width: 1000px) {
+  .venue-layout {
+    gap: 26px;
+  }
+  .venue-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .album-grid,
+  .media-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 760px) {
+  .venue-layout,
+  .home-cards {
+    grid-template-columns: 1fr;
+  }
+  .countdown {
+    justify-content: center;
+  }
+  .sophia-quote {
+    text-align: left;
+  }
+  .venue-schedule {
+    font-size: 0.9rem;
+  }
+  .calendar-actions {
+    gap: 18px;
+  }
+  .media-grid {
+    grid-template-columns: 1fr;
+  }
+  .album-grid {
+    gap: 14px;
+  }
+  .album-title {
+    font-size: 1.3rem;
+    padding: 14px;
+  }
+  .album-art {
+    height: 145px;
+  }
+  .album-card {
+    min-height: 210px;
+  }
+  .gallery-section {
+    margin: 36px 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .album-overlay {
+    transition: none;
+  }
+}
+.album-art img {
+  width: 100%;
+  height: 195px;
+  object-fit: cover;
+}
+.album-art:has(img) {
+  display: block;
+}
+@media (max-width: 760px) {
+  .album-art img {
+    height: 145px;
+  }
+}
