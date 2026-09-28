@@ -100,6 +100,8 @@ Twilio is selected for US/Canada SMS. See [the setup handoff](docs/twilio-setup.
 
 SendGrid is an optional email fallback; see [the credential and activation handoff](docs/sendgrid-setup.md). `MAIL_PROVIDER` defaults to `m365`; `SENDGRID_FALLBACK_ENABLED` defaults to false. Explicit selection requires `SENDGRID_API_KEY` from Secret Manager. Only pre-submission Microsoft authentication failures can use automatic fallback. Uncertain sends never retry through another provider.
 
+Release `fce5697` passed 95 tests on Node 24 and CI with no production dependency audit findings. Cloud Run revision `misxv-api-00006-l95` serves the compatible backend, using image `sha256:066fafb5e7056935473689397c6e80268632e528dbf97c44019d82e59cbe855e` in the existing event repository. Microsoft remains primary; no SendGrid/Twilio credentials were provisioned and no guest messages were sent. The repository/service inventory already covers this event image and revision at retirement.
+
 Administrator email sign-in checks owner/delegated eligibility privately, sends a single-use 15-minute email link, and then requires MFA. It reuses an existing authenticator across Google/email sign-in. Adding a guest email in Notion never grants administration.
 
 Documents live under `private/documents/` in the existing dedicated event bucket. All metadata/bytes require administrator authentication. JPG/PNG/WebP are normalized; PDF/TXT open separately; DOCX/XLSX/PPTX download. Upload limit is 8 MB. Delete marks a file as trashed, and Restore recovers it; it is not a purge. Include these files, planning records, email/SMS drafts and the additional Notion connection grants in the February 1, 2027 review/export. No automatic deletion is scheduled.

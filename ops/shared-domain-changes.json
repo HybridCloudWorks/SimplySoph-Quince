@@ -1,9 +1,32 @@
 {
   "schemaVersion": 1,
   "domain": "simplysoph.com",
-  "purpose": "Shared Microsoft 365 sender authentication; preserve at event retirement",
+  "purpose": "Shared Microsoft 365 sender authentication and Firebase website certificate; preserve at event retirement",
   "automaticDeletion": false,
   "changes": [
+    {
+      "id": "firebase-www-domain",
+      "type": "Firebase Hosting custom domain",
+      "name": "www.simplysoph.com",
+      "before": null,
+      "after": "projects/simplysoph-66c78/sites/simplysoph-66c78/customDomains/www.simplysoph.com",
+      "approval": "Organizer requested repair of the www certificate mismatch",
+      "verification": "Created 2026-09-28; Firebase host and ownership ACTIVE. HTTPS certificate validation and HTTP 200 passed at 18:38 UTC; certificate was propagating across Firebase edges.",
+      "retirement": "Retain with the shared SimplySoph website; not an event resource. Preserve its existing DNS-only www CNAME to simplysoph-66c78.web.app.",
+      "status": "active"
+    },
+    {
+      "id": "firebase-www-certificate-validation",
+      "type": "TXT",
+      "name": "_acme-challenge.www",
+      "ttl": "Auto",
+      "before": null,
+      "after": "DviC0ke-cvSacerPUtfUoLaC0g9zTHvHp0ZhQbpqMio",
+      "approval": "Organizer requested repair of the www certificate mismatch",
+      "verification": "Saved in Cloudflare on 2026-09-28; authoritative DNS and Firebase discovered record match.",
+      "retirement": "Retain for shared Firebase certificate management; do not remove in event cleanup. Review with Firebase before a separately authorized domain migration.",
+      "status": "active"
+    },
     {
       "id": "m365-spf",
       "type": "TXT",
