@@ -37,3 +37,7 @@ Bind the service/account IDs, API key secret and Auth Token to the runtime. The 
 Unknown numbers do not receive invitations or account access. Their keyword preferences remain pending until a matching Notion guest phone exists and an administrator retries synchronization. STOP blocks locally even while Notion is unavailable.
 
 This release does not create a Messaging Service, submit a campaign, configure provider replies or send messages. Those provider actions must be verified separately.
+
+## Deployment Verification
+
+September 28, 2026: implementation ab5d545 passed both CI checks and 109 tests; all 63 document/link checks passed. Published hosting:misxv and Cloud Run revision misxv-api-00010-tv5 at 100% traffic, image sha256:4d3c0282bfd21bfe4475c69cae455b02dd694ee62f99e949d72006ad40e14bec. Public signup/terms in English and Spanish and privacy return 200. Email configuration remains healthy; unsigned callbacks return 403. SMS remains disabled; no test or guest texts sent.
