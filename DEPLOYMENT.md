@@ -96,6 +96,8 @@ Budget source: `5dbd1b32-9191-484b-85db-7b1d4663192e` (database `ad3f756c-af9a-4
 
 Invitations gained additive `Distribution Groups` (multi-select), `First Name`, `Last Name`, `SMS Consent`, `SMS Consent Date`, and `SMS Opt Out` properties. No memberships or consent were inferred. Exact name fields take precedence over the display-name fallback. Mail group selection generates deduplicated per-recipient drafts; each send retains a recipient review step. SMS drafts require a phone in international format, consent/date and no opt-out; actual SMS sending is disabled. A provider and sender registration/verification plus STOP/HELP handling are still required.
 
+Twilio is selected for US/Canada SMS. See [the setup handoff](docs/twilio-setup.md) and run `npm run sms:setup` for a credential-safe offline checklist. Account setup, credentials, verified sender, transport and callbacks remain pending. This preparation does not change the live runtime or enable sending.
+
 Administrator email sign-in checks owner/delegated eligibility privately, sends a single-use 15-minute email link, and then requires MFA. It reuses an existing authenticator across Google/email sign-in. Adding a guest email in Notion never grants administration.
 
 Documents live under `private/documents/` in the existing dedicated event bucket. All metadata/bytes require administrator authentication. JPG/PNG/WebP are normalized; PDF/TXT open separately; DOCX/XLSX/PPTX download. Upload limit is 8 MB. Delete marks a file as trashed, and Restore recovers it; it is not a purge. Include these files, planning records, email/SMS drafts and the additional Notion connection grants in the February 1, 2027 review/export. No automatic deletion is scheduled.
