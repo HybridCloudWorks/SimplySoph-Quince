@@ -36,7 +36,7 @@ Bind the service/account IDs, API key secret and Auth Token to the runtime. The 
 
 Unknown numbers do not receive invitations or account access. Their keyword preferences remain pending until a matching Notion guest phone exists and an administrator retries synchronization. STOP blocks locally even while Notion is unavailable.
 
-This release does not create a Messaging Service, submit a campaign, configure provider replies or send messages. Those provider actions must be verified separately.
+Dedicated Messaging Service MG64189f3d8d7622baf0aefd9b3f265261 (Simply Soph Media - Mis XV 2027) was created in account My first Twilio account (verify privately in Console). Existing sender +16827868002 (PN494bb71fbd58650f119df26763a77940) was attached. Advanced Opt-Out was enabled and verified; START/UNSTOP, standard STOP aliases and HELP/INFO messages above were saved. Select this EXISTING service in campaign registration instead of creating a duplicate. No campaign submitted and no SMS sent. Credentials, callback integration and owner-controlled acceptance tests remain pending.
 
 ## Deployment Verification
 
