@@ -40,6 +40,10 @@ async function fixture(options = {}) {
     webhook,
     now: () => Date.parse("2026-09-28"),
     notion: {
+      projectSmsConsent: async () => {
+        projects++;
+        if (options.notionFails) throw Error();
+      },
       read: async () => structuredClone(row),
       list: async () => [row],
       projectSmsOptOut: async () => {
@@ -48,6 +52,7 @@ async function fixture(options = {}) {
       },
     },
     transport: {
+      inboundTime: async () => options.inboundAt ?? Date.parse("2026-09-27"),
       enabled: options.enabled !== false,
       send: async () => {
         sends++;
@@ -163,6 +168,52 @@ test("forged callbacks cannot change state", async () => {
     (e) => e.code === "TWILIO_SIGNATURE_INVALID",
   );
   assert.equal((await f.ledger.read()).smsSuppression, undefined);
+});
+test("verified START records phone consent, projects Notion and never replays across STOP", async () => {
+  const f = await fixture();
+  const start = { Body: "START", OptOutType: "START" };
+  await f.callback("inbound", start);
+  let state = await f.ledger.read();
+  assert.equal(state.smsPreferences[hash(f.row.phone)].type, "START");
+  assert.equal(state.smsPreferences[hash(f.row.phone)].syncState, "synced");
+  assert.equal(state.smsSuppression[hash(f.row.phone)], undefined);
+  await f.callback("inbound", {
+    Body: "STOP",
+    OptOutType: "STOP",
+    MessageSid: "SM" + "6".repeat(32),
+  });
+  await f.callback("inbound", start);
+  state = await f.ledger.read();
+  assert.equal(state.smsPreferences[hash(f.row.phone)].type, "STOP");
+  assert.ok(state.smsSuppression[hash(f.row.phone)]);
+});
+test("a delayed distinct START cannot undo newer STOP; HELP does not enroll", async () => {
+  const f = await fixture();
+  await f.callback("inbound", { Body: "STOP", OptOutType: "STOP" });
+  await f.callback("inbound", {
+    Body: "UNSTOP",
+    OptOutType: "START",
+    MessageSid: "SM" + "7".repeat(32),
+  });
+  await f.callback("inbound", {
+    Body: "HELP",
+    OptOutType: "HELP",
+    MessageSid: "SM" + "8".repeat(32),
+  });
+  assert.equal(
+    (await f.ledger.read()).smsPreferences[hash(f.row.phone)].type,
+    "STOP",
+  );
+});
+test("START fails closed during Notion outage and rejects future provider timestamps", async () => {
+  const f = await fixture({ notionFails: true });
+  await f.callback("inbound", { Body: "START", OptOutType: "START" });
+  assert.ok((await f.ledger.read()).smsSuppression[hash(f.row.phone)]);
+  const future = await fixture({ inboundAt: Date.parse("2027-01-01") });
+  await assert.rejects(
+    () => future.callback("inbound", { Body: "START", OptOutType: "START" }),
+    (e) => e.code === "SMS_CONSENT_UNVERIFIED",
+  );
 });
 test("delivery callbacks match attempts and do not regress from terminal status", async () => {
   const f = await fixture();

@@ -1,3 +1,4 @@
+import { smsProgram } from "../site/sms-program.mjs";
 import { error, hash } from "./auth.mjs";
 import { smsDestination, validTwilioWebhook } from "./twilio.mjs";
 
@@ -120,22 +121,33 @@ export function createSms({
   }
   async function syncOptOut(phone) {
     const key = hash(phone);
+    const preference = (await ledger.read()).smsPreferences?.[key];
     try {
       const rows = await notion.list();
+      let matched = 0;
       for (const row of rows) {
         if (row.archived || row.phone?.replace(/[ ()-]/g, "") !== phone)
           continue;
-        await notion.projectSmsOptOut(row.id);
+        matched++;
+        if (preference?.type === "START")
+          await notion.projectSmsConsent(row.id, preference.at);
+        else await notion.projectSmsOptOut(row.id);
       }
       await ledger.transaction((s) => {
-        if (s.smsSuppression?.[key]) s.smsSuppression[key].syncState = "synced";
+        // Never let an older projection clear a newer STOP or pending opt-in.
+        if (
+          preference &&
+          s.smsPreferences?.[key]?.messageId !== preference.messageId
+        )
+          return;
+        if (preference && matched) s.smsPreferences[key].syncState = "synced";
+        if (preference?.type === "START" && matched)
+          delete s.smsSuppression[key];
+        else if (s.smsSuppression?.[key])
+          s.smsSuppression[key].syncState = matched ? "synced" : "pending";
       });
     } catch {
-      // The local suppression remains effective even when Notion is unavailable.
-      await ledger.transaction((s) => {
-        if (s.smsSuppression?.[key])
-          s.smsSuppression[key].syncState = "pending";
-      });
+      // Pending START and STOP both block sending until projection succeeds.
     }
   }
   async function callback(kind, params, signature) {
@@ -152,37 +164,53 @@ export function createSms({
       throw error(422, "INVALID_MESSAGE");
     if (kind === "inbound") {
       const phone = smsDestination(params.From);
-      // START is recorded but never clears a suppression automatically.
+      const body = (params.Body || "").trim().toUpperCase();
       const stop =
         params.OptOutType === "STOP" ||
-        /^(STOP|STOPALL|UNSUBSCRIBE|CANCEL|END|QUIT|REVOKE|OPTOUT)$/i.test(
-          (params.Body || "").trim(),
-        );
+        /^(STOP|STOPALL|UNSUBSCRIBE|CANCEL|END|QUIT|REVOKE|OPTOUT)$/.test(body);
+      // Only provider-classified START events enroll; plain text alone is insufficient.
+      const start =
+        !stop &&
+        params.OptOutType === "START" &&
+        smsProgram.keywords.includes(body);
+      const key = hash(phone);
+      const existing = (await ledger.read()).smsInbound?.[params.MessageSid];
+      let at = now();
+      if (start && !existing) {
+        if (!transport?.inboundTime) throw error(503, "SMS_CONSENT_UNVERIFIED");
+        at = await transport.inboundTime(params);
+        if (!Number.isFinite(at) || at > now())
+          throw error(503, "SMS_CONSENT_UNVERIFIED");
+      }
       await ledger.transaction((s) => {
         s.smsInbound ??= {};
         if (s.smsInbound[params.MessageSid]) return;
-        s.smsInbound[params.MessageSid] = {
-          phoneHash: hash(phone),
-          type: stop
-            ? "STOP"
-            : ["START", "HELP"].includes(params.OptOutType)
-              ? params.OptOutType
-              : "OTHER",
-          at: now(),
+        const type = stop
+          ? "STOP"
+          : start
+            ? "START"
+            : params.OptOutType === "HELP"
+              ? "HELP"
+              : "OTHER";
+        s.smsInbound[params.MessageSid] = { phoneHash: key, type, at };
+        // Consent receipts are retained so replayed START cannot undo STOP.
+        if (!start && !stop) return;
+        s.smsPreferences ??= {};
+        const old = s.smsPreferences[key];
+        if (start && old && at <= old.at) return;
+        s.smsPreferences[key] = {
+          phone,
+          type,
+          at,
+          messageId: params.MessageSid,
+          syncState: "pending",
+          source: "Twilio keyword " + body,
+          version: smsProgram.version,
         };
-        const ids = Object.keys(s.smsInbound);
-        for (const id of ids.slice(0, Math.max(0, ids.length - 5000)))
-          delete s.smsInbound[id];
-        if (stop) {
-          s.smsSuppression ??= {};
-          s.smsSuppression[hash(phone)] = {
-            phone,
-            at: now(),
-            syncState: "pending",
-          };
-        }
+        s.smsSuppression ??= {};
+        s.smsSuppression[key] = { phone, at, syncState: "pending" };
       });
-      if (stop) await syncOptOut(phone);
+      if (start || stop) await syncOptOut(phone);
     } else {
       const ranks = {
         accepted: 0,

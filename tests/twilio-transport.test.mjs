@@ -13,6 +13,37 @@ const cfg = {
   apiKeySecret: "fixture-secret",
   statusCallback: "https://example.com/api/twilio/status",
 };
+test("keyword consent timestamp must come from the matching inbound provider message", async () => {
+  const params = {
+    MessageSid: "SM" + "4".repeat(32),
+    From: "+14155552671",
+    To: "+16827868002",
+    Body: "START",
+  };
+  const message = {
+    sid: params.MessageSid,
+    account_sid: cfg.accountSid,
+    messaging_service_sid: cfg.serviceSid,
+    direction: "inbound",
+    from: params.From,
+    to: params.To,
+    body: params.Body,
+    date_created: "2026-09-28T10:00:00Z",
+  };
+  const transport = twilioTransport({
+    ...cfg,
+    fetchImpl: async () => Response.json(message),
+  });
+  assert.equal(
+    await transport.inboundTime(params),
+    Date.parse(message.date_created),
+  );
+  message.direction = "outbound-api";
+  await assert.rejects(
+    () => transport.inboundTime(params),
+    (e) => e.code === "SMS_CONSENT_UNVERIFIED",
+  );
+});
 test("SMS countries use phone metadata, not just the +1 prefix", () => {
   assert.equal(smsDestination("+14155552671"), "+14155552671");
   assert.equal(smsDestination("+14165552671"), "+14165552671");

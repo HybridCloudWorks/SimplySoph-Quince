@@ -32,6 +32,39 @@ export function twilioTransport({
   return {
     configured,
     enabled: enabled && configured,
+    async inboundTime(params) {
+      if (!configured || !/^SM[0-9a-f]{32}$/i.test(params.MessageSid || ""))
+        throw error(503, "SMS_CONSENT_UNVERIFIED");
+      try {
+        const response = await fetchImpl(
+          `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages/${params.MessageSid}.json`,
+          {
+            redirect: "error",
+            signal: AbortSignal.timeout(15000),
+            headers: {
+              Authorization: `Basic ${Buffer.from(`${apiKeySid}:${apiKeySecret}`).toString("base64")}`,
+            },
+          },
+        );
+        if (!response.ok) throw Error();
+        const message = await response.json();
+        const at = Date.parse(message.date_created);
+        if (
+          message.sid !== params.MessageSid ||
+          message.account_sid !== accountSid ||
+          message.messaging_service_sid !== serviceSid ||
+          message.direction !== "inbound" ||
+          message.from !== params.From ||
+          message.to !== params.To ||
+          message.body !== params.Body ||
+          !Number.isFinite(at)
+        )
+          throw Error();
+        return at;
+      } catch {
+        throw error(503, "SMS_CONSENT_UNVERIFIED");
+      }
+    },
     async send({ to, text }) {
       if (!enabled || !configured) throw error(503, "SMS_NOT_ENABLED");
       const destination = smsDestination(to);

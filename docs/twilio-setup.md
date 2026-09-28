@@ -2,7 +2,11 @@
 
 Prepared September 28, 2026. Owner will finish account/API setup in about 24 hours. SMS destinations: **United States and Canada only**. Email stays with Microsoft 365 (`misxv@simplysoph.com`). Guest sign-in continues by email link; Twilio Verify is not needed for this scope.
 
-## Current Status
+## Keyword Registration Update
+
+The owner now identifies the operator as **Simply Soph Media** and the event sender as **+16827868002**, using the Sole Proprietor A2P campaign flow. See [current keywords, exact replies and consent description](sms-campaign-registration.md). Earlier trial/no-number observations below are historical, not current ownership checks. Keyword consent handling and public SMS pages are now implemented; provider configuration and live acceptance tests remain pending.
+
+## Previous Deployment Status
 
 Release `c2f4953` passed both GitHub CI runs and 105 automated tests on September 28, 2026. Static admin controls were published to `misxv-simplysoph`; the live JavaScript matches the local release byte-for-byte. Cloud Run revision `misxv-api-00009-6xn` serves 100 percent of traffic. The public unsigned callback test returns `403 TWILIO_SIGNATURE_INVALID`; `/api/config` remains healthy with email configured. SMS remains disabled with no Twilio credentials bound, and no SMS was sent. Local browser review used a synthetic household, not guest records.
 
@@ -12,7 +16,7 @@ The website prepares SMS drafts from selected Notion distribution groups/people 
 
 Admin → Announcements & Emails → SMS Drafts → Review SMS displays the recipient, message and estimated segments. Exact rates are not yet configured, so the UI does not invent a dollar quote. Dispatch is one reviewed draft at a time. Incoming messages do not submit an RSVP: guests follow their private invitation link to the website. Email account verification remains unchanged. International WhatsApp is a separate next phase in [whatsapp-setup.md](whatsapp-setup.md).
 
-Callback paths, once this release is deployed: `https://misxv.simplysoph.com/api/twilio/status` and `https://misxv.simplysoph.com/api/twilio/inbound`. Configure Advanced Opt-Out on the dedicated service; Twilio handles its standard replies and this application returns empty TwiML to avoid duplicate replies. STOP is suppressed locally first and projected to Notion's SMS Opt Out field for matching households. Pending failures can be retried from the admin page. START records a request but never silently clears suppression; reviewed re-consent support is still required. Delivery status is distinct from provider acceptance. A process crash after claiming a send requires reconciliation, never a reset to draft.
+Callback paths, once this release is deployed: `https://misxv.simplysoph.com/api/twilio/status` and `https://misxv.simplysoph.com/api/twilio/inbound`. Configure Advanced Opt-Out on the dedicated service; Twilio handles its standard replies and this application returns empty TwiML to avoid duplicate replies. STOP is suppressed locally first and projected to Notion's SMS Opt Out field for matching households. Pending failures can be retried from the admin page. Verified START/UNSTOP now records explicit keyword consent. Provider message timestamps reject stale opt-ins; suppression is cleared only after matching Notion records are updated successfully. Delivery status is distinct from provider acceptance. A process crash after claiming a send requires reconciliation, never a reset to draft.
 
 Run `npm run sms:setup` to print an offline configuration checklist. It prints field names and presence/format status only, never credential values, and makes no network calls. A complete report is not proof of working credentials, verification or delivery. Do not paste values into terminal commands, chat or GitHub.
 

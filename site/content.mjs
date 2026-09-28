@@ -43,6 +43,8 @@ export const routes = [
   ["contact", "Contact Us", "Contáctanos"],
   ["privacy", "Guest privacy", "Privacidad"],
   ["terms", "Media Policy", "Política de medios"],
+  ["sms", "SMS Updates", "Mensajes SMS"],
+  ["sms-terms", "SMS Terms", "Términos SMS"],
   ["thank-you", "With love & thanks", "Con cariño y gratitud"],
   ["404", "Page not found", "Página no encontrada"],
 ];
