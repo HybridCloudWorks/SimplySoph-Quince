@@ -786,3 +786,7 @@ th,
 .planning-table .table-actions {
   min-width: 150px;
 }
+
+#admin-email-login + p {
+  margin-top: 24px;
+}

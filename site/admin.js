@@ -88,6 +88,8 @@ async function login() {
       run(async () => {
         showMfa(await api("auth/admin-email/verify", { token: fragment }));
         document.querySelector("#verify-admin-email").remove();
+        root.querySelector("p").textContent =
+          "Email Verified. Enter Your Authenticator Code.";
       });
     return;
   }
