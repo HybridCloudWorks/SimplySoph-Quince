@@ -8,6 +8,9 @@
       "**/node_modules/**"
     ],
     "trailingSlash": true,
+    "rewrites": [
+      { "source": "/api/**", "run": { "serviceId": "misxv-api", "region": "us-central1" } }
+    ],
     "predeploy": [
       "npm run check"
     ],

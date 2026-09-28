@@ -49,3 +49,7 @@ The `misxv-notion-token` Secret Manager container and user-added version 1 are r
 The event Microsoft 365 shared mailbox misxv@simplysoph.com and its approved administrator Read and Manage / Send As delegation are inventoried with exact identities and scoped baselines. Remove the delegation before deleting the mailbox. Preserve the existing administrator account. The dedicated Firebase Hosting site, event custom-domain association, CNAME and certificate TXT record are also inventoried. Cleanup orders DNS before the domain association and the site. The validator rejects the protected default Hosting site. The global Google/DNS/Notion baseline remains incomplete. The plan generator and manual GitHub workflow produce a review checklist, not automated teardown.
 
 The private event bucket now has object versioning enabled for ledger/media recovery in addition to seven-day soft delete. Include both photo and video objects and every noncurrent generation in export/retirement review. Stop writes before any recovery and invalidate restored authentication sessions/challenges; reconcile sent-email state so a rollback cannot resend prior messages. No lifecycle purge or retention lock was added. See DEPLOYMENT.md for the recovery checklist.
+
+## Approved review date
+
+February 1, 2027 (2027-02-01) is the family-approved review date only. No deletion is scheduled. Review exports, guest data retention and exact event resources with the organizer before any removal.

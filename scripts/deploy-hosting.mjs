@@ -28,11 +28,16 @@ export function servingConfig(firebase, targets, sha) {
     throw new Error('Refusing an unexpected Hosting target or upload directory');
   }
   // Do not silently omit a future API rewrite or other routing configuration.
-  const supported = ['target', 'public', 'ignore', 'trailingSlash', 'predeploy', 'headers'];
+  const supported = ['target', 'public', 'ignore', 'trailingSlash', 'predeploy', 'headers', 'rewrites'];
   if (Object.keys(h).some(key => !supported.includes(key))) throw new Error('Unsupported Hosting config; extend and review the REST mapping first');
+  const expectedRewrite = [{source:'/api/**', run:{serviceId:'misxv-api', region:'us-central1'}}];
+  if (h.rewrites !== undefined && JSON.stringify(h.rewrites) !== JSON.stringify(expectedRewrite)) {
+    throw new Error('Unsupported API rewrite; only the dedicated event service is permitted');
+  }
   if (h.trailingSlash !== true) throw new Error('Expected directory routes with trailing slashes');
   return {
     trailingSlashBehavior:'ADD',
+    ...(h.rewrites ? {rewrites:[{glob:'/api/**', run:{serviceId:'misxv-api', region:'us-central1'}}]} : {}),
     headers:[...h.headers.map(rule => ({glob:rule.source, headers:Object.fromEntries(rule.headers.map(x => [x.key,x.value]))})),
       {glob:'**', headers:{'X-Release-Commit':sha}}],
   };

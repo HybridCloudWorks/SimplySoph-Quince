@@ -158,7 +158,7 @@
         ],
         "evidence": "gcloud secrets describe returned NOT_FOUND immediately before creation; existing secrets untouched"
       },
-      "creationEvidence": "Container created 2026-09-27T02:53:39.595525Z; user added version 1 at 2026-09-27T04:06:38.156516Z, verified ENABLED. Read-only Notion schema inspection succeeded. No new runtime IAM grant. Credential is user-created PAT named simplysoph, not yet a scoped API-token connection",
+      "creationEvidence": "Container created 2026-09-27T02:53:39.595525Z; user added version 1 at 2026-09-27T04:06:38.156516Z, verified ENABLED. Read-only Notion schema inspection succeeded. No new runtime IAM grant. Credential is user-created PAT named simplysoph, not yet a scoped API-token connection Dedicated token version 2 stored by organizer 2026-09-28T04:07:43.640898Z; /users/me verified bot 3e80982b-27b6-81cd-b57e-0027b509671c and source schema readable without fetching guest rows.",
       "verifyBeforeCleanup": "Confirm exact secret name and project number, event labels and runtime references; stop sync before revocation",
       "cleanupSteps": "Identify the active Notion credential. If the user-created simplysoph PAT remains exclusively event-owned, have its owner revoke it; if replaced, revoke the dedicated event connection instead. Stop sync, remove event runtime access, then remove this exact secret and its versions after final review. Preserve unrelated tokens, secrets, integrations and the original Invitations database",
       "verifyAfterCleanup": "Verify Notion connection revoked and exact secret absent; record any retained versions or provider retention",
@@ -179,8 +179,8 @@
         ],
         "evidence": "Private work/notion-connection-baseline.txt records an empty Connections table; existing PAT preserved"
       },
-      "creationEvidence": "Created through Notion developer portal after user accepted Developer Terms and approved Invitations-only read/update/insert; capabilities verified, content-access setup in progress",
-      "exactScope": "Only Invitations source database; read/update/insert content; no comments, agents or user profiles. Content access verification pending.",
+      "creationEvidence": "Created after user approved Developer Terms; Invitations-only content access saved and verified 2026-09-27; read/update/insert enabled, comments/agents disabled. Dedicated token storage still pending.",
+      "exactScope": "Only Invitations database under Quinceañera Planning; read/update/insert content; no comments, agents or user profiles. Saved Content access lists Invitations only.",
       "verifyBeforeCleanup": "Match connection ID and workspace in private evidence; inspect page scope and runtime secret reference; stop intake first",
       "cleanupSteps": "Revoke this dedicated connection after export and stopping the event API; remove associated stored secret versions separately. Preserve original Invitations database and unrelated PATs.",
       "verifyAfterCleanup": "Verify dedicated connection absent and its token rejected; preserve unrelated connections",
@@ -437,6 +437,303 @@
       "verifyAfterCleanup": "Verify exact secret and versions unavailable; confirm exports do not rely on a destroyed key; preserve all other secrets",
       "dependsOn": [],
       "status": "active"
+    },
+    {
+      "id": "misxv-email-application",
+      "type": "entra-application",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "Tenant 83d9aa10-e1de-455e-a9b8-1cc73e99685a / Mis XV event email / client ab5ab501-e474-41e7-8985-832aa628afdf / app object 4296eff1-53c0-4c7e-ac33-7af479a7d76f / enterprise service principal 663d6925-03d1-467e-a3f6-1adce274cc54",
+      "baseline": {
+        "verifiedAt": "2026-09-27T00:00:00Z",
+        "scope": "Microsoft Entra app registrations in simplysoph.com before event app creation",
+        "allowedTypes": [
+          "entra-application"
+        ],
+        "evidence": "Private work/microsoft-mail-app-baseline.txt: existing SimplySoph WebApp only; event app absent"
+      },
+      "creationEvidence": "Registered through Entra portal on 2026-09-27 after organizer approved registration and Microsoft Platform Policies; single tenant only; both app and enterprise identity verified",
+      "verifyBeforeCleanup": "Match exact tenant, client ID, app object and enterprise service principal; stop event email and runtime; preserve SimplySoph WebApp e42439fa-3b42-4b9e-b184-d9dcafdd55d6",
+      "cleanupSteps": "Remove recorded Exchange role assignments, scopes and Exchange service principal first. Revoke event app credentials, then delete only this app registration and any remaining matching enterprise application after reviewed export. Remove its dedicated Google secret separately.",
+      "verifyAfterCleanup": "Verify exact app and enterprise principal are absent and event authentication fails; preserve tenant, subscriptions and unrelated apps",
+      "dependsOn": [],
+      "status": "active"
+    },
+    {
+      "id": "misxv-m365-client-secret",
+      "type": "secret",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "projects/424903425639/secrets/misxv-m365-client-secret",
+      "baseline": {
+        "verifiedAt": "2026-09-28T04:06:00Z",
+        "scope": "Exact misxv-m365-client-secret before creation",
+        "allowedTypes": [
+          "secret"
+        ],
+        "evidence": "gcloud secrets describe returned NOT_FOUND using saulpatinojr@gmail.com in simplysoph-66c78 before creation"
+      },
+      "creationEvidence": "Created 2026-09-28T04:07:20.577386Z with replica us-central1 and event=misxv-2027; initially empty, no runtime grant Organizer stored version 1 at 2026-09-28T04:14:00.929876Z; Microsoft client-credentials authentication verified for the exact app and tenant, token has no unscoped application roles.",
+      "verifyBeforeCleanup": "Match exact secret and versions; stop event sending and revoke corresponding Microsoft app credential",
+      "cleanupSteps": "After exports and credential revocation remove runtime access, then disable and remove only this event secret and versions after review",
+      "verifyAfterCleanup": "Verify secret unavailable and application authentication fails; preserve other secrets",
+      "dependsOn": [
+        "misxv-email-application"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "misxv-notion-projection-columns",
+      "type": "notion-records",
+      "projectId": "simplysoph-66c78",
+      "ownership": "event-change-to-existing",
+      "resource": "Notion Invitations source 88e9f052-3647-451a-a147-4b587877daf1 / website projection properties",
+      "baseline": {
+        "verifiedAt": "2026-09-28T04:12:24.114Z",
+        "scope": "Existing Invitations data-source schema, no guest row values",
+        "allowedTypes": [
+          "notion-records"
+        ],
+        "evidence": "Private work/notion/projection-before.json preserves full original schema; website projection columns absent"
+      },
+      "creationEvidence": "Added 14 website projection columns through restricted connection; verified original column IDs/types retained. Private work/notion/projection-after.json records new IDs.",
+      "exactScope": "Website RSVP [s%5E~E]; Website response ID [W%40nJ]; Website response at [ifn%60]; Ceremony adults [tMdz]; Ceremony kids [UdtZ]; Dinner adults [%3FbPH]; Dinner kids [x%7BMI]; Dance adults [%3FShl]; Dance kids [l%3DQ%40]; Website contact email [bHt%7D]; Website phone [CTeg]; Website address [pxI%5E]; Website requests [tiyS]; Website account [cG~Y]",
+      "verifyBeforeCleanup": "Stop sync, export wanted website responses and compare exact property IDs against recorded scope; do not remove original fields or database",
+      "cleanupSteps": "After explicit reviewed approval remove only the recorded website projection properties if the family no longer needs them; retain original Invitations records, capacities, contacts and RSVP delivery field",
+      "verifyAfterCleanup": "Verify only selected projection columns are gone; original property IDs and guest records remain",
+      "dependsOn": [
+        "misxv-notion-connection"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "misxv-exchange-principal",
+      "type": "exchange-role-assignment",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "Tenant 83d9aa10-e1de-455e-a9b8-1cc73e99685a / Exchange service principal 663d6925-03d1-467e-a3f6-1adce274cc54 for app ab5ab501-e474-41e7-8985-832aa628afdf",
+      "baseline": {
+        "verifiedAt": "2026-09-28T04:13:12.6806477Z",
+        "scope": "Exact event Exchange service principal, management scope and role assignment",
+        "allowedTypes": [
+          "exchange-role-assignment"
+        ],
+        "evidence": "Private work/exchange-baseline.json recorded all three absent and exact event shared mailbox identity before changes"
+      },
+      "creationEvidence": "Created through authenticated Exchange Online PowerShell after WhatIf preview. Private work/exchange-*-created.json records IDs; authorization test allowed event mailbox and denied administrator mailbox.",
+      "exactScope": "Exchange pointer for the event application only",
+      "verifyBeforeCleanup": "Match exact tenant, IDs, scope/filter and role; stop event sending; preserve unrelated mailboxes and app assignments",
+      "cleanupSteps": "Remove only the Exchange service principal pointer after removing its role assignments; preserve other principals.",
+      "verifyAfterCleanup": "Verify the exact object or assignment is absent; retest event application authorization and preserve unrelated principals/scopes",
+      "dependsOn": [
+        "misxv-email-application"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "misxv-exchange-mailbox-scope",
+      "type": "exchange-role-assignment",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "Tenant 83d9aa10-e1de-455e-a9b8-1cc73e99685a / Exchange management scope misxv-event-mailbox / 50e23999-49a7-4919-841b-d972e9f8fd9f",
+      "baseline": {
+        "verifiedAt": "2026-09-28T04:13:12.6806477Z",
+        "scope": "Exact event Exchange service principal, management scope and role assignment",
+        "allowedTypes": [
+          "exchange-role-assignment"
+        ],
+        "evidence": "Private work/exchange-baseline.json recorded all three absent and exact event shared mailbox identity before changes"
+      },
+      "creationEvidence": "Created through authenticated Exchange Online PowerShell after WhatIf preview. Private work/exchange-*-created.json records IDs; authorization test allowed event mailbox and denied administrator mailbox.",
+      "exactScope": "RecipientFilter ExternalDirectoryObjectId -eq '6d086684-0c76-404d-be9f-ef9a7992a8c5'; preview matches only misxv@simplysoph.com",
+      "verifyBeforeCleanup": "Match exact tenant, IDs, scope/filter and role; stop event sending; preserve unrelated mailboxes and app assignments",
+      "cleanupSteps": "After removing this scope's event role assignment, remove only management scope misxv-event-mailbox.",
+      "verifyAfterCleanup": "Verify the exact object or assignment is absent; retest event application authorization and preserve unrelated principals/scopes",
+      "dependsOn": [
+        "misxv-m365-mailbox"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "misxv-exchange-send-role",
+      "type": "exchange-role-assignment",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "Tenant 83d9aa10-e1de-455e-a9b8-1cc73e99685a / Exchange role assignment misxv-event-mail-send / 29ebde3f-7b95-413f-9d8b-7fcd9c56c58f",
+      "baseline": {
+        "verifiedAt": "2026-09-28T04:13:12.6806477Z",
+        "scope": "Exact event Exchange service principal, management scope and role assignment",
+        "allowedTypes": [
+          "exchange-role-assignment"
+        ],
+        "evidence": "Private work/exchange-baseline.json recorded all three absent and exact event shared mailbox identity before changes"
+      },
+      "creationEvidence": "Created through authenticated Exchange Online PowerShell after WhatIf preview. Private work/exchange-*-created.json records IDs; authorization test allowed event mailbox and denied administrator mailbox.",
+      "exactScope": "Application Mail.Send assigned to 663d6925-03d1-467e-a3f6-1adce274cc54 with CustomResourceScope misxv-event-mailbox only",
+      "verifyBeforeCleanup": "Match exact tenant, IDs, scope/filter and role; stop event sending; preserve unrelated mailboxes and app assignments",
+      "cleanupSteps": "Stop event sending, remove only role assignment misxv-event-mail-send, then confirm the app loses send access before removing dependent scope and principal.",
+      "verifyAfterCleanup": "Verify the exact object or assignment is absent; retest event application authorization and preserve unrelated principals/scopes",
+      "dependsOn": [
+        "misxv-exchange-principal",
+        "misxv-exchange-mailbox-scope"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "misxv-app-key-runtime-access",
+      "type": "iam-binding",
+      "projectId": "simplysoph-66c78",
+      "ownership": "event-change-to-existing",
+      "resource": "projects/424903425639/secrets/misxv-app-key IAM roles/secretmanager.secretAccessor",
+      "baseline": {
+        "verifiedAt": "2026-09-28T04:16:00Z",
+        "scope": "Exact secret IAM policy before runtime grant",
+        "allowedTypes": [
+          "iam-binding"
+        ],
+        "evidence": "gcloud secrets get-iam-policy returned etag ACAB with no bindings for this secret"
+      },
+      "creationEvidence": "gcloud added and returned the exact secretAccessor binding on 2026-09-28; no project-wide secret role",
+      "exactScope": "roles/secretmanager.secretAccessor for serviceAccount:misxv-runtime@simplysoph-66c78.iam.gserviceaccount.com on only misxv-app-key; unconditional; prior grant absent",
+      "verifyBeforeCleanup": "Match exact secret, principal, role and condition; stop event runtime first",
+      "cleanupSteps": "Remove only this secret-level runtime binding, preserving any unrelated members or bindings",
+      "verifyAfterCleanup": "Confirm this runtime principal no longer has secretAccessor on the exact secret",
+      "dependsOn": [
+        "misxv-app-key",
+        "misxv-runtime-identity"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "misxv-notion-token-runtime-access",
+      "type": "iam-binding",
+      "projectId": "simplysoph-66c78",
+      "ownership": "event-change-to-existing",
+      "resource": "projects/424903425639/secrets/misxv-notion-token IAM roles/secretmanager.secretAccessor",
+      "baseline": {
+        "verifiedAt": "2026-09-28T04:16:00Z",
+        "scope": "Exact secret IAM policy before runtime grant",
+        "allowedTypes": [
+          "iam-binding"
+        ],
+        "evidence": "gcloud secrets get-iam-policy returned etag ACAB with no bindings for this secret"
+      },
+      "creationEvidence": "gcloud added and returned the exact secretAccessor binding on 2026-09-28; no project-wide secret role",
+      "exactScope": "roles/secretmanager.secretAccessor for serviceAccount:misxv-runtime@simplysoph-66c78.iam.gserviceaccount.com on only misxv-notion-token; unconditional; prior grant absent",
+      "verifyBeforeCleanup": "Match exact secret, principal, role and condition; stop event runtime first",
+      "cleanupSteps": "Remove only this secret-level runtime binding, preserving any unrelated members or bindings",
+      "verifyAfterCleanup": "Confirm this runtime principal no longer has secretAccessor on the exact secret",
+      "dependsOn": [
+        "misxv-notion-token",
+        "misxv-runtime-identity"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "misxv-m365-client-secret-runtime-access",
+      "type": "iam-binding",
+      "projectId": "simplysoph-66c78",
+      "ownership": "event-change-to-existing",
+      "resource": "projects/424903425639/secrets/misxv-m365-client-secret IAM roles/secretmanager.secretAccessor",
+      "baseline": {
+        "verifiedAt": "2026-09-28T04:16:00Z",
+        "scope": "Exact secret IAM policy before runtime grant",
+        "allowedTypes": [
+          "iam-binding"
+        ],
+        "evidence": "gcloud secrets get-iam-policy returned etag ACAB with no bindings for this secret"
+      },
+      "creationEvidence": "gcloud added and returned the exact secretAccessor binding on 2026-09-28; no project-wide secret role",
+      "exactScope": "roles/secretmanager.secretAccessor for serviceAccount:misxv-runtime@simplysoph-66c78.iam.gserviceaccount.com on only misxv-m365-client-secret; unconditional; prior grant absent",
+      "verifyBeforeCleanup": "Match exact secret, principal, role and condition; stop event runtime first",
+      "cleanupSteps": "Remove only this secret-level runtime binding, preserving any unrelated members or bindings",
+      "verifyAfterCleanup": "Confirm this runtime principal no longer has secretAccessor on the exact secret",
+      "dependsOn": [
+        "misxv-m365-client-secret",
+        "misxv-runtime-identity"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "misxv-artifact-repository",
+      "type": "artifact-repository",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "projects/simplysoph-66c78/locations/us-central1/repositories/misxv-api",
+      "baseline": {
+        "verifiedAt": "2026-09-28T04:16:00Z",
+        "scope": "Exact event Artifact Registry repository",
+        "allowedTypes": [
+          "artifact-repository"
+        ],
+        "evidence": "gcloud artifacts repositories describe returned NOT_FOUND before creation"
+      },
+      "creationEvidence": "Repository creation completed at 2026-09-28T04:17:30.497862Z; Docker format, event=misxv-2027 label",
+      "verifyBeforeCleanup": "Confirm exact project, us-central1 location and repository; stop event Cloud Run and preserve wanted source/release evidence",
+      "cleanupSteps": "After removing dependent event service, remove this dedicated repository and its event image versions after final review; preserve all other repositories",
+      "verifyAfterCleanup": "Verify exact repository absent and account for any retained image charges",
+      "dependsOn": [],
+      "status": "active"
+    },
+    {
+      "id": "misxv-api-service",
+      "type": "cloud-run-service",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "projects/simplysoph-66c78/locations/us-central1/services/misxv-api",
+      "baseline": {
+        "verifiedAt": "2026-09-28T04:16:00Z",
+        "scope": "Exact misxv-api service in us-central1 before first deployment",
+        "allowedTypes": [
+          "cloud-run-service",
+          "iam-binding"
+        ],
+        "evidence": "gcloud run services describe reported service not found; new service therefore had no prior invoker policy"
+      },
+      "creationEvidence": "Revision misxv-api-00001-t75 Ready on 2026-09-28T04:19:21.390463Z; image sha256:773dbca3ed93929d68f9e425d2098ac45600e2be86edf91f908e99824ca4c0cc; 1 CPU/1GiB, concurrency 4, min 0/max 2, request CPU, 120s timeout; exact secret versions pinned",
+      "verifyBeforeCleanup": "Close intake and sending, export wanted ledger/media and retain decryption key until exports are readable; detach Hosting API rewrite",
+      "cleanupSteps": "Remove event public invoker grant, then delete only misxv-api in us-central1 and its event revisions after review; preserve project and other services",
+      "verifyAfterCleanup": "Verify event service absent, API unavailable and other services unchanged",
+      "dependsOn": [
+        "misxv-artifact-repository",
+        "misxv-runtime-identity",
+        "misxv-app-key-runtime-access",
+        "misxv-notion-token-runtime-access",
+        "misxv-m365-client-secret-runtime-access",
+        "misxv-runtime-storage-grant"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "misxv-api-public-invoker",
+      "type": "iam-binding",
+      "projectId": "simplysoph-66c78",
+      "ownership": "event-change-to-existing",
+      "resource": "projects/simplysoph-66c78/locations/us-central1/services/misxv-api IAM roles/run.invoker",
+      "baseline": {
+        "verifiedAt": "2026-09-28T04:16:00Z",
+        "scope": "Exact misxv-api service in us-central1 before first deployment",
+        "allowedTypes": [
+          "cloud-run-service",
+          "iam-binding"
+        ],
+        "evidence": "gcloud run services describe reported service not found; new service therefore had no prior invoker policy"
+      },
+      "creationEvidence": "Created by approved website service deployment; get-iam-policy verified only allUsers/run.invoker, etag BwZcg14tiSM=",
+      "exactScope": "roles/run.invoker for allUsers on only misxv-api, unconditional. Public transport; application checks require guest/admin identity on private routes.",
+      "verifyBeforeCleanup": "Match exact service and role; close website intake first",
+      "cleanupSteps": "Remove only allUsers roles/run.invoker on misxv-api before service removal; preserve unrelated IAM",
+      "verifyAfterCleanup": "Verify anonymous invocation is denied and exact binding absent",
+      "dependsOn": [
+        "misxv-api-service"
+      ],
+      "status": "active"
     }
-  ]
+  ],
+  "retirementReview": {
+    "date": "2027-02-01",
+    "automaticDeletion": false,
+    "approvedBy": "Organizer in chat",
+    "purpose": "Review exports, retention and event resource retirement; no deletion is scheduled or authorized by this date."
+  }
 }

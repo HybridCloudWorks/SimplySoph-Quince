@@ -22,5 +22,16 @@ test('publisher preserves security headers and cannot select the protected defau
   bad.targets['simplysoph-66c78'].hosting.misxv=['simplysoph-66c78'];
   assert.throws(() => servingConfig(firebase,bad,env.GITHUB_SHA),/unexpected Hosting target/);
   firebase.hosting.rewrites=[{source:'/api/**',run:{serviceId:'misxv-api'}}];
-  assert.throws(() => servingConfig(firebase,targets,env.GITHUB_SHA),/Unsupported Hosting config/);
+  assert.throws(() => servingConfig(firebase,targets,env.GITHUB_SHA),/Unsupported API rewrite/);
+});
+
+test('publisher preserves the exact API service mapping and rejects other destinations', async () => {
+  const firebase = JSON.parse(await readFile('firebase.json','utf8'));
+  const targets = JSON.parse(await readFile('.firebaserc','utf8'));
+  firebase.hosting.rewrites=[{source:'/api/**',run:{serviceId:'misxv-api',region:'us-central1'}}];
+  assert.deepEqual(servingConfig(firebase,targets,env.GITHUB_SHA).rewrites,[{glob:'/api/**',run:{serviceId:'misxv-api',region:'us-central1'}}]);
+  for (const rewrite of [{source:'/**',run:{serviceId:'misxv-api',region:'us-central1'}},{source:'/api/**',run:{serviceId:'other',region:'us-central1'}},{source:'/api/**',destination:'/index.html'}]) {
+    firebase.hosting.rewrites=[rewrite];
+    assert.throws(() => servingConfig(firebase,targets,env.GITHUB_SHA),/Unsupported API rewrite/);
+  }
 });
