@@ -206,6 +206,12 @@ input[type="checkbox"] {
 .admin-shell #admin-app > p {
   max-width: 70ch;
 }
+#google-signin {
+  max-width: 360px;
+}
+#mfa {
+  max-width: 640px;
+}
 .admin-shell aside a {
   display: block;
   padding: 10px;
