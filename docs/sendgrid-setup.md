@@ -6,7 +6,7 @@ Microsoft 365 remains the primary sender, `misxv@simplysoph.com`. The SendGrid a
 
 1. Sign in to SendGrid and complete sender/domain verification for simplysoph.com. Add its current account-specific authentication records in Cloudflare as DNS-only records. Keep Microsoft MX, SPF and selector1/selector2 DKIM records. Do not create a second root SPF or DMARC record. SendGrid's return-path subdomain has its own SPF configuration.
 2. Create a dedicated event API key with Mail Send permission only. The owner must enter the new credential; never paste it into chat, source code or a command line.
-3. Store it in Google Secret Manager as `misxv-sendgrid-api-key` in `simplysoph-66c78`. This name is planned, not yet provisioned. Inventory the key, secret version and secret-level runtime grant; pin the version on Cloud Run.
+3. Store it in Google Secret Manager as `misxv-sendgrid-api-key` in `simplysoph-66c78`. The empty secret and its secret-level runtime grant were created and inventoried on September 28, 2026; owner credential entry is pending. Inventory the new key and version after entry, then pin that version on Cloud Run.
 4. After domain authentication and the credential are verified, use `MAIL_PROVIDER=m365` and explicitly enable `SENDGRID_FALLBACK_ENABLED=true`. Bind `SENDGRID_API_KEY` from the pinned secret. Startup refuses an enabled SendGrid provider without its key.
 5. Send only a reviewed owner test, inspect delivery/authentication headers and exercise an authentication-failure mock before enabling guest mail. No setup code sends messages automatically.
 
@@ -19,3 +19,9 @@ The existing Microsoft configuration is still required at startup so returning t
 February 1, 2027 is a review/export date, not automatic deletion. Disable fallback, reconcile in-flight messages, revoke the dedicated API key and remove its event secret/binding after approval. Remove SendGrid domain authentication/link-branding records only if no other sender uses them. Preserve shared Microsoft, Firebase, Cloudflare, the domain and the Google project.
 
 Reference: [SendGrid Mail Send API](https://www.twilio.com/docs/sendgrid/api-reference/mail-send/mail-send).
+
+## Setup Evidence — September 28, 2026
+
+All eight organizer-approved DNS records were saved in Cloudflare; CNAMEs are DNS-only and existing Microsoft mail routing/authentication remains intact. Authoritative DNS answers match. SendGrid confirmed domain authentication for simplysoph.com. Branded-link SSL provisioning is separate and may still be pending. Exact records and retirement decisions are in `ops/shared-domain-changes.json`.
+
+The signed-in SendGrid account displays a trial ending November 27, 2026. Review its plan before relying on fallback for the January event. No subscription was purchased, no API key was created by the agent, and fallback remains disabled pending owner credential entry and acceptance testing.

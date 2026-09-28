@@ -626,6 +626,46 @@
       "verifyAfterCleanup": "Verify anonymous invocation is denied and exact binding absent",
       "dependsOn": ["misxv-api-service"],
       "status": "active"
+    },
+    {
+      "id": "misxv-sendgrid-api-key",
+      "type": "secret",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "projects/424903425639/secrets/misxv-sendgrid-api-key",
+      "baseline": {
+        "verifiedAt": "2026-09-28T18:46:02.188Z",
+        "scope": "Exact event SendGrid secret and its runtime grant",
+        "allowedTypes": ["secret"],
+        "evidence": "gcloud secrets describe returned NOT_FOUND before creation on 2026-09-28; newly created secret had no existing runtime grant"
+      },
+      "creationEvidence": "gcloud created empty us-central1 secret and granted secret-level access on 2026-09-28. No credential version or runtime binding yet; owner handoff pending.",
+      "exactScope": "Event SendGrid key versions only; replica us-central1",
+      "verifyBeforeCleanup": "Disable SendGrid dispatch/fallback, reconcile pending mail, export wanted records and revoke dedicated SendGrid API key before removing runtime configuration",
+      "cleanupSteps": "After review, remove event runtime binding, destroy exact event secret versions and delete this secret only",
+      "verifyAfterCleanup": "Verify exact event resource/grant absent; preserve Microsoft credentials, shared Google project and other secrets",
+      "dependsOn": [],
+      "status": "active"
+    },
+    {
+      "id": "misxv-sendgrid-api-key-runtime-access",
+      "type": "iam-binding",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "projects/424903425639/secrets/misxv-sendgrid-api-key IAM roles/secretmanager.secretAccessor",
+      "baseline": {
+        "verifiedAt": "2026-09-28T18:46:02.189Z",
+        "scope": "Exact event SendGrid secret and its runtime grant",
+        "allowedTypes": ["iam-binding"],
+        "evidence": "gcloud secrets describe returned NOT_FOUND before creation on 2026-09-28; newly created secret had no existing runtime grant"
+      },
+      "creationEvidence": "gcloud created empty us-central1 secret and granted secret-level access on 2026-09-28. No credential version or runtime binding yet; owner handoff pending.",
+      "exactScope": "roles/secretmanager.secretAccessor for serviceAccount:misxv-runtime@simplysoph-66c78.iam.gserviceaccount.com on only this secret, unconditional",
+      "verifyBeforeCleanup": "Disable SendGrid dispatch/fallback, reconcile pending mail, export wanted records and revoke dedicated SendGrid API key before removing runtime configuration",
+      "cleanupSteps": "Remove only this runtime principal and secretAccessor role from this secret, preserving other policy bindings",
+      "verifyAfterCleanup": "Verify exact event resource/grant absent; preserve Microsoft credentials, shared Google project and other secrets",
+      "dependsOn": ["misxv-sendgrid-api-key", "misxv-runtime-identity"],
+      "status": "active"
     }
   ],
   "retirementReview": {
