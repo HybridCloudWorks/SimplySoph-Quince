@@ -91,6 +91,11 @@ export function notionClient({ token, sourceId, fetchImpl = fetch }) {
   }
   return {
     ...planningNotion(call),
+    async projectSmsOptOut(id) {
+      await call(`pages/${id}`, "PATCH", {
+        properties: { "SMS Opt Out": { checkbox: true } },
+      });
+    },
     async planning(kind, id) {
       const aliases = {
         item: ["Item", "Name", "Expense"],

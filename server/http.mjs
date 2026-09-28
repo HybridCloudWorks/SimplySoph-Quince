@@ -36,16 +36,21 @@ export function createHttpServer({ app = null, root, origin }) {
             code: "METHOD_NOT_ALLOWED",
           });
         let body;
+        const webhook = ["/api/twilio/status", "/api/twilio/inbound"].includes(
+          url.pathname,
+        );
         if (req.method === "POST") {
-          if (req.headers.origin !== origin)
+          if (!webhook && req.headers.origin !== origin)
             throw Object.assign(new Error(), {
               status: 403,
               code: "ORIGIN_REJECTED",
             });
           if (
-            !/^application\/json(?:;|$)/i.test(
-              req.headers["content-type"] || "",
-            )
+            !(
+              webhook
+                ? /^application\/x-www-form-urlencoded(?:;|$)/i
+                : /^application\/json(?:;|$)/i
+            ).test(req.headers["content-type"] || "")
           )
             throw Object.assign(new Error(), {
               status: 415,
@@ -72,7 +77,14 @@ export function createHttpServer({ app = null, root, origin }) {
             chunks.push(chunk);
           }
           try {
-            body = JSON.parse(Buffer.concat(chunks).toString());
+            const raw = Buffer.concat(chunks).toString();
+            if (webhook) {
+              if (size > 16000 || url.search) throw new Error();
+              const fields = new URLSearchParams(raw);
+              body = Object.fromEntries(fields);
+              if ([...fields].length !== Object.keys(body).length)
+                throw new Error();
+            } else body = JSON.parse(raw);
             if (!body || typeof body !== "object" || Array.isArray(body))
               throw new Error();
           } catch {

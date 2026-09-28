@@ -6,6 +6,7 @@ import { notionClient } from "./notion.mjs";
 import { graphMailer, sendgridMailer, eventMailer } from "./mail.mjs";
 import { createApplication } from "./application.mjs";
 import { createHttpServer } from "./http.mjs";
+import { twilioTransport } from "./twilio.mjs";
 const env = process.env,
   origin = env.PUBLIC_ORIGIN || "https://misxv.simplysoph.com";
 let app = null;
@@ -40,8 +41,30 @@ if (env.EVENT_BUCKET) {
     adminEmails = env.ADMIN_EMAILS.split(",").map((s) =>
       s.trim().toLowerCase(),
     );
+  const smsTransport = twilioTransport({
+    accountSid: env.TWILIO_ACCOUNT_SID,
+    serviceSid: env.TWILIO_MESSAGING_SERVICE_SID,
+    apiKeySid: env.TWILIO_API_KEY_SID,
+    apiKeySecret: env.TWILIO_API_KEY_SECRET,
+    statusCallback: origin + "/api/twilio/status",
+    enabled:
+      env.SMS_ENABLED === "true" &&
+      env.SMS_ACTIVATION_REVIEWED === "true" &&
+      !!env.TWILIO_AUTH_TOKEN,
+  });
+  if (env.SMS_ENABLED === "true" && !smsTransport.enabled)
+    throw new Error(
+      "SMS activation requires configured credentials and completed activation review",
+    );
   app = createApplication({
     ledger: new Ledger(adapter),
+    smsTransport,
+    smsWebhook: {
+      accountSid: env.TWILIO_ACCOUNT_SID,
+      serviceSid: env.TWILIO_MESSAGING_SERVICE_SID,
+      authToken: env.TWILIO_AUTH_TOKEN,
+      origin,
+    },
     notion: notionClient({
       token: env.NOTION_TOKEN,
       sourceId: env.NOTION_SOURCE_ID,

@@ -991,6 +991,39 @@ test("SMS draft eligibility requires explicit consent and a date and respects op
   );
 });
 
+test("SMS admin review requires authentication and sending stays disabled", async () => {
+  const f = await fixture();
+  f.row.phone = "+18175550100";
+  f.row.smsConsent = true;
+  f.row.smsConsentAt = "2026-09-28";
+  const draft = await f.admin("mail/batch-draft", {
+    requestId: "sms-review-001",
+    ids: [household],
+    groups: [],
+    subject: "RSVP",
+    text: "SimplySoph: RSVP at https://example.com",
+    channel: "sms",
+  });
+  const preview = await f.admin("sms/preview", undefined, { id: draft.ids[0] });
+  assert.equal(preview.sendingEnabled, false);
+  await assert.rejects(() =>
+    f.guest("admin/sms/send", {
+      id: draft.ids[0],
+      confirm: true,
+      reviewToken: preview.reviewToken,
+    }),
+  );
+  await assert.rejects(
+    () =>
+      f.admin("sms/send", {
+        id: draft.ids[0],
+        confirm: true,
+        reviewToken: preview.reviewToken,
+      }),
+    (e) => e.code === "SMS_NOT_ENABLED",
+  );
+});
+
 test("planning import preserves estimates and organizer edits on repeat imports", async () => {
   const f = await fixture({
     notion: {

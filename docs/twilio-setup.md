@@ -4,7 +4,11 @@ Prepared September 28, 2026. Owner will finish account/API setup in about 24 hou
 
 ## Current Status
 
-The website can prepare SMS drafts from selected Notion distribution groups/people with a phone, SMS consent/date and no opt-out. **It cannot send SMS.** A tested server transport and webhook-signature validator are now implemented in `server/twilio.mjs`, with US/Canada phone-country validation, disabled-by-default sending and no retries on uncertain provider responses. They are not connected to production dispatch or HTTP callback routes yet. New drafts retain their household and audience selection for later fresh-consent checks. No Twilio account, number, service, API key, Google secret or webhook was provisioned in this preparation step. Adding credentials will not activate sending.
+The website prepares SMS drafts from selected Notion distribution groups/people with a US/Canada phone, SMS consent/date and no opt-out. **Live sending is disabled.** Server dispatch, administrator review, segment estimates, signed HTTP callbacks and durable STOP suppression are implemented. Dispatch re-reads Notion, claims an attempt before the provider call, and does not retry uncertain responses. Adding credentials alone does not activate sending: both `SMS_ENABLED=true` and `SMS_ACTIVATION_REVIEWED=true` are required after acceptance review. No Twilio account, number, service, API key or Google secret was provisioned by this code change.
+
+Admin → Announcements & Emails → SMS Drafts → Review SMS displays the recipient, message and estimated segments. Exact rates are not yet configured, so the UI does not invent a dollar quote. Dispatch is one reviewed draft at a time. Incoming messages do not submit an RSVP: guests follow their private invitation link to the website. Email account verification remains unchanged. International WhatsApp is a separate next phase in [whatsapp-setup.md](whatsapp-setup.md).
+
+Callback paths, once this release is deployed: `https://misxv.simplysoph.com/api/twilio/status` and `https://misxv.simplysoph.com/api/twilio/inbound`. Configure Advanced Opt-Out on the dedicated service; Twilio handles its standard replies and this application returns empty TwiML to avoid duplicate replies. STOP is suppressed locally first and projected to Notion's SMS Opt Out field for matching households. Pending failures can be retried from the admin page. START records a request but never silently clears suppression; reviewed re-consent support is still required. Delivery status is distinct from provider acceptance. A process crash after claiming a send requires reconciliation, never a reset to draft.
 
 Run `npm run sms:setup` to print an offline configuration checklist. It prints field names and presence/format status only, never credential values, and makes no network calls. A complete report is not proof of working credentials, verification or delivery. Do not paste values into terminal commands, chat or GitHub.
 
@@ -20,7 +24,7 @@ Run `npm run sms:setup` to print an offline configuration checklist. It prints f
 
 ## Credential Handoff
 
-These are **planned names**, not existing secrets or active environment bindings. All values must belong to the same selected Twilio account/subaccount. An API key secret authenticates outbound API requests; the account Auth Token is separately required to validate Twilio webhook signatures.
+The two Secret Manager containers were created empty on September 28, 2026 after the owner reported their account and sender approved. They are inventoried for retirement review. Credential versions, runtime access grants and environment bindings are still pending. All values must belong to the same selected Twilio account/subaccount. An API key secret authenticates outbound API requests; the account Auth Token is separately required to validate Twilio webhook signatures.
 
 | Runtime Setting                | Planned Storage                              | Purpose                               |
 | ------------------------------ | -------------------------------------------- | ------------------------------------- |
@@ -30,7 +34,7 @@ These are **planned names**, not existing secrets or active environment bindings
 | `TWILIO_API_KEY_SECRET`        | Secret Manager `misxv-twilio-api-key-secret` | Outbound messaging authentication     |
 | `TWILIO_AUTH_TOKEN`            | Secret Manager `misxv-twilio-auth-token`     | Incoming webhook signature validation |
 
-Use Google project `simplysoph-66c78`, signed in as `saulpatinojr@gmail.com`. Create and inventory the two secrets only during credential handoff. Grant access only to the event runtime service account, pin deployed secret versions, and never put values into browser code, committed `.env` files or screenshots. Empty placeholders in `.env.example` are documentation only; current application startup does not consume them.
+Use Google project `simplysoph-66c78`, signed in as `saulpatinojr@gmail.com`. Create and inventory the two secrets only during credential handoff. Grant access only to the event runtime service account, pin deployed secret versions, and never put values into browser code, committed `.env` files or screenshots. Runtime consumes these settings when populated; empty placeholders do not activate sending.
 
 ## Messaging Registration Draft
 
@@ -44,11 +48,11 @@ Example message, for registration/review only: “SimplySoph Mis XV: Please RSVP
 
 ## Activation Work After Credentials Are Ready
 
-- Connect the tested server-side Twilio transport to an admin/MFA-protected, reviewed send action. Persist a send attempt before dispatch, deduplicate overlapping audiences and never blindly retry a timeout or uncertain response. Provider acceptance is not delivery.
+- Acceptance-test the implemented admin/MFA-protected reviewed send action. It persists an attempt before dispatch, deduplicates campaign destinations and never blindly retries uncertain responses. Provider acceptance is not delivery.
 - Keep sending off until sender approval, callback verification and acceptance tests pass. Preserve draft-only behavior when credentials are missing. Do not enable bulk sending merely because credentials exist.
 - Link SMS drafts to their Notion household/source selection. At dispatch, re-read the current phone, consent/date, group membership and opt-out; recheck access/revocation and deduplicate the final destination. Older drafts lacking this provenance must be regenerated.
 - Enforce US/Canada server-side and in Twilio Geo Permissions. A `+1` prefix alone is insufficient because it also covers other countries/territories. Use maintained phone-country metadata and fail closed for ambiguous destinations. Preview message segments and cost before sending.
-- Deploy signature-validated inbound and delivery callbacks using the exact public HTTPS URL. Reject forged requests and mismatched account/service/message identities; process retries idempotently. Keep callback authentication separate from browser session/CSRF rules.
+- Deploy and verify the implemented signature-validated inbound and delivery callbacks using the exact public HTTPS URL. Test forged requests, mismatched account/service/message identities and duplicate callbacks. Callback authentication is separate from browser session/CSRF rules.
 - Persist STOP suppression immediately in the website ledger and write it to Notion with retry tracking. An unavailable Notion update must not permit further sends. HELP returns approved family support details; START must not bypass consent/eligibility checks. Test carrier/provider opt-out behavior too.
 - Test with mock provider calls first. Then review and send only an explicitly approved test to an owner-controlled phone. Verify STOP, HELP, opt-in handling, delivery failures, repeated callbacks, timeout handling and Notion projection before guest distribution. No guest messages are part of setup.
 

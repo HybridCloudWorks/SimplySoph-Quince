@@ -1,4 +1,6 @@
 import { error } from "./auth.mjs";
+import { smsDestination } from "./twilio.mjs";
+import { hash } from "./auth.mjs";
 export const validEmail = (email) =>
   typeof email === "string" &&
   email.length <= 254 &&
@@ -36,13 +38,17 @@ export function audience(rows, selection, state, channel = "email") {
       channel === "email"
         ? r.email?.trim().toLowerCase()
         : r.phone?.replace(/[ ()-]/g, "");
+    let smsAllowed = false;
+    if (channel === "sms") {
+      try {
+        smsDestination(destination);
+        smsAllowed = !state.smsSuppression?.[hash(destination)];
+      } catch {}
+    }
     const eligible =
       channel === "email"
         ? validEmail(destination)
-        : /^\+[1-9]\d{7,14}$/.test(destination || "") &&
-          r.smsConsent &&
-          r.smsConsentAt &&
-          !r.smsOptOut;
+        : smsAllowed && r.smsConsent && r.smsConsentAt && !r.smsOptOut;
     if (!eligible || seen.has(destination)) continue;
     seen.add(destination);
     recipients.push({ ...r, destination, displayName: recipientName(r) });

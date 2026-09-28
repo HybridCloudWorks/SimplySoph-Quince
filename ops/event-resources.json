@@ -666,6 +666,48 @@
       "verifyAfterCleanup": "Verify exact event resource/grant absent; preserve Microsoft credentials, shared Google project and other secrets",
       "dependsOn": ["misxv-sendgrid-api-key", "misxv-runtime-identity"],
       "status": "active"
+    },
+    {
+      "id": "misxv-twilio-api-key-secret",
+      "type": "secret",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "projects/424903425639/secrets/misxv-twilio-api-key-secret",
+      "baseline": {
+        "allowedTypes": [
+          "secret"
+        ],
+        "evidence": "Scoped gcloud secrets list returned no matching misxv-twilio secrets before creation on September 28, 2026",
+        "verifiedAt": "2026-09-28T19:59:01.135Z",
+        "scope": "Only event Twilio secret names"
+      },
+      "creationEvidence": "Created empty us-central1 secret with gcloud on September 28, 2026; owner entry pending; no versions or runtime grants yet",
+      "verifyBeforeCleanup": "Disable SMS and WhatsApp dispatch, reconcile messages, export wanted records and revoke dedicated event credentials",
+      "cleanupSteps": "After owner review remove runtime binding, destroy versions and delete this exact secret only",
+      "verifyAfterCleanup": "Verify event secret absent; preserve other secrets and shared Google project",
+      "dependsOn": [],
+      "status": "active"
+    },
+    {
+      "id": "misxv-twilio-auth-token",
+      "type": "secret",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "projects/424903425639/secrets/misxv-twilio-auth-token",
+      "baseline": {
+        "allowedTypes": [
+          "secret"
+        ],
+        "evidence": "Scoped gcloud secrets list returned no matching misxv-twilio secrets before creation on September 28, 2026",
+        "verifiedAt": "2026-09-28T19:59:01.135Z",
+        "scope": "Only event Twilio secret names"
+      },
+      "creationEvidence": "Created empty us-central1 secret with gcloud on September 28, 2026; owner entry pending; no versions or runtime grants yet",
+      "verifyBeforeCleanup": "Disable SMS and WhatsApp dispatch, reconcile messages, export wanted records and revoke dedicated event credentials",
+      "cleanupSteps": "After owner review remove runtime binding, destroy versions and delete this exact secret only",
+      "verifyAfterCleanup": "Verify event secret absent; preserve other secrets and shared Google project",
+      "dependsOn": [],
+      "status": "active"
     }
   ],
   "retirementReview": {

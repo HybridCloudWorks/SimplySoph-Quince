@@ -1,4 +1,5 @@
 import { audience, recipientName, validEmail } from "./audience.mjs";
+import { createSms, smsPreview } from "./sms.mjs";
 import { createPlanning } from "./planning.mjs";
 import { createAdminEmail } from "./admin-email.mjs";
 import { createNotifications } from "./notifications.mjs";
@@ -63,6 +64,8 @@ export function createApplication({
   verifyGoogle,
   media,
   documents,
+  smsTransport,
+  smsWebhook,
   videoProcessor = normalizeVideo,
   key,
   origin,
@@ -73,6 +76,13 @@ export function createApplication({
 }) {
   if (!Buffer.isBuffer(key) || key.length !== 32)
     throw new Error("32-byte application key required");
+  const sms = createSms({
+    ledger,
+    notion,
+    transport: smsTransport,
+    webhook: smsWebhook,
+    now,
+  });
   const sendNotification = createNotifications({
     ledger,
     mailer,
@@ -299,6 +309,14 @@ export function createApplication({
   });
   async function dispatch(req) {
     const { path, method = "GET", body = {}, headers = {} } = req;
+    if (["/api/twilio/status", "/api/twilio/inbound"].includes(path)) {
+      if (method !== "POST") throw error(405, "METHOD_NOT_ALLOWED");
+      return sms.callback(
+        path.split("/").pop(),
+        body,
+        headers["x-twilio-signature"],
+      );
+    }
     if (method !== "GET" && headers.origin !== origin)
       throw error(403, "ORIGIN_REJECTED");
     if (method !== "GET")
@@ -1286,6 +1304,7 @@ export function createApplication({
           !["email", "sms"].includes(channel)
         )
           throw error(422, "MESSAGE_REQUIRED");
+        if (channel === "sms") smsPreview(text);
         const recipients = audience(
           await notion.list(),
           body,
@@ -1318,6 +1337,7 @@ export function createApplication({
               s.smsDrafts[id] = {
                 id,
                 householdId: row.id,
+                campaignId: body.requestId,
                 groups: body.groups,
                 directlySelected: body.ids.includes(row.id),
                 to: row.destination,
@@ -1350,9 +1370,23 @@ export function createApplication({
       }
       if (path === "/api/admin/sms/drafts" && method === "GET")
         return {
-          drafts: Object.values(ctx.state.smsDrafts || {}),
-          sendingEnabled: false,
+          drafts: Object.values(ctx.state.smsDrafts || {}).map((d) => ({
+            ...d,
+            delivery: ctx.state.smsDelivery?.[d.providerId]?.status || null,
+          })),
+          sendingEnabled: sms.enabled,
+          pendingOptOutSync: Object.values(
+            ctx.state.smsSuppression || {},
+          ).filter((r) => r.syncState === "pending").length,
         };
+      if (path === "/api/admin/sms/preview" && method === "GET")
+        return sms.review(req.query?.id);
+      if (path === "/api/admin/sms/send" && method === "POST") {
+        if (body.confirm !== true) throw error(422, "CONFIRM_RECIPIENT");
+        return sms.send(body.id, body.reviewToken, session.actor);
+      }
+      if (path === "/api/admin/sms/sync" && method === "POST")
+        return sms.retrySync();
       if (path === "/api/admin/mail/preview" && method === "GET") {
         const row = ctx.state.outbox[req.query?.id];
         if (!row) throw error(404, "NOT_FOUND");

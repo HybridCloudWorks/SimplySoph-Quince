@@ -26,7 +26,7 @@ All eight organizer-approved DNS records were saved in Cloudflare; CNAMEs are DN
 
 The signed-in SendGrid account displays a trial ending November 27, 2026. Review its plan before relying on fallback for the January event. No subscription was purchased and the API key was created/stored by the owner.
 
-Version 1 passed SendGrid sandbox validation (HTTP 200, no delivery). One approved setup email to each organizer address (Gmail and Hotmail) was accepted with HTTP 202; inbox placement and delivered authentication headers await organizer confirmation. Attempt receipts are private in `work/sendgrid-owner-verification.json`; do not blindly repeat those tests.
+Version 1 passed SendGrid sandbox validation (HTTP 200, no delivery). One approved setup email to each organizer address (Gmail and Hotmail) was accepted with HTTP 202; the organizer confirmed receipt in both accounts. Inbox/spam placement and authentication headers have not been inspected. Attempt receipts are private in `work/sendgrid-owner-verification.json`; do not blindly repeat those tests.
 
 Cloud Run revision `misxv-api-00008-qt7` is Ready and serves 100 percent of traffic. Verified configuration: `MAIL_PROVIDER=m365`, `SENDGRID_FALLBACK_ENABLED=true`, and `SENDGRID_API_KEY` references `misxv-sendgrid-api-key:1`. The first configuration attempt failed startup without taking traffic; the corrected revision is healthy. Public `/api/config` confirms live service and configured mail. No guest campaigns were sent by this activation.
 
