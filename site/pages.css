@@ -1,7 +1,27 @@
+body {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+body > header,
+body > footer {
+  flex-shrink: 0;
+}
+body > main {
+  flex: 1 0 auto;
+  width: 100%;
+  min-width: 0;
+}
 .page {
+  width: 100%;
   max-width: 1440px;
-  margin: auto;
-  min-height: 65vh;
+  margin: 0 auto;
+}
+/* Capped containers need bounded gutters, not full-viewport centering padding. */
+.page.section,
+.admin-shell.section {
+  padding-inline: clamp(24px, 4vw, 64px);
 }
 .page-heading {
   border-bottom: 1px solid var(--line);
@@ -170,10 +190,21 @@ input[type="checkbox"] {
 }
 .admin-shell {
   display: grid;
-  grid-template-columns: 190px minmax(0, 1fr);
+  grid-template-columns: 230px minmax(0, 1fr);
   gap: 40px;
   max-width: 1600px;
-  margin: auto;
+  width: 100%;
+  margin: 0 auto;
+  align-items: start;
+}
+.admin-shell > div {
+  min-width: 0;
+}
+.admin-shell .page-title {
+  font-size: clamp(2.7rem, 4vw, 4rem);
+}
+.admin-shell #admin-app > p {
+  max-width: 70ch;
 }
 .admin-shell aside a {
   display: block;
