@@ -12,7 +12,11 @@ const normalizeEmail = (value) => {
   return value.trim().toLowerCase();
 };
 export function accountActive(s, account) {
-  return !!(account?.active && s.invitations[account.householdId]?.active);
+  return !!(
+    account?.active &&
+    !account.deletedAt &&
+    s.invitations[account.householdId]?.active
+  );
 }
 export function allowedPages(s, session) {
   const a = s.accounts?.[session?.accountId];

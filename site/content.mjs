@@ -61,7 +61,8 @@ export const adminRoutes = [
   ["admin/seating", "Seating"],
   ["admin/photos", "Photo & video review"],
   ["admin/guestbook", "Messages"],
-  ["admin/updates", "Announcements & Emails"],
+  ["admin/updates", "Communications"],
+  ["admin/history", "Record History"],
 ];
 export const copy = {
   en: {

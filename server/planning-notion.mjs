@@ -66,7 +66,10 @@ export function planningProperties(kind, row, keys = Object.keys(spec[kind])) {
     (keys.includes("deposit") || keys.includes("additionalPaid"))
   )
     properties["Amount paid"] = {
-      number: (row.deposit || 0) + (row.additionalPaid || 0),
+      number:
+        (Math.round((row.deposit || 0) * 100) +
+          Math.round((row.additionalPaid || 0) * 100)) /
+        100,
     };
   if (
     kind === "costs" &&
@@ -84,6 +87,22 @@ export function planningProperties(kind, row, keys = Object.keys(spec[kind])) {
 }
 export function planningNotion(call) {
   return {
+    async setPlanningArchived(kind, sourceId, row) {
+      if (
+        !Object.hasOwn(planningSources, kind) ||
+        sourceId !== planningSources[kind]
+      )
+        throw error(403, "WRONG_DATA_SOURCE");
+      if (!row.notionId || typeof row.deleted !== "boolean")
+        throw error(422, "INVALID_FIELDS");
+      const page = await call("pages/" + row.notionId);
+      if (page.parent?.data_source_id !== sourceId)
+        throw error(409, "NOTION_RECORD_UNAVAILABLE");
+      // Repeating the same desired state is safe after an ambiguous response.
+      // Restore targets this exact linked page; no replacement record is created.
+      await call("pages/" + row.notionId, "PATCH", { archived: row.deleted });
+      return row.notionId;
+    },
     async preparePlanningSchema(kind, sourceId) {
       if (sourceId !== planningSources[kind])
         throw error(403, "WRONG_DATA_SOURCE");

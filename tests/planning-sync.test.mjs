@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Ledger, memoryAdapter } from "../server/store.mjs";
-import { createPlanning } from "../server/planning.mjs";
+import { createPlanning, accountingSummary } from "../server/planning.mjs";
 import {
   planningNotion,
   planningProperties,
@@ -228,4 +228,123 @@ test("Notion writes reject a page outside the assigned data source", async () =>
     (e) => e.code === "NOTION_RECORD_UNAVAILABLE",
   );
   assert.equal(f.stats().patches, 0);
+});
+
+test("accounting totals balance in integer cents and retain subsequent payments", () => {
+  const rows = [
+    { finalCost: 10.1, deposit: 0.1, additionalPaid: 0.2 },
+    { finalCost: 20.2, deposit: 1.01, additionalPaid: 2.02 },
+    { finalCost: 100, deposit: 50, additionalPaid: 1, deleted: true },
+  ];
+  const totals = accountingSummary(rows);
+  assert.equal(totals.finalCents, 3030);
+  assert.equal(totals.paidCents, 333);
+  assert.equal(totals.owedCents + totals.paidCents, totals.finalCents);
+  assert.equal(
+    accountingSummary([{ finalCost: null, deposit: 10 }]).owedCents,
+    null,
+  );
+  assert.equal(
+    accountingSummary([{ finalCost: 5, deposit: 10 }]).owedCents,
+    -500,
+  );
+});
+
+for (const kind of ["costs", "padrinos"])
+  test(`${kind} delete and restore preserve data and linked Notion record`, async () => {
+    const ledger = new Ledger(memoryAdapter()),
+      id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+    await ledger.transaction((s) => {
+      s.planning = {
+        [kind]: {
+          [id]: {
+            id,
+            notionId: "linked-page",
+            version: 1,
+            item: "Venue",
+            name: "Sponsor",
+            deposit: 50,
+            additionalPaid: 25,
+          },
+        },
+      };
+      s.documents = { doc: { rowId: id, deleted: false } };
+    });
+    let fail = true;
+    const writes = [];
+    const handle = createPlanning({
+      ledger,
+      now: Date.now,
+      notion: {
+        setPlanningArchived: async (table, source, row) => {
+          writes.push({
+            table,
+            source,
+            deleted: row.deleted,
+            notionId: row.notionId,
+          });
+          if (fail) throw Error("timeout");
+          return row.notionId;
+        },
+      },
+    });
+    const deleted = await handle(
+      req("/state", { kind, id, version: 1, deleted: true }),
+      actor,
+    );
+    assert.equal(deleted.row.deleted, true);
+    assert.equal(deleted.row.sync.status, "pending");
+    await assert.rejects(
+      () =>
+        handle(req("/state", { kind, id, version: 2, deleted: false }), actor),
+      (e) => e.code === "PLANNING_SYNC_PENDING",
+    );
+    fail = false;
+    await handle(req("/sync", { kind, id }), actor);
+    await assert.rejects(
+      () =>
+        handle(req("/state", { kind, id, version: 1, deleted: false }), actor),
+      (e) => e.code === "SETTINGS_CHANGED",
+    );
+    const restored = await handle(
+      req("/state", { kind, id, version: 2, deleted: false }),
+      actor,
+    );
+    assert.equal(restored.row.deleted, false);
+    assert.equal(restored.row.notionId, "linked-page");
+    assert.equal(restored.row.additionalPaid, 25);
+    assert.equal((await ledger.read()).documents.doc.deleted, false);
+    assert.deepEqual(
+      writes.map((w) => w.deleted),
+      [true, true, false],
+    );
+    assert.ok(writes.every((w) => w.source === planningSources[kind]));
+  });
+
+test("Notion archive and restore update only archive state of the exact scoped page", async () => {
+  const writes = [];
+  let pageSource = sourceId;
+  const client = planningNotion(async (path, method, body) => {
+    if (method === "PATCH") {
+      writes.push({ path, body });
+      return {};
+    }
+    return { parent: { data_source_id: pageSource }, archived: true };
+  });
+  const row = { notionId: "linked", deleted: true };
+  await client.setPlanningArchived("costs", sourceId, row);
+  await client.setPlanningArchived("costs", sourceId, {
+    ...row,
+    deleted: false,
+  });
+  assert.deepEqual(writes, [
+    { path: "pages/linked", body: { archived: true } },
+    { path: "pages/linked", body: { archived: false } },
+  ]);
+  pageSource = "foreign";
+  await assert.rejects(
+    () => client.setPlanningArchived("costs", sourceId, row),
+    (e) => e.code === "NOTION_RECORD_UNAVAILABLE",
+  );
+  assert.equal(writes.length, 2);
 });

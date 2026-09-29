@@ -1,3 +1,4 @@
+import { createAdminRecords } from "./admin-records.mjs";
 import { audience, recipientName, validEmail } from "./audience.mjs";
 import { createWhatsapp } from "./whatsapp.mjs";
 import { createSms, smsPreview } from "./sms.mjs";
@@ -76,6 +77,7 @@ export function createApplication({
   clientId = "",
   deadline = "2026-10-31T23:59:00-05:00",
   adminEmails = [],
+  adminDelegateEmails = [],
   notificationEmails = adminEmails,
   now = Date.now,
 }) {
@@ -105,6 +107,37 @@ export function createApplication({
     origin,
     now,
   });
+  const authorizedAdminEmails = [
+    ...new Set([...adminEmails, ...adminDelegateEmails]),
+  ];
+  const ownerSession = (session) =>
+    !session.accountId && adminEmails.includes(session.email);
+  async function checkAdministratorEligibility(accountId, address) {
+    if (!accountId) {
+      if (
+        adminDelegateEmails.includes(address) &&
+        !adminEmails.includes(address)
+      ) {
+        const rows = await notion.list();
+        if (
+          !rows.some(
+            (r) =>
+              !r.archived &&
+              r.administratorEligible &&
+              r.email?.trim().toLowerCase() === address,
+          )
+        )
+          throw error(403, "ADMIN_NOT_ELIGIBLE");
+      }
+      return;
+    }
+    const a = (await ledger.read()).accounts?.[accountId];
+    if (!a || !a.permissions.includes("admin"))
+      throw error(403, "ADMIN_NOT_ALLOWED");
+    const row = await notion.read(a.householdId);
+    if (row.archived || !row.administratorEligible)
+      throw error(403, "ADMIN_NOT_ELIGIBLE");
+  }
   const sessionValid = (s, row) =>
     row &&
     row.expiresAt > now() &&
@@ -112,7 +145,7 @@ export function createApplication({
       ? row.accountId
         ? accountActive(s, s.accounts?.[row.accountId]) &&
           allowedPages(s, row).includes("admin")
-        : adminEmails.includes(row.email)
+        : authorizedAdminEmails.includes(row.email)
       : s.invitations[row.householdId]?.active &&
         s.invitations[row.householdId].generation === row.generation &&
         (row.accountId
@@ -208,12 +241,12 @@ export function createApplication({
   async function dispatchMail(id) {
     if (!mailer.configured) throw error(503, "MAIL_NOT_CONFIGURED");
     const pending = (await ledger.read()).outbox[id];
-    if (!pending) throw error(404, "NOT_FOUND");
+    if (!pending || pending.archived) throw error(404, "NOT_FOUND");
     const currentGuest = await notion.read(pending.householdId);
     if (currentGuest.archived) throw error(409, "INVITATION_INACTIVE");
     const job = await ledger.transaction((s) => {
       const j = s.outbox[id];
-      if (!j) throw error(404, "NOT_FOUND");
+      if (!j || j.archived) throw error(404, "NOT_FOUND");
       if (j.state !== "draft") throw error(409, "MAIL_ALREADY_ATTEMPTED");
       const invite = s.invitations[j.householdId];
       if (j.type === "custom") {
@@ -314,11 +347,12 @@ export function createApplication({
     now,
     syncOne,
   });
+  const records = createAdminRecords({ ledger, key, now });
   const planning = createPlanning({ ledger, documents, notion, now });
   const adminEmail = createAdminEmail({
     ledger,
     mailer,
-    adminEmails,
+    adminEmails: authorizedAdminEmails,
     origin,
     now,
   });
@@ -370,7 +404,7 @@ export function createApplication({
       const s = await ledger.read();
       return {
         announcements: Object.values(s.announcements).filter(
-          (r) => r.published,
+          (r) => r.published && !r.archived,
         ),
         messages: Object.values(s.messages)
           .filter((r) => r.kind === "guestbook" && r.state === "approved")
@@ -418,6 +452,14 @@ export function createApplication({
     }
     if (path === "/api/auth/mfa" && method === "POST") {
       await rateLimit(ledger, "mfa-global", 300, 900000, now());
+      const pendingChallenge = (await ledger.read()).challenges[
+        hash(safeText(body.challenge, 100))
+      ];
+      if (pendingChallenge)
+        await checkAdministratorEligibility(
+          pendingChallenge.accountId,
+          pendingChallenge.email,
+        );
       const sessionToken = token(),
         csrf = token();
       const outcome = await ledger.transaction((s) => {
@@ -428,7 +470,7 @@ export function createApplication({
           c.accountId
             ? !accountActive(s, s.accounts?.[c.accountId]) ||
               !allowedPages(s, c).includes("admin")
-            : !adminEmails.includes(c.email)
+            : !authorizedAdminEmails.includes(c.email)
         )
           throw error(403, "ADMIN_NOT_ALLOWED");
         c.attempts++;
@@ -530,7 +572,7 @@ export function createApplication({
         csrf: session?.csrf ?? null,
         verified: !!session?.accountId,
         permissions: allowedPages(ctx.state, session),
-        owner: session?.kind === "admin" && !session.accountId,
+        owner: session?.kind === "admin" && ownerSession(session),
       };
     const requireAuth = (kind) => {
       if (!session || (kind && session.kind !== kind))
@@ -562,6 +604,7 @@ export function createApplication({
       return accounts.consume(body.token);
     if (path === "/api/auth/step-up" && method === "POST") {
       requireAuth("guest");
+      await checkAdministratorEligibility(session.accountId, session.email);
       if (!allowedPages(ctx.state, session).includes("admin"))
         throw error(403, "ADMIN_NOT_ALLOWED");
       const challenge = token(),
@@ -608,7 +651,11 @@ export function createApplication({
           ? { registries: siteSettings(ctx.state).registries }
           : {}),
         ...(["costs", "padrinos"].includes(page)
-          ? { planning: Object.values(ctx.state.planning?.[page] || {}) }
+          ? {
+              planning: Object.values(ctx.state.planning?.[page] || {}).filter(
+                (r) => !r.deleted,
+              ),
+            }
           : {}),
         content: ctx.state.privatePages?.[page] || {
           en: "",
@@ -953,6 +1000,8 @@ export function createApplication({
     }
     if (path.startsWith("/api/admin/")) {
       requireAuth("admin");
+      await checkAdministratorEligibility(session.accountId, session.email);
+      if (path === "/api/admin/records") return records(req, session);
       for (const id of [body.id, req.query?.id])
         if (
           id !== undefined &&
@@ -1000,14 +1049,88 @@ export function createApplication({
           row.read = true;
           return { saved: true };
         });
-      if (path === "/api/admin/accounts" && method === "GET")
+      if (path === "/api/admin/accounts" && method === "GET") {
+        const rows = await notion.list();
         return {
           accounts: Object.values(ctx.state.accounts || {}).map(
-            ({ emailKey, ...a }) => a,
+            ({ emailKey, ...a }) => ({
+              ...a,
+              administratorEligible: rows.some(
+                (r) =>
+                  r.id === a.householdId &&
+                  !r.archived &&
+                  r.administratorEligible,
+              ),
+              protectedOwner: adminEmails.includes(a.email),
+            }),
           ),
           permissions: pagePermissions,
-          owner: !session.accountId,
+          owner: ownerSession(session),
         };
+      }
+      if (
+        ["/api/admin/accounts/delete", "/api/admin/accounts/restore"].includes(
+          path,
+        ) &&
+        method === "POST"
+      ) {
+        if (!ownerSession(session)) throw error(403, "OWNER_REQUIRED");
+        const restoring = path.endsWith("/restore");
+        const householdId = await ledger.transaction((s) => {
+          const a = s.accounts?.[body.id];
+          if (!a) throw error(404, "NOT_FOUND");
+          if (a.version !== body.version) throw error(409, "RESPONSE_CHANGED");
+          if (
+            adminEmails.includes(a.email) ||
+            a.email === session.email ||
+            a.id === session.accountId
+          )
+            throw error(403, "OWNER_PROTECTED");
+          if (restoring) {
+            if (!a.deletedAt) throw error(409, "ACCOUNT_NOT_DELETED");
+            delete a.deletedAt;
+            a.active = a.deletedSnapshot?.active !== false;
+            s.invitations[a.householdId].active =
+              a.deletedSnapshot?.invitationActive !== false;
+            delete a.deletedSnapshot;
+            // Restoring an account never restores administration implicitly.
+            a.permissions = (a.permissions || []).filter((p) => p !== "admin");
+          } else {
+            if (a.deletedAt) throw error(409, "ACCOUNT_ALREADY_DELETED");
+            a.deletedSnapshot = {
+              active: a.active,
+              invitationActive: s.invitations[a.householdId]?.active,
+            };
+            a.deletedAt = new Date(now()).toISOString();
+            s.invitations[a.householdId].active = false;
+            a.active = false;
+            a.permissions = a.permissions.filter((p) => p !== "admin");
+          }
+          a.version++;
+          for (const [id, v] of Object.entries(s.sessions))
+            if (v.accountId === a.id || v.householdId === a.householdId)
+              delete s.sessions[id];
+          for (const map of [s.emailLinks, s.adminEmailLinks, s.challenges])
+            for (const [id, v] of Object.entries(map || {}))
+              if (
+                v.accountId === a.id ||
+                v.householdId === a.householdId ||
+                v.email === a.email
+              )
+                delete map[id];
+          s.invitations[a.householdId].syncState = "pending";
+          audit(
+            s,
+            session.actor,
+            restoring ? "account-restored" : "account-deleted",
+            a.id,
+            now(),
+          );
+          return a.householdId;
+        });
+        await syncOne(householdId);
+        return { saved: true };
+      }
       if (path === "/api/admin/accounts" && method === "POST") {
         if (
           !Array.isArray(body.permissions) ||
@@ -1015,20 +1138,40 @@ export function createApplication({
           typeof body.active !== "boolean"
         )
           throw error(422, "INVALID_PERMISSIONS");
+        const current = ctx.state.accounts?.[body.id];
+        if (!current) throw error(404, "NOT_FOUND");
+        const fresh = await notion.read(current.householdId);
+        if (
+          body.permissions.includes("admin") &&
+          (!fresh.administratorEligible || fresh.archived)
+        )
+          throw error(422, "ADMIN_NOT_ELIGIBLE");
         const householdId = await ledger.transaction((s) => {
           const a = s.accounts?.[body.id];
           if (!a) throw error(404, "NOT_FOUND");
+          if (a.deletedAt) throw error(409, "ACCOUNT_DELETED");
           if (a.version !== body.version) throw error(409, "RESPONSE_CHANGED");
           if (
-            session.accountId &&
+            !ownerSession(session) &&
             (a.permissions.includes("admin") !==
               body.permissions.includes("admin") ||
               (a.permissions.includes("admin") && a.active !== body.active))
           )
             throw error(403, "OWNER_REQUIRED");
+          if (adminEmails.includes(a.email) && !body.active)
+            throw error(403, "OWNER_PROTECTED");
           a.permissions = [...new Set(body.permissions)];
           a.active = body.active;
           a.version++;
+          if (!a.active || !a.permissions.includes("admin")) {
+            for (const [id, v] of Object.entries(s.sessions))
+              if (v.accountId === a.id && (!a.active || v.kind === "admin"))
+                delete s.sessions[id];
+            for (const [id, v] of Object.entries(s.challenges))
+              if (v.accountId === a.id) delete s.challenges[id];
+            for (const [id, v] of Object.entries(s.adminEmailLinks || {}))
+              if (v.email === a.email) delete s.adminEmailLinks[id];
+          }
           s.invitations[a.householdId].syncState = "pending";
           audit(s, session.actor, "account-access-updated", a.id, now());
           return a.householdId;
@@ -1333,12 +1476,12 @@ export function createApplication({
           groups: [
             ...new Set(rows.flatMap((r) => r.distributionGroups || [])),
           ].sort(),
-          recipients: rows
-            .filter((r) => validEmail(r.email))
+          recipients: (req.query?.channel === "sms" ? audience(rows, { groups: [], ids: rows.map(r => r.id) }, ctx.state, "sms") : rows.filter(r => validEmail(r.email)))
             .map((r) => ({
               id: r.id,
               name: recipientName(r),
               email: r.email,
+              phone: r.destination || r.phone,
               groups: r.distributionGroups || [],
             }))
             .sort((a, b) => a.name.localeCompare(b.name)),

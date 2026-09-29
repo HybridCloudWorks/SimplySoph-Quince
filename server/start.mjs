@@ -73,6 +73,10 @@ if (env.EVENT_BUCKET) {
       "WhatsApp activation requires configured credentials and completed review",
     );
   app = createApplication({
+    adminDelegateEmails: (env.ADMIN_DELEGATE_EMAILS || "")
+      .split(",")
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean),
     whatsappTransport,
     whatsappTemplates: JSON.parse(env.WHATSAPP_TEMPLATES_JSON || "[]"),
     whatsappWebhook: {

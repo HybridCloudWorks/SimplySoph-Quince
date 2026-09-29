@@ -48,6 +48,24 @@ const money = new Set([
   "received",
 ]);
 const dates = new Set(["dueDate", "contactedAt", "followUp"]);
+export function accountingSummary(rows) {
+  const active = rows.filter((row) => !row.deleted);
+  const cents = (value) => Math.round((value || 0) * 100);
+  const pendingFinals = active.filter((row) => row.finalCost == null).length;
+  const paidCents = active.reduce(
+    (sum, row) => sum + cents(row.deposit) + cents(row.additionalPaid),
+    0,
+  );
+  const finalCents = pendingFinals
+    ? null
+    : active.reduce((sum, row) => sum + cents(row.finalCost), 0);
+  return {
+    pendingFinals,
+    paidCents,
+    finalCents,
+    owedCents: finalCents == null ? null : finalCents - paidCents,
+  };
+}
 export function validatePlanning(kind, input) {
   if (!Object.hasOwn(planningFields, kind))
     throw error(422, "INVALID_PLANNING_TABLE");
@@ -166,19 +184,27 @@ export function createPlanning({ ledger, documents, notion, now }) {
     });
     if (!claimed) return { row: (await ledger.read()).planning[kind][id] };
     try {
-      const notionId = await notion.writePlanning(
-        kind,
-        planningSources[kind],
-        claimed,
-        claimed.sync.fields,
-        async () => {
-          await ledger.transaction((s) => {
-            const r = s.planning[kind][id];
-            if (r.sync.lock !== lock) throw error(409, "PLANNING_SYNC_BUSY");
-            r.sync.createAttempted = true;
-          });
-        },
-      );
+      const notionId =
+        claimed.sync.operation === "state"
+          ? await notion.setPlanningArchived(
+              kind,
+              planningSources[kind],
+              claimed,
+            )
+          : await notion.writePlanning(
+              kind,
+              planningSources[kind],
+              claimed,
+              claimed.sync.fields,
+              async () => {
+                await ledger.transaction((s) => {
+                  const r = s.planning[kind][id];
+                  if (r.sync.lock !== lock)
+                    throw error(409, "PLANNING_SYNC_BUSY");
+                  r.sync.createAttempted = true;
+                });
+              },
+            );
       await ledger.transaction((s) => {
         const row = s.planning[kind][id];
         if (row.sync.lock === lock) {
@@ -219,6 +245,13 @@ export function createPlanning({ ledger, documents, notion, now }) {
         rows: Object.values(s.planning?.[kind] || {}),
         sourceId: s.planningSources?.[kind] || planningSources[kind],
         syncAt: s.planningSync?.[kind] || null,
+        ...(kind === "costs"
+          ? {
+              totals: accountingSummary(
+                Object.values(s.planning?.[kind] || {}),
+              ),
+            }
+          : {}),
       };
     }
     if (path === "/api/admin/planning" && method === "POST") {
@@ -234,6 +267,7 @@ export function createPlanning({ ledger, documents, notion, now }) {
         if (body.createId && previous) return { row: previous };
         if (previous && previous.version !== body.version)
           throw error(409, "SETTINGS_CHANGED");
+        if (previous?.deleted) throw error(409, "PLANNING_RECORD_DELETED");
         if (previous?.sync && previous.sync.status !== "synced")
           throw error(409, "PLANNING_SYNC_PENDING");
         const changed = planningFields[kind].filter(
@@ -256,6 +290,34 @@ export function createPlanning({ ledger, documents, notion, now }) {
         return { row };
       });
       return sync(kind, saved.row.id);
+    }
+    if (path === "/api/admin/planning/state" && method === "POST") {
+      if (
+        typeof body.deleted !== "boolean" ||
+        typeof body.id !== "string" ||
+        !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(
+          body.id,
+        )
+      )
+        throw error(422, "INVALID_FIELDS");
+      const id = await ledger.transaction((s) => {
+        const previous = s.planning?.[kind]?.[body.id];
+        if (!previous) throw error(404, "NOT_FOUND");
+        if (previous.version !== body.version)
+          throw error(409, "SETTINGS_CHANGED");
+        if (previous.sync && previous.sync.status !== "synced")
+          throw error(409, "PLANNING_SYNC_PENDING");
+        if (!!previous.deleted === body.deleted) return previous.id;
+        previous.deleted = body.deleted;
+        previous.version++;
+        previous.updatedAt = now();
+        previous.updatedBy = session.email;
+        previous.sync = previous.notionId
+          ? { status: "pending", operation: "state" }
+          : { status: "synced", at: now() };
+        return previous.id;
+      });
+      return sync(kind, id);
     }
     if (path === "/api/admin/planning/sync" && method === "POST")
       return sync(kind, body.id);

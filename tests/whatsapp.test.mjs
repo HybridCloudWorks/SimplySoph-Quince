@@ -34,7 +34,10 @@ async function fixture(options = {}) {
     s.invitations[row.id] = { id: row.id, active: true, generation: 1 };
   });
   const notion = {
-    read: async () => structuredClone(row),
+    read: async () => {
+      await options.beforeRead?.();
+      return structuredClone(row);
+    },
     list: async () => [structuredClone(row)],
     projectWhatsappConsent: async (id, p) => {
       if (options.syncFail) throw Error();
@@ -121,6 +124,38 @@ async function fixture(options = {}) {
 test("WhatsApp validates international numbers independently of SMS", () => {
   assert.equal(whatsappDestination("+442079460123"), "+442079460123");
   assert.throws(() => whatsappDestination("2079460123"));
+});
+
+test("archiving during WhatsApp eligibility lookup prevents the later send claim", async () => {
+  let hold = false,
+    entered,
+    release;
+  const began = new Promise((resolve) => {
+    entered = resolve;
+  });
+  const pause = new Promise((resolve) => {
+    release = resolve;
+  });
+  const f = await fixture({
+    beforeRead: async () => {
+      if (hold) {
+        entered();
+        await pause;
+      }
+    },
+  });
+  await f.callback("START");
+  const { ids } = await f.draft();
+  const preview = await f.app.review(ids[0]);
+  hold = true;
+  const send = f.app.send(ids[0], preview.reviewToken, "admin");
+  await began;
+  await f.ledger.transaction((s) => {
+    s.whatsappDrafts[ids[0]].archived = true;
+  });
+  release();
+  await assert.rejects(send, (e) => e.code === "WHATSAPP_ALREADY_ATTEMPTED");
+  assert.equal(f.sends(), 0);
 });
 test("explicit consent plus verified START enables phone-only invitations; STOP and replay stay blocked", async () => {
   const f = await fixture();

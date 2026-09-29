@@ -45,7 +45,10 @@ async function fixture(options = {}) {
         if (options.notionFails) throw Error();
         await options.projectConsent?.();
       },
-      read: async () => structuredClone(row),
+      read: async () => {
+        await options.beforeRead?.();
+        return structuredClone(row);
+      },
       list: async () => [row],
       projectSmsOptOut: async () => {
         projects++;
@@ -144,6 +147,36 @@ test("SMS remains disabled even when drafts and consent are valid", async () => 
     () => f.sms.send("draft", p.reviewToken, "admin"),
     (e) => e.code === "SMS_NOT_ENABLED",
   );
+  assert.equal(f.sends(), 0);
+});
+
+test("archiving during SMS eligibility lookup prevents the later send claim", async () => {
+  let hold = false,
+    entered,
+    release;
+  const began = new Promise((resolve) => {
+    entered = resolve;
+  });
+  const pause = new Promise((resolve) => {
+    release = resolve;
+  });
+  const f = await fixture({
+    beforeRead: async () => {
+      if (hold) {
+        entered();
+        await pause;
+      }
+    },
+  });
+  const preview = await f.sms.review("draft");
+  hold = true;
+  const send = f.sms.send("draft", preview.reviewToken, "admin");
+  await began;
+  await f.ledger.transaction((s) => {
+    s.smsDrafts.draft.archived = true;
+  });
+  release();
+  await assert.rejects(send, (e) => e.code === "SMS_ALREADY_ATTEMPTED");
   assert.equal(f.sends(), 0);
 });
 test("STOP survives Notion outage, repeated callbacks, and START", async () => {

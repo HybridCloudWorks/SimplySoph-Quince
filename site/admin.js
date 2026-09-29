@@ -1,4 +1,6 @@
 import { planningEditor, documentWorkspace } from "./admin-planning.js";
+import { whatsappComposer } from "./admin-whatsapp.js";
+import { communicationHistory } from "./admin-history.js";
 import { audienceComposer } from "./admin-audience.js";
 import { websiteEditor, notificationInbox } from "./admin-experience.js";
 import { api, esc, field, submit, notify } from "./client.js";
@@ -138,20 +140,39 @@ async function accountAccess() {
       costs: "Costs",
       admin: "Family administration (MFA required)",
     };
-  root.innerHTML = `<p>Each household registers one verified contact account after its RSVP. Checked pages are available; unchecked pages are denied by the server. Only the site owner can grant or remove full administration. The registry is public and does not require page access.</p><div class="cards">${
+  root.innerHTML = `<p>Each household registers one verified contact account after its RSVP. Checked pages are available; unchecked pages are denied by the server. Only the site owner can grant or remove full administration, and the household must first be marked Administrator Eligible in Notion. Eligibility alone does not grant access. Deleted accounts can be restored. The registry is public and does not require page access.</p><div class="cards">${
     data.accounts
       .map(
         (a) =>
-          `<form class="card access-form" data-id="${esc(a.id)}"><h2>${esc(a.name)}</h2><p>${esc(a.email)}</p><label class="check"><input type="checkbox" name="active" ${a.active ? "checked" : ""}${!data.owner && a.permissions.includes("admin") ? " disabled" : ""}>Account enabled</label><fieldset><legend>Page access</legend>${data.permissions
+          `<article class="card"><form class="access-form" data-id="${esc(a.id)}"><h2>${esc(a.name)}</h2><p>${esc(a.email)}</p><p>${a.deletedAt ? "Deleted - Access Revoked" : a.administratorEligible ? "Administrator Eligible In Notion" : "Not Eligible For Administration"}</p><label class="check"><input type="checkbox" name="active" ${a.active ? "checked" : ""}${a.deletedAt || (!data.owner && a.permissions.includes("admin")) ? " disabled" : ""}>Account enabled</label><fieldset><legend>Page access</legend>${data.permissions
             .filter((p) => p !== "gifts")
             .map(
               (p) =>
-                `<label class="check"><input type="checkbox" name="permission" value="${p}" ${a.permissions.includes(p) ? "checked" : ""}${p === "admin" && !data.owner ? " disabled" : ""}>${labels[p]}</label>`,
+                `<label class="check"><input type="checkbox" name="permission" value="${p}" ${a.permissions.includes(p) ? "checked" : ""}${a.deletedAt || (p === "admin" && (!data.owner || (!a.administratorEligible && !a.permissions.includes("admin")))) ? " disabled" : ""}>${labels[p]}</label>`,
             )
-            .join("")}</fieldset>${formEnd("Save access")}`,
+            .join(
+              "",
+            )}</fieldset>${a.deletedAt ? "</form>" : formEnd("Save Access")}${data.owner && !a.protectedOwner ? `<button type="button" data-account-action="${a.deletedAt ? "restore" : "delete"}" data-id="${esc(a.id)}">${a.deletedAt ? "Restore Account" : "Delete Account"}</button>` : ""}</article>`,
       )
       .join("") || "<p>No verified guest accounts yet.</p>"
   }</div>`;
+  for (const button of root.querySelectorAll("[data-account-action]"))
+    button.onclick = () =>
+      run(async () => {
+        const a = data.accounts.find((a) => a.id === button.dataset.id),
+          action = button.dataset.accountAction;
+        if (
+          !confirm(
+            action === "delete"
+              ? "Delete this account? Access and sessions will be revoked. You can restore it later."
+              : "Restore this account? Administration must be granted again separately.",
+          )
+        )
+          return;
+        await api("admin/accounts/" + action, { id: a.id, version: a.version });
+        await accountAccess();
+        notify(action === "delete" ? "Account Deleted" : "Account Restored");
+      });
   for (const form of root.querySelectorAll(".access-form"))
     submit(form, async (f) => {
       const a = data.accounts.find((a) => a.id === form.dataset.id),
@@ -293,7 +314,7 @@ async function moderation() {
   if (photos)
     root.insertAdjacentHTML(
       "afterbegin",
-      `<details class="card table-qr"><summary>Table Photo-Sharing QR Code</summary><div class="table-qr-content"><img src="/assets/photo-upload-qr.svg" width="160" height="160" alt="QR code to the photo sharing page"><div><p>Print this for the tables so guests can open the sharing page. Guests sign in with their invitation or registered email before uploading.</p><a class="button burgundy" href="/assets/photo-upload-qr.svg" download>Download Printable QR</a></div></div></details>`,
+      `<details class="card table-qr"><summary>Media Uploads</summary><div class="table-qr-content"><img src="/assets/photo-upload-qr.svg" width="160" height="160" alt="QR code to Media Uploads"><div><p>Scan to open Media Uploads directly. Guests sign in with their invitation or registered email before choosing files.</p><a class="button burgundy" href="/assets/photo-upload-qr.svg" download>Download Printable QR</a></div></div></details>`,
     );
   if (!photos) {
     const cards = root.querySelectorAll(".cards > .card");
@@ -312,22 +333,100 @@ async function moderation() {
   }
 }
 async function updates() {
+  const choices = {
+    announcements: "General Announcements",
+    whatsapp: "WhatsApp Reminders",
+    sms: "SMS Reminders",
+    email: "Communication Emails",
+  };
+  const query = new URLSearchParams(location.search);
+  const selected = Object.hasOwn(choices, query.get("tab"))
+    ? query.get("tab")
+    : "announcements";
+  root.innerHTML = `<div class="communication-tabs" role="tablist" aria-label="Communication Channels">${Object.entries(
+    choices,
+  )
+    .map(
+      ([key, label]) =>
+        `<button type="button" role="tab" id="tab-${key}" aria-controls="communication-panel" aria-selected="${key === selected}" tabindex="${key === selected ? 0 : -1}" data-tab="${key}">${label}</button>`,
+    )
+    .join(
+      "",
+    )}</div><section id="communication-panel" role="tabpanel" aria-labelledby="tab-${selected}"><p role="status">Loading…</p></section>`;
+  const panel = root.querySelector("#communication-panel");
+  const choose = (key) => {
+    const url = new URL(location.href);
+    url.searchParams.set("tab", key);
+    url.searchParams.delete("review");
+    history.replaceState(null, "", url);
+    run(updates);
+  };
+  for (const button of root.querySelectorAll("[data-tab]")) {
+    button.onclick = () => choose(button.dataset.tab);
+    button.onkeydown = (event) => {
+      if (!["ArrowRight", "ArrowLeft", "Home", "End"].includes(event.key))
+        return;
+      event.preventDefault();
+      const keys = Object.keys(choices),
+        index = keys.indexOf(selected);
+      const key =
+        event.key === "Home"
+          ? keys[0]
+          : event.key === "End"
+            ? keys.at(-1)
+            : keys[
+                (index + (event.key === "ArrowRight" ? 1 : keys.length - 1)) %
+                  keys.length
+              ];
+      choose(key);
+    };
+  }
+  if (selected === "whatsapp") {
+    await whatsappComposer(panel);
+    return;
+  }
+  if (selected === "sms") {
+    await audienceComposer(panel, updates, "sms");
+    return;
+  }
   const d = await api("admin/updates");
-  root.innerHTML = `${d.mailConfigured ? "" : '<p class="notice">Email sending is not configured. Drafts can be reviewed, but cannot be sent yet.</p>'}<form id="announcement" class="card"><h2>Publish a website announcement</h2>${field("English title", "title", { required: true, max: 140 })}<label>English message<textarea name="text" required maxlength="2000"></textarea></label>${field("Spanish title", "titleEs", { max: 140 })}<label>Spanish message<textarea name="textEs" maxlength="2000"></textarea></label>${formEnd("Publish on website")}<h2>Announcements</h2>${d.announcements.map((a) => `<article class="card"><h3>${esc(a.title)}</h3><p>${esc(a.text)}</p></article>`).join("")}<h2>Emails Outbox</h2><p>Review each recipient and message before sending. Accepted means Microsoft accepted the request, not confirmed delivery. Unknown results require checking Sent Items before any manual retry.</p>${table(
+  if (selected === "announcements") {
+    const announcements = (d.announcements || [])
+      .filter((a) => !a.archived)
+      .sort(
+        (a, b) =>
+          (Number(b.at) || Date.parse(b.createdAt) || 0) -
+          (Number(a.at) || Date.parse(a.createdAt) || 0),
+      )
+      .slice(0, 5);
+    panel.innerHTML = `<form id="announcement" class="card"><h2>Publish A Website Announcement</h2>${field("English Title", "title", { required: true, max: 140 })}<label>English Message<textarea name="text" required maxlength="2000"></textarea></label>${field("Spanish Title", "titleEs", { max: 140 })}<label>Spanish Message<textarea name="textEs" maxlength="2000"></textarea></label>${formEnd("Publish On Website")}<section class="recent-records"><h2>Latest Five Announcements</h2><a href="/admin/history/?kind=announcements">View Full Announcement History</a>${announcements.map((a) => `<article class="compact-record"><h3>${esc(a.title)}</h3><p>${esc(a.text)}</p><small>${a.at ? esc(new Date(a.at).toLocaleString()) : ""} · ${a.published ? "Published" : "Unpublished"}</small></article>`).join("") || "<p>No Announcements Yet.</p>"}</section>`;
+    submit(panel.querySelector("#announcement"), async (f) => {
+      await api("admin/updates", Object.fromEntries(f));
+      notify("Announcement Published. No Email Sent.");
+      await updates();
+    });
+    return;
+  }
+  panel.innerHTML = `${d.mailConfigured ? "" : '<p class="notice">Email Sending Is Not Configured. Drafts Can Be Reviewed But Cannot Be Sent Yet.</p>'}<div id="email-groups"></div><section id="email-outbox" class="recent-records"><h2>Latest Five Emails</h2><a href="/admin/history/?kind=email">View Full Email History</a><p>Review Each Recipient Before Sending. Accepted Means The Provider Accepted The Request, Not Confirmed Delivery.</p>${table(
     ["Recipient", "Subject", "State", "Review"],
-    d.outbox.map(
-      (m) =>
-        `<tr><td>${esc(m.to)}</td><td>${esc(m.subject)}</td><td>${esc(m.state)}</td><td>${button("Review message", "mail-review", m.id)}</td></tr>`,
-    ),
-  )}<div id="mail-review"></div>`;
-  submit(document.querySelector("#announcement"), async (f) => {
-    await api("admin/updates", Object.fromEntries(f));
-    notify("Announcement published. No email sent.");
-    await updates();
-  });
-  const groupComposer = document.createElement("section");
-  root.querySelector("#announcement").after(groupComposer);
-  await audienceComposer(groupComposer, updates);
+    d.outbox
+      .filter((m) => !m.archived)
+      .sort(
+        (a, b) =>
+          (Number(b.at) || Date.parse(b.createdAt) || 0) -
+          (Number(a.at) || Date.parse(a.createdAt) || 0),
+      )
+      .slice(0, 5)
+      .map(
+        (m) =>
+          `<tr><td>${esc(m.to)}</td><td>${esc(m.subject)}</td><td>${esc(m.state)}</td><td>${button("Review Message", "mail-review", m.id)}</td></tr>`,
+      ),
+  )}</section><div id="mail-review"></div>`;
+  await audienceComposer(
+    panel.querySelector("#email-groups"),
+    updates,
+    "email",
+  );
   const households = (await api("admin/guests")).guests
     .filter((r) => r.active && r.email)
     .sort((a, b) =>
@@ -335,7 +434,7 @@ async function updates() {
     );
   const composer = document.createElement("div");
   composer.innerHTML = `<form id="compose-mail" class="card"><h2>Draft an event email</h2><label>Household<select name="id" required><option value="">Choose a recipient</option>${households.map((r) => `<option value="${esc(r.id)}">${esc(r.displayName || r.name)} · ${esc(r.email)}</option>`).join("")}</select></label><label>Message type<select name="type"><option value="reminder">RSVP reminder</option><option value="details">Event details</option><option value="change">Schedule or parking update</option><option value="thanks">After-event thank you</option></select></label>${field("Current private invitation link (required for reminders)", "link", { max: 1000 })}<label>Update message (required for schedule/parking changes)<textarea name="updateText" maxlength="2000"></textarea></label><p>Each draft is addressed to the selected household only. Review its language and contents below before sending.</p>${formEnd("Save email draft")}`;
-  groupComposer.after(composer);
+  panel.querySelector("#email-outbox").before(composer);
   submit(document.querySelector("#compose-mail"), async (f) => {
     await api("admin/mail/draft", Object.fromEntries(f));
     notify(
@@ -343,7 +442,9 @@ async function updates() {
     );
     await updates();
   });
+  if (query.get("review")) await mailReview(query.get("review"));
 }
+
 async function mailReview(id) {
   const r = await api("admin/mail/preview?id=" + encodeURIComponent(id)),
     box = document.querySelector("#mail-review");
@@ -437,8 +538,12 @@ try {
       if (["admin/photos", "admin/guestbook"].includes(view))
         await moderation();
       if (view === "admin/updates") await updates();
+      if (view === "admin/history") await communicationHistory(root);
     }
   }
 } catch (e) {
-  root.innerHTML = `<p role="alert" class="notice">${esc(e.message)}</p><a href="/admin/login/">Family sign-in</a>`;
+  root.innerHTML = `<p role="alert" class="notice">${esc(e.message)}</p>${e.status === 401 || e.status === 403 ? '<a href="/admin/login/">Administrator Login</a>' : '<button type="button" class="button" id="retry-admin-page">Retry This Page</button>'}`;
+  root
+    .querySelector("#retry-admin-page")
+    ?.addEventListener("click", () => location.reload());
 }

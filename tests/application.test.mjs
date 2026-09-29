@@ -18,6 +18,7 @@ async function fixture(options = {}) {
     email: "test@example.com",
     phone: "",
     validCapacity: true,
+    administratorEligible: true,
     archived: false,
   };
   let failing = false,
@@ -337,7 +338,7 @@ test("guest administration requires owner grant and MFA; revoking grant rejects 
         challenge: outstanding.challenge,
         code: "123456",
       }),
-    (e) => e.code === "ADMIN_NOT_ALLOWED",
+    (e) => e.code === "SIGN_IN_AGAIN",
   );
 });
 test("disabling an account blocks an issued email link and current sessions", async () => {
@@ -1087,4 +1088,173 @@ test("notification recipients do not inherit administrator sign-in authority", a
     body: { email: "other@hotmail.com" },
   });
   assert.equal(f.sent.length, 2);
+});
+
+test("WhatsApp invitation delivery links obey invitation generation and admin endpoint authorization", async () => {
+  const f = await fixture(),
+    credential = token();
+  await f.ledger.transaction((s) => {
+    s.invitationLinks = {
+      [hash(credential)]: {
+        householdId: household,
+        generation: s.invitations[household].generation,
+      },
+    };
+  });
+  const open = () =>
+    f.app.dispatch({
+      path: "/api/invitation-session",
+      method: "POST",
+      headers: { origin },
+      body: { token: credential },
+    });
+  assert.ok((await open()).setCookie);
+  await assert.rejects(
+    () => f.guest("admin/whatsapp/drafts"),
+    (e) => e.status === 401,
+  );
+  await f.admin("invitation", {
+    id: household,
+    invited: { ceremony: true, dinner: true, dance: true },
+  });
+  await assert.rejects(open, (e) => e.code === "INVALID_INVITATION");
+});
+
+test("Notion administrator eligibility is required for owner grants and fresh admin access", async () => {
+  const f = await registeredFixture();
+  f.row.administratorEligible = false;
+  await assert.rejects(
+    () =>
+      f.admin("accounts", {
+        id: f.account.id,
+        version: 1,
+        active: true,
+        permissions: ["admin"],
+      }),
+    (e) => e.code === "ADMIN_NOT_ELIGIBLE",
+  );
+  f.row.administratorEligible = true;
+  assert.deepEqual((await f.verified("session")).permissions, []);
+  await f.admin("accounts", {
+    id: f.account.id,
+    version: 1,
+    active: true,
+    permissions: ["admin"],
+  });
+  const c = await f.verified("auth/step-up", {});
+  const login = await f.publicPost("auth/mfa", {
+    challenge: c.challenge,
+    code: totp(c.enrollmentSecret, Math.floor(at / 30000)),
+  });
+  const adminGet = () =>
+    f.app.dispatch({
+      path: "/api/admin/seating",
+      method: "GET",
+      headers: { origin, cookie: login.setCookie.split(";")[0] },
+    });
+  assert.ok(Array.isArray((await adminGet()).tables));
+  f.row.administratorEligible = false;
+  await assert.rejects(adminGet, (e) => e.code === "ADMIN_NOT_ELIGIBLE");
+});
+test("delete is reversible, revokes sessions and outstanding links, never restores admin", async () => {
+  const f = await registeredFixture();
+  await f.admin("accounts", {
+    id: f.account.id,
+    version: 1,
+    active: true,
+    permissions: ["costs", "admin"],
+  });
+  await f.publicPost("auth/email/request", { email: f.account.email });
+  const raw = f.sent.at(-1).html.match(/account\/#([A-Za-z0-9_-]{43})/)[1];
+  await f.admin("accounts/delete", { id: f.account.id, version: 2 });
+  await assert.rejects(
+    () => f.verified("account"),
+    (e) => e.code === "SIGN_IN_REQUIRED",
+  );
+  await assert.rejects(
+    () => f.publicPost("auth/email/verify", { token: raw }),
+    (e) => e.code === "EMAIL_LINK_INVALID",
+  );
+  let state = await f.ledger.read();
+  assert.ok(state.accounts[f.account.id].deletedAt);
+  assert.equal(state.invitations[household].active, false);
+  await f.admin("accounts/restore", { id: f.account.id, version: 3 });
+  state = await f.ledger.read();
+  assert.equal(state.accounts[f.account.id].deletedAt, undefined);
+  assert.deepEqual(state.accounts[f.account.id].permissions, ["costs"]);
+  assert.equal(state.invitations[household].active, true);
+  await assert.rejects(
+    () => f.verified("account"),
+    (e) => e.code === "SIGN_IN_REQUIRED",
+  );
+  await f.ledger.transaction((s) => {
+    s.accounts[f.account.id].email = "organizer@gmail.com";
+  });
+  await assert.rejects(
+    () => f.admin("accounts/delete", { id: f.account.id, version: 4 }),
+    (e) => e.code === "OWNER_PROTECTED",
+  );
+});
+
+test("invited delegate signs in by email plus MFA without owner authority", async () => {
+  const f = await fixture({ adminDelegateEmails: ["diana@example.com"] });
+  f.row.email = "diana@example.com";
+  const post = (path, body) =>
+    f.app.dispatch({
+      path: "/api/" + path,
+      method: "POST",
+      headers: { origin },
+      body,
+    });
+  await post("auth/admin-email/request", { email: "diana@example.com" });
+  const raw = f.sent.at(-1).html.match(/login\/#([A-Za-z0-9_-]{43})/)[1];
+  const c = await post("auth/admin-email/verify", { token: raw });
+  const login = await post("auth/mfa", {
+    challenge: c.challenge,
+    code: totp(c.enrollmentSecret, Math.floor(at / 30000)),
+  });
+  const delegated = (path, body) =>
+    f.app.dispatch({
+      path: "/api/admin/" + path,
+      method: body ? "POST" : "GET",
+      headers: {
+        origin,
+        cookie: login.setCookie.split(";")[0],
+        "x-csrf-token": login.csrf,
+      },
+      body,
+    });
+  assert.equal((await delegated("accounts")).owner, false);
+  await assert.rejects(
+    () => delegated("accounts/delete", { id: household, version: 1 }),
+    (e) => e.code === "OWNER_REQUIRED",
+  );
+  const id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+  await f.ledger.transaction((s) => {
+    s.accounts = {
+      [id]: {
+        id,
+        householdId: household,
+        email: "diana@example.com",
+        active: true,
+        permissions: [],
+        version: 1,
+      },
+    };
+  });
+  await assert.rejects(
+    () =>
+      delegated("accounts", {
+        id,
+        version: 1,
+        active: true,
+        permissions: ["admin"],
+      }),
+    (e) => e.code === "OWNER_REQUIRED",
+  );
+  f.row.administratorEligible = false;
+  await assert.rejects(
+    () => delegated("seating"),
+    (e) => e.code === "ADMIN_NOT_ELIGIBLE",
+  );
 });

@@ -499,7 +499,7 @@
       "creationEvidence": "Added 14 website projection columns through restricted connection; verified original column IDs/types retained. Private work/notion/projection-after.json records new IDs. Added channel-specific WhatsApp Phone, Language, Consent, Consent Date, Consent Source, Consent Version and Opt Out on September 28, 2026 after schema checks confirmed they were absent. No guest consent was inferred or enabled.",
       "exactScope": "Website RSVP [s%5E~E]; Website response ID [W%40nJ]; Website response at [ifn%60]; Ceremony adults [tMdz]; Ceremony kids [UdtZ]; Dinner adults [%3FbPH]; Dinner kids [x%7BMI]; Dance adults [%3FShl]; Dance kids [l%3DQ%40]; Website contact email [bHt%7D]; Website phone [CTeg]; Website address [pxI%5E]; Website requests [tiyS]; Website account [cG~Y]",
       "verifyBeforeCleanup": "Stop sync, export wanted website responses and compare exact property IDs against recorded scope; do not remove original fields or database",
-      "cleanupSteps": "After explicit reviewed approval remove only the recorded website projection properties if the family no longer needs them; retain original Invitations records, capacities, contacts and RSVP delivery field",
+      "cleanupSteps": "After explicit reviewed approval remove only the recorded website projection properties if the family no longer needs them; retain original Invitations records, capacities, contacts and RSVP delivery field Review Administrator Eligible checkbox and authorized administrator rows before removing event access. Preserve source guest records.",
       "verifyAfterCleanup": "Verify only selected projection columns are gone; original property IDs and guest records remain",
       "dependsOn": [
         "misxv-notion-connection"
@@ -670,7 +670,7 @@
       },
       "creationEvidence": "Repository creation completed at 2026-09-28T04:17:30.497862Z; Docker format, event=misxv-2027 label",
       "verifyBeforeCleanup": "Confirm exact project, us-central1 location and repository; stop event Cloud Run and preserve wanted source/release evidence",
-      "cleanupSteps": "After removing dependent event service, remove this dedicated repository and its event image versions after final review; preserve all other repositories",
+      "cleanupSteps": "After removing dependent event service, remove this dedicated repository and its event image versions after final review; preserve all other repositories Also review and remove only event build source object gs://simplysoph-66c78_cloudbuild/source/1790653321.353426-cee7601185374f14a7e401fce12950f2.tgz after approved retention/export. Preserve the shared Cloud Build bucket.",
       "verifyAfterCleanup": "Verify exact repository absent and account for any retained image charges",
       "dependsOn": [],
       "status": "active"
@@ -1033,6 +1033,27 @@
       "verifyBeforeCleanup": "Match exact content SID, stop pending sends, export template and delivery evidence. February 1 is review only.",
       "cleanupSteps": "After explicit retirement approval remove runtime catalog binding and delete this exact event content template. Preserve WhatsApp sender, Meta and Twilio accounts.",
       "verifyAfterCleanup": "Confirm exact template absent and unrelated templates retained.",
+      "dependsOn": [],
+      "status": "active"
+    },
+    {
+      "id": "misxv-whatsapp-sender-callbacks",
+      "type": "twilio-whatsapp-sender",
+      "projectId": "simplysoph-66c78",
+      "ownership": "event-change-to-existing",
+      "resource": "Twilio WhatsApp sender XE7f67f89fd760ccf01cea3483014fb5a3",
+      "baseline": {
+        "verifiedAt": "2026-09-29T03:50:07.684Z",
+        "scope": "Existing owner-provided WhatsApp sender callback configuration",
+        "allowedTypes": [
+          "twilio-whatsapp-sender"
+        ],
+        "evidence": "Before update sender ONLINE with empty inbound and status callback URLs."
+      },
+      "creationEvidence": "Configured inbound POST https://misxv.simplysoph.com/api/whatsapp/inbound and status callback https://misxv.simplysoph.com/api/whatsapp/status. API readback confirmed both URLs; signed malformed probes returned 422 and unsigned probes 403.",
+      "verifyBeforeCleanup": "Export event message and consent evidence. Confirm these exact callback URLs still belong to this event; February 1 is review only.",
+      "cleanupSteps": "After explicit retirement approval remove only event callback bindings or restore the verified pre-event empty callbacks. Preserve the owner phone number, WhatsApp sender, Meta account and Twilio account.",
+      "verifyAfterCleanup": "Confirm event callbacks absent and shared sender/account retained.",
       "dependsOn": [],
       "status": "active"
     }

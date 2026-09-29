@@ -34,3 +34,11 @@ Routes /api/whatsapp/inbound and /api/whatsapp/status validate signatures and th
 February 1, 2027 is review/export, not automatic deletion. Inventory templates, consent records, callbacks and credentials for reviewed cleanup. Preserve shared Twilio/Meta accounts and the owner-provided number.
 
 References: [WhatsApp API](https://www.twilio.com/docs/whatsapp/api), [Content API](https://www.twilio.com/docs/content/content-api-resources), [US marketing restrictions](https://www.twilio.com/en-us/changelog/whatsapp-marketing-messages-to-u-s--numbers-no-longer-supported).
+
+## Published Verification — September 28, 2026
+
+Firebase Hosting and Cloud Run revision misxv-api-00012-v98 are published; the API revision serves 100 percent of traffic. Build 9ff7d57a-1ef5-4cc7-b7ae-e276c7025e10 produced image digest sha256:aea68787e79aaa4d4246ca2f6e2c63102b0feffcfd9878e264c96a8f77a4a487. Both WhatsApp callback URLs are configured on the ONLINE sender. Unsigned probes returned 403; correctly signed malformed probes returned 422 before any guest mutation. Real incoming-message acceptance is still required.
+
+The live reception calendar ends at 2027-01-16T06:30:00Z (12:30 AM Central). The supplied replacement invitation and QR files were absent at their local paths, so exact artwork replacement and QR decoding remain outstanding.
+
+Validation: 124 automated tests and 65 generated-document/link checks passed. SMS and WhatsApp outbound activation flags remain false; runtime key remains read-only. Three templates remain pending and reminder_es is rejected with no specific reason supplied by Meta. No guest messages were sent. Organizer notifications use separate NOTIFICATION_EMAILS for both approved addresses; administrator authorization was not expanded.

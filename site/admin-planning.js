@@ -44,32 +44,71 @@ export async function planningEditor(root) {
   const grid = root.querySelector("#planning-grid");
   async function draw(kind) {
     const data = await api("admin/planning?kind=" + kind),
-      rows = data.rows;
-    const amount = (key) => rows.reduce((sum, r) => sum + (r[key] || 0), 0);
-    grid.innerHTML = `<h2>${kind === "costs" ? "Accounting" : "Godparents"}</h2>${kind === "costs" ? `<div class="cards"><div class="card"><h3>Estimated Costs</h3><p class="stat">${dollars(amount("estimated"))}</p><h3>Final Costs</h3><p class="stat">${dollars(amount("finalCost"))}</p></div><div class="card"><h3>Paid</h3><p class="stat">${dollars(amount("deposit") + amount("additionalPaid"))}</p></div><div class="card"><h3>Balance Due</h3><p class="stat">${dollars(rows.reduce((s, r) => s + (r.finalCost == null ? 0 : r.finalCost - (r.deposit || 0) - (r.additionalPaid || 0)), 0))}</p><p>Only confirmed final costs are included.</p></div></div>` : ""}<details><summary>Import From Notion</summary><p>Import new rows from the connected Notion database. Existing rows are skipped. Website edits update the linked Notion row. Direct edits made in Notion are not automatically imported into existing website rows.</p><form id="planning-import"><p class="error" role="alert"></p><button type="submit" class="button burgundy">Import New Rows</button></form></details><div class="row-actions"><button id="new-record" class="button burgundy">Add ${kind === "costs" ? "Expense" : "Godparent"}</button></div><div class="table-wrap"><table class="planning-table"><thead><tr>${fields[
-      kind
-    ]
-      .filter(([k]) => k !== "notes")
-      .map(([, label]) => `<th>${label}</th>`)
-      .join(
-        "",
-      )}${kind === "costs" ? "<th>Balance Due</th>" : ""}<th>Notion Sync</th><th>Actions</th></tr></thead><tbody>${
-      rows
-        .map(
-          (r) =>
-            `<tr>${fields[kind]
-              .filter(([k]) => k !== "notes")
-              .map(
-                ([k, , type]) =>
-                  `<td>${type === "number" ? (r[k] == null ? "—" : dollars(r[k])) : type === "checkbox" ? (r[k] ? "Yes" : "No") : esc(r[k] || "—")}</td>`,
-              )
-              .join(
-                "",
-              )}${kind === "costs" ? `<td class="money">${r.finalCost == null ? "—" : dollars(r.finalCost - (r.deposit || 0) - (r.additionalPaid || 0))}</td>` : ""}<td>${r.sync?.status === "synced" ? "Synced" : r.sync ? `<span>${r.sync.status === "syncing" ? "Syncing" : "Pending"}</span><p>${r.sync.error === "NOTION_CREATE_UNCERTAIN" ? "Checking for an existing Notion record; no duplicate will be created." : r.sync.error === "NOTION_RECORD_UNAVAILABLE" ? "The linked Notion record is unavailable." : r.sync.error === "PLANNING_SCHEMA_CONFLICT" ? "The Notion columns need a configuration check." : ""}</p><button class="plain-button" data-sync="${r.id}">Retry Sync</button>` : "Imported"}</td><td><div class="table-actions"><button class="plain-button" data-edit="${r.id}">Edit</button><a target="_blank" rel="noopener" aria-label="Documents For ${esc(r.item || r.name)}" href="/admin/documents/?kind=${kind}&rowId=${r.id}">📄 Documents</a></div></td></tr>`,
-        )
-        .join("") ||
-      `<tr><td colspan="16">No records yet. Add a record or import from Notion.</td></tr>`
-    }</tbody></table></div><div id="planning-edit"></div>`;
+      allRows = data.rows,
+      rows = allRows.filter((row) => !row.deleted),
+      deleted = allRows.filter((row) => row.deleted),
+      columns = fields[kind].filter(
+        ([key]) =>
+          !["notes", ...(kind === "costs" ? ["additionalPaid"] : [])].includes(
+            key,
+          ),
+      );
+    const cents = (value) => Math.round((value || 0) * 100);
+    const paid = (row) => cents(row.deposit) + cents(row.additionalPaid);
+    const cell = (row, key, type) =>
+      key === "deposit" && kind === "costs"
+        ? `<span title="Initial Deposit: ${dollars(row.deposit)}; Additional Payments: ${dollars(row.additionalPaid)}">${dollars(paid(row) / 100)}</span>`
+        : type === "number"
+          ? row[key] == null
+            ? "—"
+            : dollars(row[key])
+          : type === "checkbox"
+            ? row[key]
+              ? "Yes"
+              : "No"
+            : esc(row[key] || "—");
+    const syncCell = (r) =>
+      r.sync?.status === "synced"
+        ? "Synced"
+        : r.sync
+          ? `<span>${r.sync.status === "syncing" ? "Syncing" : "Pending"}</span><button class="plain-button" data-sync="${r.id}">Retry Sync</button>`
+          : "Imported";
+    const totalCells = columns
+      .map(
+        ([key], index) =>
+          `<td>${index === 0 ? "Totals" : key === "finalCost" ? (data.totals.finalCents == null ? "Pending" : dollars(data.totals.finalCents / 100)) : key === "deposit" ? dollars(data.totals.paidCents / 100) : ""}</td>`,
+      )
+      .join("");
+    grid.innerHTML = `<h2>${kind === "costs" ? "Accounting" : "Godparents"}</h2>${kind === "costs" ? `<p>Deposit Paid includes the initial deposit and subsequent payments. Owed = Final Cost − Deposit Paid. Edit a record to see or change the payment breakdown. Negative owed amounts indicate a credit.</p>${data.totals.pendingFinals ? `<p>${data.totals.pendingFinals} record(s) still need a final cost. Final Cost and Owed totals remain pending until all final costs are entered.</p>` : ""}` : ""}
+      <details><summary>Import From Notion</summary><p>Import new rows from the connected Notion database. Existing and deleted rows are preserved. Website edits update the linked Notion row.</p><form id="planning-import"><p class="error" role="alert"></p><button type="submit" class="button burgundy">Import New Rows</button></form></details>
+      <div class="row-actions"><button id="new-record" class="button burgundy">Add ${kind === "costs" ? "Expense" : "Godparent"}</button></div>
+      <div class="table-wrap"><table class="planning-table"><thead><tr>${columns.map(([, label]) => `<th>${label}</th>`).join("")}${kind === "costs" ? "<th>Owed</th>" : ""}<th>Notion Sync</th><th>Actions</th></tr></thead><tbody>${rows.map((r) => `<tr>${columns.map(([key, , type]) => `<td>${cell(r, key, type)}</td>`).join("")}${kind === "costs" ? `<td class="money">${r.finalCost == null ? "—" : dollars((cents(r.finalCost) - paid(r)) / 100)}</td>` : ""}<td>${syncCell(r)}</td><td><div class="table-actions"><button class="plain-button" data-edit="${r.id}">Edit</button><a target="_blank" rel="noopener" aria-label="Documents For ${esc(r.item || r.name)}" href="/admin/documents/?kind=${kind}&rowId=${r.id}">📄 Documents</a><button class="plain-button" data-state="${r.id}" data-deleted="true">Delete</button></div></td></tr>`).join("") || `<tr><td colspan="${columns.length + (kind === "costs" ? 3 : 2)}">No records yet. Add a record or import from Notion.</td></tr>`}</tbody>${kind === "costs" ? `<tfoot><tr>${totalCells}<td class="money">${data.totals.owedCents == null ? "Pending" : dollars(data.totals.owedCents / 100)}</td><td></td><td></td></tr></tfoot>` : ""}</table></div>
+      <details><summary>Deleted Records (${deleted.length})</summary><p>Delete archives the linked Notion record and removes it from active totals. Restore returns the same record. Documents and payment history are kept.</p>${deleted.map((r) => `<article class="card"><h3>${esc(r.item || r.name)}</h3><p>${syncCell(r)}</p><button class="plain-button" data-state="${r.id}" data-deleted="false">Restore</button></article>`).join("") || "<p>No deleted records.</p>"}</details><div id="planning-edit"></div>`;
+    grid.querySelectorAll("[data-state]").forEach((button) => {
+      button.onclick = async () => {
+        const row = allRows.find((r) => r.id === button.dataset.state);
+        button.disabled = true;
+        try {
+          const saved = await api("admin/planning/state", {
+            kind,
+            id: row.id,
+            version: row.version,
+            deleted: button.dataset.deleted === "true",
+          });
+          await draw(kind);
+          notify(
+            saved.row.sync?.status === "synced"
+              ? saved.row.deleted
+                ? "Record Deleted And Archived In Notion. Restore Is Available."
+                : "Record Restored And Synced To Notion."
+              : "Change Saved. Notion Sync Pending; Use Retry Sync.",
+          );
+        } catch (e) {
+          notify(e.message);
+          button.disabled = false;
+        }
+      };
+    });
     submit(grid.querySelector("#planning-import"), async (f) => {
       const result = await api("admin/planning/import", {
         kind,
@@ -83,7 +122,7 @@ export async function planningEditor(root) {
     function edit(row = {}) {
       const panel = grid.querySelector("#planning-edit"),
         createId = crypto.randomUUID();
-      panel.innerHTML = `<form class="card planning-editor"><h3 class="full">${row.id ? "Edit" : "Add"} ${kind === "costs" ? "Expense" : "Godparent"}</h3>${fields[kind].map(([key, label, type]) => (type === "checkbox" ? `<label class="check"><input type="checkbox" name="${key}" ${row[key] ? "checked" : ""}>${label}</label>` : key === "notes" ? `<label class="full">Notes<textarea name="notes" maxlength="4000">${esc(row.notes || "")}</textarea></label>` : `<label>${label}<input name="${key}" type="${type || "text"}" value="${esc(row[key] ?? "")}" ${type === "number" ? 'min="0" step="0.01"' : 'maxlength="250"'} ${["item", "name"].includes(key) ? "required" : ""}></label>`)).join("")}<div class="full"><p class="error" role="alert"></p><button type="submit" class="button burgundy">Save Record</button></div></form>`;
+      panel.innerHTML = `<form class="card planning-editor"><h3 class="full">${row.id ? "Edit" : "Add"} ${kind === "costs" ? "Expense" : "Godparent"}</h3>${kind === "costs" ? '<p class="full">Enter the initial deposit and additional payments separately. The table combines both under Deposit Paid.</p>' : ""}${fields[kind].map(([key, label, type]) => (type === "checkbox" ? `<label class="check"><input type="checkbox" name="${key}" ${row[key] ? "checked" : ""}>${label}</label>` : key === "notes" ? `<label class="full">Notes<textarea name="notes" maxlength="4000">${esc(row.notes || "")}</textarea></label>` : `<label>${key === "deposit" && kind === "costs" ? "Initial Deposit" : label}<input name="${key}" type="${type || "text"}" value="${esc(row[key] ?? "")}" ${type === "number" ? 'min="0" step="0.01"' : 'maxlength="250"'} ${["item", "name"].includes(key) ? "required" : ""}></label>`)).join("")}<div class="full"><p class="error" role="alert"></p><button type="submit" class="button burgundy">Save Record</button></div></form>`;
       submit(panel.querySelector("form"), async (f) => {
         const values = Object.fromEntries(f);
         if (kind === "padrinos") values.contacted = f.has("contacted");

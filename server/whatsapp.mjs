@@ -310,7 +310,7 @@ export function createWhatsapp({
   async function review(id) {
     const s = await ledger.read(),
       d = s.whatsappDrafts?.[id];
-    if (!d) throw error(404, "NOT_FOUND");
+    if (!d || d.archived) throw error(404, "NOT_FOUND");
     const row = await notion.read(d.householdId),
       t = templates.find(
         (t) => t.key === d.templateKey && t.contentSid === d.contentSid,
@@ -353,7 +353,7 @@ export function createWhatsapp({
       throw error(409, "WHATSAPP_REVIEW_REQUIRED");
     const job = await ledger.transaction((s) => {
       const d = s.whatsappDrafts?.[id];
-      if (!d || d.state !== "draft")
+      if (!d || d.archived || d.state !== "draft")
         throw error(409, "WHATSAPP_ALREADY_ATTEMPTED");
       if (
         s.whatsappConsentPhones?.[d.householdId] !== d.to ||

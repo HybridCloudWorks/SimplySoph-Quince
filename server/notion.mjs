@@ -23,6 +23,7 @@ export function normalizeInvitation(page) {
     capacity: { adultsTeens: adults ?? null, kids },
     email: p.Email?.email ?? "",
     phone: p.Phone?.phone_number ?? "",
+    administratorEligible: p["Administrator Eligible"]?.checkbox === true,
     role: p.Role?.select?.name ?? "",
     firstName: text(p["First Name"]),
     lastName: text(p["Last Name"]),
@@ -46,6 +47,7 @@ export function normalizeInvitation(page) {
   };
 }
 export const projectionSchema = {
+  "Administrator Eligible": { checkbox: {} },
   "WhatsApp Phone": { phone_number: {} },
   "WhatsApp Language": {
     select: { options: [{ name: "en" }, { name: "es" }] },
@@ -324,6 +326,7 @@ export function notionClient({ token, sourceId, fetchImpl = fetch }) {
         name: account.name,
         email: account.email,
         active: account.active,
+        deletedAt: account.deletedAt || null,
         permissions: account.permissions,
         verifiedAt: new Date(account.verifiedAt).toISOString(),
       });

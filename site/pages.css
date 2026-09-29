@@ -919,3 +919,111 @@ th,
   margin: 0;
   text-align: left;
 }
+
+/* Consistent compact typography for admin workspaces. */
+.admin-shell h1,
+.admin-shell h2,
+.admin-shell h3,
+.admin-shell h4,
+.admin-shell legend {
+  font-family: var(--sans);
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: normal;
+}
+.admin-shell .page-title {
+  font-size: clamp(1.7rem, 3vw, 2.25rem);
+  margin-bottom: 1.5rem;
+}
+.admin-shell h2 {
+  font-size: 1.3rem;
+}
+.admin-shell h3,
+.admin-shell legend {
+  font-size: 1.08rem;
+}
+.admin-shell h4 {
+  font-size: 1rem;
+}
+.communication-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 1.5rem;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 0.75rem;
+}
+.communication-tabs button {
+  font: 600 0.9rem var(--sans);
+  color: var(--wine);
+  border: 1px solid var(--line);
+  background: transparent;
+  padding: 0.8rem 1rem;
+  cursor: pointer;
+}
+.communication-tabs button[aria-selected="true"] {
+  background: var(--wine);
+  color: white;
+  border-color: var(--wine);
+}
+.communication-tabs button:focus-visible {
+  outline: 2px solid var(--wine);
+  outline-offset: 3px;
+}
+.recent-records {
+  margin-top: 1.5rem;
+}
+.compact-record {
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--line);
+}
+.compact-record p,
+.history-snippet {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.history-controls {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 1rem;
+  align-items: end;
+  margin: 1rem 0;
+}
+.history-controls .check {
+  grid-column: 1/-1;
+}
+#history-editor:not(:empty) {
+  margin: 1.5rem 0;
+}
+#communication-panel .card {
+  margin-bottom: 1rem;
+}
+#communication-panel .recipient-list {
+  max-height: 18rem;
+  overflow: auto;
+}
+#media-upload {
+  scroll-margin-top: 1rem;
+}
+@media (max-width: 700px) {
+  .communication-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .communication-tabs button {
+    min-height: 3.5rem;
+  }
+  .history-controls {
+    grid-template-columns: 1fr;
+  }
+}
+
+.notification-row {display:flex;justify-content:space-between;align-items:center;gap:1rem;padding:.7rem 0;border-bottom:1px solid var(--line);font-size:.85rem;}
+.notification-summary {min-width:0;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.2rem 1rem;flex:1;}
+.admin-shell .notification-row h3 {font-size:.95rem;margin:0;}
+.notification-row small {font-size:.75rem;grid-column:2;grid-row:1;white-space:nowrap;}
+.notification-row .notification-text {margin:0;grid-column:1/-1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.notification-row .row-actions {margin:0;flex-shrink:0;}
+@media(max-width:700px){.notification-row{align-items:flex-start;flex-wrap:wrap;gap:.35rem;}.notification-summary{display:block;flex-basis:100%;}.notification-row small{white-space:normal;}.notification-row .row-actions{font-size:.8rem;}}

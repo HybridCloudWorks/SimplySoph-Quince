@@ -13,7 +13,7 @@ export function createNotifications({
       await rateLimit(ledger, "organizer-notifications", 60, 3600000, now());
       const row = await ledger.transaction((s) => {
         const n = s.notifications?.[id];
-        if (!n || n.emailState) return null;
+        if (!n || n.archived || n.emailState) return null;
         n.emailState = "sending";
         n.emailAttemptedAt = now();
         return structuredClone(n);

@@ -37,7 +37,7 @@ export function createSms({
   async function review(id) {
     const state = await ledger.read(),
       draft = state.smsDrafts?.[id];
-    if (!draft) throw error(404, "NOT_FOUND");
+    if (!draft || draft.archived) throw error(404, "NOT_FOUND");
     if (!draft.householdId || !Array.isArray(draft.groups))
       throw error(409, "SMS_DRAFT_STALE");
     const row = await notion.read(draft.householdId);
@@ -83,7 +83,7 @@ export function createSms({
       throw error(409, "SMS_REVIEW_REQUIRED");
     const job = await ledger.transaction((s) => {
       const d = s.smsDrafts?.[id];
-      if (!d || d.state !== "draft") throw error(409, "SMS_ALREADY_ATTEMPTED");
+      if (!d || d.archived || d.state !== "draft") throw error(409, "SMS_ALREADY_ATTEMPTED");
       if (
         d.text !== preview.text ||
         d.to !== preview.to ||

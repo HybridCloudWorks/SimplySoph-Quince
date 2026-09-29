@@ -132,7 +132,7 @@ function contents(route, lang) {
       '</p><div data-videos class="media-grid"></div></section>' +
       link("share", say("Share photos & videos", "Comparte fotos y videos"));
   if (route === "share")
-    body = `<div class="share-intro"><p class="lead">${say("Share the celebration through your eyes.", "Comparte la celebración desde tu mirada.")}</p><p>${say("Choose your favorite photos and videos. The family reviews every upload before sharing it in the guest gallery.", "Elige tus fotos y videos favoritos. La familia revisa cada archivo antes de compartirlo en la galería de invitados.")}</p></div><div class="portal share-portal" id="portal" data-view="share"></div><aside class="media-reminder"><strong>${say("A Little Reminder", "Un Pequeño Recordatorio")}</strong><p>${say("Only share media you have permission to upload, including permission from a parent or guardian for children. Approved uploads are visible to registered guests.", "Comparte solo archivos que tengas permiso de subir, incluido el permiso de un padre o tutor para los menores. Los archivos aprobados son visibles para los invitados registrados.")} <a href="${href("terms", lang)}">${say("Read the Media Policy", "Lee la Política de Medios")}</a></p></aside>`;
+    body = `<div class="share-intro"><p class="lead">${say("Share the celebration through your eyes.", "Comparte la celebración desde tu mirada.")}</p><p>${say("Choose your favorite photos and videos. The family reviews every upload before sharing it in the guest gallery.", "Elige tus fotos y videos favoritos. La familia revisa cada archivo antes de compartirlo en la galería de invitados.")}</p></div><div id="media-upload" tabindex="-1"></div><div class="portal share-portal" id="portal" data-view="share"></div><aside class="media-reminder"><strong>${say("A Little Reminder", "Un Pequeño Recordatorio")}</strong><p>${say("Only share media you have permission to upload, including permission from a parent or guardian for children. Approved uploads are visible to registered guests.", "Comparte solo archivos que tengas permiso de subir, incluido el permiso de un padre o tutor para los menores. Los archivos aprobados son visibles para los invitados registrados.")} <a href="${href("terms", lang)}">${say("Read the Media Policy", "Lee la Política de Medios")}</a></p></aside>`;
   if (route === "guestbook" || route === "contact")
     body = `<p class="lead">${route === "guestbook" ? say("Leave Sophia a wish for the years ahead.", "Deja a Sophia un deseo para los años que vienen.") : say("We’re here to help with your invitation.", "Estamos aquí para ayudarte con tu invitación.")}</p>${route === "contact" ? `<p><a href="mailto:${event.sender}">${event.sender}</a></p>` : ""}<div class="portal" id="portal" data-view="${route}"></div>${route === "guestbook" ? '<div data-guestbook class="cards"></div>' : ""}`;
   if (route === "faq")
@@ -260,7 +260,10 @@ function document({ route, title, lang = "en", admin = false }) {
   return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer"><meta name="description" content="${esc(t.tagline)}"><title>${esc(title)} · Sophia</title><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/pages.css"><script type="module" src="/${admin ? "admin" : "guest"}.js"></script></head><body data-route="${route}"><a class="skip" href="#main">${lang === "es" ? "Ir al contenido" : "Skip to content"}</a>${navigation(lang, admin ? "" : route)}<main id="main">${
     admin
       ? `<section class="section admin-shell"><aside aria-label="Family administration">${adminRoutes
-          .filter(([r]) => !["admin/login", "admin/documents"].includes(r))
+          .filter(
+            ([r]) =>
+              !["admin/login", "admin/documents", "admin/history"].includes(r),
+          )
           .map(
             ([r, t]) =>
               `<a href="/${r}/"${r === route ? ' aria-current="page"' : ""}>${t}</a>`,
@@ -303,7 +306,7 @@ for (const [route, title] of adminRoutes) {
 await mkdir(new URL("assets/", root), { recursive: true });
 await writeFile(
   new URL("assets/photo-upload-qr.svg", root),
-  await QRCode.toString("https://misxv.simplysoph.com/share/", {
+  await QRCode.toString("https://misxv.simplysoph.com/share/#media-upload", {
     type: "svg",
     errorCorrectionLevel: "M",
     margin: 4,
@@ -327,6 +330,7 @@ for (const file of [
   "admin-experience.js",
   "admin-planning.js",
   "admin-audience.js",
+  "admin-history.js",
   "admin-whatsapp.js",
   "guest-whatsapp.js",
 ])
