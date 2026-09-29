@@ -9,3 +9,5 @@ The owner uses ADMIN_EMAILS. Approved email-only family administrators use ADMIN
 Media Uploads QR links directly to /share/#media-upload. The upload page still requires invitation/account authorization; guests choose files using the multiple-file chooser. The printable QR has no website text in its center.
 
 Validation: 138 automated tests, 66 generated-document/link checks. Synthetic browser review covered tab isolation, full history archive/restore/search, authenticated seating, and exact accounting totals. Synthetic records never reach Notion or guests.
+
+Published: commit cb09175, both CI runs passed, Firebase Hosting deployed and Cloud Run revision misxv-api-00013-2zk serves all traffic. Notion eligibility is enabled only for the two approved people; existing owner access is preserved. Diana is configured as a delegate and must verify her email and enroll MFA herself. No sign-in or invitation email was sent during provisioning.

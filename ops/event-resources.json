@@ -203,7 +203,7 @@
       },
       "creationEvidence": "Created 2026-09-27T05:09:12Z; generation 1790485752689878522, uniform bucket access and enforced public access prevention verified; 7-day soft delete; object versioning enabled 2026-09-27 for recoverable ledger/media revisions; prior metageneration 2 without versioning recorded in private work/media-backup-baseline.txt Synthetic generation restore verified 2026-09-28T04:23:27.964Z at private/verification/restore-check-0471cfa8-1da8-4999-af6e-e441b9b1b2d7.json; retained three small test generations for retirement; no guest ledger/media altered.",
       "verifyBeforeCleanup": "Match bucket name, project and creation timestamp; stop API and sending, export approved ledger/photos privately; verify no unrelated data",
-      "cleanupSteps": "After reviewed private export of ledger, approved photos and approved videos, remove exact event objects including all noncurrent generations and then the bucket. Versioning was enabled for event backup support on 2026-09-27; no lifecycle deletion rules or retention lock were added. Account for seven-day soft-delete retention and charges. Preserve all other buckets.",
+      "cleanupSteps": "After reviewed private export of ledger, approved photos and approved videos, remove exact event objects including all noncurrent generations and then the bucket. Versioning was enabled for event backup support on 2026-09-27; no lifecycle deletion rules or retention lock were added. Account for seven-day soft-delete retention and charges. Preserve all other buckets. Include private/migration-backups/admin-access-*.json in the event ledger export/retention review; these private backups contain guest data.",
       "verifyAfterCleanup": "Verify live bucket absent and soft-deleted versions accounted for until expiration; verify exports have family-selected retention",
       "dependsOn": [],
       "status": "active"
@@ -670,7 +670,7 @@
       },
       "creationEvidence": "Repository creation completed at 2026-09-28T04:17:30.497862Z; Docker format, event=misxv-2027 label",
       "verifyBeforeCleanup": "Confirm exact project, us-central1 location and repository; stop event Cloud Run and preserve wanted source/release evidence",
-      "cleanupSteps": "After removing dependent event service, remove this dedicated repository and its event image versions after final review; preserve all other repositories Also review and remove only event build source object gs://simplysoph-66c78_cloudbuild/source/1790653321.353426-cee7601185374f14a7e401fce12950f2.tgz after approved retention/export. Preserve the shared Cloud Build bucket.",
+      "cleanupSteps": "After removing dependent event service, remove this dedicated repository and its event image versions after final review; preserve all other repositories Also review and remove only event build source object gs://simplysoph-66c78_cloudbuild/source/1790653321.353426-cee7601185374f14a7e401fce12950f2.tgz after approved retention/export. Preserve the shared Cloud Build bucket. Event source archive for admin release: gs://simplysoph-66c78_cloudbuild/source/1790657425.791793-b6c20a2129844374870f5c054da19a85.tgz.",
       "verifyAfterCleanup": "Verify exact repository absent and account for any retained image charges",
       "dependsOn": [],
       "status": "active"
