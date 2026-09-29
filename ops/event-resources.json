@@ -496,7 +496,7 @@
         ],
         "evidence": "Private work/notion/projection-before.json preserves full original schema; website projection columns absent"
       },
-      "creationEvidence": "Added 14 website projection columns through restricted connection; verified original column IDs/types retained. Private work/notion/projection-after.json records new IDs.",
+      "creationEvidence": "Added 14 website projection columns through restricted connection; verified original column IDs/types retained. Private work/notion/projection-after.json records new IDs. Added channel-specific WhatsApp Phone, Language, Consent, Consent Date, Consent Source, Consent Version and Opt Out on September 28, 2026 after schema checks confirmed they were absent. No guest consent was inferred or enabled.",
       "exactScope": "Website RSVP [s%5E~E]; Website response ID [W%40nJ]; Website response at [ifn%60]; Ceremony adults [tMdz]; Ceremony kids [UdtZ]; Dinner adults [%3FbPH]; Dinner kids [x%7BMI]; Dance adults [%3FShl]; Dance kids [l%3DQ%40]; Website contact email [bHt%7D]; Website phone [CTeg]; Website address [pxI%5E]; Website requests [tiyS]; Website account [cG~Y]",
       "verifyBeforeCleanup": "Stop sync, export wanted website responses and compare exact property IDs against recorded scope; do not remove original fields or database",
       "cleanupSteps": "After explicit reviewed approval remove only the recorded website projection properties if the family no longer needs them; retain original Invitations records, capacities, contacts and RSVP delivery field",
@@ -949,6 +949,90 @@
       "verifyBeforeCleanup": "Confirm event-only scope, campaign status and sender ownership. Review/export February 1, no automatic deletion.",
       "cleanupSteps": "After retirement approval disable dispatch, remove event callback routing and revoke runtime credentials; decide separately whether to delete owner-created campaign/service or release number. Preserve shared Twilio and Meta accounts.",
       "verifyAfterCleanup": "Verify callbacks and event grants removed; reconcile retained campaign/number charges.",
+      "dependsOn": [],
+      "status": "active"
+    },
+    {
+      "id": "misxv-whatsapp-invitation-en",
+      "type": "twilio-content-template",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "Twilio Content HX04234c3dbb6b11ad76b9463398ff015c",
+      "baseline": {
+        "verifiedAt": "2026-09-29T01:30:00Z",
+        "scope": "Event WhatsApp templates",
+        "allowedTypes": [
+          "twilio-content-template"
+        ],
+        "evidence": "ContentAndApprovals API returned no templates before provisioning."
+      },
+      "creationEvidence": "Created misxv_2027_invitation_en and submitted for Meta review as MARKETING. Initial status received. No messages sent.",
+      "verifyBeforeCleanup": "Match exact content SID, stop pending sends, export template and delivery evidence. February 1 is review only.",
+      "cleanupSteps": "After explicit retirement approval remove runtime catalog binding and delete this exact event content template. Preserve WhatsApp sender, Meta and Twilio accounts.",
+      "verifyAfterCleanup": "Confirm exact template absent and unrelated templates retained.",
+      "dependsOn": [],
+      "status": "active"
+    },
+    {
+      "id": "misxv-whatsapp-invitation-es",
+      "type": "twilio-content-template",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "Twilio Content HX26b56e90b0e31328b0d71eb7e0ff93de",
+      "baseline": {
+        "verifiedAt": "2026-09-29T01:30:00Z",
+        "scope": "Event WhatsApp templates",
+        "allowedTypes": [
+          "twilio-content-template"
+        ],
+        "evidence": "ContentAndApprovals API returned no templates before provisioning."
+      },
+      "creationEvidence": "Created misxv_2027_invitation_es and submitted for Meta review as MARKETING. Initial status received. No messages sent.",
+      "verifyBeforeCleanup": "Match exact content SID, stop pending sends, export template and delivery evidence. February 1 is review only.",
+      "cleanupSteps": "After explicit retirement approval remove runtime catalog binding and delete this exact event content template. Preserve WhatsApp sender, Meta and Twilio accounts.",
+      "verifyAfterCleanup": "Confirm exact template absent and unrelated templates retained.",
+      "dependsOn": [],
+      "status": "active"
+    },
+    {
+      "id": "misxv-whatsapp-reminder-en",
+      "type": "twilio-content-template",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "Twilio Content HX3a2ec89b6204d3250f3e3b0f65c0d434",
+      "baseline": {
+        "verifiedAt": "2026-09-29T01:30:00Z",
+        "scope": "Event WhatsApp templates",
+        "allowedTypes": [
+          "twilio-content-template"
+        ],
+        "evidence": "ContentAndApprovals API returned no templates before provisioning."
+      },
+      "creationEvidence": "Created misxv_2027_reminder_en and submitted for Meta review as MARKETING. Initial status received. No messages sent.",
+      "verifyBeforeCleanup": "Match exact content SID, stop pending sends, export template and delivery evidence. February 1 is review only.",
+      "cleanupSteps": "After explicit retirement approval remove runtime catalog binding and delete this exact event content template. Preserve WhatsApp sender, Meta and Twilio accounts.",
+      "verifyAfterCleanup": "Confirm exact template absent and unrelated templates retained.",
+      "dependsOn": [],
+      "status": "active"
+    },
+    {
+      "id": "misxv-whatsapp-reminder-es",
+      "type": "twilio-content-template",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "Twilio Content HXe070999a7815cbf0f369c43a37cc9d94",
+      "baseline": {
+        "verifiedAt": "2026-09-29T01:30:00Z",
+        "scope": "Event WhatsApp templates",
+        "allowedTypes": [
+          "twilio-content-template"
+        ],
+        "evidence": "ContentAndApprovals API returned no templates before provisioning."
+      },
+      "creationEvidence": "Created misxv_2027_reminder_es and submitted for Meta review as MARKETING. Initial status received. No messages sent.",
+      "verifyBeforeCleanup": "Match exact content SID, stop pending sends, export template and delivery evidence. February 1 is review only.",
+      "cleanupSteps": "After explicit retirement approval remove runtime catalog binding and delete this exact event content template. Preserve WhatsApp sender, Meta and Twilio accounts.",
+      "verifyAfterCleanup": "Confirm exact template absent and unrelated templates retained.",
       "dependsOn": [],
       "status": "active"
     }

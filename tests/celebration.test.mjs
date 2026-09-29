@@ -11,7 +11,7 @@ import { normalizeVideo, mediaResponse } from "../server/video.mjs";
 test("separate calendars preserve Central-time instants, addresses and unique event identity", () => {
   const c = structuredClone(celebration);
   assert.equal(c.ceremony.end, "2027-01-15T17:00:00-06:00");
-  assert.equal(c.reception.end, "2027-01-16T00:00:00-06:00");
+  assert.equal(c.reception.end, "2027-01-16T00:30:00-06:00");
   for (const kind of ["ceremony", "dinner", "reception"]) {
     const data = calendar(kind, c);
     assert.match(data, /SUMMARY:Sophia Isabel/);
@@ -27,7 +27,7 @@ test("separate calendars preserve Central-time instants, addresses and unique ev
       assert.ok(Buffer.byteLength(line) <= 75);
   }
   assert.match(calendar("dinner", c), /DTSTART:20270116T003000Z/);
-  assert.match(calendar("reception", c), /DTEND:20270116T060000Z/);
+  assert.match(calendar("reception", c), /DTEND:20270116T063000Z/);
   c.ceremony.end = null;
   assert.throws(() => calendar("ceremony", c), /Confirmed end/);
   assert.ok(!calendarLink("ceremony", c).includes("href="));

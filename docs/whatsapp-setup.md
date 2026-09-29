@@ -1,5 +1,7 @@
 # WhatsApp RSVP Setup
 
+This original planning document is superseded by [the activation review](whatsapp-activation.md). SMS campaign approval is not a prerequisite for WhatsApp.
+
 Scope: international guests who choose WhatsApp receive a private invitation link and complete the existing website RSVP. Website RSVP updates continue to project to Notion. Email remains available. SMS remains US/Canada only. Replying inside WhatsApp does not currently submit an RSVP or authenticate a website account.
 
 ## Owner Steps

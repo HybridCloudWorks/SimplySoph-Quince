@@ -22,7 +22,7 @@ export const celebration = {
     address: "5103 Azle Ave, Unit 200, Fort Worth, TX 76114",
     image: "/assets/reception.png",
     start: "2027-01-15T19:30:00-06:00",
-    end: "2027-01-16T00:00:00-06:00",
+    end: "2027-01-16T00:30:00-06:00",
     notes: {
       en: "Dinner and the reception take place at the same venue. Entrance, parking and accessibility details will be shared here.",
       es: "La cena y la recepción serán en el mismo lugar. Compartiremos los detalles de entrada, estacionamiento y accesibilidad.",

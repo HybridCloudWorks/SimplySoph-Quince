@@ -1,4 +1,4 @@
-import { rateLimit } from "./auth.mjs";
+import { rateLimit, hash } from "./auth.mjs";
 // Durable inbox is authoritative. A send attempt is claimed once; ambiguous delivery is never retried automatically.
 export function createNotifications({
   ledger,
@@ -19,24 +19,44 @@ export function createNotifications({
         return structuredClone(n);
       });
       if (!row) return;
-      let state = "accepted";
-      try {
-        const subject =
-          {
-            photo: "New photo awaiting review",
-            video: "New video awaiting review",
-            contact: "New contact form submission",
-            guestbook: "New guestbook message awaiting review",
-          }[row.kind] || "New event submission";
-        await mailer.send({
-          id: "notification-" + id,
-          to: adminEmails[0],
-          subject: "SimplySoph · " + subject,
-          html: `<p>${subject}.</p><p><a href="${origin}/admin/notifications/">Sign in to review</a></p><p>Guest details remain in your private administration area.</p>`,
+      const deliveries = [];
+      const recipients = [
+        ...new Set(
+          adminEmails
+            .map((email) => email.trim().toLowerCase())
+            .filter(Boolean),
+        ),
+      ];
+      for (const recipient of recipients) {
+        let state = "accepted";
+        try {
+          const subject =
+            {
+              photo: "New photo awaiting review",
+              video: "New video awaiting review",
+              contact: "New contact form submission",
+              guestbook: "New guestbook message awaiting review",
+            }[row.kind] || "New event submission";
+          await mailer.send({
+            id: "notification-" + id + "-" + hash(recipient).slice(0, 16),
+            to: recipient,
+            subject: "SimplySoph · " + subject,
+            html: `<p>${subject}.</p><p><a href="${origin}/admin/notifications/">Sign in to review</a></p><p>Guest details remain in your private administration area.</p>`,
+          });
+        } catch (e) {
+          state = e.code === "MAIL_DELIVERY_UNKNOWN" ? "unknown" : "failed";
+        }
+        deliveries.push({ recipient, state });
+        await ledger.transaction((s) => {
+          if (s.notifications?.[id])
+            s.notifications[id].emailDeliveries = structuredClone(deliveries);
         });
-      } catch (e) {
-        state = e.code === "MAIL_DELIVERY_UNKNOWN" ? "unknown" : "failed";
       }
+      const state = deliveries.some((d) => d.state === "unknown")
+        ? "unknown"
+        : deliveries.some((d) => d.state === "failed")
+          ? "failed"
+          : "accepted";
       await ledger.transaction((s) => {
         if (s.notifications?.[id]) s.notifications[id].emailState = state;
       });

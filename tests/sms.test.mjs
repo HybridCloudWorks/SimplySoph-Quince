@@ -43,12 +43,14 @@ async function fixture(options = {}) {
       projectSmsConsent: async () => {
         projects++;
         if (options.notionFails) throw Error();
+        await options.projectConsent?.();
       },
       read: async () => structuredClone(row),
       list: async () => [row],
       projectSmsOptOut: async () => {
         projects++;
         if (options.notionFails) throw Error();
+        await options.projectOptOut?.();
       },
     },
     transport: {
@@ -169,6 +171,43 @@ test("forged callbacks cannot change state", async () => {
   );
   assert.equal((await f.ledger.read()).smsSuppression, undefined);
 });
+
+test("a late START projection repairs a newer STOP that reached Notion first", async () => {
+  let releaseStart,
+    started,
+    optedOut = false;
+  const waiting = new Promise((resolve) => {
+    releaseStart = resolve;
+  });
+  const startEntered = new Promise((resolve) => {
+    started = resolve;
+  });
+  const f = await fixture({
+    projectConsent: async () => {
+      started();
+      await waiting;
+      optedOut = false;
+    },
+    projectOptOut: async () => {
+      optedOut = true;
+    },
+  });
+  const first = f.callback("inbound", { Body: "START", OptOutType: "START" });
+  await startEntered;
+  await f.callback("inbound", {
+    Body: "STOP",
+    OptOutType: "STOP",
+    MessageSid: "SM" + "9".repeat(32),
+  });
+  assert.equal(optedOut, true);
+  releaseStart();
+  await first;
+  assert.equal(optedOut, true);
+  const state = await f.ledger.read();
+  assert.equal(state.smsPreferences[hash(f.row.phone)].type, "STOP");
+  assert.equal(state.smsPreferences[hash(f.row.phone)].syncState, "synced");
+  assert.ok(state.smsSuppression[hash(f.row.phone)]);
+});
 test("verified START records phone consent, projects Notion and never replays across STOP", async () => {
   const f = await fixture();
   const start = { Body: "START", OptOutType: "START" };
@@ -186,6 +225,50 @@ test("verified START records phone consent, projects Notion and never replays ac
   state = await f.ledger.read();
   assert.equal(state.smsPreferences[hash(f.row.phone)].type, "STOP");
   assert.ok(state.smsSuppression[hash(f.row.phone)]);
+});
+
+test("a failed repair of a late START stays suppressed and retryable", async () => {
+  let releaseStart,
+    started,
+    stopWrites = 0,
+    failRepair = true;
+  const waiting = new Promise((resolve) => {
+    releaseStart = resolve;
+  });
+  const startEntered = new Promise((resolve) => {
+    started = resolve;
+  });
+  const f = await fixture({
+    projectConsent: async () => {
+      started();
+      await waiting;
+    },
+    projectOptOut: async () => {
+      if (++stopWrites > 1 && failRepair) throw Error();
+    },
+  });
+  const first = f.callback("inbound", { Body: "START", OptOutType: "START" });
+  await startEntered;
+  await f.callback("inbound", {
+    Body: "STOP",
+    OptOutType: "STOP",
+    MessageSid: "SM" + "9".repeat(32),
+  });
+  releaseStart();
+  await first;
+  const state = await f.ledger.read();
+  assert.equal(state.smsPreferences[hash(f.row.phone)].syncState, "pending");
+  assert.equal(state.smsSuppression[hash(f.row.phone)].syncState, "pending");
+  await assert.rejects(
+    () => f.sms.review("draft"),
+    (e) => e.code === "SMS_OPTED_OUT",
+  );
+  failRepair = false;
+  assert.equal((await f.sms.retrySync()).attempted, 1);
+  assert.equal(
+    (await f.ledger.read()).smsPreferences[hash(f.row.phone)].syncState,
+    "synced",
+  );
 });
 test("a delayed distinct START cannot undo newer STOP; HELP does not enroll", async () => {
   const f = await fixture();

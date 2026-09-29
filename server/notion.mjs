@@ -32,6 +32,13 @@ export function normalizeInvitation(page) {
     smsConsent: p["SMS Consent"]?.checkbox === true,
     smsConsentAt: p["SMS Consent Date"]?.date?.start || null,
     smsOptOut: p["SMS Opt Out"]?.checkbox === true,
+    whatsappPhone: p["WhatsApp Phone"]?.phone_number ?? "",
+    whatsappLanguage: p["WhatsApp Language"]?.select?.name ?? "en",
+    whatsappConsent: p["WhatsApp Consent"]?.checkbox === true,
+    whatsappConsentAt: p["WhatsApp Consent Date"]?.date?.start || null,
+    whatsappConsentSource: text(p["WhatsApp Consent Source"]),
+    whatsappConsentVersion: text(p["WhatsApp Consent Version"]),
+    whatsappOptOut: p["WhatsApp Opt Out"]?.checkbox === true,
     invitationStatus: p.RSVP?.select?.name ?? "",
     archived: page.archived || page.in_trash || false,
     validCapacity: valid,
@@ -39,6 +46,15 @@ export function normalizeInvitation(page) {
   };
 }
 export const projectionSchema = {
+  "WhatsApp Phone": { phone_number: {} },
+  "WhatsApp Language": {
+    select: { options: [{ name: "en" }, { name: "es" }] },
+  },
+  "WhatsApp Consent": { checkbox: {} },
+  "WhatsApp Consent Date": { date: {} },
+  "WhatsApp Consent Source": { rich_text: {} },
+  "WhatsApp Consent Version": { rich_text: {} },
+  "WhatsApp Opt Out": { checkbox: {} },
   "Distribution Groups": { multi_select: {} },
   "First Name": { rich_text: {} },
   "Last Name": { rich_text: {} },
@@ -91,6 +107,32 @@ export function notionClient({ token, sourceId, fetchImpl = fetch }) {
   }
   return {
     ...planningNotion(call),
+    async projectWhatsappConsent(id, { phone, at, language, source, version }) {
+      await this.read(id);
+      await call(`pages/${id}`, "PATCH", {
+        properties: {
+          "WhatsApp Phone": { phone_number: phone },
+          "WhatsApp Language": { select: { name: language } },
+          "WhatsApp Consent": { checkbox: true },
+          "WhatsApp Consent Date": {
+            date: { start: new Date(at).toISOString() },
+          },
+          "WhatsApp Consent Source": {
+            rich_text: [{ text: { content: source } }],
+          },
+          "WhatsApp Consent Version": {
+            rich_text: [{ text: { content: version } }],
+          },
+          "WhatsApp Opt Out": { checkbox: false },
+        },
+      });
+    },
+    async projectWhatsappOptOut(id) {
+      await this.read(id);
+      await call(`pages/${id}`, "PATCH", {
+        properties: { "WhatsApp Opt Out": { checkbox: true } },
+      });
+    },
     async projectSmsConsent(id, at) {
       await call(`pages/${id}`, "PATCH", {
         properties: {

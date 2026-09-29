@@ -6,6 +6,7 @@ import { notionClient } from "./notion.mjs";
 import { graphMailer, sendgridMailer, eventMailer } from "./mail.mjs";
 import { createApplication } from "./application.mjs";
 import { createHttpServer } from "./http.mjs";
+import { whatsappTransport as createWhatsappTransport } from "./whatsapp-transport.mjs";
 import { twilioTransport } from "./twilio.mjs";
 const env = process.env,
   origin = env.PUBLIC_ORIGIN || "https://misxv.simplysoph.com";
@@ -56,7 +57,33 @@ if (env.EVENT_BUCKET) {
     throw new Error(
       "SMS activation requires configured credentials and completed activation review",
     );
+  const whatsappTransport = createWhatsappTransport({
+    accountSid: env.TWILIO_ACCOUNT_SID,
+    from: env.WHATSAPP_FROM,
+    apiKeySid: env.TWILIO_API_KEY_SID,
+    apiKeySecret: env.TWILIO_API_KEY_SECRET,
+    statusCallback: origin + "/api/whatsapp/status",
+    enabled:
+      env.WHATSAPP_ENABLED === "true" &&
+      env.WHATSAPP_ACTIVATION_REVIEWED === "true" &&
+      !!env.TWILIO_AUTH_TOKEN,
+  });
+  if (env.WHATSAPP_ENABLED === "true" && !whatsappTransport.enabled)
+    throw new Error(
+      "WhatsApp activation requires configured credentials and completed review",
+    );
   app = createApplication({
+    whatsappTransport,
+    whatsappTemplates: JSON.parse(env.WHATSAPP_TEMPLATES_JSON || "[]"),
+    whatsappWebhook: {
+      accountSid: env.TWILIO_ACCOUNT_SID,
+      from: env.WHATSAPP_FROM,
+      authToken: env.TWILIO_AUTH_TOKEN,
+      origin,
+    },
+    notificationEmails: (env.NOTIFICATION_EMAILS || env.ADMIN_EMAILS)
+      .split(",")
+      .map((s) => s.trim().toLowerCase()),
     ledger: new Ledger(adapter),
     smsTransport,
     smsWebhook: {

@@ -388,7 +388,7 @@ test("contact updates retain the verified login identity and family replies stay
     0,
   );
 });
-test("durable receipts survive reopening; duplicate submit is one response and one email draft", async () => {
+test("durable receipts survive reopening; duplicate submit is one response and one automatically sent receipt", async () => {
   const f = await fixture(),
     data = f.input();
   const one = await f.guest("rsvp", data, {
@@ -404,7 +404,8 @@ test("durable receipts survive reopening; duplicate submit is one response and o
   const s = await f.ledger.read();
   assert.equal(Object.keys(s.responses).length, 1);
   assert.equal(Object.keys(s.outbox).length, 1);
-  assert.equal(f.sends(), 0);
+  assert.equal(f.sends(), 1);
+  assert.equal(Object.values(s.outbox)[0].state, "accepted");
 });
 test("concurrent different submissions cannot both replace the same previous response", async () => {
   const f = await fixture();
@@ -564,7 +565,6 @@ test("seating rejects over-capacity and duplicate placement; email never sends t
     (e) => e.status === 409,
   );
   const id = Object.keys((await f.ledger.read()).outbox)[0];
-  await f.admin("mail/send", { id, confirm: true });
   await assert.rejects(
     () => f.admin("mail/send", { id, confirm: true }),
     (e) => e.status === 409,
@@ -576,6 +576,9 @@ test("revocation and rotation invalidate pending email drafts", async () => {
   for (const action of ["revoke", "invitation"]) {
     const f = await fixture();
     await f.guest("rsvp", f.input(), { "idempotency-key": "email-safety-01" });
+    await f.ledger.transaction((s) => {
+      for (const j of Object.values(s.outbox)) j.state = "draft";
+    });
     const id = Object.keys((await f.ledger.read()).outbox)[0];
     await f.admin(action, {
       id: household,
@@ -585,7 +588,7 @@ test("revocation and rotation invalidate pending email drafts", async () => {
       () => f.admin("mail/send", { id, confirm: true }),
       (e) => e.code === "MAIL_DRAFT_STALE",
     );
-    assert.equal(f.sends(), 0);
+    assert.equal(f.sends(), 1);
   }
 });
 
@@ -1060,4 +1063,28 @@ test("planning import preserves estimates and organizer edits on repeat imports"
     (await f.admin("planning", undefined, { kind: "costs" })).rows[0].finalCost,
     2400,
   );
+});
+
+test("notification recipients do not inherit administrator sign-in authority", async () => {
+  const f = await fixture({
+    notificationEmails: ["organizer@gmail.com", "other@hotmail.com"],
+  });
+  await f.guest("messages", {
+    kind: "contact",
+    name: "Guest",
+    email: "guest@example.com",
+    topic: "Transportation",
+    text: "Question",
+  });
+  assert.deepEqual(f.sent.map((m) => m.to).sort(), [
+    "organizer@gmail.com",
+    "other@hotmail.com",
+  ]);
+  await f.app.dispatch({
+    path: "/api/auth/admin-email/request",
+    method: "POST",
+    headers: { origin },
+    body: { email: "other@hotmail.com" },
+  });
+  assert.equal(f.sent.length, 2);
 });

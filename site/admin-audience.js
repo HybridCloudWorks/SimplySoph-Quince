@@ -1,3 +1,4 @@
+import { whatsappComposer } from "./admin-whatsapp.js";
 import { api, esc, submit, notify } from "./client.js";
 export async function audienceComposer(root, refresh) {
   const data = await api("admin/audience");
@@ -78,4 +79,7 @@ export async function audienceComposer(root, refresh) {
   root.querySelector("#group-composer").addEventListener("input", () => {
     requestId = crypto.randomUUID();
   });
+  const whatsappRoot = document.createElement("section");
+  root.append(whatsappRoot);
+  await whatsappComposer(whatsappRoot);
 }

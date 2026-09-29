@@ -36,9 +36,12 @@ export function createHttpServer({ app = null, root, origin }) {
             code: "METHOD_NOT_ALLOWED",
           });
         let body;
-        const webhook = ["/api/twilio/status", "/api/twilio/inbound"].includes(
-          url.pathname,
-        );
+        const webhook = [
+          "/api/twilio/status",
+          "/api/twilio/inbound",
+          "/api/whatsapp/status",
+          "/api/whatsapp/inbound",
+        ].includes(url.pathname);
         if (req.method === "POST") {
           if (!webhook && req.headers.origin !== origin)
             throw Object.assign(new Error(), {

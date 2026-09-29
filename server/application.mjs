@@ -1,4 +1,5 @@
 import { audience, recipientName, validEmail } from "./audience.mjs";
+import { createWhatsapp } from "./whatsapp.mjs";
 import { createSms, smsPreview } from "./sms.mjs";
 import { createPlanning } from "./planning.mjs";
 import { createAdminEmail } from "./admin-email.mjs";
@@ -66,12 +67,16 @@ export function createApplication({
   documents,
   smsTransport,
   smsWebhook,
+  whatsappTransport,
+  whatsappWebhook,
+  whatsappTemplates = [],
   videoProcessor = normalizeVideo,
   key,
   origin,
   clientId = "",
   deadline = "2026-10-31T23:59:00-05:00",
   adminEmails = [],
+  notificationEmails = adminEmails,
   now = Date.now,
 }) {
   if (!Buffer.isBuffer(key) || key.length !== 32)
@@ -83,10 +88,20 @@ export function createApplication({
     webhook: smsWebhook,
     now,
   });
+  const whatsapp = createWhatsapp({
+    ledger,
+    notion,
+    transport: whatsappTransport,
+    webhook: whatsappWebhook,
+    templates: whatsappTemplates,
+    key,
+    origin,
+    now,
+  });
   const sendNotification = createNotifications({
     ledger,
     mailer,
-    adminEmails,
+    adminEmails: notificationEmails,
     origin,
     now,
   });
@@ -309,6 +324,14 @@ export function createApplication({
   });
   async function dispatch(req) {
     const { path, method = "GET", body = {}, headers = {} } = req;
+    if (["/api/whatsapp/status", "/api/whatsapp/inbound"].includes(path)) {
+      if (method !== "POST") throw error(405, "METHOD_NOT_ALLOWED");
+      return whatsapp.callback(
+        path.split("/").pop(),
+        body,
+        headers["x-twilio-signature"],
+      );
+    }
     if (["/api/twilio/status", "/api/twilio/inbound"].includes(path)) {
       if (method !== "POST") throw error(405, "METHOD_NOT_ALLOWED");
       return sms.callback(
@@ -441,7 +464,10 @@ export function createApplication({
         s = await ledger.read();
       const row = Object.values(s.invitations).find(
         (r) =>
-          (r.tokenHash === fingerprint || r.codeHash === fingerprint) &&
+          (r.tokenHash === fingerprint ||
+            r.codeHash === fingerprint ||
+            (s.invitationLinks?.[fingerprint]?.householdId === r.id &&
+              s.invitationLinks[fingerprint].generation === r.generation)) &&
           r.active,
       );
       if (!row) throw error(401, "INVALID_INVITATION");
@@ -455,7 +481,12 @@ export function createApplication({
         const r = s.invitations[row.id];
         if (
           !r?.active ||
-          (r.tokenHash !== fingerprint && r.codeHash !== fingerprint)
+          (r.tokenHash !== fingerprint &&
+            r.codeHash !== fingerprint &&
+            !(
+              s.invitationLinks?.[fingerprint]?.householdId === r.id &&
+              s.invitationLinks[fingerprint].generation === r.generation
+            ))
         )
           throw error(401, "INVALID_INVITATION");
         if (accounts.accountFor(s, row.id))
@@ -617,6 +648,14 @@ export function createApplication({
         syncState: row.syncState,
       };
     }
+    if (path === "/api/whatsapp/consent" && ["GET", "POST"].includes(method)) {
+      requireAuth("guest");
+      await guestInvitation(session);
+      return whatsapp.consent(
+        session.householdId,
+        method === "POST" ? body : undefined,
+      );
+    }
     if (path === "/api/profile" && method === "GET") {
       requireAuth("guest");
       const invitation = await guestInvitation(session),
@@ -743,6 +782,19 @@ export function createApplication({
         return response;
       });
       await syncOne(row.id);
+      const receiptJob = Object.values((await ledger.read()).outbox).find(
+        (j) =>
+          j.responseId === receipt.id &&
+          ["receipt", "update"].includes(j.type) &&
+          j.state === "draft",
+      );
+      if (receiptJob) {
+        try {
+          await dispatchMail(receiptJob.id);
+        } catch {
+          /* RSVP remains durably saved; family can review the delivery state. */
+        }
+      }
       return {
         id: receipt.id,
         submittedAt: receipt.submittedAt,
@@ -1368,6 +1420,18 @@ export function createApplication({
           return result;
         });
       }
+      if (path === "/api/admin/whatsapp/drafts" && method === "GET")
+        return whatsapp.list();
+      if (path === "/api/admin/whatsapp/batch-draft" && method === "POST")
+        return whatsapp.draft(body);
+      if (path === "/api/admin/whatsapp/preview" && method === "GET")
+        return whatsapp.review(req.query?.id);
+      if (path === "/api/admin/whatsapp/send" && method === "POST") {
+        if (body.confirm !== true) throw error(422, "CONFIRM_RECIPIENT");
+        return whatsapp.send(body.id, body.reviewToken, session.actor);
+      }
+      if (path === "/api/admin/whatsapp/sync" && method === "POST")
+        return whatsapp.retrySync();
       if (path === "/api/admin/sms/drafts" && method === "GET")
         return {
           drafts: Object.values(ctx.state.smsDrafts || {}).map((d) => ({

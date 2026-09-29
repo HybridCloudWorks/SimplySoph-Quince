@@ -121,7 +121,7 @@ export function createSms({
     );
     return result;
   }
-  async function syncOptOut(phone) {
+  async function syncOptOut(phone, reconcile = true) {
     const key = hash(phone);
     const preference = (await ledger.read()).smsPreferences?.[key];
     try {
@@ -139,19 +139,35 @@ export function createSms({
           await notion.projectSmsConsent(row.id, preference.at);
         } else await notion.projectSmsOptOut(row.id);
       }
-      await ledger.transaction((s) => {
+      const superseded = await ledger.transaction((s) => {
         // Never let an older projection clear a newer STOP or pending opt-in.
         if (
           preference &&
           s.smsPreferences?.[key]?.messageId !== preference.messageId
-        )
-          return;
+        ) {
+          // An old network write can finish after a newer STOP has already
+          // projected. Mark the latest preference pending and repair it; never
+          // claim Notion is synced based on the newer callback's earlier write.
+          const latest = s.smsPreferences?.[key];
+          if (latest) {
+            latest.syncState = "pending";
+            s.smsSuppression ??= {};
+            s.smsSuppression[key] = {
+              phone,
+              at: latest.at,
+              syncState: "pending",
+            };
+          }
+          return true;
+        }
         if (preference && matched) s.smsPreferences[key].syncState = "synced";
         if (preference?.type === "START" && matched)
           delete s.smsSuppression[key];
         else if (s.smsSuppression?.[key])
           s.smsSuppression[key].syncState = matched ? "synced" : "pending";
+        return false;
       });
+      if (superseded && reconcile) await syncOptOut(phone, false);
     } catch {
       // Pending START and STOP both block sending until projection succeeds.
     }
