@@ -79,7 +79,12 @@ async function release(env = process.env) {
   async function request(url, method, body, binary = false) {
     const res = await fetch(url,{method,headers:{Authorization:`Bearer ${token}`,'Content-Type':binary?'application/octet-stream':'application/json'},
       body:body === undefined ? undefined : binary ? body : JSON.stringify(body),redirect:'error',signal:AbortSignal.timeout(60000)});
-    if (!res.ok) throw new Error(`Hosting ${method} failed (${res.status}); no response credentials logged`);
+    if (!res.ok) {
+      const failure = await res.json().catch(() => ({}));
+      const detail = failure.error?.details?.map(d => [d.reason, d.metadata?.permission, d.metadata?.service].filter(Boolean).join(': ')).filter(Boolean).join('; ');
+      const message = String(failure.error?.message || '').replace(/Bearer\s+\S+/gi, 'Bearer [redacted]').slice(0, 1200);
+      throw new Error(`Hosting ${method} failed (${res.status}): ${detail || message || 'permission or request rejected'}`);
+    }
     return binary ? undefined : res.json();
   }
   const version = await request(`${api}sites/${site}/versions`,'POST',{config,labels:{'git-commit':env.GITHUB_SHA}});
