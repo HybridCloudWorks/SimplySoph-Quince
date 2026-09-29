@@ -1056,6 +1056,53 @@
       "verifyAfterCleanup": "Confirm event callbacks absent and shared sender/account retained.",
       "dependsOn": [],
       "status": "active"
+    },
+    {
+      "id": "misxv-deploy-route-role",
+      "type": "github-deployment-access",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "projects/simplysoph-66c78/roles/misxvHostingRouteReader",
+      "baseline": {
+        "verifiedAt": "2026-09-29T05:15:03.932Z",
+        "scope": "Exact event Hosting route reader role and misxv-api service policy",
+        "allowedTypes": [
+          "github-deployment-access"
+        ],
+        "evidence": "Before provisioning, role describe returned NOT_FOUND and service policy contained only allUsers roles/run.invoker; etag BwZcg14tiSM="
+      },
+      "creationEvidence": "Created and confirmed by gcloud 2026-09-29; custom role includes only run.services.get; service policy readback etag BwZcmEIxvIY=",
+      "exactScope": "Only run.services.get, bound only on misxv-api to serviceAccount:misxv-hosting-deploy@simplysoph-66c78.iam.gserviceaccount.com; no project-level grant",
+      "verifyBeforeCleanup": "Stop production deploy jobs and match exact role/member/service; preserve unrelated bindings",
+      "cleanupSteps": "After removing the event service binding, delete only custom role misxvHostingRouteReader",
+      "verifyAfterCleanup": "Confirm exact event grant or role absent and unrelated policy entries preserved",
+      "dependsOn": [],
+      "status": "active"
+    },
+    {
+      "id": "misxv-deploy-route-grant",
+      "type": "iam-binding",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "projects/simplysoph-66c78/locations/us-central1/services/misxv-api IAM projects/simplysoph-66c78/roles/misxvHostingRouteReader",
+      "baseline": {
+        "verifiedAt": "2026-09-29T05:15:03.932Z",
+        "scope": "Exact event Hosting route reader role and misxv-api service policy",
+        "allowedTypes": [
+          "iam-binding"
+        ],
+        "evidence": "Before provisioning, role describe returned NOT_FOUND and service policy contained only allUsers roles/run.invoker; etag BwZcg14tiSM="
+      },
+      "creationEvidence": "Created and confirmed by gcloud 2026-09-29; custom role includes only run.services.get; service policy readback etag BwZcmEIxvIY=",
+      "exactScope": "Only run.services.get, bound only on misxv-api to serviceAccount:misxv-hosting-deploy@simplysoph-66c78.iam.gserviceaccount.com; no project-level grant",
+      "verifyBeforeCleanup": "Stop production deploy jobs and match exact role/member/service; preserve unrelated bindings",
+      "cleanupSteps": "Remove only this role/member binding from misxv-api in us-central1; preserve all other service policy entries",
+      "verifyAfterCleanup": "Confirm exact event grant or role absent and unrelated policy entries preserved",
+      "dependsOn": [
+        "misxv-deploy-route-role",
+        "misxv-deploy-identity"
+      ],
+      "status": "active"
     }
   ],
   "retirementReview": {

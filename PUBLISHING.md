@@ -10,11 +10,11 @@ The Cloud Run RSVP/email backend is deployed and connected through `/api/**`. Li
 
 The job serializes production releases, skips superseded commits, and verifies `X-Release-Commit` on the real custom domain. Its Actions summary records the source commit and Firebase release. A failed deployment leaves the previous release live and marks the job failed; inspect release history if failure occurs after the API created the release.
 
-Google authentication uses short-lived GitHub OIDC with repository ID 1389834350, owner ID 34853639, approved refs, push event and exact workflow path. There is no stored service-account key. The dedicated custom role contains only Hosting get/update permissions, with no site creation/deletion, guest data, secrets, email or project administration access. Firebase Hosting IAM is project-level: the event-site restriction is enforced in the reviewed publisher code, not a site-level IAM boundary. Protect write access to the release branches and workflow. All identities, trust objects, the custom role and bindings are in the cleanup inventory.
+Google authentication uses short-lived GitHub OIDC with repository ID 1389834350, owner ID 34853639, main ref, push event and exact workflow path. There is no stored service-account key. The dedicated Hosting custom role contains only Hosting get/update permissions. A separate custom role grants only `run.services.get` on the single `misxv-api` service so Hosting can validate its API rewrite, with no site creation/deletion, guest data, secrets, email or project administration access. Firebase Hosting IAM is project-level: the event-site restriction is enforced in the reviewed publisher code, not a site-level IAM boundary. Protect write access to the release branches and workflow. All identities, trust objects, the custom role and bindings are in the cleanup inventory.
 
 The REST publisher preserves only the reviewed `/api/**` rewrite to `misxv-api` in `us-central1` and rejects unsupported routing configuration. API-specific Hosting headers preserve `private, no-store` and cookie variation; this was verified through the custom domain. Reference: [Firebase Hosting REST deployment](https://firebase.google.com/docs/hosting/api-deploy).
 
-The activation branch `feature/activate-rsvp` is intentionally not trusted for automatic deployment. Its checked release was manually published to the exact event target while PR #2 remains open for review. An older `main` deployment would replace these assets and API routing. Merge the reviewed PR before relying on main as the source of this release; do not broaden the identity trust to work around review.
+PR #2 is merged into main and its feature branch is retired. Production publishing trusts only main.
 
 ## Exact hosting target
 
