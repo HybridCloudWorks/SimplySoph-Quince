@@ -832,10 +832,123 @@
         ],
         "evidence": "Console service list showed only Create Messaging Service and no existing services."
       },
-      "creationEvidence": "Created Simply Soph Media - Mis XV 2027 in Twilio console; sender setup link confirms MG64189f3d8d7622baf0aefd9b3f265261. Existing owner-provided number +16827868002 (PN494bb71fbd58650f119df26763a77940), previously Unassigned, attached; console confirmed success. No number purchased. Advanced Opt-Out enabled; START/UNSTOP, HELP/INFO and standard STOP aliases saved with branded responses; work/sms-review/keywords-enabled.png.",
+      "creationEvidence": "Created Simply Soph Media - Mis XV 2027 in Twilio console; sender setup link confirms MG64189f3d8d7622baf0aefd9b3f265261. Existing owner-provided number +16827868002 (PN494bb71fbd58650f119df26763a77940), previously Unassigned, attached; console confirmed success. No number purchased. Advanced Opt-Out enabled; START/UNSTOP, HELP/INFO and standard STOP aliases saved with branded responses; work/sms-review/keywords-enabled.png. Later owner registration created MG6d6cc68fbd2ca1c60f35b7698a467049 and moved the event number there. This original service is now empty; preserve until reviewed.",
       "verifyBeforeCleanup": "Match account and service SID; confirm no other events use this service; stop sending and export wanted consent/delivery records. The existing number is owner-provided; detach only, do not release without separate approval.",
       "cleanupSteps": "At February 1 review, decide retention first. After separate deletion approval, detach event sender and delete only MG64189f3d8d7622baf0aefd9b3f265261. Preserve Twilio account and number unless separately approved for release.",
       "verifyAfterCleanup": "Confirm exact service absent, runtime service binding removed and no queued event messages; preserve other services and shared account.",
+      "dependsOn": [],
+      "status": "active"
+    },
+    {
+      "id": "misxv-twilio-runtime-key",
+      "type": "twilio-api-key",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "Twilio key Mis XV 2027 runtime (exact SID in private work/twilio-runtime-key.json and Cloud Run TWILIO_API_KEY_SID)",
+      "baseline": {
+        "verifiedAt": "2026-09-29T01:16:43.733Z",
+        "scope": "Exact event resource before provisioning or binding",
+        "allowedTypes": [
+          "twilio-api-key"
+        ],
+        "evidence": "API key list contained only owner Main key; Auth Token secret policy had no bindings; runtime secret created fresh without bindings."
+      },
+      "creationEvidence": "Created Mis XV 2027 runtime restricted key with only /twilio/messaging/messages/read; secret stored directly in Google Secret Manager without logging.",
+      "verifyBeforeCleanup": "Confirm exact event identity and export wanted event data. February 1 is review only; require approval before removal.",
+      "cleanupSteps": "Revoke exact runtime key after stopping callbacks; preserve owner Main key and account.",
+      "verifyAfterCleanup": "Verify the exact event resource or grant is absent; preserve all shared accounts and unrelated resources.",
+      "dependsOn": [],
+      "status": "active"
+    },
+    {
+      "id": "misxv-twilio-runtime-secret",
+      "type": "secret",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "projects/424903425639/secrets/misxv-twilio-runtime-secret",
+      "baseline": {
+        "verifiedAt": "2026-09-29T01:16:43.733Z",
+        "scope": "Exact event resource before provisioning or binding",
+        "allowedTypes": [
+          "secret"
+        ],
+        "evidence": "API key list contained only owner Main key; Auth Token secret policy had no bindings; runtime secret created fresh without bindings."
+      },
+      "creationEvidence": "Created us-central1 replica secret; version 1 contains restricted key secret.",
+      "verifyBeforeCleanup": "Confirm exact event identity and export wanted event data. February 1 is review only; require approval before removal.",
+      "cleanupSteps": "Remove Cloud Run binding and runtime accessor grant first, then retire event secret after approval.",
+      "verifyAfterCleanup": "Verify the exact event resource or grant is absent; preserve all shared accounts and unrelated resources.",
+      "dependsOn": [
+        "misxv-twilio-runtime-key"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "misxv-twilio-runtime-secret-access",
+      "type": "iam-binding",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "Secret misxv-twilio-runtime-secret; principal misxv-runtime@simplysoph-66c78.iam.gserviceaccount.com; role roles/secretmanager.secretAccessor only",
+      "baseline": {
+        "verifiedAt": "2026-09-29T01:16:43.733Z",
+        "scope": "Exact event resource before provisioning or binding",
+        "allowedTypes": [
+          "iam-binding"
+        ],
+        "evidence": "API key list contained only owner Main key; Auth Token secret policy had no bindings; runtime secret created fresh without bindings."
+      },
+      "creationEvidence": "Added resource-scoped accessor grant for the existing event runtime.",
+      "verifyBeforeCleanup": "Confirm exact event identity and export wanted event data. February 1 is review only; require approval before removal.",
+      "cleanupSteps": "Remove only this principal/role binding from this exact secret after removing the runtime binding.",
+      "verifyAfterCleanup": "Verify the exact event resource or grant is absent; preserve all shared accounts and unrelated resources.",
+      "dependsOn": [
+        "misxv-twilio-runtime-secret"
+      ],
+      "status": "active",
+      "exactScope": "Secret misxv-twilio-runtime-secret; principal misxv-runtime@simplysoph-66c78.iam.gserviceaccount.com; role roles/secretmanager.secretAccessor only"
+    },
+    {
+      "id": "misxv-twilio-auth-token-access",
+      "type": "iam-binding",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "Secret misxv-twilio-auth-token; principal misxv-runtime@simplysoph-66c78.iam.gserviceaccount.com; role roles/secretmanager.secretAccessor only",
+      "baseline": {
+        "verifiedAt": "2026-09-29T01:16:43.733Z",
+        "scope": "Exact event resource before provisioning or binding",
+        "allowedTypes": [
+          "iam-binding"
+        ],
+        "evidence": "API key list contained only owner Main key; Auth Token secret policy had no bindings; runtime secret created fresh without bindings."
+      },
+      "creationEvidence": "Added resource-scoped accessor grant for the existing event runtime.",
+      "verifyBeforeCleanup": "Confirm exact event identity and export wanted event data. February 1 is review only; require approval before removal.",
+      "cleanupSteps": "Remove only this principal/role binding from this exact secret after removing the runtime binding.",
+      "verifyAfterCleanup": "Verify the exact event resource or grant is absent; preserve all shared accounts and unrelated resources.",
+      "dependsOn": [
+        "misxv-twilio-auth-token"
+      ],
+      "status": "active",
+      "exactScope": "Secret misxv-twilio-auth-token; principal misxv-runtime@simplysoph-66c78.iam.gserviceaccount.com; role roles/secretmanager.secretAccessor only"
+    },
+    {
+      "id": "misxv-submitted-campaign-service",
+      "type": "twilio-messaging-service",
+      "projectId": "simplysoph-66c78",
+      "ownership": "event-change-to-existing",
+      "resource": "Twilio SimplySoph account / service MG6d6cc68fbd2ca1c60f35b7698a467049",
+      "baseline": {
+        "verifiedAt": "2026-09-29T01:19:04.386Z",
+        "scope": "Owner-created Sole Proprietor A2P Messaging Service with event number and IN_PROGRESS campaign",
+        "allowedTypes": [
+          "twilio-messaging-service"
+        ],
+        "evidence": "API read before changes: inboundRequestUrl/statusCallback null, useInboundWebhookOnNumber true; work/twilio-callback-baseline.json."
+      },
+      "creationEvidence": "Owner submitted campaign and attached PN494bb71fbd58650f119df26763a77940. Agent configured POST inbound and delivery callbacks for misxv.simplysoph.com and branded keyword responses.",
+      "verifyBeforeCleanup": "Confirm event-only scope, campaign status and sender ownership. Review/export February 1, no automatic deletion.",
+      "cleanupSteps": "After retirement approval disable dispatch, remove event callback routing and revoke runtime credentials; decide separately whether to delete owner-created campaign/service or release number. Preserve shared Twilio and Meta accounts.",
+      "verifyAfterCleanup": "Verify callbacks and event grants removed; reconcile retained campaign/number charges.",
       "dependsOn": [],
       "status": "active"
     }
