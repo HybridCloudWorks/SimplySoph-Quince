@@ -1,18 +1,20 @@
 # Published website
 
-The multi-page website is live at **https://misxv.simplysoph.com** and **https://misxv-simplysoph.web.app**. The previous five-page demo was replaced on September 27, 2026 with the current 53 routes plus a 404 document and corrected invitation. Normal HTTPS validation of the new Details route succeeded after release.
+The multi-page website is live at **https://misxv.simplysoph.com** and **https://misxv-simplysoph.web.app**. The current build contains 57 routes plus a 404 document and the corrected invitation. Normal HTTPS validation succeeds on the custom domain.
 
-RSVP and email are not activated yet. Forms report service unavailability; no fake save or confirmation is returned. Do not distribute it as a working RSVP service until the secure integration has passed an end-to-end test. These integration gates do not block publishing static page improvements.
+The Cloud Run RSVP/email backend is deployed and connected through `/api/**`. Live configuration confirms both providers are configured, and unauthenticated private endpoints reject access. Microsoft accepted the two approved setup emails; actual delivery, organizer MFA, guest registration/returning sign-in, Notion response projection and media moderation still require live acceptance. Do not distribute invitations until those checks pass. These acceptance gates do not block publishing static page improvements.
 
 ## Automatic publishing
 
-`.github/workflows/check.yml` runs the Node 24 checks and production dependency audit. After those succeed on a push to `feature/complete-quince-site` or `main`, its dependent production job builds the same commit and publishes only `misxv-simplysoph`. PRs and other branches cannot deploy. After this feature branch is merged, retire its production trigger and matching identity-provider condition; main remains the normal release branch.
+`.github/workflows/check.yml` runs the Node 24 checks and production dependency audit. After those succeed on a push to `main`, its dependent production job builds the same commit and publishes only `misxv-simplysoph`. PRs and other branches cannot deploy. Main is the only production release branch; retired feature branches cannot publish.
 
 The job serializes production releases, skips superseded commits, and verifies `X-Release-Commit` on the real custom domain. Its Actions summary records the source commit and Firebase release. A failed deployment leaves the previous release live and marks the job failed; inspect release history if failure occurs after the API created the release.
 
 Google authentication uses short-lived GitHub OIDC with repository ID 1389834350, owner ID 34853639, approved refs, push event and exact workflow path. There is no stored service-account key. The dedicated custom role contains only Hosting get/update permissions, with no site creation/deletion, guest data, secrets, email or project administration access. Firebase Hosting IAM is project-level: the event-site restriction is enforced in the reviewed publisher code, not a site-level IAM boundary. Protect write access to the release branches and workflow. All identities, trust objects, the custom role and bindings are in the cleanup inventory.
 
-The REST publisher rejects unsupported routing configuration instead of silently dropping future API rewrites. Extend its mapping and tests when the verified API is ready. Reference: [Firebase Hosting REST deployment](https://firebase.google.com/docs/hosting/api-deploy).
+The REST publisher preserves only the reviewed `/api/**` rewrite to `misxv-api` in `us-central1` and rejects unsupported routing configuration. API-specific Hosting headers preserve `private, no-store` and cookie variation; this was verified through the custom domain. Reference: [Firebase Hosting REST deployment](https://firebase.google.com/docs/hosting/api-deploy).
+
+The activation branch `feature/activate-rsvp` is intentionally not trusted for automatic deployment. Its checked release was manually published to the exact event target while PR #2 remains open for review. An older `main` deployment would replace these assets and API routing. Merge the reviewed PR before relying on main as the source of this release; do not broaden the identity trust to work around review.
 
 ## Exact hosting target
 
@@ -30,7 +32,7 @@ npx -y firebase-tools@15.31.0 deploy --only hosting:misxv --project simplysoph-6
 npx -y firebase-tools@15.31.0 deploy --only hosting:misxv --project simplysoph-66c78 --account saulpatinojr@gmail.com --non-interactive
 ```
 
-The Hosting predeploy hook runs `npm run check`, which builds pages and runs route/asset and behavior checks. Do not use an unscoped `firebase deploy` in this shared project. Firebase CLI 15.31.0 performed the initial deployment. Node 24 is the CI target; production runs static files without Node, Gemini, a container or a new load balancer. Existing shared billing still applies; this does not promise zero charges.
+The Hosting predeploy hook runs `npm run check`, which builds pages and runs route/asset and behavior checks. Do not use an unscoped `firebase deploy` in this shared project. Firebase CLI 15.31.0 performed the deployment. Node 24 is the CI and API runtime target; guest pages are static and the dedicated Cloud Run container handles API requests. Gemini and a new load balancer are not required. Existing shared billing still applies; this does not promise zero charges.
 
 ## Hostinger records created
 
@@ -45,7 +47,7 @@ Firebase may need time to observe DNS and issue its certificate. Do not disable 
 
 ## Verify after each release
 
-Check Home, Details, RSVP, FAQ, Spanish and Privacy over HTTPS, an unknown route for HTTP 404, loaded artwork, the Friday January 15, 2027 date, and honest unavailable-service feedback until activation. Confirm X-Release-Commit matches the checked push. Check on a phone before guest distribution. Search-engine exclusions are not access control. No credentials or guest records belong in static output.
+Check Home, Details, RSVP, FAQ, Spanish and Privacy over HTTPS, an unknown route for HTTP 404, loaded artwork and the Friday January 15, 2027 date. Verify `/api/config`, private/no-store cache headers, and unauthenticated rejection on private endpoints; complete the acceptance checklist in DEPLOYMENT.md before distributing invitations. Confirm X-Release-Commit matches the checked push for automatic releases. Check on a phone before guest distribution. Search-engine exclusions are not access control. No credentials or guest records belong in static output.
 
 ## Rollback and retirement
 

@@ -1,3 +1,11 @@
+import { whatsappPreferences } from "./guest-whatsapp.js";
+import { mediaUpload } from "./media-upload.js";
+import { experienceReady, eventContent } from "./experience.js";
+import {
+  registryCards,
+  contactTopics,
+  contactTopicsEs,
+} from "./celebration.mjs";
 import { api, esc, es, tr, route, field, submit, notify } from "./client.js";
 const portal = document.querySelector("#portal");
 const eventNames = {
@@ -56,7 +64,7 @@ async function accountPage(inv, session) {
     return;
   }
   const { profile } = await api("profile");
-  portal.innerHTML = `<h2>${esc(data.account.name)}</h2><p>${esc(data.account.email)}</p><div class="row-actions"><a class="button burgundy" href="${route("rsvp")}">${tr("Update RSVP", "Actualizar respuesta")}</a><a href="${route("reception")}">${tr("Directions", "Cómo llegar")}</a>${session.permissions.map((p) => `<a href="${p === "admin" ? "/admin/login/" : route(p)}">${permissionNames[p]}</a>`).join("")}<button id="guest-logout" class="plain-button">${tr("Sign out", "Cerrar sesión")}</button></div>${!session.permissions.length ? `<p>${tr("Additional pages will appear here when the family grants access.", "Las páginas adicionales aparecerán aquí cuando la familia te dé acceso.")}</p>` : ""}<form id="profile-form"><h3>${tr("Contact details", "Datos de contacto")}</h3>${field(tr("Contact email (does not change your sign-in email)", "Correo de contacto (no cambia tu correo de acceso)"), "email", { type: "email", value: profile.contact.email })}${field(tr("Phone", "Teléfono"), "phone", { value: profile.contact.phone, max: 40 })}${field(tr("Mailing address", "Dirección postal"), "address", { value: profile.contact.address || "", max: 500 })}<p role="alert" class="error"></p><button type="submit" class="button burgundy">${tr("Save contact details", "Guardar datos")}</button></form><div id="family-chat"></div>`;
+  portal.innerHTML = `<h2>${esc(data.account.name)}</h2><p>${esc(data.account.email)}</p><div class="row-actions"><a class="button burgundy" href="${route("rsvp")}">${tr("Update RSVP", "Actualizar respuesta")}</a><a href="${route("reception")}">${tr("Directions", "Cómo llegar")}</a>${session.permissions.map((p) => `<a href="${p === "admin" ? "/admin/login/" : route(p)}">${permissionNames[p]}</a>`).join("")}<button id="guest-logout" class="plain-button">${tr("Sign out", "Cerrar sesión")}</button></div>${!session.permissions.length ? `<p>${tr("Additional pages will appear here when the family grants access.", "Las páginas adicionales aparecerán aquí cuando la familia te dé acceso.")}</p>` : ""}<form id="profile-form"><h3>${tr("Contact details", "Datos de contacto")}</h3>${field(tr("Contact email (does not change your sign-in email)", "Correo de contacto (no cambia tu correo de acceso)"), "email", { type: "email", value: profile.contact.email })}${field(tr("Phone", "Teléfono"), "phone", { value: profile.contact.phone, max: 40 })}${field(tr("Mailing address", "Dirección postal"), "address", { value: profile.contact.address || "", max: 500 })}<p role="alert" class="error"></p><button type="submit" class="button burgundy">${tr("Save contact details", "Guardar datos")}</button></form><section id="whatsapp-preferences" class="card"></section><div id="family-chat"></div>`;
   document.querySelector("#guest-logout").onclick = async () => {
     await api("logout", {});
     location.reload();
@@ -69,6 +77,10 @@ async function accountPage(inv, session) {
     await showPortal();
     notify(tr("Contact details saved.", "Datos guardados."));
   });
+  await whatsappPreferences(
+    document.querySelector("#whatsapp-preferences"),
+    profile.contact.phone,
+  );
   const thread = await api("messages"),
     box = document.querySelector("#family-chat");
   box.innerHTML = `<h3>${tr("Messages with the family", "Mensajes con la familia")}</h3>${thread.messages.map((m) => `<article class="card"><p>${esc(m.text)}</p>${m.replies.map((r) => `<blockquote><strong>${tr("Family", "Familia")}:</strong> ${esc(r.text)}</blockquote>`).join("")}</article>`).join("")}<p>${tr("Refresh this page to check for replies.", "Actualiza esta página para ver las respuestas.")}</p><form id="family-message"><label>${tr("Your message", "Tu mensaje")}<textarea name="text" required maxlength="2000"></textarea></label><p role="alert" class="error"></p><button type="submit" class="button burgundy">${tr("Send to the family", "Enviar a la familia")}</button></form>`;
@@ -148,12 +160,48 @@ async function showPortal() {
   if (!portal) return;
   const session = await api("session");
   if (
-    ["gifts", "padrinos", "costs"].includes(portal.dataset.view) &&
+    ["gifts", "registry", "padrinos", "costs"].includes(portal.dataset.view) &&
     (session.kind === "admin" || session.verified)
   ) {
-    const data = await api("pages/" + portal.dataset.view),
+    const data = await api(
+        "pages/" +
+          (portal.dataset.view === "registry" ? "gifts" : portal.dataset.view),
+      ),
       c = data.content;
     portal.innerHTML = `<div class="private-copy">${esc((es ? c.es : c.en) || c.en || tr("The family will add these details soon.", "La familia agregará los detalles pronto.")).replaceAll("\n", "<br>")}</div><div class="row-actions">${c.links.map((l) => `<a href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">${esc(l.label)} ↗</a>`).join("")}</div>`;
+    if (data.planning?.length) {
+      const costs = portal.dataset.view === "costs";
+      const money = (n) =>
+        n == null
+          ? "—"
+          : new Intl.NumberFormat(es ? "es-US" : "en-US", {
+              style: "currency",
+              currency: "USD",
+            }).format(n);
+      const heads = costs
+        ? [
+            tr("Item", "Concepto"),
+            tr("Vendor", "Proveedor"),
+            tr("Final Cost", "Costo Final"),
+            tr("Paid", "Pagado"),
+            tr("Due Date", "Fecha Límite"),
+          ]
+        : [
+            tr("Name", "Nombre"),
+            tr("Gift", "Regalo"),
+            tr("Contacted", "Contactado"),
+            tr("Status", "Estado"),
+          ];
+      portal.insertAdjacentHTML(
+        "beforeend",
+        `<div class="table-wrap"><table><thead><tr>${heads.map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${data.planning.map((r) => `<tr>${(costs ? [r.item, r.vendor, money(r.finalCost), money((r.deposit || 0) + (r.additionalPaid || 0)), r.dueDate] : [r.name, r.gift, r.contacted ? tr("Yes", "Sí") : tr("No", "No"), r.status]).map((v) => `<td>${esc(v)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`,
+      );
+    }
+    if (data.registries)
+      portal.insertAdjacentHTML(
+        "beforeend",
+        registryCards(data.registries, es ? "es" : "en"),
+      );
     return;
   }
   if (session.kind !== "guest") {
@@ -162,7 +210,7 @@ async function showPortal() {
   }
   const inv = await api("invitation"),
     view = portal.dataset.view;
-  if (["gifts", "padrinos", "costs"].includes(view)) {
+  if (["gifts", "registry", "padrinos", "costs"].includes(view)) {
     portal.innerHTML = `<p>${tr("Verify your email and ask the family for access to this page.", "Verifica tu correo y solicita acceso a esta página a la familia.")}</p><a href="${route("account")}">${tr("My account", "Mi cuenta")}</a>`;
     return;
   }
@@ -179,15 +227,7 @@ async function showPortal() {
       portal.innerHTML = `<p>${tr("No saved RSVP was found for this invitation.", "No encontramos una respuesta guardada para esta invitación.")}</p><a href="${route("rsvp")}">RSVP</a>`;
       return;
     }
-    const google = new URL("https://calendar.google.com/calendar/render");
-    google.search = new URLSearchParams({
-      action: "TEMPLATE",
-      text: "Sophia · Mis XV",
-      dates: "20270115/20270116",
-      details:
-        "Save the date. Ceremony 4 PM Central; dinner 6:30–7:30 PM; reception from 7:30 PM. See https://misxv.simplysoph.com/details/ for venue details.",
-    });
-    portal.innerHTML = `<div class="notice success"><h2>${tr("Your response is saved.", "Tu respuesta está guardada.")}</h2><p>${tr("Thank you", "Gracias")}, ${esc(inv.name)}.</p><p>${tr("Receipt", "Comprobante")}: ${esc(inv.response.id)}</p></div>${summary(inv.response)}<p>${inv.syncState === "synced" ? tr("The family’s invitation list has been updated.", "La lista de invitados se actualizó.") : tr("Your response is safely saved. Updating the family’s Notion view is pending.", "Tu respuesta está guardada. La actualización de la vista de Notion está pendiente.")}</p><div class="row-actions"><a class="button burgundy" href="${route("rsvp")}">${tr("Edit response", "Editar respuesta")}</a><a href="/sophia-mis-xv.ics" download>${tr("Download calendar event", "Descargar evento")}</a><a href="${esc(google.href)}" target="_blank" rel="noopener noreferrer">Google Calendar</a></div>`;
+    portal.innerHTML = `<div class="notice success"><h2>${tr("Your response is saved.", "Tu respuesta está guardada.")}</h2><p>${tr("Thank you", "Gracias")}, ${esc(inv.name)}.</p><p>${tr("Receipt", "Comprobante")}: ${esc(inv.response.id)}</p></div>${summary(inv.response)}<p>${inv.syncState === "synced" ? tr("The family’s invitation list has been updated.", "La lista de invitados se actualizó.") : tr("Your response is safely saved. Updating the family’s Notion view is pending.", "Tu respuesta está guardada. La actualización de la vista de Notion está pendiente.")}</p><div class="row-actions"><a class="button burgundy" href="${route("rsvp")}">${tr("Edit response", "Editar respuesta")}</a><a href="${route("details")}">${tr("Calendar & event details", "Calendario y detalles")}</a></div>`;
     portal.insertAdjacentHTML(
       "beforeend",
       `<p><a class="button burgundy" href="${route("account")}">${session.verified ? tr("Open my guest account", "Abrir mi cuenta") : tr("Register my email for future visits", "Registrar mi correo para próximas visitas")}</a></p>`,
@@ -195,36 +235,16 @@ async function showPortal() {
     return;
   }
   if (view === "share") {
-    portal.innerHTML = `<form id="photo"><label>${tr("Photo · maximum 8 MB", "Foto · máximo 8 MB")}<input type="file" name="file" accept="image/jpeg,image/png,image/webp" required></label>${field(tr("Caption (optional)", "Descripción (opcional)"), "caption", { max: 200 })}<label class="check"><input type="checkbox" name="consent" required>${tr("I have permission from the people pictured and agree to the photo sharing terms.", "Tengo permiso de las personas fotografiadas y acepto las condiciones para compartir fotos.")}</label><p class="error" role="alert"></p><button type="submit" class="button burgundy">${tr("Submit for review", "Enviar para revisión")}</button></form>`;
-    submit(document.querySelector("#photo"), async (data) => {
-      const file = data.get("file");
-      if (file.size > 8 * 1024 * 1024)
-        throw new Error(
-          tr(
-            "Choose a photo smaller than 8 MB.",
-            "Elige una foto de menos de 8 MB.",
-          ),
-        );
-      const base64 = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result.split(",")[1]);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-      await api("photos", {
-        base64,
-        caption: data.get("caption"),
-        consent: data.has("consent"),
-      });
-      portal.innerHTML = `<p class="notice success">${tr("Photo received for family review. It is not public yet.", "Foto recibida para revisión de la familia. Aún no es pública.")}</p>`;
-    });
+    mediaUpload(portal, eventContent.albums);
     return;
   }
   if (["contact", "guestbook"].includes(view)) {
-    portal.innerHTML = `<form id="message">${field(tr("Your display name", "Nombre para mostrar"), "name", { required: true, max: 100 })}<label>${tr("Message", "Mensaje")}<textarea name="text" maxlength="2000" required></textarea></label>${view === "guestbook" ? `<label class="check"><input type="checkbox" name="consent" required>${tr("The family may publish this name and message after review.", "La familia puede publicar este nombre y mensaje después de revisarlo.")}</label>` : ""}<p class="error" role="alert"></p><button class="button burgundy" type="submit">${tr("Send message", "Enviar mensaje")}</button></form>`;
+    portal.innerHTML = `<form id="message">${field(tr("Your display name", "Nombre para mostrar"), "name", { required: true, max: 100 })}${view === "contact" ? `${field(tr("Email", "Correo electrónico"), "email", { type: "email", required: true, value: inv.contact.email })}<label>${tr("Topic", "Tema")}<select name="topic">${contactTopics.map((t, i) => `<option value="${esc(t)}">${esc(es ? contactTopicsEs[i] : t)}</option>`).join("")}</select></label>` : ""}<label>${tr("Message", "Mensaje")}<textarea name="text" maxlength="2000" required></textarea></label>${view === "guestbook" ? `<label class="check"><input type="checkbox" name="consent" required>${tr("The family may publish this name and message after review.", "La familia puede publicar este nombre y mensaje después de revisarlo.")}</label>` : ""}<p class="error" role="alert"></p><button class="button burgundy" type="submit">${tr("Send message", "Enviar mensaje")}</button></form>`;
     submit(document.querySelector("#message"), async (data) => {
       await api("messages", {
         kind: view,
+        email: data.get("email"),
+        topic: data.get("topic"),
         name: data.get("name"),
         text: data.get("text"),
         consent: data.has("consent"),
@@ -235,19 +255,12 @@ async function showPortal() {
 }
 async function publicContent() {
   const nodes = document.querySelectorAll(
-    "[data-gallery],[data-guestbook],[data-announcements]",
+    "[data-guestbook],[data-announcements]",
   );
   if (!nodes.length) return;
   try {
     const data = await api("public");
     for (const box of nodes) {
-      if (box.hasAttribute("data-gallery"))
-        box.innerHTML = data.photos
-          .map(
-            (p) =>
-              `<figure class="gallery-photo card"><img loading="lazy" src="${esc(p.url)}" alt="${esc(p.caption || tr("Celebration photo", "Foto de la celebración"))}"><figcaption>${esc(p.caption)}</figcaption></figure>`,
-          )
-          .join("");
       if (box.hasAttribute("data-guestbook"))
         box.innerHTML = data.messages
           .map(
@@ -270,19 +283,7 @@ async function publicContent() {
         : `<p class="hint">${tr("This collection is not available yet.", "Esta colección aún no está disponible.")}</p>`;
   }
 }
-const countdown = document.querySelector("[data-countdown]");
-if (countdown) {
-  const days = Math.ceil(
-    (Date.parse("2027-01-15T16:00:00-06:00") - Date.now()) / 86400000,
-  );
-  countdown.textContent =
-    days > 0
-      ? tr(
-          `${days} days until a new chapter`,
-          `${days} días para un nuevo capítulo`,
-        )
-      : tr("The celebration has arrived.", "La celebración ha llegado.");
-}
+await experienceReady;
 let fragment = location.hash.slice(1);
 if (portal && fragment && document.body.dataset.route === "account") {
   history.replaceState(null, "", location.pathname);
@@ -323,3 +324,102 @@ async function permissionNavigation() {
 }
 await permissionNavigation();
 await publicContent();
+
+async function gallery() {
+  const photos = document.querySelector("[data-gallery]"),
+    videos = document.querySelector("[data-videos]");
+  if (!photos || !videos) return;
+  let items = [];
+  try {
+    items = (await api("gallery")).media;
+  } catch {
+    photos.innerHTML = videos.innerHTML =
+      "<p>" +
+      tr(
+        "Sign in to view approved photos and videos.",
+        "Inicia sesión para ver fotos y videos aprobados.",
+      ) +
+      ' <a href="' +
+      route("account") +
+      '">' +
+      tr("My account", "Mi cuenta") +
+      "</a></p>";
+    document
+      .querySelector("[data-album-cards]")
+      .addEventListener("click", (e) => {
+        if (e.target.closest("[data-album]"))
+          photos.closest("section").scrollIntoView({ block: "start" });
+      });
+    return;
+  }
+  for (const button of document.querySelectorAll("[data-album]")) {
+    const image = items.find(
+      (p) => p.kind === "photo" && p.album === button.dataset.album,
+    );
+    if (image)
+      button.querySelector(".album-art").innerHTML =
+        '<img src="' + esc(image.url) + '" alt="" loading="lazy">';
+  }
+  function render(album = "") {
+    const rows = items.filter((p) => !album || p.album === album);
+    for (const [kind, node] of [
+      ["photo", photos],
+      ["video", videos],
+    ])
+      node.innerHTML =
+        rows
+          .filter((p) => p.kind === kind)
+          .map(
+            (p) =>
+              "<figure><" +
+              (kind === "video"
+                ? 'video controls playsinline preload="metadata"'
+                : 'img loading="lazy" alt="' +
+                  esc(
+                    p.caption ||
+                      tr("Celebration photo", "Foto de la celebración"),
+                  ) +
+                  '"') +
+              ' src="' +
+              esc(p.url) +
+              '">' +
+              (kind === "video" ? "</video>" : "") +
+              "<figcaption>" +
+              esc(p.caption) +
+              '</figcaption><a href="' +
+              esc(p.url) +
+              '?download=1" download>' +
+              tr("Download", "Descargar") +
+              "</a></figure>",
+          )
+          .join("") ||
+        "<p>" +
+          tr(
+            "No approved media in this album yet.",
+            "Aún no hay archivos aprobados en este álbum.",
+          ) +
+          "</p>";
+    const label = document.querySelector("[data-album-label]");
+    if (label)
+      label.textContent = album
+        ? es
+          ? eventContent.albums.find((a) => a.id === album)?.es
+          : eventContent.albums.find((a) => a.id === album)?.en
+        : tr("All albums", "Todos los álbumes");
+    for (const b of document.querySelectorAll("[data-album]"))
+      b.setAttribute("aria-pressed", String(b.dataset.album === album));
+  }
+  document
+    .querySelector("[data-album-cards]")
+    .addEventListener("click", (e) => {
+      const b = e.target.closest("[data-album]");
+      if (b) {
+        render(
+          b.getAttribute("aria-pressed") === "true" ? "" : b.dataset.album,
+        );
+        photos.closest("section").scrollIntoView({ block: "start" });
+      }
+    });
+  render();
+}
+await gallery();

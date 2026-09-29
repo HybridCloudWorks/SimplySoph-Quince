@@ -2,6 +2,8 @@
 
 The family requires a way to remove everything added for Sophia's event. The event is Friday, January 15, 2027. Cleanup is **on demand**, after the family chooses its photo/thank-you and data-retention window. There is no scheduled deletion date.
 
+The planned Twilio sender and credential retirement checklist is in [docs/twilio-setup.md](docs/twilio-setup.md). February 1, 2027 remains a review date only. No Twilio resources have been provisioned by that preparation; inventory them when they are created.
+
 Target: `misxv.simplysoph.com`, in the **existing** Google project `simplysoph-66c78`. Protect the `simplysoph.com` registration, existing DNS zone/nameservers, existing Google project/billing, existing mail and Notion records. Do not delete a shared service to remove this event's use of it.
 
 ## Before creating anything
@@ -47,3 +49,11 @@ The dedicated Google web login client, private event bucket, runtime service acc
 The `misxv-notion-token` Secret Manager container and user-added version 1 are registered with a scoped baseline. A dedicated SimplySoph Mis XV Website Notion connection was created with explicit approval and is separately inventoried. Runtime IAM and new-connection token storage remain pending. Revoke the eventual dedicated Notion connection before removing its stored credential; disconnecting the website alone does not revoke that connection.
 
 The event Microsoft 365 shared mailbox misxv@simplysoph.com and its approved administrator Read and Manage / Send As delegation are inventoried with exact identities and scoped baselines. Remove the delegation before deleting the mailbox. Preserve the existing administrator account. The dedicated Firebase Hosting site, event custom-domain association, CNAME and certificate TXT record are also inventoried. Cleanup orders DNS before the domain association and the site. The validator rejects the protected default Hosting site. The global Google/DNS/Notion baseline remains incomplete. The plan generator and manual GitHub workflow produce a review checklist, not automated teardown.
+
+The private event bucket now has object versioning enabled for ledger/media recovery in addition to seven-day soft delete. Include both photo and video objects and every noncurrent generation in export/retirement review. Stop writes before any recovery and invalidate restored authentication sessions/challenges; reconcile sent-email state so a rollback cannot resend prior messages. No lifecycle purge or retention lock was added. See DEPLOYMENT.md for the recovery checklist.
+
+## Approved review date
+
+February 1, 2027 (2027-02-01) is the family-approved review date only. No deletion is scheduled. Review exports, guest data retention and exact event resources with the organizer before any removal.
+
+Shared sender DNS corrections are tracked separately in ops/shared-domain-changes.json. Preserve the Microsoft/Firebase SPF record and both Microsoft DKIM selectors after this event: they support the existing domain mail service. Reversing them requires a separate review of all current senders and explicit authorization, not the event cleanup plan.

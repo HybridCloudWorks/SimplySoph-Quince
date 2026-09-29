@@ -8,3 +8,6 @@ node_modules/
 .DS_Store
 .firebase/
 gha-creds-*.json
+
+# Disposable local visual review artifacts
+outputs/

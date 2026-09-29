@@ -28,5 +28,18 @@ for (const page of pages) {
     throw new Error(`Missing accessibility/privacy structure in ${page}`);
   if (/SOPHIA-DEMO|RSVP demonstration only/.test(html))
     throw new Error(`Demo content leaked into ${page}`);
+  if (/^(es\/)?(registry|gifts)\/index\.html$/.test(page)) {
+    if (
+      !html.includes("data-public-registries") ||
+      !html.includes("https://www.target.com/gift-registry/gift/quincenera") ||
+      html.includes('id="portal"')
+    )
+      throw new Error(`Registry must be available without sign-in in ${page}`);
+  }
+  const registryLink = html.match(/<a href="\/(?:es\/)?registry\/"[^>]*>/)?.[0];
+  if (!registryLink || /\bhidden\b|data-permission/.test(registryLink))
+    throw new Error(
+      `Public Registry navigation is missing or restricted in ${page}`,
+    );
 }
 console.log(`All ${pages.length} documents and local links/assets passed.`);

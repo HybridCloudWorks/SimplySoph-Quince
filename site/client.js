@@ -14,6 +14,62 @@ export function setCsrf(value) {
   csrf = value;
 }
 const messages = {
+  INVALID_AMOUNT: [
+    "Use A Nonnegative Amount With At Most Two Decimal Places.",
+    "Usa una cantidad positiva con hasta dos decimales.",
+  ],
+  INVALID_DOCUMENT: [
+    "Choose A Valid JPG, PNG, WebP, PDF, Text Or Office File Up To 8 MB.",
+    "Elige un archivo válido de hasta 8 MB.",
+  ],
+  NO_ELIGIBLE_RECIPIENTS: [
+    "Select Recipients With Valid Contact Details. SMS Also Requires Recorded Consent And A Consent Date.",
+    "Selecciona destinatarios con datos válidos y consentimiento para SMS.",
+  ],
+  INVALID_DATA_SOURCE: [
+    "Enter The Notion Data Source ID For This Table.",
+    "Ingresa el ID de la fuente de datos de Notion.",
+  ],
+  NAME_REQUIRED: [
+    "Enter An Item Or Person Name.",
+    "Ingresa el nombre del artículo o persona.",
+  ],
+  NOTION_404: [
+    "Share This Database With The Dedicated Notion Connection And Check Its Data Source ID.",
+    "Comparte esta base de datos con la conexión de Notion y verifica su ID.",
+  ],
+  SETTINGS_CHANGED: [
+    "Another organizer changed these settings. Reload before saving.",
+    "Otro organizador cambió estos ajustes. Recarga antes de guardar.",
+  ],
+  INVALID_SITE_SETTINGS: [
+    "Check the required fields, HTTPS links, and dates with an explicit time-zone offset. End times must follow start times.",
+    "Revisa los campos obligatorios, enlaces HTTPS y fechas con zona horaria explícita. La hora final debe ser posterior a la inicial.",
+  ],
+  ALBUM_HAS_MEDIA: [
+    "Move existing media to another album before removing or renaming its ID.",
+    "Mueve los archivos a otro álbum antes de eliminarlo o cambiar su ID.",
+  ],
+  VERIFIED_ACCOUNT_REQUIRED: [
+    "Verify your email in My account to view or download media.",
+    "Verifica tu correo en Mi cuenta para ver o descargar archivos.",
+  ],
+  INVALID_VIDEO: [
+    "Choose a valid MP4 or WebM video: up to 8 MB, 60 seconds and 4096 pixels per dimension.",
+    "Elige un video MP4 o WebM válido: hasta 8 MB, 60 segundos y 4096 píxeles por dimensión.",
+  ],
+  VIDEO_BUSY: [
+    "Another video is being prepared. Please try again shortly.",
+    "Se está preparando otro video. Inténtalo de nuevo en un momento.",
+  ],
+  VIDEO_UNAVAILABLE: [
+    "Video processing is not available yet. Contact the family.",
+    "El procesamiento de videos aún no está disponible. Contacta a la familia.",
+  ],
+  PHOTO_TOO_LARGE: [
+    "Choose a file up to 8 MB.",
+    "Elige un archivo de hasta 8 MB.",
+  ],
   EMAIL_SIGN_IN_UNAVAILABLE: [
     "Email sign-in is not open yet. Please contact the family.",
     "El acceso por correo aún no está disponible. Contacta a la familia.",
@@ -188,3 +244,22 @@ document.addEventListener("click", (e) => {
   for (const el of document.querySelectorAll(".nav-group[open]"))
     if (!el.contains(e.target)) el.open = false;
 });
+
+// Apply the shared action layout to dynamically rendered table cells.
+const spaceActions = () =>
+  document.querySelectorAll("td").forEach((td) => {
+    if (td.querySelector(":scope > .table-actions")) return;
+    const actions = Array.from(td.children).filter((el) =>
+      el.matches("a,button"),
+    );
+    if (actions.length < 2) return;
+    const group = document.createElement("div");
+    group.className = "table-actions";
+    td.insertBefore(group, actions[0]);
+    actions.forEach((el) => group.append(el));
+  });
+new MutationObserver(spaceActions).observe(document.querySelector("main"), {
+  childList: true,
+  subtree: true,
+});
+spaceActions();

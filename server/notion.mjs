@@ -1,3 +1,5 @@
+import { planningNotion } from "./planning-notion.mjs";
+import { planningFields } from "./planning.mjs";
 import { error } from "./auth.mjs";
 const version = "2025-09-03";
 const text = (p) =>
@@ -21,7 +23,23 @@ export function normalizeInvitation(page) {
     capacity: { adultsTeens: adults ?? null, kids },
     email: p.Email?.email ?? "",
     phone: p.Phone?.phone_number ?? "",
+    administratorEligible: p["Administrator Eligible"]?.checkbox === true,
     role: p.Role?.select?.name ?? "",
+    firstName: text(p["First Name"]),
+    lastName: text(p["Last Name"]),
+    distributionGroups: (p["Distribution Groups"]?.multi_select || []).map(
+      (x) => x.name,
+    ),
+    smsConsent: p["SMS Consent"]?.checkbox === true,
+    smsConsentAt: p["SMS Consent Date"]?.date?.start || null,
+    smsOptOut: p["SMS Opt Out"]?.checkbox === true,
+    whatsappPhone: p["WhatsApp Phone"]?.phone_number ?? "",
+    whatsappLanguage: p["WhatsApp Language"]?.select?.name ?? "en",
+    whatsappConsent: p["WhatsApp Consent"]?.checkbox === true,
+    whatsappConsentAt: p["WhatsApp Consent Date"]?.date?.start || null,
+    whatsappConsentSource: text(p["WhatsApp Consent Source"]),
+    whatsappConsentVersion: text(p["WhatsApp Consent Version"]),
+    whatsappOptOut: p["WhatsApp Opt Out"]?.checkbox === true,
     invitationStatus: p.RSVP?.select?.name ?? "",
     archived: page.archived || page.in_trash || false,
     validCapacity: valid,
@@ -29,6 +47,22 @@ export function normalizeInvitation(page) {
   };
 }
 export const projectionSchema = {
+  "Administrator Eligible": { checkbox: {} },
+  "WhatsApp Phone": { phone_number: {} },
+  "WhatsApp Language": {
+    select: { options: [{ name: "en" }, { name: "es" }] },
+  },
+  "WhatsApp Consent": { checkbox: {} },
+  "WhatsApp Consent Date": { date: {} },
+  "WhatsApp Consent Source": { rich_text: {} },
+  "WhatsApp Consent Version": { rich_text: {} },
+  "WhatsApp Opt Out": { checkbox: {} },
+  "Distribution Groups": { multi_select: {} },
+  "First Name": { rich_text: {} },
+  "Last Name": { rich_text: {} },
+  "SMS Consent": { checkbox: {} },
+  "SMS Consent Date": { date: {} },
+  "SMS Opt Out": { checkbox: {} },
   "Website RSVP": {
     select: {
       options: [
@@ -74,6 +108,123 @@ export function notionClient({ token, sourceId, fetchImpl = fetch }) {
     return r.json();
   }
   return {
+    ...planningNotion(call),
+    async projectWhatsappConsent(id, { phone, at, language, source, version }) {
+      await this.read(id);
+      await call(`pages/${id}`, "PATCH", {
+        properties: {
+          "WhatsApp Phone": { phone_number: phone },
+          "WhatsApp Language": { select: { name: language } },
+          "WhatsApp Consent": { checkbox: true },
+          "WhatsApp Consent Date": {
+            date: { start: new Date(at).toISOString() },
+          },
+          "WhatsApp Consent Source": {
+            rich_text: [{ text: { content: source } }],
+          },
+          "WhatsApp Consent Version": {
+            rich_text: [{ text: { content: version } }],
+          },
+          "WhatsApp Opt Out": { checkbox: false },
+        },
+      });
+    },
+    async projectWhatsappOptOut(id) {
+      await this.read(id);
+      await call(`pages/${id}`, "PATCH", {
+        properties: { "WhatsApp Opt Out": { checkbox: true } },
+      });
+    },
+    async projectSmsConsent(id, at) {
+      await call(`pages/${id}`, "PATCH", {
+        properties: {
+          "SMS Consent": { checkbox: true },
+          "SMS Consent Date": { date: { start: new Date(at).toISOString() } },
+          "SMS Opt Out": { checkbox: false },
+        },
+      });
+    },
+    async projectSmsOptOut(id) {
+      await call(`pages/${id}`, "PATCH", {
+        properties: { "SMS Opt Out": { checkbox: true } },
+      });
+    },
+    async planning(kind, id) {
+      const aliases = {
+        item: ["Item", "Name", "Expense"],
+        quantity: ["Qty"],
+        unitPrice: ["Unit price"],
+        costOwner: ["Cost owner"],
+        sponsor: ["Sponsor"],
+        name: ["Name", "Text"],
+        category: ["Category"],
+        vendor: ["Vendor"],
+        contact: ["Contact"],
+        email: ["Email"],
+        phone: ["Phone"],
+        estimated: ["Estimated Cost", "Estimate", "Estimated total"],
+        finalCost: ["Final Cost", "Cost"],
+        deposit: ["Deposit"],
+        additionalPaid: ["Additional Paid", "Amount paid"],
+        dueDate: ["Due Date", "Payment due"],
+        status: ["Website Status", "Status"],
+        notes: ["Notes"],
+        firstName: ["First Name"],
+        lastName: ["Last Name"],
+        gift: ["Gift"],
+        role: ["Role"],
+        pledged: ["Pledged"],
+        received: ["Received"],
+        contacted: ["Contacted"],
+        contactedAt: ["Contacted Date"],
+        followUp: ["Follow Up"],
+      };
+      let cursor,
+        rows = [];
+      do {
+        const r = await call(`data_sources/${id}/query`, "POST", {
+          page_size: 100,
+          ...(cursor ? { start_cursor: cursor } : {}),
+        });
+        for (const page of r.results.filter(
+          (p) => !p.archived && !p.in_trash,
+        )) {
+          const fields = {};
+          for (const key of planningFields[kind]) {
+            const p = (aliases[key] || [key])
+              .map((n) => page.properties[n])
+              .find(Boolean);
+            fields[key] =
+              key === "contacted"
+                ? !!p?.checkbox
+                : ((key === "quantity" && p?.number != null
+                    ? String(p.number)
+                    : undefined) ??
+                  p?.number ??
+                  p?.email ??
+                  p?.phone_number ??
+                  p?.date?.start?.slice(0, 10) ??
+                  p?.select?.name ??
+                  p?.status?.name ??
+                  text(p));
+          }
+          if (
+            kind === "costs" &&
+            page.properties["Additional Paid"]?.number == null
+          )
+            fields.additionalPaid =
+              page.properties["Amount paid"]?.number ?? "";
+          rows.push({
+            id: page.id,
+            websiteId: text(page.properties["Website Record ID"]),
+            fields,
+          });
+        }
+        if (rows.length > 1000) throw error(422, "PLANNING_LIMIT");
+        cursor = r.has_more ? r.next_cursor : null;
+      } while (cursor);
+      return rows;
+    },
     async list() {
       let cursor,
         rows = [];
@@ -175,6 +326,7 @@ export function notionClient({ token, sourceId, fetchImpl = fetch }) {
         name: account.name,
         email: account.email,
         active: account.active,
+        deletedAt: account.deletedAt || null,
         permissions: account.permissions,
         verifiedAt: new Date(account.verifiedAt).toISOString(),
       });

@@ -9,3 +9,6 @@ outputs/
 .env.*
 *.log
 notion-templates/
+.agents/
+skills-lock.json
+gha-creds-*.json

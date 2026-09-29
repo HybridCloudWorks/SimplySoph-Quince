@@ -10,7 +10,7 @@ const site = 'misxv-simplysoph';
 const project = 'simplysoph-66c78';
 const repository = 'saulpatinojr/SimplySoph-Quince';
 const api = 'https://firebasehosting.googleapis.com/v1beta1/';
-const branches = ['main', 'feature/complete-quince-site'];
+const branches = ['main'];
 
 export function assertReleaseContext(env) {
   if (env.GITHUB_EVENT_NAME !== 'push' || env.GITHUB_REPOSITORY !== repository
@@ -28,11 +28,16 @@ export function servingConfig(firebase, targets, sha) {
     throw new Error('Refusing an unexpected Hosting target or upload directory');
   }
   // Do not silently omit a future API rewrite or other routing configuration.
-  const supported = ['target', 'public', 'ignore', 'trailingSlash', 'predeploy', 'headers'];
+  const supported = ['target', 'public', 'ignore', 'trailingSlash', 'predeploy', 'headers', 'rewrites'];
   if (Object.keys(h).some(key => !supported.includes(key))) throw new Error('Unsupported Hosting config; extend and review the REST mapping first');
+  const expectedRewrite = [{source:'/api/**', run:{serviceId:'misxv-api', region:'us-central1'}}];
+  if (h.rewrites !== undefined && JSON.stringify(h.rewrites) !== JSON.stringify(expectedRewrite)) {
+    throw new Error('Unsupported API rewrite; only the dedicated event service is permitted');
+  }
   if (h.trailingSlash !== true) throw new Error('Expected directory routes with trailing slashes');
   return {
     trailingSlashBehavior:'ADD',
+    ...(h.rewrites ? {rewrites:[{glob:'/api/**', run:{serviceId:'misxv-api', region:'us-central1'}}]} : {}),
     headers:[...h.headers.map(rule => ({glob:rule.source, headers:Object.fromEntries(rule.headers.map(x => [x.key,x.value]))})),
       {glob:'**', headers:{'X-Release-Commit':sha}}],
   };
@@ -48,7 +53,7 @@ async function release(env = process.env) {
       if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.isSymbolicLink()) throw new Error('Unexpected hidden file or link in dist');
       if (entry.isDirectory()) await collect(`${folder}/${entry.name}`,path);
       else {
-        if (!/\.(html|css|js|png|svg|ics|txt)$/.test(path)) throw new Error('Unexpected deployment file type');
+        if (!/\.(html|css|js|mjs|png|svg|ics|txt)$/.test(path)) throw new Error('Unexpected deployment file type');
         const bytes = gzipSync(await readFile(`${folder}/${entry.name}`));
         const hash = createHash('sha256').update(bytes).digest('hex');
         files[path] = hash; blobs.set(hash,bytes);

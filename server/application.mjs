@@ -1,3 +1,13 @@
+import { createAdminRecords } from "./admin-records.mjs";
+import { audience, recipientName, validEmail } from "./audience.mjs";
+import { createWhatsapp } from "./whatsapp.mjs";
+import { createSms, smsPreview } from "./sms.mjs";
+import { createPlanning } from "./planning.mjs";
+import { createAdminEmail } from "./admin-email.mjs";
+import { createNotifications } from "./notifications.mjs";
+import { normalizeVideo, mediaResponse } from "./video.mjs";
+import { calendar, contactTopics, escapeHtml } from "../site/celebration.mjs";
+import { siteSettings, validateSettings } from "./site-settings.mjs";
 import { randomUUID } from "node:crypto";
 import sharp from "sharp";
 import {
@@ -55,15 +65,79 @@ export function createApplication({
   mailer,
   verifyGoogle,
   media,
+  documents,
+  smsTransport,
+  smsWebhook,
+  whatsappTransport,
+  whatsappWebhook,
+  whatsappTemplates = [],
+  videoProcessor = normalizeVideo,
   key,
   origin,
   clientId = "",
   deadline = "2026-10-31T23:59:00-05:00",
   adminEmails = [],
+  adminDelegateEmails = [],
+  notificationEmails = adminEmails,
   now = Date.now,
 }) {
   if (!Buffer.isBuffer(key) || key.length !== 32)
     throw new Error("32-byte application key required");
+  const sms = createSms({
+    ledger,
+    notion,
+    transport: smsTransport,
+    webhook: smsWebhook,
+    now,
+  });
+  const whatsapp = createWhatsapp({
+    ledger,
+    notion,
+    transport: whatsappTransport,
+    webhook: whatsappWebhook,
+    templates: whatsappTemplates,
+    key,
+    origin,
+    now,
+  });
+  const sendNotification = createNotifications({
+    ledger,
+    mailer,
+    adminEmails: notificationEmails,
+    origin,
+    now,
+  });
+  const authorizedAdminEmails = [
+    ...new Set([...adminEmails, ...adminDelegateEmails]),
+  ];
+  const ownerSession = (session) =>
+    !session.accountId && adminEmails.includes(session.email);
+  async function checkAdministratorEligibility(accountId, address) {
+    if (!accountId) {
+      if (
+        adminDelegateEmails.includes(address) &&
+        !adminEmails.includes(address)
+      ) {
+        const rows = await notion.list();
+        if (
+          !rows.some(
+            (r) =>
+              !r.archived &&
+              r.administratorEligible &&
+              r.email?.trim().toLowerCase() === address,
+          )
+        )
+          throw error(403, "ADMIN_NOT_ELIGIBLE");
+      }
+      return;
+    }
+    const a = (await ledger.read()).accounts?.[accountId];
+    if (!a || !a.permissions.includes("admin"))
+      throw error(403, "ADMIN_NOT_ALLOWED");
+    const row = await notion.read(a.householdId);
+    if (row.archived || !row.administratorEligible)
+      throw error(403, "ADMIN_NOT_ELIGIBLE");
+  }
   const sessionValid = (s, row) =>
     row &&
     row.expiresAt > now() &&
@@ -71,7 +145,7 @@ export function createApplication({
       ? row.accountId
         ? accountActive(s, s.accounts?.[row.accountId]) &&
           allowedPages(s, row).includes("admin")
-        : adminEmails.includes(row.email)
+        : authorizedAdminEmails.includes(row.email)
       : s.invitations[row.householdId]?.active &&
         s.invitations[row.householdId].generation === row.generation &&
         (row.accountId
@@ -80,7 +154,7 @@ export function createApplication({
               (a) => a.householdId === row.householdId,
             )));
   async function context(req) {
-    const raw = (req.headers.cookie || "")
+    const raw = (req.headers?.cookie || "")
       .split(";")
       .map((v) => v.trim())
       .find((v) => v.startsWith("__session="))
@@ -167,22 +241,29 @@ export function createApplication({
   async function dispatchMail(id) {
     if (!mailer.configured) throw error(503, "MAIL_NOT_CONFIGURED");
     const pending = (await ledger.read()).outbox[id];
-    if (!pending) throw error(404, "NOT_FOUND");
+    if (!pending || pending.archived) throw error(404, "NOT_FOUND");
     const currentGuest = await notion.read(pending.householdId);
     if (currentGuest.archived) throw error(409, "INVITATION_INACTIVE");
     const job = await ledger.transaction((s) => {
       const j = s.outbox[id];
-      if (!j) throw error(404, "NOT_FOUND");
+      if (!j || j.archived) throw error(404, "NOT_FOUND");
       if (j.state !== "draft") throw error(409, "MAIL_ALREADY_ATTEMPTED");
       const invite = s.invitations[j.householdId];
-      if (!invite?.active || invite.generation !== j.generation)
+      if (j.type === "custom") {
+        if (
+          invite?.active === false ||
+          (!j.directlySelected &&
+            !currentGuest.distributionGroups?.some((g) => j.groups.includes(g)))
+        )
+          throw error(409, "MAIL_DRAFT_STALE");
+      } else if (!invite?.active || invite.generation !== j.generation)
         throw error(409, "MAIL_DRAFT_STALE");
       const expectedRecipient = j.responseId
         ? (s.profiles?.[j.householdId]?.contact.email ??
           s.responses[invite.latestSubmissionId]?.contact.email)
         : currentGuest.email;
       if (
-        expectedRecipient !== j.to ||
+        expectedRecipient?.trim().toLowerCase() !== j.to.trim().toLowerCase() ||
         (j.responseId && j.responseId !== invite.latestSubmissionId)
       )
         throw error(409, "MAIL_DRAFT_STALE");
@@ -190,10 +271,16 @@ export function createApplication({
       j.attemptAt = now();
       return structuredClone(j);
     });
+    let provider = null;
     let state = "accepted",
       code = null;
     try {
-      await mailer.send({ ...job, id, html: unseal(job.content, key) });
+      const result = await mailer.send({
+        ...job,
+        id,
+        html: unseal(job.content, key),
+      });
+      provider = result?.provider || null;
     } catch (e) {
       code = e.code;
       state = code === "MAIL_DELIVERY_UNKNOWN" ? "unknown" : "failed";
@@ -201,6 +288,7 @@ export function createApplication({
     await ledger.transaction((s) => {
       s.outbox[id].state = state;
       s.outbox[id].error = code;
+      s.outbox[id].provider = provider;
       s.outbox[id].finishedAt = now();
     });
     return { id, state };
@@ -259,8 +347,33 @@ export function createApplication({
     now,
     syncOne,
   });
+  const records = createAdminRecords({ ledger, key, now });
+  const planning = createPlanning({ ledger, documents, notion, now });
+  const adminEmail = createAdminEmail({
+    ledger,
+    mailer,
+    adminEmails: authorizedAdminEmails,
+    origin,
+    now,
+  });
   async function dispatch(req) {
     const { path, method = "GET", body = {}, headers = {} } = req;
+    if (["/api/whatsapp/status", "/api/whatsapp/inbound"].includes(path)) {
+      if (method !== "POST") throw error(405, "METHOD_NOT_ALLOWED");
+      return whatsapp.callback(
+        path.split("/").pop(),
+        body,
+        headers["x-twilio-signature"],
+      );
+    }
+    if (["/api/twilio/status", "/api/twilio/inbound"].includes(path)) {
+      if (method !== "POST") throw error(405, "METHOD_NOT_ALLOWED");
+      return sms.callback(
+        path.split("/").pop(),
+        body,
+        headers["x-twilio-signature"],
+      );
+    }
     if (method !== "GET" && headers.origin !== origin)
       throw error(403, "ORIGIN_REJECTED");
     if (method !== "GET")
@@ -272,31 +385,54 @@ export function createApplication({
         mailConfigured: mailer.configured,
         live: true,
       };
+    if (path === "/api/site" && method === "GET") {
+      return { site: siteSettings(await ledger.read()) };
+    }
+    if (path.startsWith("/api/calendar/") && method === "GET") {
+      const kind = path.slice(14).replace(/\.ics$/, "");
+      if (!["ceremony", "dinner", "reception"].includes(kind))
+        throw error(404, "NOT_FOUND");
+      const site = siteSettings(await ledger.read());
+      if (!site[kind].end) throw error(409, "END_TIME_PENDING");
+      return {
+        binary: Buffer.from(calendar(kind, site)),
+        contentType: "text/calendar; charset=utf-8",
+        disposition: 'attachment; filename="sophia-' + kind + '.ics"',
+      };
+    }
     if (path === "/api/public" && method === "GET") {
       const s = await ledger.read();
       return {
         announcements: Object.values(s.announcements).filter(
-          (r) => r.published,
+          (r) => r.published && !r.archived,
         ),
         messages: Object.values(s.messages)
           .filter((r) => r.kind === "guestbook" && r.state === "approved")
           .map((r) => ({ id: r.id, name: r.name, text: r.text })),
-        photos: Object.values(s.photos)
-          .filter((r) => r.state === "approved")
-          .map((r) => ({
-            id: r.id,
-            caption: r.caption,
-            url: "/api/photo/" + r.id,
-          })),
+        photos: [], // Media metadata and bytes require a registered guest or administrator.
       };
     }
-    if (path === "/api/auth/google" && method === "POST") {
+    if (path === "/api/auth/admin-email/request" && method === "POST")
+      return adminEmail.request(body);
+    if (
+      ["/api/auth/google", "/api/auth/admin-email/verify"].includes(path) &&
+      method === "POST"
+    ) {
       await rateLimit(ledger, "google-login", 60, 900000, now());
-      const identity = await verifyGoogle(safeText(body.credential, 10000)),
+      const identity =
+          path === "/api/auth/google"
+            ? await verifyGoogle(safeText(body.credential, 10000))
+            : await adminEmail.consume(body.token),
         challenge = token();
       const result = await ledger.transaction((s) => {
         for (const [id, c] of Object.entries(s.challenges))
           if (c.expiresAt <= now()) delete s.challenges[id];
+        if (!identity.accountId) {
+          const existing = Object.entries(s.admins).find(
+            ([, a]) => a.email === identity.email,
+          );
+          if (existing) identity.id = existing[0];
+        }
         const secret = newMfaSecret();
         const admin = s.admins[identity.id];
         s.challenges[hash(challenge)] = {
@@ -316,6 +452,14 @@ export function createApplication({
     }
     if (path === "/api/auth/mfa" && method === "POST") {
       await rateLimit(ledger, "mfa-global", 300, 900000, now());
+      const pendingChallenge = (await ledger.read()).challenges[
+        hash(safeText(body.challenge, 100))
+      ];
+      if (pendingChallenge)
+        await checkAdministratorEligibility(
+          pendingChallenge.accountId,
+          pendingChallenge.email,
+        );
       const sessionToken = token(),
         csrf = token();
       const outcome = await ledger.transaction((s) => {
@@ -326,7 +470,7 @@ export function createApplication({
           c.accountId
             ? !accountActive(s, s.accounts?.[c.accountId]) ||
               !allowedPages(s, c).includes("admin")
-            : !adminEmails.includes(c.email)
+            : !authorizedAdminEmails.includes(c.email)
         )
           throw error(403, "ADMIN_NOT_ALLOWED");
         c.attempts++;
@@ -362,7 +506,10 @@ export function createApplication({
         s = await ledger.read();
       const row = Object.values(s.invitations).find(
         (r) =>
-          (r.tokenHash === fingerprint || r.codeHash === fingerprint) &&
+          (r.tokenHash === fingerprint ||
+            r.codeHash === fingerprint ||
+            (s.invitationLinks?.[fingerprint]?.householdId === r.id &&
+              s.invitationLinks[fingerprint].generation === r.generation)) &&
           r.active,
       );
       if (!row) throw error(401, "INVALID_INVITATION");
@@ -376,7 +523,12 @@ export function createApplication({
         const r = s.invitations[row.id];
         if (
           !r?.active ||
-          (r.tokenHash !== fingerprint && r.codeHash !== fingerprint)
+          (r.tokenHash !== fingerprint &&
+            r.codeHash !== fingerprint &&
+            !(
+              s.invitationLinks?.[fingerprint]?.householdId === r.id &&
+              s.invitationLinks[fingerprint].generation === r.generation
+            ))
         )
           throw error(401, "INVALID_INVITATION");
         if (accounts.accountFor(s, row.id))
@@ -420,7 +572,7 @@ export function createApplication({
         csrf: session?.csrf ?? null,
         verified: !!session?.accountId,
         permissions: allowedPages(ctx.state, session),
-        owner: session?.kind === "admin" && !session.accountId,
+        owner: session?.kind === "admin" && ownerSession(session),
       };
     const requireAuth = (kind) => {
       if (!session || (kind && session.kind !== kind))
@@ -428,6 +580,22 @@ export function createApplication({
       if (method !== "GET" && headers["x-csrf-token"] !== session.csrf)
         throw error(403, "CSRF_REJECTED");
     };
+    if (path === "/api/gallery" && method === "GET") {
+      requireAuth();
+      if (session.kind !== "admin" && !session.accountId)
+        throw error(403, "VERIFIED_ACCOUNT_REQUIRED");
+      return {
+        media: Object.values(ctx.state.photos)
+          .filter((r) => r.state === "approved")
+          .map((r) => ({
+            id: r.id,
+            kind: r.kind || "photo",
+            album: r.album || "event",
+            caption: r.caption,
+            url: "/api/photo/" + r.id,
+          })),
+      };
+    }
     if (path === "/api/auth/email/request" && method === "POST") {
       if (body.register === true) requireAuth("guest");
       return accounts.request(body, session);
@@ -436,6 +604,7 @@ export function createApplication({
       return accounts.consume(body.token);
     if (path === "/api/auth/step-up" && method === "POST") {
       requireAuth("guest");
+      await checkAdministratorEligibility(session.accountId, session.email);
       if (!allowedPages(ctx.state, session).includes("admin"))
         throw error(403, "ADMIN_NOT_ALLOWED");
       const challenge = token(),
@@ -478,6 +647,16 @@ export function createApplication({
         throw error(403, "PAGE_NOT_ALLOWED");
       return {
         page,
+        ...(page === "gifts"
+          ? { registries: siteSettings(ctx.state).registries }
+          : {}),
+        ...(["costs", "padrinos"].includes(page)
+          ? {
+              planning: Object.values(ctx.state.planning?.[page] || {}).filter(
+                (r) => !r.deleted,
+              ),
+            }
+          : {}),
         content: ctx.state.privatePages?.[page] || {
           en: "",
           es: "",
@@ -515,6 +694,14 @@ export function createApplication({
         },
         syncState: row.syncState,
       };
+    }
+    if (path === "/api/whatsapp/consent" && ["GET", "POST"].includes(method)) {
+      requireAuth("guest");
+      await guestInvitation(session);
+      return whatsapp.consent(
+        session.householdId,
+        method === "POST" ? body : undefined,
+      );
     }
     if (path === "/api/profile" && method === "GET") {
       requireAuth("guest");
@@ -642,6 +829,19 @@ export function createApplication({
         return response;
       });
       await syncOne(row.id);
+      const receiptJob = Object.values((await ledger.read()).outbox).find(
+        (j) =>
+          j.responseId === receipt.id &&
+          ["receipt", "update"].includes(j.type) &&
+          j.state === "draft",
+      );
+      if (receiptJob) {
+        try {
+          await dispatchMail(receiptJob.id);
+        } catch {
+          /* RSVP remains durably saved; family can review the delivery state. */
+        }
+      }
       return {
         id: receipt.id,
         submittedAt: receipt.submittedAt,
@@ -667,8 +867,29 @@ export function createApplication({
         name = safeText(body.name, 100),
         text = safeText(body.text, 2000);
       if (!name || !text) throw error(422, "MESSAGE_REQUIRED");
+      const contactEmail =
+        body.kind === "contact"
+          ? email(
+              body.email ||
+                ctx.state.profiles?.[session.householdId]?.contact?.email ||
+                ctx.state.accounts?.[session.accountId]?.email ||
+                "",
+            )
+          : "";
+      const topic = body.kind === "contact" ? body.topic || "Other" : "";
+      if (body.kind === "contact" && !contactTopics.includes(topic))
+        throw error(422, "INVALID_TOPIC");
       await ledger.transaction((s) => {
+        s.notifications ??= {};
+        s.notifications[id] = {
+          id,
+          kind: body.kind === "contact" ? "contact" : "guestbook",
+          at: now(),
+          read: false,
+        };
         s.messages[id] = {
+          email: contactEmail,
+          topic,
           id,
           householdId: session.householdId,
           name,
@@ -678,9 +899,10 @@ export function createApplication({
           at: now(),
         };
       });
+      await sendNotification(id);
       return { id, state: "pending" };
     }
-    if (path === "/api/photos" && method === "POST") {
+    if (["/api/photos", "/api/videos"].includes(path) && method === "POST") {
       requireAuth("guest");
       await guestInvitation(session);
       if (body.consent !== true) throw error(422, "CONSENT_REQUIRED");
@@ -700,6 +922,10 @@ export function createApplication({
         bytes.toString("base64") !== body.base64
       )
         throw error(422, "INVALID_PHOTO");
+      const isVideo = path === "/api/videos";
+      const album = safeText(body.album || "event", 40);
+      if (!siteSettings(await ledger.read()).albums.some((a) => a.id === album))
+        throw error(422, "INVALID_ALBUM");
       const jpeg = bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
       const png = bytes
         .subarray(0, 8)
@@ -707,49 +933,75 @@ export function createApplication({
       const webp =
         bytes.toString("ascii", 0, 4) === "RIFF" &&
         bytes.toString("ascii", 8, 12) === "WEBP";
-      if (!jpeg && !png && !webp) throw error(422, "INVALID_PHOTO");
+      if (!isVideo && !jpeg && !png && !webp) throw error(422, "INVALID_PHOTO");
       const caption = safeText(body.caption || "", 200);
       let image;
       try {
-        image = await sharp(bytes, {
-          limitInputPixels: 25000000,
-          animated: false,
-        })
-          .rotate()
-          .resize({
-            width: 2000,
-            height: 2000,
-            fit: "inside",
-            withoutEnlargement: true,
-          })
-          .jpeg({ quality: 85 })
-          .toBuffer();
-      } catch {
+        image = isVideo
+          ? await videoProcessor(bytes)
+          : await sharp(bytes, {
+              limitInputPixels: 25000000,
+              animated: false,
+            })
+              .rotate()
+              .resize({
+                width: 2000,
+                height: 2000,
+                fit: "inside",
+                withoutEnlargement: true,
+              })
+              .jpeg({ quality: 85 })
+              .toBuffer();
+      } catch (e) {
+        if (isVideo) throw e;
         throw error(422, "INVALID_PHOTO");
       }
       const id = randomUUID();
-      await media.put(id, image);
+      await media.put(id, image, isVideo ? "video" : "photo");
       await ledger.transaction((s) => {
+        s.notifications ??= {};
+        s.notifications[id] = {
+          id,
+          kind: isVideo ? "video" : "photo",
+          at: now(),
+          read: false,
+        };
+        if (!siteSettings(s).albums.some((a) => a.id === album))
+          throw error(422, "INVALID_ALBUM");
         s.photos[id] = {
           id,
+          kind: isVideo ? "video" : "photo",
+          album,
           householdId: session.householdId,
           caption,
           state: "pending",
           consentAt: now(),
         };
       });
+      await sendNotification(id);
       return { id, state: "pending" };
     }
     if (path.startsWith("/api/photo/") && method === "GET") {
+      requireAuth();
+      if (session.kind !== "admin" && !session.accountId)
+        throw error(403, "VERIFIED_ACCOUNT_REQUIRED");
       const id = path.slice(11);
       if (!/^[a-f0-9-]{36}$/.test(id)) throw error(404, "NOT_FOUND");
       const row = ctx.state.photos[id];
       if (!row || (row.state !== "approved" && session?.kind !== "admin"))
         throw error(404, "NOT_FOUND");
-      return { binary: await media.get(id), contentType: "image/jpeg" };
+      return mediaResponse(
+        await media.get(id, row.kind || "photo"),
+        row.kind,
+        headers.range,
+        req.query?.download === "1",
+        id,
+      );
     }
     if (path.startsWith("/api/admin/")) {
       requireAuth("admin");
+      await checkAdministratorEligibility(session.accountId, session.email);
+      if (path === "/api/admin/records") return records(req, session);
       for (const id of [body.id, req.query?.id])
         if (
           id !== undefined &&
@@ -759,14 +1011,126 @@ export function createApplication({
             ))
         )
           throw error(422, "INVALID_ID");
-      if (path === "/api/admin/accounts" && method === "GET")
+      if (
+        path.startsWith("/api/admin/planning") ||
+        path.startsWith("/api/admin/documents")
+      )
+        return planning(req, session);
+      if (path === "/api/admin/site" && method === "GET")
+        return { site: siteSettings(ctx.state) };
+      if (path === "/api/admin/site" && method === "POST") {
+        const site = validateSettings(body);
+        return ledger.transaction((s) => {
+          if (site.version !== siteSettings(s).version)
+            throw error(409, "SETTINGS_CHANGED");
+          const albumIds = new Set(site.albums.map((a) => a.id));
+          if (
+            Object.values(s.photos).some(
+              (p) => !albumIds.has(p.album || "event"),
+            )
+          )
+            throw error(422, "ALBUM_HAS_MEDIA");
+          site.version++;
+          s.site = site;
+          audit(s, session.actor, "site-settings", "event", now());
+          return { site };
+        });
+      }
+      if (path === "/api/admin/notifications" && method === "GET")
+        return {
+          notifications: Object.values(ctx.state.notifications || {}).sort(
+            (a, b) => b.at - a.at,
+          ),
+        };
+      if (path === "/api/admin/notifications" && method === "POST")
+        return ledger.transaction((s) => {
+          const row = s.notifications?.[body.id];
+          if (!row) throw error(404, "NOT_FOUND");
+          row.read = true;
+          return { saved: true };
+        });
+      if (path === "/api/admin/accounts" && method === "GET") {
+        const rows = await notion.list();
         return {
           accounts: Object.values(ctx.state.accounts || {}).map(
-            ({ emailKey, ...a }) => a,
+            ({ emailKey, ...a }) => ({
+              ...a,
+              administratorEligible: rows.some(
+                (r) =>
+                  r.id === a.householdId &&
+                  !r.archived &&
+                  r.administratorEligible,
+              ),
+              protectedOwner: adminEmails.includes(a.email),
+            }),
           ),
           permissions: pagePermissions,
-          owner: !session.accountId,
+          owner: ownerSession(session),
         };
+      }
+      if (
+        ["/api/admin/accounts/delete", "/api/admin/accounts/restore"].includes(
+          path,
+        ) &&
+        method === "POST"
+      ) {
+        if (!ownerSession(session)) throw error(403, "OWNER_REQUIRED");
+        const restoring = path.endsWith("/restore");
+        const householdId = await ledger.transaction((s) => {
+          const a = s.accounts?.[body.id];
+          if (!a) throw error(404, "NOT_FOUND");
+          if (a.version !== body.version) throw error(409, "RESPONSE_CHANGED");
+          if (
+            adminEmails.includes(a.email) ||
+            a.email === session.email ||
+            a.id === session.accountId
+          )
+            throw error(403, "OWNER_PROTECTED");
+          if (restoring) {
+            if (!a.deletedAt) throw error(409, "ACCOUNT_NOT_DELETED");
+            delete a.deletedAt;
+            a.active = a.deletedSnapshot?.active !== false;
+            s.invitations[a.householdId].active =
+              a.deletedSnapshot?.invitationActive !== false;
+            delete a.deletedSnapshot;
+            // Restoring an account never restores administration implicitly.
+            a.permissions = (a.permissions || []).filter((p) => p !== "admin");
+          } else {
+            if (a.deletedAt) throw error(409, "ACCOUNT_ALREADY_DELETED");
+            a.deletedSnapshot = {
+              active: a.active,
+              invitationActive: s.invitations[a.householdId]?.active,
+            };
+            a.deletedAt = new Date(now()).toISOString();
+            s.invitations[a.householdId].active = false;
+            a.active = false;
+            a.permissions = a.permissions.filter((p) => p !== "admin");
+          }
+          a.version++;
+          for (const [id, v] of Object.entries(s.sessions))
+            if (v.accountId === a.id || v.householdId === a.householdId)
+              delete s.sessions[id];
+          for (const map of [s.emailLinks, s.adminEmailLinks, s.challenges])
+            for (const [id, v] of Object.entries(map || {}))
+              if (
+                v.accountId === a.id ||
+                v.householdId === a.householdId ||
+                v.email === a.email
+              )
+                delete map[id];
+          s.invitations[a.householdId].syncState = "pending";
+          audit(
+            s,
+            session.actor,
+            restoring ? "account-restored" : "account-deleted",
+            a.id,
+            now(),
+          );
+          return a.householdId;
+        });
+        await syncOne(householdId);
+        return { saved: true };
+      }
       if (path === "/api/admin/accounts" && method === "POST") {
         if (
           !Array.isArray(body.permissions) ||
@@ -774,20 +1138,40 @@ export function createApplication({
           typeof body.active !== "boolean"
         )
           throw error(422, "INVALID_PERMISSIONS");
+        const current = ctx.state.accounts?.[body.id];
+        if (!current) throw error(404, "NOT_FOUND");
+        const fresh = await notion.read(current.householdId);
+        if (
+          body.permissions.includes("admin") &&
+          (!fresh.administratorEligible || fresh.archived)
+        )
+          throw error(422, "ADMIN_NOT_ELIGIBLE");
         const householdId = await ledger.transaction((s) => {
           const a = s.accounts?.[body.id];
           if (!a) throw error(404, "NOT_FOUND");
+          if (a.deletedAt) throw error(409, "ACCOUNT_DELETED");
           if (a.version !== body.version) throw error(409, "RESPONSE_CHANGED");
           if (
-            session.accountId &&
+            !ownerSession(session) &&
             (a.permissions.includes("admin") !==
               body.permissions.includes("admin") ||
               (a.permissions.includes("admin") && a.active !== body.active))
           )
             throw error(403, "OWNER_REQUIRED");
+          if (adminEmails.includes(a.email) && !body.active)
+            throw error(403, "OWNER_PROTECTED");
           a.permissions = [...new Set(body.permissions)];
           a.active = body.active;
           a.version++;
+          if (!a.active || !a.permissions.includes("admin")) {
+            for (const [id, v] of Object.entries(s.sessions))
+              if (v.accountId === a.id && (!a.active || v.kind === "admin"))
+                delete s.sessions[id];
+            for (const [id, v] of Object.entries(s.challenges))
+              if (v.accountId === a.id) delete s.challenges[id];
+            for (const [id, v] of Object.entries(s.adminEmailLinks || {}))
+              if (v.email === a.email) delete s.adminEmailLinks[id];
+          }
           s.invitations[a.householdId].syncState = "pending";
           audit(s, session.actor, "account-access-updated", a.id, now());
           return a.householdId;
@@ -830,6 +1214,7 @@ export function createApplication({
         return {
           guests: rows.map((row) => ({
             ...row,
+            displayName: recipientName(row),
             ...(s.invitations[row.id]
               ? {
                   active: s.invitations[row.id].active,
@@ -974,6 +1359,7 @@ export function createApplication({
         return {
           messages: Object.values(ctx.state.messages),
           photos: Object.values(ctx.state.photos),
+          albums: siteSettings(ctx.state).albums,
         };
       if (path === "/api/admin/message-reply" && method === "POST") {
         const text = safeText(body.text, 2000);
@@ -1000,6 +1386,11 @@ export function createApplication({
           if (!row) throw error(404, "NOT_FOUND");
           if (row.kind === "contact" && body.state === "approved")
             throw error(422, "CONTACT_IS_PRIVATE");
+          if (body.collection === "photos" && body.album) {
+            if (!siteSettings(s).albums.some((a) => a.id === body.album))
+              throw error(422, "INVALID_ALBUM");
+            row.album = body.album;
+          }
           row.state = body.state;
           audit(s, session.actor, "moderation", body.id, now());
           return { state: row.state };
@@ -1077,6 +1468,132 @@ export function createApplication({
           return { id };
         });
       }
+      if (path === "/api/admin/audience" && method === "GET") {
+        const rows = (await notion.list()).filter(
+          (r) => !r.archived && ctx.state.invitations[r.id]?.active !== false,
+        );
+        return {
+          groups: [
+            ...new Set(rows.flatMap((r) => r.distributionGroups || [])),
+          ].sort(),
+          recipients: (req.query?.channel === "sms" ? audience(rows, { groups: [], ids: rows.map(r => r.id) }, ctx.state, "sms") : rows.filter(r => validEmail(r.email)))
+            .map((r) => ({
+              id: r.id,
+              name: recipientName(r),
+              email: r.email,
+              phone: r.destination || r.phone,
+              groups: r.distributionGroups || [],
+            }))
+            .sort((a, b) => a.name.localeCompare(b.name)),
+        };
+      }
+      if (path === "/api/admin/mail/batch-draft" && method === "POST") {
+        if (!uuid(body.requestId)) throw error(422, "IDEMPOTENCY_REQUIRED");
+        const subject = safeText(body.subject, 140),
+          text = safeText(body.text, 5000),
+          channel = body.channel || "email";
+        if (
+          !subject ||
+          !text ||
+          /[\r\n]/.test(subject) ||
+          !["email", "sms"].includes(channel)
+        )
+          throw error(422, "MESSAGE_REQUIRED");
+        if (channel === "sms") smsPreview(text);
+        const recipients = audience(
+          await notion.list(),
+          body,
+          await ledger.read(),
+          channel,
+        );
+        if (!recipients.length) throw error(422, "NO_ELIGIBLE_RECIPIENTS");
+        const fingerprint = hash(
+          JSON.stringify({
+            groups: body.groups,
+            ids: body.ids,
+            subject,
+            text,
+            channel,
+          }),
+        );
+        return ledger.transaction((s) => {
+          s.campaigns ??= {};
+          if (s.campaigns[body.requestId]) {
+            if (s.campaigns[body.requestId].fingerprint !== fingerprint)
+              throw error(409, "SETTINGS_CHANGED");
+            return s.campaigns[body.requestId].result;
+          }
+          const ids = [];
+          s.smsDrafts ??= {};
+          for (const row of recipients) {
+            const id = randomUUID();
+            ids.push(id);
+            if (channel === "sms")
+              s.smsDrafts[id] = {
+                id,
+                householdId: row.id,
+                campaignId: body.requestId,
+                groups: body.groups,
+                directlySelected: body.ids.includes(row.id),
+                to: row.destination,
+                name: row.displayName,
+                text,
+                state: "draft",
+                at: now(),
+              };
+            else
+              s.outbox[id] = {
+                id,
+                type: "custom",
+                householdId: row.id,
+                to: row.destination,
+                subject,
+                content: seal(
+                  `<p>${escapeHtml(text).replaceAll("\n", "<br>")}</p>`,
+                  key,
+                ),
+                state: "draft",
+                createdAt: now(),
+                groups: body.groups,
+                directlySelected: body.ids.includes(row.id),
+              };
+          }
+          const result = { ids, count: ids.length, channel };
+          s.campaigns[body.requestId] = { fingerprint, result };
+          return result;
+        });
+      }
+      if (path === "/api/admin/whatsapp/drafts" && method === "GET")
+        return whatsapp.list();
+      if (path === "/api/admin/whatsapp/batch-draft" && method === "POST")
+        return whatsapp.draft(body);
+      if (path === "/api/admin/whatsapp/preview" && method === "GET")
+        return whatsapp.review(req.query?.id);
+      if (path === "/api/admin/whatsapp/send" && method === "POST") {
+        if (body.confirm !== true) throw error(422, "CONFIRM_RECIPIENT");
+        return whatsapp.send(body.id, body.reviewToken, session.actor);
+      }
+      if (path === "/api/admin/whatsapp/sync" && method === "POST")
+        return whatsapp.retrySync();
+      if (path === "/api/admin/sms/drafts" && method === "GET")
+        return {
+          drafts: Object.values(ctx.state.smsDrafts || {}).map((d) => ({
+            ...d,
+            delivery: ctx.state.smsDelivery?.[d.providerId]?.status || null,
+          })),
+          sendingEnabled: sms.enabled,
+          pendingOptOutSync: Object.values(
+            ctx.state.smsSuppression || {},
+          ).filter((r) => r.syncState === "pending").length,
+        };
+      if (path === "/api/admin/sms/preview" && method === "GET")
+        return sms.review(req.query?.id);
+      if (path === "/api/admin/sms/send" && method === "POST") {
+        if (body.confirm !== true) throw error(422, "CONFIRM_RECIPIENT");
+        return sms.send(body.id, body.reviewToken, session.actor);
+      }
+      if (path === "/api/admin/sms/sync" && method === "POST")
+        return sms.retrySync();
       if (path === "/api/admin/mail/preview" && method === "GET") {
         const row = ctx.state.outbox[req.query?.id];
         if (!row) throw error(404, "NOT_FOUND");

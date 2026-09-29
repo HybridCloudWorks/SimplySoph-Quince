@@ -1,4 +1,75 @@
 import { error } from "./auth.mjs";
+// Failover is allowed only before Microsoft submits a message. Never retry an
+// ambiguous provider acceptance through a second provider.
+export function sendgridMailer({ apiKey, sender, fetchImpl = fetch }) {
+  const configured = !!(apiKey && sender);
+  return {
+    configured,
+    async send({ to, subject, html, id }) {
+      if (!configured) throw error(503, "MAIL_NOT_CONFIGURED");
+      let response;
+      try {
+        response = await fetchImpl("https://api.sendgrid.com/v3/mail/send", {
+          method: "POST",
+          signal: AbortSignal.timeout(15000),
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            personalizations: [{ to: [{ email: to }] }],
+            from: { email: sender, name: "SimplySoph Mis XV" },
+            subject,
+            content: [{ type: "text/html", value: html }],
+            custom_args: { misxv_message_id: id },
+            tracking_settings: {
+              click_tracking: { enable: false, enable_text: false },
+              open_tracking: { enable: false },
+              subscription_tracking: { enable: false },
+            },
+          }),
+        });
+      } catch {
+        throw error(503, "MAIL_DELIVERY_UNKNOWN");
+      }
+      if (response.status !== 202)
+        throw error(
+          503,
+          response.status >= 500 ? "MAIL_DELIVERY_UNKNOWN" : "MAIL_REJECTED",
+        );
+      return { state: "accepted", provider: "sendgrid" };
+    },
+  };
+}
+
+export function eventMailer({
+  microsoft,
+  sendgrid,
+  provider = "m365",
+  fallback = false,
+}) {
+  if (!["m365", "sendgrid"].includes(provider))
+    throw new Error("Invalid MAIL_PROVIDER");
+  const primary = provider === "m365" ? microsoft : sendgrid;
+  return {
+    configured: !!primary?.configured,
+    async send(message) {
+      if (!primary?.configured) throw error(503, "MAIL_NOT_CONFIGURED");
+      try {
+        return await primary.send(message);
+      } catch (failure) {
+        if (
+          provider === "m365" &&
+          fallback &&
+          sendgrid?.configured &&
+          ["MAIL_AUTH_UNAVAILABLE", "MAIL_AUTH_FAILED"].includes(failure.code)
+        )
+          return sendgrid.send(message);
+        throw failure;
+      }
+    },
+  };
+}
 export function graphMailer({
   tenant,
   clientId,
@@ -64,7 +135,7 @@ export function graphMailer({
           503,
           r.status >= 500 ? "MAIL_DELIVERY_UNKNOWN" : "MAIL_REJECTED",
         );
-      return { state: "accepted" };
+      return { state: "accepted", provider: "m365" };
     },
   };
 }

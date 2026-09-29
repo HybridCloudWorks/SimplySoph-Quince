@@ -4,6 +4,31 @@ import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 
+test('production refuses missing email credentials before starting or accessing providers', async () => {
+  const configured = {
+    ...process.env, EVENT_BUCKET:'test-only-bucket', APP_KEY:Buffer.alloc(32,1).toString('base64'),
+    NOTION_TOKEN:'test-only-notion-token', NOTION_SOURCE_ID:'test-source',
+    ADMIN_GOOGLE_CLIENT_ID:'test-client', ADMIN_EMAILS:'organizer@example.test',
+    SCOPED_NOTION_CONNECTION_CONFIRMED:'true', DATA_RETENTION_DATE:'2027-04-15',
+    M365_TENANT_ID:'test-tenant', M365_CLIENT_ID:'test-mail-client', M365_CLIENT_SECRET:'test-only-secret',
+  };
+  for (const missing of ['M365_TENANT_ID','M365_CLIENT_ID','M365_CLIENT_SECRET']) {
+    const child=spawn(process.execPath,['server/start.mjs'],{env:{...configured,[missing]:''},stdio:['ignore','pipe','pipe']});
+    let stdout='', stderr='';
+    child.stdout.on('data',data=>{stdout+=data;});
+    child.stderr.on('data',data=>{stderr+=data;});
+    const code=await new Promise((resolve,reject)=>{
+      const timer=setTimeout(()=>{child.kill(); reject(new Error('Unconfigured server did not exit'));},5000);
+      child.once('error',error=>{clearTimeout(timer);reject(error);});
+      child.once('exit',code=>{clearTimeout(timer);resolve(code);});
+    });
+    assert.equal(code,1,missing);
+    assert.match(stderr,/Missing required production configuration/);
+    assert.equal(stdout,'');
+    assert.ok(!stderr.includes('test-only-secret'));
+  }
+});
+
 test('Cloud Run port binding, health, pages, and 404 remain usable in preview',async(t)=>{
   const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
   const child=spawn(process.execPath,['server/start.mjs'],{
