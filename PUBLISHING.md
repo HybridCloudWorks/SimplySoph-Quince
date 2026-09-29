@@ -6,7 +6,7 @@ The Cloud Run RSVP/email backend is deployed and connected through `/api/**`. Li
 
 ## Automatic publishing
 
-`.github/workflows/check.yml` runs the Node 24 checks and production dependency audit. After those succeed on a push to `feature/complete-quince-site` or `main`, its dependent production job builds the same commit and publishes only `misxv-simplysoph`. PRs and other branches cannot deploy. After this feature branch is merged, retire its production trigger and matching identity-provider condition; main remains the normal release branch.
+`.github/workflows/check.yml` runs the Node 24 checks and production dependency audit. After those succeed on a push to `main`, its dependent production job builds the same commit and publishes only `misxv-simplysoph`. PRs and other branches cannot deploy. Main is the only production release branch; retired feature branches cannot publish.
 
 The job serializes production releases, skips superseded commits, and verifies `X-Release-Commit` on the real custom domain. Its Actions summary records the source commit and Firebase release. A failed deployment leaves the previous release live and marks the job failed; inspect release history if failure occurs after the API created the release.
 

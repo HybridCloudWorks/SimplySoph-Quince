@@ -10,7 +10,7 @@ const site = 'misxv-simplysoph';
 const project = 'simplysoph-66c78';
 const repository = 'saulpatinojr/SimplySoph-Quince';
 const api = 'https://firebasehosting.googleapis.com/v1beta1/';
-const branches = ['main', 'feature/complete-quince-site'];
+const branches = ['main'];
 
 export function assertReleaseContext(env) {
   if (env.GITHUB_EVENT_NAME !== 'push' || env.GITHUB_REPOSITORY !== repository
