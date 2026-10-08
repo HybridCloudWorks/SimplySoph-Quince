@@ -285,7 +285,7 @@ function invitationEditor(id) {
       ),
       locale: f.get("locale"),
     });
-    box.innerHTML = `<div class="notice success"><p>Save this private link and code securely. They are shown once and open this household’s first RSVP. Registered guests return using a verified email link.</p><textarea id="private-link" readonly>${esc(result.link)}</textarea><p>Invitation code: <code>${esc(result.code)}</code></p><p>No email has been sent.</p>${button("Draft invitation email", "draft-invitation", id)}</div>`;
+    box.innerHTML = `<div class="notice success"><p>This link and code are shown once and open this household’s RSVP; creating a new link revokes older ones. To email the invitation, use “Draft invitation email” — the email carries its own private link and quick-answer buttons, so you never need to copy this one. Keep the code only for a printed invitation.</p><textarea id="private-link" readonly>${esc(result.link)}</textarea><p>Invitation code: <code>${esc(result.code)}</code></p><p>No email has been sent.</p>${button("Draft invitation email", "draft-invitation", id)}</div>`;
   });
   box.scrollIntoView({ block: "nearest" });
 }
@@ -465,7 +465,7 @@ async function updates() {
       (a.displayName || a.name).localeCompare(b.displayName || b.name),
     );
   const composer = document.createElement("div");
-  composer.innerHTML = `<form id="compose-mail" class="card"><h2>Draft an event email</h2><label>Household<select name="id" required><option value="">Choose a recipient</option>${households.map((r) => `<option value="${esc(r.id)}">${esc(r.displayName || r.name)} · ${esc(r.email)}</option>`).join("")}</select></label><label>Message type<select name="type"><option value="reminder">RSVP reminder</option><option value="details">Event details</option><option value="change">Schedule or parking update</option><option value="thanks">After-event thank you</option></select></label>${field("Current private invitation link (required for reminders)", "link", { max: 1000 })}<label>Update message (required for schedule/parking changes)<textarea name="updateText" maxlength="2000"></textarea></label><p>Each draft is addressed to the selected household only. Review its language and contents below before sending.</p>${formEnd("Save email draft")}`;
+  composer.innerHTML = `<form id="compose-mail" class="card"><h2>Draft an event email</h2><label>Household<select name="id" required><option value="">Choose a recipient</option>${households.map((r) => `<option value="${esc(r.id)}">${esc(r.displayName || r.name)} · ${esc(r.email)}</option>`).join("")}</select></label><label>Message type<select name="type"><option value="reminder">RSVP reminder</option><option value="details">Event details</option><option value="change">Schedule or parking update</option><option value="thanks">After-event thank you</option></select></label><label>Update message (required for schedule/parking changes)<textarea name="updateText" maxlength="2000"></textarea></label><p>Each draft is addressed to the selected household only. Review its language and contents below before sending.</p>${formEnd("Save email draft")}`;
   panel.querySelector("#email-outbox").before(composer);
   submit(document.querySelector("#compose-mail"), async (f) => {
     await api("admin/mail/draft", Object.fromEntries(f));
@@ -517,11 +517,7 @@ root.addEventListener("click", (e) => {
       await guestList();
     }
     if (action === "draft-invitation") {
-      await api("admin/mail/draft", {
-        id,
-        type: "invitation",
-        link: document.querySelector("#private-link").value,
-      });
+      await api("admin/mail/draft", { id, type: "invitation" });
       notify(
         "Draft saved. Review it in Announcements & Emails before sending.",
       );

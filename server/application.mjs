@@ -1727,27 +1727,28 @@ export function createApplication({
           origin +
           (invite.locale === "es" ? "/es" : "") +
           (body.type === "thanks" ? "/thank-you/" : "/details/");
-        if (["invitation", "reminder"].includes(body.type)) {
-          url = safeText(body.link, 1000);
-          let u;
-          try {
-            u = new URL(url);
-          } catch {
-            throw error(422, "PRIVATE_LINK_REQUIRED");
-          }
-          if (
-            u.origin !== origin ||
-            !["/rsvp/", "/es/rsvp/"].includes(u.pathname) ||
-            hash(u.hash.slice(1)) !== invite.tokenHash
-          )
-            throw error(422, "PRIVATE_LINK_REQUIRED");
-        }
+        // Invitations and reminders carry a private link the server mints per
+        // draft (sealed in the outbox), so organizers never copy or paste links.
+        // It shares the household's generation: issuing a new link revokes it.
+        const personal = ["invitation", "reminder"].includes(body.type),
+          minted = personal ? token() : null;
+        if (personal)
+          url =
+            origin + (invite.locale === "es" ? "/es" : "") + "/rsvp/#" + minted;
         return ledger.transaction((s) => {
           if (
             !s.invitations[row.id]?.active ||
             s.invitations[row.id].generation !== invite.generation
           )
             throw error(409, "INVITATION_INACTIVE");
+          if (personal) {
+            s.invitationLinks ??= {};
+            s.invitationLinks[hash(minted)] = {
+              householdId: row.id,
+              generation: invite.generation,
+              channel: "email",
+            };
+          }
           return {
             id: queue(s, {
               type: body.type,

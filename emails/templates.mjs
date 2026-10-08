@@ -46,6 +46,7 @@ const copy = {
     greeting: "Hello",
     date: "Event date",
     deadline: "RSVP by",
+    quick: ["Quick answer", "We'll be there", "We can't make it"],
     private:
       "This invitation link is for your household. Please keep it private.",
     help: "Questions? Reply to this email to reach the family.",
@@ -98,6 +99,7 @@ const copy = {
     greeting: "Hola",
     date: "Fecha del evento",
     deadline: "Confirma antes del",
+    quick: ["Respuesta rápida", "Ahí estaremos", "No podremos asistir"],
     private:
       "Este enlace de invitación es para tu familia. Por favor, mantenlo privado.",
     help: "¿Tienes preguntas? Responde a este correo para comunicarte con la familia.",
@@ -152,6 +154,13 @@ export function renderEmail({
     throw new Error("Describe the approved event change");
   const c = copy[locale],
     [subject, title, intro, cta] = c[type];
+  // Quick answers open the same private link with the answer pre-selected; the
+  // guest still confirms on the page, so link scanners cannot submit an RSVP.
+  const quick =
+    ["invitation", "reminder"].includes(type) &&
+    /^#[A-Za-z0-9_-]{43}$/.test(target.hash)
+      ? { yes: target.href + ".yes", no: target.href + ".no" }
+      : null;
   const privacyNote = target.hash
     ? c.private
     : locale === "es"
@@ -168,10 +177,13 @@ export function renderEmail({
       : "",
     updateText,
     `${cta}: ${target.href}`,
+    ...(quick
+      ? [`${c.quick[1]}: ${quick.yes}`, `${c.quick[2]}: ${quick.no}`]
+      : []),
     privacyNote,
     c.help,
     c.sign,
   ].filter(Boolean);
-  const html = `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(subject)}</title></head><body style="margin:0;background:#fbf5e9;color:#351e21;font:16px/1.6 Arial,sans-serif"><table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td align="center" style="padding:24px 12px"><table role="presentation" width="560" style="width:100%;max-width:560px;background:#fffdf8;border:1px solid #d9c6a5" cellspacing="0" cellpadding="0"><tr><td style="background:#651625;color:#e9c77b;padding:28px;text-align:center;font:36px Georgia,serif">Sophia · Mis XV</td></tr><tr><td style="padding:28px">${preview ? `<p style="font-size:13px;color:#651625">${c.preview}</p>` : ""}<p>${escape(c.greeting)} ${escape(household)},</p><h1 style="font:30px/1.2 Georgia,serif;color:#651625">${escape(title)}</h1><p>${escape(intro)}</p>${eventDate ? `<p><strong>${c.date}:</strong> ${escape(eventDate)}</p>` : ""}${rsvpDeadline && ["invitation", "reminder"].includes(type) ? `<p><strong>${c.deadline}:</strong> ${escape(rsvpDeadline)}</p>` : ""}${updateText ? `<p>${escape(updateText)}</p>` : ""}<p style="margin:28px 0"><a href="${escape(target.href)}" style="display:inline-block;background:#651625;color:#fff;padding:14px 22px;text-decoration:none">${escape(cta)}</a></p><p style="font-size:14px">${escape(privacyNote)}</p><p>${escape(c.help)}</p><p style="font-family:Georgia,serif">${escape(c.sign)}</p></td></tr></table></td></tr></table></body></html>`;
+  const html = `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(subject)}</title></head><body style="margin:0;background:#fbf5e9;color:#351e21;font:16px/1.6 Arial,sans-serif"><table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td align="center" style="padding:24px 12px"><table role="presentation" width="560" style="width:100%;max-width:560px;background:#fffdf8;border:1px solid #d9c6a5" cellspacing="0" cellpadding="0"><tr><td style="background:#651625;color:#e9c77b;padding:28px;text-align:center;font:36px Georgia,serif">Sophia · Mis XV</td></tr><tr><td style="padding:28px">${preview ? `<p style="font-size:13px;color:#651625">${c.preview}</p>` : ""}<p>${escape(c.greeting)} ${escape(household)},</p><h1 style="font:30px/1.2 Georgia,serif;color:#651625">${escape(title)}</h1><p>${escape(intro)}</p>${eventDate ? `<p><strong>${c.date}:</strong> ${escape(eventDate)}</p>` : ""}${rsvpDeadline && ["invitation", "reminder"].includes(type) ? `<p><strong>${c.deadline}:</strong> ${escape(rsvpDeadline)}</p>` : ""}${updateText ? `<p>${escape(updateText)}</p>` : ""}<p style="margin:28px 0"><a href="${escape(target.href)}" style="display:inline-block;background:#651625;color:#fff;padding:14px 22px;text-decoration:none">${escape(cta)}</a></p>${quick ? `<p style="margin:0 0 24px">${escape(c.quick[0])}: <a href="${escape(quick.yes)}" style="color:#651625;font-weight:bold">${escape(c.quick[1])}</a> · <a href="${escape(quick.no)}" style="color:#651625;font-weight:bold">${escape(c.quick[2])}</a></p>` : ""}<p style="font-size:14px">${escape(privacyNote)}</p><p>${escape(c.help)}</p><p style="font-family:Georgia,serif">${escape(c.sign)}</p></td></tr></table></td></tr></table></body></html>`;
   return { subject, html, text: lines.join("\n\n") };
 }

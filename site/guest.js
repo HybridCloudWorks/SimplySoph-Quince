@@ -25,7 +25,7 @@ function accessForm(value = "", reason = "") {
         throw new Error(
           tr("Use the link from this website.", "Usa el enlace de este sitio."),
         );
-      token = u.hash.slice(1);
+      token = u.hash.slice(1).split(".")[0];
     }
     await api("invitation-session", { token });
     await showPortal();
@@ -96,10 +96,28 @@ async function accountPage(inv, session) {
 function countField(event, key, max, value) {
   return `<label>${tr(key === "kids" ? "Children" : "Adults / teens", key === "kids" ? "Niños" : "Adultos / jóvenes")}<select name="${event}.${key}" required><option value="">${tr("Choose a count", "Elige una cantidad")}</option>${Array.from({ length: max + 1 }, (_, n) => `<option value="${n}"${n === value ? " selected" : ""}>${n}</option>`).join("")}</select></label>`;
 }
+// Set from an email quick-answer link (#token.yes / #token.no); pre-fills the
+// form only. Nothing is saved until the guest confirms.
+let quickAnswer = null;
 function rsvpForm(inv) {
-  const saved = inv.response,
-    contact = inv.draftContact || inv.contact || saved?.contact;
-  portal.innerHTML = `<h2>${esc(inv.name)}</h2><p>${tr("Tell us how many people will attend each part of the celebration. Choose zero if nobody will attend.", "Indica cuántas personas asistirán a cada parte de la celebración. Elige cero si nadie asistirá.")}</p><form id="response">${Object.entries(
+  let saved = inv.response;
+  const contact = inv.draftContact || inv.contact || saved?.contact;
+  if (quickAnswer && !inv.draftContact) {
+    const attendance = {};
+    for (const e of Object.keys(eventNames))
+      attendance[e] =
+        quickAnswer === "yes" && inv.invited[e]
+          ? { adultsTeens: inv.capacity.adultsTeens, kids: inv.capacity.kids }
+          : { adultsTeens: 0, kids: 0 };
+    saved = { ...saved, attendance };
+  }
+  portal.innerHTML = `<h2>${esc(inv.name)}</h2>${
+    quickAnswer === "yes"
+      ? `<p class="notice">${tr("We filled in everyone on your invitation. Adjust the counts if needed, then review and save.", "Incluimos a todos los de tu invitación. Ajusta las cantidades si hace falta y luego revisa y guarda.")}</p>`
+      : quickAnswer === "no"
+        ? `<p class="notice">${tr("We set every count to zero. Review and save to let the family know you can’t attend.", "Pusimos todas las cantidades en cero. Revisa y guarda para avisar a la familia que no podrán asistir.")}</p>`
+        : ""
+  }<p>${tr("Tell us how many people will attend each part of the celebration. Choose zero if nobody will attend.", "Indica cuántas personas asistirán a cada parte de la celebración. Elige cero si nadie asistirá.")}</p><form id="response">${Object.entries(
     eventNames,
   )
     .map(([e, label]) =>
@@ -300,6 +318,9 @@ if (portal && fragment && document.body.dataset.route === "account") {
   });
 } else if (portal && fragment && document.body.dataset.route === "rsvp") {
   history.replaceState(null, "", location.pathname);
+  const [linkToken, answer] = fragment.split(".");
+  fragment = linkToken;
+  if (["yes", "no"].includes(answer)) quickAnswer = answer;
   try {
     await api("invitation-session", { token: fragment });
     fragment = "";

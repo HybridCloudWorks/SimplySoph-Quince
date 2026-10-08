@@ -1381,3 +1381,25 @@ test("household status moves from issued to opened to attending or declined", as
   await f.admin("revoke", { id: household });
   assert.equal(await status(), "revoked");
 });
+
+test("invitation emails carry a server-minted private link with quick answers; reissue revokes it", async () => {
+  const f = await fixture();
+  const { id } = await f.admin("mail/draft", { id: household, type: "invitation" });
+  const preview = await f.admin("mail/preview", undefined, { id });
+  const minted = preview.html.match(/\/rsvp\/#([A-Za-z0-9_-]{43})"/)[1];
+  assert.ok(preview.html.includes(`#${minted}.yes`));
+  assert.ok(preview.html.includes(`#${minted}.no`));
+  const open = () =>
+    f.app.dispatch({
+      path: "/api/invitation-session",
+      method: "POST",
+      headers: { origin },
+      body: { token: minted },
+    });
+  assert.ok((await open()).setCookie);
+  await f.admin("invitation", {
+    id: household,
+    invited: { ceremony: true, dinner: true, dance: false },
+  });
+  await assert.rejects(open, (e) => e.code === "INVALID_INVITATION");
+});
