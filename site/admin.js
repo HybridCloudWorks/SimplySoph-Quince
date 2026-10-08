@@ -205,7 +205,14 @@ async function dashboard() {
       ([title, n]) =>
         `<article class="card"><p>${title}</p><p class="stat">${n}</p></article>`,
     )
-    .join("")}</div>${table(
+    .join("")}</div><h2>Invitation status</h2><div class="cards">${Object.entries(
+    d.statuses || {},
+  )
+    .map(
+      ([k, n]) =>
+        `<article class="card"><p>${esc(statusLabels[k] || k)}</p><p class="stat">${n}</p></article>`,
+    )
+    .join("")}</div><p><a href="/admin/guests/">Filter households by status</a></p>${table(
     ["Event", "Adults/teens", "Children", "Total"],
     Object.entries(d.counts).map(
       ([e, c]) =>
@@ -217,15 +224,38 @@ async function dashboard() {
       .join("") || "<p>No email drafted.</p>"
   }${button("Retry pending Notion updates", "sync", "")}${button("Prepare RSVP columns in Notion", "schema", "")}`;
 }
+const statusLabels = {
+  "not-issued": "No link yet",
+  revoked: "Link revoked",
+  issued: "Link created, not emailed",
+  sent: "Invitation emailed",
+  opened: "Opened, no answer",
+  attending: "Attending",
+  declined: "Declined",
+};
+const when = (iso) =>
+  iso
+    ? new Date(iso).toLocaleString("en-US", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      })
+    : "";
 let guests = [];
 async function guestList() {
   const data = await api("admin/guests");
   guests = data.guests;
-  root.innerHTML = `<p>Review household capacity and event eligibility before creating a private invitation. Blank Kids values need correction in Notion.</p><div class="row-actions">${button("Export CSV", "export", "")}${button("Import CSV", "import-form", "")}</div><div id="guest-editor"></div>${field("Filter guests", "filter")}${table(
-    ["Household", "Invited capacity", "Email", "Response / sync", "Actions"],
+  root.innerHTML = `<p>Review household capacity and event eligibility before creating a private invitation. Blank Kids values need correction in Notion.</p><div class="row-actions">${button("Export CSV", "export", "")}${button("Import CSV", "import-form", "")}</div><div id="guest-editor"></div><div class="field-grid">${field("Filter guests", "filter")}<label>Status<select name="status"><option value="">All statuses</option>${Object.entries(
+    statusLabels,
+  )
+    .map(
+      ([k, v]) =>
+        `<option value="${k}">${esc(v)} (${guests.filter((g) => g.status === k).length})</option>`,
+    )
+    .join("")}</select></label></div>${table(
+    ["Household", "Status", "Invited capacity", "Email", "Response / sync", "Actions"],
     guests.map(
       (r) =>
-        `<tr data-guest-row><td>${esc(r.name)}<br><span class="badge">${esc(r.role)}</span></td><td>${r.capacity.adultsTeens ?? "?"} adults/teens · ${r.capacity.kids ?? "?"} children${r.validCapacity ? "" : "<br>Needs review"}</td><td>${esc(r.email)}</td><td>${
+        `<tr data-guest-row data-status="${esc(r.status)}"><td>${esc(r.name)}<br><span class="badge">${esc(r.role)}</span></td><td><span class="badge">${esc(statusLabels[r.status] || r.status)}</span>${r.respondedAt || r.openedAt ? `<br><small>${esc(when(r.respondedAt || r.openedAt))}</small>` : ""}</td><td>${r.capacity.adultsTeens ?? "?"} adults/teens · ${r.capacity.kids ?? "?"} children${r.validCapacity ? "" : "<br>Needs review"}</td><td>${esc(r.email)}</td><td>${
           r.response
             ? Object.entries(r.response.attendance)
                 .map(([e, v]) => `${e}: ${v.adultsTeens + v.kids}`)
@@ -234,11 +264,13 @@ async function guestList() {
         }<br>${esc(r.syncState)}</td><td><a href="https://www.notion.so/${encodeURIComponent(r.id.replaceAll("-", ""))}" target="_blank" rel="noopener noreferrer">Edit household in Notion</a>${button("Review / create link", "invite-form", r.id)}${r.active ? button("Revoke link", "revoke", r.id) : ""}</td></tr>`,
     ),
   )}`;
-  root.querySelector("[name=filter]").oninput = (e) => {
+  const text = root.querySelector("[name=filter]"),
+    status = root.querySelector("[name=status]");
+  text.oninput = status.onchange = () => {
     for (const row of root.querySelectorAll("[data-guest-row]"))
-      row.hidden = !row.textContent
-        .toLowerCase()
-        .includes(e.target.value.toLowerCase());
+      row.hidden =
+        !row.textContent.toLowerCase().includes(text.value.toLowerCase()) ||
+        (status.value && row.dataset.status !== status.value);
   };
 }
 function invitationEditor(id) {

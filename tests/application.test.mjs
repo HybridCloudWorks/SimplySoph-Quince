@@ -1351,3 +1351,33 @@ test("after registration the private link reopens the RSVP only, with contact hi
     (e) => e.code === "EMAIL_SIGN_IN_REQUIRED",
   );
 });
+
+test("household status moves from issued to opened to attending or declined", async () => {
+  const f = await fixture();
+  const status = async () => (await f.admin("guests")).guests[0].status;
+  // The fixture opens the invitation during setup; start from a fresh link.
+  await f.ledger.transaction((s) => {
+    s.invitations[household].openedAt = null;
+  });
+  assert.equal(await status(), "issued");
+  await f.app.dispatch({
+    path: "/api/invitation-session",
+    method: "POST",
+    headers: { origin },
+    body: { token: f.guestToken },
+  });
+  assert.equal(await status(), "opened");
+  assert.ok((await f.admin("guests")).guests[0].openedAt);
+  await f.guest("rsvp", f.input(), { "idempotency-key": "22222222-2222-4222-8222-222222222222" });
+  assert.equal(await status(), "attending");
+  const none = f.input();
+  for (const e of Object.keys(none.attendance)) none.attendance[e] = { adultsTeens: 0, kids: 0 };
+  none.previousSubmissionId = "22222222-2222-4222-8222-222222222222";
+  await f.guest("rsvp", none, { "idempotency-key": "33333333-3333-4333-8333-333333333333" });
+  assert.equal(await status(), "declined");
+  const dash = await f.admin("dashboard");
+  assert.equal(dash.statuses.declined, 1);
+  assert.equal(dash.statuses.attending, 0);
+  await f.admin("revoke", { id: household });
+  assert.equal(await status(), "revoked");
+});

@@ -166,6 +166,42 @@ export function createApplication({
     "POST /api/logout",
   ]);
   const hiddenContact = () => ({ email: "", phone: "", address: null });
+  // One derived status per household for the organizer dashboard; computed from
+  // the ledger on read so it can never drift from the underlying records.
+  const householdStatuses = [
+    "not-issued",
+    "revoked",
+    "issued",
+    "sent",
+    "opened",
+    "attending",
+    "declined",
+  ];
+  function householdStatus(s, id) {
+    const invite = s.invitations[id];
+    if (!invite) return { status: "not-issued" };
+    if (!invite.active) return { status: "revoked" };
+    const response = s.responses[invite.latestSubmissionId];
+    if (response) {
+      const people = Object.values(response.attendance).reduce(
+        (n, v) => n + v.adultsTeens + v.kids,
+        0,
+      );
+      return {
+        status: people > 0 ? "attending" : "declined",
+        respondedAt: response.submittedAt,
+      };
+    }
+    if (invite.openedAt) return { status: "opened", openedAt: invite.openedAt };
+    const sent = Object.values(s.outbox).some(
+      (j) =>
+        j.householdId === id &&
+        ["invitation", "reminder"].includes(j.type) &&
+        j.generation === invite.generation &&
+        j.state === "accepted",
+    );
+    return { status: sent ? "sent" : "issued" };
+  }
   async function context(req) {
     const raw = (req.headers?.cookie || "")
       .split(";")
@@ -568,6 +604,7 @@ export function createApplication({
           throw error(401, "INVALID_INVITATION");
         const registered = !!accounts.accountFor(s, row.id);
         if (registered && viaCode) throw error(409, "EMAIL_SIGN_IN_REQUIRED");
+        r.openedAt ??= now();
         s.profiles ??= {};
         s.profiles[row.id] ??= {
           id: row.id,
@@ -1282,6 +1319,7 @@ export function createApplication({
               : {}),
             response:
               s.responses[s.invitations[row.id]?.latestSubmissionId] ?? null,
+            ...householdStatus(s, row.id),
           })),
         };
       }
@@ -1295,6 +1333,12 @@ export function createApplication({
           households: rows.filter((r) => !r.archived).length,
           active: Object.values(s.invitations).filter((r) => r.active).length,
           responded: responses.length,
+          statuses: rows
+            .filter((r) => !r.archived)
+            .reduce(
+              (a, r) => (a[householdStatus(s, r.id).status]++, a),
+              Object.fromEntries(householdStatuses.map((k) => [k, 0])),
+            ),
           pendingSync: Object.values(s.invitations).filter(
             (r) => r.syncState === "pending",
           ).length,
@@ -1339,6 +1383,7 @@ export function createApplication({
             generation: (previous?.generation || 0) + 1,
             tokenHash: hash(value),
             codeHash: hash(code),
+            openedAt: null,
           };
           const link =
             origin + (body.locale === "es" ? "/es" : "") + "/rsvp/#" + value;
