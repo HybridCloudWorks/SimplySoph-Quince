@@ -1284,3 +1284,24 @@ test("invited delegate signs in by email plus MFA without owner authority", asyn
     (e) => e.code === "ADMIN_NOT_ELIGIBLE",
   );
 });
+
+test("anonymous junk sign-ins and invitation codes cannot lock out valid credentials", async () => {
+  const f = await fixture({
+    verifyGoogle: async (credential) => {
+      if (credential !== "valid") throw Object.assign(new Error(), { status: 401, code: "SIGN_IN_FAILED" });
+      return { id: "organizer", email: "organizer@gmail.com" };
+    },
+  });
+  const post = (path, body) =>
+    f.app.dispatch({ path: "/api/" + path, method: "POST", headers: { origin }, body, ip: "attacker" });
+  const codes = [];
+  for (let i = 0; i < 70; i++)
+    await post("auth/google", { credential: "junk" }).catch((e) => codes.push(e.code));
+  assert.equal(codes.filter((c) => c === "SIGN_IN_FAILED").length, 60);
+  assert.equal(codes.filter((c) => c === "TOO_MANY_REQUESTS").length, 10);
+  assert.ok((await post("auth/google", { credential: "valid" })).challenge);
+  for (let i = 0; i < 610; i++)
+    await post("invitation-session", { token: "x".repeat(43) }).catch(() => {});
+  assert.ok((await post("invitation-session", { token: f.guestToken })).setCookie);
+  assert.equal((await f.ledger.read()).limits, undefined);
+});
