@@ -166,7 +166,7 @@ export function createAccounts({
         await rateLimit(ledger, "email-verify-failures", 300, 900000, now());
         throw error(401, "EMAIL_LINK_INVALID");
       }
-      const fresh = await notion.read(pending.householdId);
+      const fresh = await notion.read(pending.householdId, { fresh: true });
       if (fresh.archived) throw error(401, "EMAIL_LINK_INVALID");
       const value = token(),
         csrf = token();

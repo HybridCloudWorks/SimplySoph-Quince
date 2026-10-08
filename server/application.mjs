@@ -169,8 +169,9 @@ export function createApplication({
       sessionHash: raw ? hash(raw) : null,
     };
   }
-  async function guestInvitation(session) {
-    const row = await notion.read(session.householdId),
+  // Page views may use the short Notion cache; RSVP submission reads fresh.
+  async function guestInvitation(session, { fresh = false } = {}) {
+    const row = await notion.read(session.householdId, { fresh }),
       s = await ledger.read(),
       record = s.invitations[row.id];
     if (
@@ -244,7 +245,7 @@ export function createApplication({
     if (!mailer.configured) throw error(503, "MAIL_NOT_CONFIGURED");
     const pending = (await ledger.read()).outbox[id];
     if (!pending || pending.archived) throw error(404, "NOT_FOUND");
-    const currentGuest = await notion.read(pending.householdId);
+    const currentGuest = await notion.read(pending.householdId, { fresh: true });
     if (currentGuest.archived) throw error(409, "INVITATION_INACTIVE");
     const job = await ledger.transaction((s) => {
       const j = s.outbox[id];
@@ -535,7 +536,7 @@ export function createApplication({
         throw error(401, "INVALID_INVITATION");
       }
       await rateLimit(ledger, hash("invite:" + row.id), 20, 900000, now());
-      const current = await notion.read(row.id);
+      const current = await notion.read(row.id, { fresh: true });
       if (current.archived || !current.validCapacity)
         throw error(401, "INVALID_INVITATION");
       const value = token(),
@@ -800,7 +801,7 @@ export function createApplication({
       requireAuth("guest");
       const id = headers["idempotency-key"];
       if (!uuid(id)) throw error(422, "IDEMPOTENCY_REQUIRED");
-      const row = await guestInvitation(session),
+      const row = await guestInvitation(session, { fresh: true }),
         fingerprint = digestInput(body);
       const receipt = await ledger.transaction((s) => {
         const current = s.invitations[row.id];
@@ -1162,7 +1163,7 @@ export function createApplication({
           throw error(422, "INVALID_PERMISSIONS");
         const current = ctx.state.accounts?.[body.id];
         if (!current) throw error(404, "NOT_FOUND");
-        const fresh = await notion.read(current.householdId);
+        const fresh = await notion.read(current.householdId, { fresh: true });
         if (
           body.permissions.includes("admin") &&
           (!fresh.administratorEligible || fresh.archived)
@@ -1285,7 +1286,7 @@ export function createApplication({
         };
       }
       if (path === "/api/admin/invitation" && method === "POST") {
-        const row = await notion.read(body.id);
+        const row = await notion.read(body.id, { fresh: true });
         if (!row.validCapacity || row.archived)
           throw error(422, "CAPACITY_NEEDS_REVIEW");
         if (events.some((e) => typeof body.invited?.[e] !== "boolean"))
@@ -1636,7 +1637,7 @@ export function createApplication({
           )
         )
           throw error(422, "INVALID_MAIL_TYPE");
-        const row = await notion.read(body.id),
+        const row = await notion.read(body.id, { fresh: true }),
           s = await ledger.read(),
           invite = s.invitations[row.id];
         if (!invite?.active || !row.email)

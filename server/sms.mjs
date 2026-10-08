@@ -66,7 +66,7 @@ export function createSms({
       throw error(422, "SMS_BRAND_OR_STOP_MISSING");
     if (state.smsSuppression?.[hash(draft.to)])
       throw error(409, "SMS_OPTED_OUT");
-    const row = await notion.read(draft.householdId);
+    const row = await notion.read(draft.householdId, { fresh: true });
     if (
       row.archived ||
       !row.smsConsent ||

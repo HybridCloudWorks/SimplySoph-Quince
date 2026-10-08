@@ -117,8 +117,10 @@ Record date, tester and evidence for each item in the inventory. Status as of th
 - **Ledger.** GCS generation preconditions serialize writes across instances. A failed write never returns a saved receipt. The 20 MB cap suits one small event; media bytes are stored separately. Each request makes several ledger writes, including the rate-limit counters, so bursts can return `BUSY`. Reducing write amplification is P0 in [docs/v1/implementation-plan.md](docs/v1/implementation-plan.md).
 - **Invitation links.** 256-bit secrets, stored only as hashes. Revoking or rotating a link invalidates its sessions and unsent drafts.
 - **Data authority.** Notion owns invited capacity. The ledger owns accepted website responses.
-- **Rate limits.** Shared global and per-actor budgets plus MFA attempt limits. Forwarding headers are not trusted.
-- **Logging.** No request bodies, credentials or invitation fragments are logged. The service currently emits almost no logs (see the plan).
+- **Notion client.** Requests are paced to 2.5/s per instance and retried on 429 (honoring `Retry-After` up to 10 s). Server errors are retried for reads and updates, never for page creates. Guest-list reads are cached for 30 s, and any write clears the cache. RSVP submit, invitation exchange, sign-in, admin actions and every outbound send read fresh. Page views and admin-eligibility checks may lag a direct Notion edit by up to 30 s.
+- **Logs.** API requests are written to stdout as Cloud Logging JSON: method, path, status and latency only. Unexpected failures log `ERROR` with a stack trace; known 5xx codes such as `BUSY` log `WARNING`. Create a log-based alert on `severity>=ERROR` for `misxv-api`.
+- **Rate limits.** Counters are kept in memory per instance, so effective limits are up to 2× with two instances. Shared budgets count only rejected credentials or outgoing mail, so anonymous junk cannot lock out valid users. Per-identity, per-household and per-actor budgets limit legitimate use, and each MFA challenge allows 5 attempts. Forwarding headers are not trusted.
+- **Ledger writes.** Transactions on one instance run one at a time. Conflicts with the other instance and GCS 429 throttling are retried with jittered backoff (up to 8 attempts) before returning `BUSY`.
 - **Media.**
   - Limits: 8 MB per file, 25 MP per image, video 60 s and 4096 px per side.
   - One video conversion per instance at a time.

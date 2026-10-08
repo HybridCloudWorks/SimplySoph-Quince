@@ -188,7 +188,7 @@ export function createWhatsapp({
     )
       throw error(422, "WHATSAPP_CONSENT_INVALID");
     const phone = whatsappDestination(input.phone),
-      row = await notion.read(id);
+      row = await notion.read(id, { fresh: true });
     await ledger.transaction((s) => {
       s.whatsappPending ??= {};
       s.whatsappPreferences ??= {};
@@ -311,7 +311,7 @@ export function createWhatsapp({
     const s = await ledger.read(),
       d = s.whatsappDrafts?.[id];
     if (!d || d.archived) throw error(404, "NOT_FOUND");
-    const row = await notion.read(d.householdId),
+    const row = await notion.read(d.householdId, { fresh: true }),
       t = templates.find(
         (t) => t.key === d.templateKey && t.contentSid === d.contentSid,
       );

@@ -85,27 +85,85 @@ export const projectionSchema = {
   "Website requests": { rich_text: {} },
   "Website account": { rich_text: {} },
 };
-export function notionClient({ token, sourceId, fetchImpl = fetch }) {
+// 429 means Notion did nothing, so every request may retry it. Other transient
+// failures retry only for reads, queries and idempotent PATCHes: a retried page
+// create could duplicate a row.
+export function notionRetryable(method, path, status) {
+  if (status === 429) return true;
+  const idempotent =
+    method === "GET" || method === "PATCH" || path.endsWith("/query");
+  return idempotent && [500, 502, 503, 504].includes(status);
+}
+export function notionClient({
+  token,
+  sourceId,
+  fetchImpl = fetch,
+  sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
+  clock = Date.now,
+  minIntervalMs = 400,
+  cacheMs = 30000,
+}) {
+  // Notion allows ~3 requests/s per connection. Requests from this instance are
+  // paced below that, and roster reads are cached briefly so a burst of guest
+  // page views does not turn into NOTION_429 errors.
+  let nextSlot = 0;
+  async function pace() {
+    const at = clock(),
+      wait = nextSlot - at;
+    nextSlot = Math.max(at, nextSlot) + minIntervalMs;
+    if (wait > 0) await sleep(wait);
+  }
+  const cache = new Map();
+  function cached(key, load) {
+    const hit = cache.get(key);
+    if (hit && hit.until > clock()) return hit.value;
+    const value = load();
+    cache.set(key, { value, until: clock() + cacheMs });
+    value.catch(() => cache.delete(key));
+    return value;
+  }
   async function call(path, method = "GET", body) {
     if (!token || !sourceId) throw error(503, "NOTION_NOT_CONFIGURED");
-    let r;
+    // Any write may change what later reads should see; clear before and after
+    // so a read that overlaps the write cannot cache the old row.
+    const write =
+      method === "PATCH" || (method === "POST" && !path.endsWith("/query"));
+    if (write) cache.clear();
     try {
-      r = await fetchImpl("https://api.notion.com/v1/" + path, {
-        method,
-        redirect: "error",
-        signal: AbortSignal.timeout(15000),
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Notion-Version": version,
-          "Content-Type": "application/json",
-        },
-        body: body ? JSON.stringify(body) : undefined,
-      });
-    } catch {
-      throw error(503, "NOTION_UNAVAILABLE");
+      return await send(path, method, body);
+    } finally {
+      if (write) cache.clear();
     }
-    if (!r.ok) throw error(503, `NOTION_${r.status}`);
-    return r.json();
+  }
+  async function send(path, method, body) {
+    for (let attempt = 0; ; attempt++) {
+      await pace();
+      let r;
+      try {
+        r = await fetchImpl("https://api.notion.com/v1/" + path, {
+          method,
+          redirect: "error",
+          signal: AbortSignal.timeout(15000),
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Notion-Version": version,
+            "Content-Type": "application/json",
+          },
+          body: body ? JSON.stringify(body) : undefined,
+        });
+      } catch {
+        if (method === "GET" && attempt < 2) continue;
+        throw error(503, "NOTION_UNAVAILABLE");
+      }
+      if (r.ok) return r.json();
+      const raw = r.headers?.get?.("retry-after"),
+        retryAfter = raw && /^\d+$/.test(raw) ? Number(raw) : null,
+        retryable = notionRetryable(method, path, r.status);
+      // Long provider pauses are not worth holding a guest's request open.
+      if (!retryable || attempt === 2 || (retryAfter ?? 0) > 10)
+        throw error(503, `NOTION_${r.status}`);
+      await sleep(Math.max(retryAfter ?? 0, 2 ** attempt) * 1000);
+    }
   }
   return {
     ...planningNotion(call),
@@ -226,6 +284,9 @@ export function notionClient({ token, sourceId, fetchImpl = fetch }) {
       return rows;
     },
     async list() {
+      return structuredClone(await cached("list", () => this.listFresh()));
+    },
+    async listFresh() {
       let cursor,
         rows = [];
       do {
@@ -239,12 +300,18 @@ export function notionClient({ token, sourceId, fetchImpl = fetch }) {
       } while (cursor);
       return rows;
     },
-    async read(id) {
+    // Pass { fresh: true } where a decision must reflect the latest Notion edit:
+    // RSVP submit, invitation exchange, sign-in and every outbound send.
+    async read(id, { fresh = false } = {}) {
       if (!/^[a-f0-9-]{36}$/.test(id)) throw error(404, "INVITATION_NOT_FOUND");
-      const p = await call("pages/" + id);
-      if (p.parent?.data_source_id !== sourceId)
-        throw error(403, "WRONG_DATA_SOURCE");
-      return normalizeInvitation(p);
+      const load = async () => {
+        const p = await call("pages/" + id);
+        if (p.parent?.data_source_id !== sourceId)
+          throw error(403, "WRONG_DATA_SOURCE");
+        return normalizeInvitation(p);
+      };
+      const row = await (fresh ? load() : cached("page:" + id, load));
+      return structuredClone(row);
     },
     async schema() {
       return call("data_sources/" + sourceId);
