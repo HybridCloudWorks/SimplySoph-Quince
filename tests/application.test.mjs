@@ -968,7 +968,17 @@ test("distribution groups deduplicate recipients, drafts are idempotent, and sta
   );
 });
 
-test("SMS draft eligibility requires explicit consent and a date and respects opt out", async () => {
+// Seeds the ledger as if the guest texted the program keyword and it synced.
+async function keywordOptIn(f, phone) {
+  await f.ledger.transaction((s) => {
+    s.smsPreferences = {
+      [hash(phone)]: { phone, type: "START", at: 1, syncState: "synced" },
+    };
+    s.smsConsentPhones = { [household]: phone };
+  });
+}
+
+test("SMS draft eligibility requires a verified keyword opt-in, not a Notion checkbox", async () => {
   const f = await fixture();
   f.row.phone = "+18175550100";
   f.row.distributionGroups = ["Family"];
@@ -977,15 +987,30 @@ test("SMS draft eligibility requires explicit consent and a date and respects op
     groups: ["Family"],
     ids: [],
     subject: "Reminder",
-    text: "See you soon",
+    text: "Simply Soph Media: See you soon. Reply STOP to opt out.",
     channel: "sms",
   };
   await assert.rejects(
     () => f.admin("mail/batch-draft", p),
     (e) => e.code === "NO_ELIGIBLE_RECIPIENTS",
   );
+  // Organizer-entered consent alone is a hidden opt-in path the campaign forbids.
   f.row.smsConsent = true;
   f.row.smsConsentAt = "2026-09-28";
+  await assert.rejects(
+    () => f.admin("mail/batch-draft", p),
+    (e) => e.code === "NO_ELIGIBLE_RECIPIENTS",
+  );
+  await keywordOptIn(f, f.row.phone);
+  await assert.rejects(
+    () =>
+      f.admin("mail/batch-draft", {
+        ...p,
+        requestId: "sms-draft-003",
+        text: "See you soon",
+      }),
+    (e) => e.code === "SMS_BRAND_OR_STOP_MISSING",
+  );
   assert.equal((await f.admin("mail/batch-draft", p)).count, 1);
   assert.equal(f.sends(), 0);
   f.row.smsOptOut = true;
@@ -1000,12 +1025,13 @@ test("SMS admin review requires authentication and sending stays disabled", asyn
   f.row.phone = "+18175550100";
   f.row.smsConsent = true;
   f.row.smsConsentAt = "2026-09-28";
+  await keywordOptIn(f, f.row.phone);
   const draft = await f.admin("mail/batch-draft", {
     requestId: "sms-review-001",
     ids: [household],
     groups: [],
     subject: "RSVP",
-    text: "SimplySoph: RSVP at https://example.com",
+    text: "Simply Soph Media: RSVP at https://example.com Reply STOP to opt out.",
     channel: "sms",
   });
   const preview = await f.admin("sms/preview", undefined, { id: draft.ids[0] });

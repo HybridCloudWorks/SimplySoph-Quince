@@ -23,8 +23,12 @@ const messages = {
     "Elige un archivo válido de hasta 8 MB.",
   ],
   NO_ELIGIBLE_RECIPIENTS: [
-    "Select Recipients With Valid Contact Details. SMS Also Requires Recorded Consent And A Consent Date.",
-    "Selecciona destinatarios con datos válidos y consentimiento para SMS.",
+    "Select Recipients With Valid Contact Details. SMS Also Requires The Guest To Have Texted SOPHIA From That Phone.",
+    "Selecciona destinatarios con datos válidos. Para SMS, el invitado debe haber enviado SOPHIA desde ese teléfono.",
+  ],
+  SMS_BRAND_OR_STOP_MISSING: [
+    "Start The Text With “Simply Soph Media:” And Include STOP Opt-Out Wording.",
+    "Empieza el mensaje con “Simply Soph Media:” e incluye la opción STOP.",
   ],
   INVALID_DATA_SOURCE: [
     "Enter The Notion Data Source ID For This Table.",

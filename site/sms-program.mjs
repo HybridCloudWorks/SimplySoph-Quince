@@ -1,10 +1,18 @@
+// Single source for the registered A2P campaign text. Every value here must match
+// the Twilio campaign fields and Advanced Opt-Out configuration word for word
+// (see docs/sms-campaign-registration.md). Changing any text requires a campaign update.
 export const smsProgram = {
   name: "Simply Soph Media",
-  version: "2026-09-28",
+  version: "2026-10-08",
   phone: "+16827868002",
-  keywords: ["START", "UNSTOP"],
+  phoneDisplay: "+1 682-786-8002",
+  // SOPHIA is the program opt-in keyword; START/UNSTOP remain carrier re-subscribe keywords.
+  keyword: "SOPHIA",
+  keywords: ["SOPHIA", "START", "UNSTOP"],
+  helpKeywords: ["HELP", "INFO"],
+  stopKeywords: ["STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT", "REVOKE", "OPTOUT"],
   confirmation:
-    "Simply Soph Media: You are subscribed to Sophia's event texts: invitation links, RSVP reminders and event updates. Message frequency varies. Msg & data rates may apply. Reply HELP for help or STOP to unsubscribe.",
-  help: "Simply Soph Media event text support: misxv@simplysoph.com. Message frequency varies. Msg & data rates may apply. Reply STOP to unsubscribe.",
-  stop: "Simply Soph Media: You have unsubscribed from event texts. No further messages will be sent. Reply START to subscribe again.",
+    "Simply Soph Media: You're subscribed to Sophia's event texts (invites, RSVP reminders, updates). Msg frequency varies. Msg & data rates may apply. Reply HELP for help, STOP to cancel.",
+  help: "Simply Soph Media: Help for Sophia's event texts: misxv@simplysoph.com or https://misxv.simplysoph.com/sms/. Msg frequency varies. Msg & data rates may apply. Reply STOP to cancel.",
+  stop: "Simply Soph Media: You are unsubscribed from Sophia's event texts. No more messages will be sent. Reply SOPHIA or START to re-subscribe.",
 };

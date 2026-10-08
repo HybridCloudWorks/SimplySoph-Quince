@@ -1,6 +1,6 @@
 # WhatsApp Activation Review
 
-The production WhatsApp sender is online. WhatsApp operates independently of the pending SMS A2P campaign. International guests receive a household-specific private website link; replying in WhatsApp does not submit an RSVP or sign into the website.
+Treat the sender and template status below as unverified until re-checked through the Twilio API (see [twilio-setup.md](twilio-setup.md)). WhatsApp operates independently of the SMS A2P campaign, which was rejected with error 30909 and is being resubmitted. International guests receive a household-specific private website link; replying in WhatsApp does not submit an RSVP or sign into the website.
 
 ## Consent And First Invitations
 
@@ -29,16 +29,12 @@ Routes /api/whatsapp/inbound and /api/whatsapp/status validate signatures and th
 3. Check Notion projection and local suppression.
 4. Preview one eligible international test recipient and private link.
 5. Enable restricted sending only for an authorized acceptance test; verify delivery, website RSVP, Notion and receipt email.
-6. Enable reviewed dispatch after these checks; keep SMS independently disabled while its campaign is pending.
+6. Enable reviewed dispatch after these checks; keep SMS independently disabled until its campaign is approved.
 
 February 1, 2027 is review/export, not automatic deletion. Inventory templates, consent records, callbacks and credentials for reviewed cleanup. Preserve shared Twilio/Meta accounts and the owner-provided number.
 
 References: [WhatsApp API](https://www.twilio.com/docs/whatsapp/api), [Content API](https://www.twilio.com/docs/content/content-api-resources), [US marketing restrictions](https://www.twilio.com/en-us/changelog/whatsapp-marketing-messages-to-u-s--numbers-no-longer-supported).
 
-## Published Verification — September 28, 2026
+## Status history
 
-Firebase Hosting and Cloud Run revision misxv-api-00012-v98 are published; the API revision serves 100 percent of traffic. Build 9ff7d57a-1ef5-4cc7-b7ae-e276c7025e10 produced image digest sha256:aea68787e79aaa4d4246ca2f6e2c63102b0feffcfd9878e264c96a8f77a4a487. Both WhatsApp callback URLs are configured on the ONLINE sender. Unsigned probes returned 403; correctly signed malformed probes returned 422 before any guest mutation. Real incoming-message acceptance is still required.
-
-The live reception calendar ends at 2027-01-16T06:30:00Z (12:30 AM Central). The supplied replacement invitation and QR files were absent at their local paths, so exact artwork replacement and QR decoding remain outstanding.
-
-Validation: 124 automated tests and 65 generated-document/link checks passed. SMS and WhatsApp outbound activation flags remain false; runtime key remains read-only. Three templates remain pending and reminder_es is rejected with no specific reason supplied by Meta. No guest messages were sent. Organizer notifications use separate NOTIFICATION_EMAILS for both approved addresses; administrator authorization was not expanded.
+Point-in-time deployment logs were removed from this guide. Live identifiers live in `ops/event-resources.json`; the current gap list is in [v1/twilio-gap-analysis.md](v1/twilio-gap-analysis.md). Last recorded (unverified): `reminder_es` rejected by Meta, three templates pending, both activation flags false, runtime key read-only.

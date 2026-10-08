@@ -2,7 +2,29 @@ import { smsProgram } from "../site/sms-program.mjs";
 import { error, hash } from "./auth.mjs";
 import { smsDestination, validTwilioWebhook } from "./twilio.mjs";
 
-// Conservative toll-free estimates (multipart payloads are 152/66).
+// The registered campaign promises that the only opt-in is the guest texting a
+// program keyword. A Notion checkbox alone must never make a phone sendable:
+// require a provider-verified START receipt, synced, bound to this household.
+export function smsKeywordConsent(state, householdId, phone) {
+  const pref = state.smsPreferences?.[hash(phone)];
+  return (
+    pref?.type === "START" &&
+    pref.syncState === "synced" &&
+    state.smsConsentPhones?.[householdId] === phone &&
+    !state.smsSuppression?.[hash(phone)]
+  );
+}
+
+// Carrier-review requirement: every program message identifies the brand and opt-out.
+export function smsCompliantText(text) {
+  return (
+    typeof text === "string" &&
+    text.startsWith(smsProgram.name + ":") &&
+    /\bSTOP\b/.test(text)
+  );
+}
+
+// Conservative segment estimates (multipart payloads are 152/66).
 export function smsPreview(text) {
   if (typeof text !== "string" || !text.trim() || text.length > 1600)
     throw error(422, "SMS_MESSAGE_INVALID");
@@ -40,6 +62,10 @@ export function createSms({
     if (!draft || draft.archived) throw error(404, "NOT_FOUND");
     if (!draft.householdId || !Array.isArray(draft.groups))
       throw error(409, "SMS_DRAFT_STALE");
+    if (!smsCompliantText(draft.text))
+      throw error(422, "SMS_BRAND_OR_STOP_MISSING");
+    if (state.smsSuppression?.[hash(draft.to)])
+      throw error(409, "SMS_OPTED_OUT");
     const row = await notion.read(draft.householdId);
     if (
       row.archived ||
@@ -49,8 +75,7 @@ export function createSms({
       !Number.isFinite(Date.parse(row.smsConsentAt)) ||
       Date.parse(row.smsConsentAt) > now() ||
       destination(row) !== draft.to ||
-      (state.smsConsentPhones?.[row.id] &&
-        state.smsConsentPhones[row.id] !== draft.to) ||
+      !smsKeywordConsent(state, row.id, draft.to) ||
       state.invitations[row.id]?.active === false ||
       (!draft.directlySelected &&
         !row.distributionGroups?.some((g) => draft.groups.includes(g)))
@@ -188,8 +213,7 @@ export function createSms({
       const phone = smsDestination(params.From);
       const body = (params.Body || "").trim().toUpperCase();
       const stop =
-        params.OptOutType === "STOP" ||
-        /^(STOP|STOPALL|UNSUBSCRIBE|CANCEL|END|QUIT|REVOKE|OPTOUT)$/.test(body);
+        params.OptOutType === "STOP" || smsProgram.stopKeywords.includes(body);
       // Only provider-classified START events enroll; plain text alone is insufficient.
       const start =
         !stop &&

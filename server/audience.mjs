@@ -1,6 +1,6 @@
 import { error } from "./auth.mjs";
 import { smsDestination } from "./twilio.mjs";
-import { hash } from "./auth.mjs";
+import { smsKeywordConsent } from "./sms.mjs";
 export const validEmail = (email) =>
   typeof email === "string" &&
   email.length <= 254 &&
@@ -42,10 +42,8 @@ export function audience(rows, selection, state, channel = "email") {
     if (channel === "sms") {
       try {
         smsDestination(destination);
-        smsAllowed =
-          !state.smsSuppression?.[hash(destination)] &&
-          (!state.smsConsentPhones?.[r.id] ||
-            state.smsConsentPhones[r.id] === destination);
+        // Only a verified keyword opt-in from this exact phone makes it eligible.
+        smsAllowed = smsKeywordConsent(state, r.id, destination);
       } catch {}
     }
     const eligible =

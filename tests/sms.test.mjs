@@ -27,11 +27,22 @@ async function fixture(options = {}) {
         householdId: row.id,
         campaignId: "campaign",
         to: row.phone,
-        text: "SimplySoph RSVP: https://example.com/rsvp/ Reply STOP to opt out.",
+        text: "Simply Soph Media: RSVP https://example.com/rsvp/ Reply STOP to opt out.",
         groups: ["Family"],
         state: "draft",
       },
     };
+    if (options.keywordConsent !== false) {
+      s.smsPreferences = {
+        [hash(row.phone)]: {
+          phone: row.phone,
+          type: "START",
+          at: Date.parse("2026-09-01"),
+          syncState: "synced",
+        },
+      };
+      s.smsConsentPhones = { [row.id]: row.phone };
+    }
   });
   let sends = 0,
     projects = 0;
@@ -342,4 +353,31 @@ test("delivery callbacks match attempts and do not regress from terminal status"
   await f.callback("status", { MessageStatus: "delivered" });
   await f.callback("status", { MessageStatus: "sent" });
   assert.equal((await f.ledger.read()).smsDelivery[sid].status, "delivered");
+});
+
+test("Notion consent without a verified keyword opt-in cannot be reviewed or sent", async () => {
+  const f = await fixture({ keywordConsent: false });
+  await assert.rejects(
+    () => f.sms.review("draft"),
+    (e) => e.code === "SMS_DRAFT_STALE",
+  );
+  assert.equal(f.sends(), 0);
+});
+test("the SOPHIA program keyword enrolls once Twilio classifies it as opt-in", async () => {
+  const f = await fixture({ keywordConsent: false });
+  await f.callback("inbound", { Body: "sophia", OptOutType: "START" });
+  const state = await f.ledger.read();
+  assert.equal(state.smsPreferences[hash(f.row.phone)].type, "START");
+  assert.equal(state.smsConsentPhones[f.row.id], f.row.phone);
+  assert.ok((await f.sms.review("draft")).reviewToken);
+});
+test("drafts missing the brand prefix or STOP language are rejected at review", async () => {
+  const f = await fixture();
+  await f.ledger.transaction((s) => {
+    s.smsDrafts.draft.text = "RSVP https://example.com/rsvp/";
+  });
+  await assert.rejects(
+    () => f.sms.review("draft"),
+    (e) => e.code === "SMS_BRAND_OR_STOP_MISSING",
+  );
 });

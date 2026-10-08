@@ -2,7 +2,7 @@
 
 The family requires a way to remove everything added for Sophia's event. The event is Friday, January 15, 2027. Cleanup is **on demand**, after the family chooses its photo/thank-you and data-retention window. There is no scheduled deletion date.
 
-The planned Twilio sender and credential retirement checklist is in [docs/twilio-setup.md](docs/twilio-setup.md). February 1, 2027 remains a review date only. No Twilio resources have been provisioned by that preparation; inventory them when they are created.
+The Twilio sender, Messaging Service, API key, secrets and WhatsApp sender retirement checklist is in [docs/twilio-setup.md](docs/twilio-setup.md#retirement); the provisioned Twilio resources are inventoried in `ops/event-resources.json`. February 1, 2027 remains a review date only.
 
 Target: `misxv.simplysoph.com`, in the **existing** Google project `simplysoph-66c78`. Protect the `simplysoph.com` registration, existing DNS zone/nameservers, existing Google project/billing, existing mail and Notion records. Do not delete a shared service to remove this event's use of it.
 

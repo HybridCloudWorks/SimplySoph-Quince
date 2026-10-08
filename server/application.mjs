@@ -1,7 +1,7 @@
 import { createAdminRecords } from "./admin-records.mjs";
 import { audience, recipientName, validEmail } from "./audience.mjs";
 import { createWhatsapp } from "./whatsapp.mjs";
-import { createSms, smsPreview } from "./sms.mjs";
+import { createSms, smsCompliantText, smsPreview } from "./sms.mjs";
 import { createPlanning } from "./planning.mjs";
 import { createAdminEmail } from "./admin-email.mjs";
 import { createNotifications } from "./notifications.mjs";
@@ -1499,7 +1499,11 @@ export function createApplication({
           !["email", "sms"].includes(channel)
         )
           throw error(422, "MESSAGE_REQUIRED");
-        if (channel === "sms") smsPreview(text);
+        if (channel === "sms") {
+          smsPreview(text);
+          if (!smsCompliantText(text))
+            throw error(422, "SMS_BRAND_OR_STOP_MISSING");
+        }
         const recipients = audience(
           await notion.list(),
           body,
