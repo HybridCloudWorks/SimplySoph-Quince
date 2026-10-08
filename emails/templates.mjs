@@ -16,7 +16,7 @@ const copy = {
     update: [
       "Your RSVP has been updated · Sophia’s Mis XV",
       "Your latest response is recorded.",
-      "To review your latest response, use your original invitation code or sign in with your verified email on the My Account page.",
+      "To review your latest response, open your private invitation link or sign in with your verified email on the My Account page.",
       "View updated response",
     ],
     reminder: [
@@ -54,27 +54,27 @@ const copy = {
   },
   es: {
     invitation: [
-      "Estás invitado a los XV de Sophia",
+      "Te invitamos a los XV de Sophia",
       "Un nuevo capítulo, junto a ti.",
       "Nos encantaría celebrar con tu familia. Abre tu invitación privada para ver los detalles y confirmar su asistencia.",
-      "Ver su invitación",
+      "Ver tu invitación",
     ],
     receipt: [
       "Recibimos tu confirmación · Los XV de Sophia",
       "Gracias por responder.",
-      "Recibimos la respuesta de tu familia. Puedes revisar su asistencia y hacer los cambios permitidos a través de su invitación privada.",
-      "Revisar su respuesta",
+      "Recibimos la respuesta de tu familia. Puedes revisar su asistencia y hacer los cambios permitidos a través de tu invitación privada.",
+      "Revisar tu respuesta",
     ],
     update: [
       "Actualizamos tu respuesta · Los XV de Sophia",
       "Tu nueva respuesta quedó registrada.",
-      "Abre su invitación privada para revisar las respuestas más recientes de tu familia.",
+      "Abre tu invitación privada para revisar las respuestas más recientes de tu familia.",
       "Ver la respuesta actualizada",
     ],
     reminder: [
       "Un pequeño recordatorio · Los XV de Sophia",
       "¿Nos acompañarán?",
-      "Aún nos falta toda o parte de la respuesta de tu familia. Usa su invitación privada para responder antes de la fecha límite.",
+      "Aún nos falta toda o parte de la respuesta de tu familia. Usa tu invitación privada para responder antes de la fecha límite.",
       "Confirmar asistencia",
     ],
     details: [
@@ -155,8 +155,8 @@ export function renderEmail({
   const privacyNote = target.hash
     ? c.private
     : locale === "es"
-      ? "Mant�n privados el c�digo y el enlace de tu invitaci�n original."
-      : "Keep your original invitation code and private link confidential.";
+      ? "Mantén privado el enlace de tu invitación."
+      : "Keep your private invitation link confidential.";
   const lines = [
     preview ? c.preview : "",
     `${c.greeting} ${household},`,

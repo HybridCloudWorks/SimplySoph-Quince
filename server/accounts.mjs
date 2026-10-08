@@ -49,7 +49,7 @@ export function createAccounts({
   }) {
     const raw = token(),
       id = randomUUID();
-    await ledger.transaction((s) => {
+    const locale = await ledger.transaction((s) => {
       s.emailLinks ??= {};
       for (const [k, link] of Object.entries(s.emailLinks))
         if (link.expiresAt <= now()) delete s.emailLinks[k];
@@ -66,10 +66,11 @@ export function createAccounts({
         name,
         expiresAt: now() + 900000,
       };
+      return invite.locale || "en";
     });
     // Token is a fragment, never an access-log query parameter. GET/scanners do not
     // consume it: the page requires an explicit user click and a same-origin POST.
-    const url = `${origin}/account/#${raw}`;
+    const url = `${origin}${locale === "es" ? "/es" : ""}/account/#${raw}`;
     try {
       await mailer.send({
         id,

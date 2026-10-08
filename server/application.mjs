@@ -324,7 +324,7 @@ export function createApplication({
         type,
         locale,
         household: household.name,
-        url: url || origin + "/rsvp/",
+        url: url || origin + (locale === "es" ? "/es" : "") + "/rsvp/",
         eventDate:
           locale === "es"
             ? "Viernes, 15 de enero de 2027"
