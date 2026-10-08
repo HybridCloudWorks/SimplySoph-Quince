@@ -18,6 +18,8 @@ import {
   unseal,
   cookie,
   rateLimit,
+  chargeFailures,
+  pruneSessions,
   newMfaSecret,
   verifyTotp,
   invitationCode,
@@ -376,8 +378,6 @@ export function createApplication({
     }
     if (method !== "GET" && headers.origin !== origin)
       throw error(403, "ORIGIN_REJECTED");
-    if (method !== "GET")
-      await rateLimit(ledger, "global-writes", 6000, 3600000, now());
     if (path === "/api/config" && method === "GET")
       return {
         clientId,
@@ -418,12 +418,25 @@ export function createApplication({
       ["/api/auth/google", "/api/auth/admin-email/verify"].includes(path) &&
       method === "POST"
     ) {
-      await rateLimit(ledger, "google-login", 60, 900000, now());
-      const identity =
-          path === "/api/auth/google"
-            ? await verifyGoogle(safeText(body.credential, 10000))
-            : await adminEmail.consume(body.token),
+      const identity = await chargeFailures(
+          ledger,
+          "admin-login-failures",
+          60,
+          900000,
+          now(),
+          () =>
+            path === "/api/auth/google"
+              ? verifyGoogle(safeText(body.credential, 10000))
+              : adminEmail.consume(body.token),
+        ),
         challenge = token();
+      await rateLimit(
+        ledger,
+        "admin-login:" + hash(identity.email),
+        10,
+        900000,
+        now(),
+      );
       const result = await ledger.transaction((s) => {
         for (const [id, c] of Object.entries(s.challenges))
           if (c.expiresAt <= now()) delete s.challenges[id];
@@ -451,10 +464,12 @@ export function createApplication({
       return { challenge, ...result };
     }
     if (path === "/api/auth/mfa" && method === "POST") {
-      await rateLimit(ledger, "mfa-global", 300, 900000, now());
       const pendingChallenge = (await ledger.read()).challenges[
         hash(safeText(body.challenge, 100))
       ];
+      // Each challenge allows 5 code attempts; only unknown challenges share a budget.
+      if (!pendingChallenge)
+        await rateLimit(ledger, "mfa-unknown-challenge", 300, 900000, now());
       if (pendingChallenge)
         await checkAdministratorEligibility(
           pendingChallenge.accountId,
@@ -483,6 +498,7 @@ export function createApplication({
           lastStep: step,
           email: c.email,
         };
+        pruneSessions(s, now());
         s.sessions[hash(sessionToken)] = {
           kind: "admin",
           actor: c.id,
@@ -499,9 +515,11 @@ export function createApplication({
       return { csrf, setCookie: cookie(sessionToken) };
     }
     if (path === "/api/invitation-session" && method === "POST") {
-      await rateLimit(ledger, "invite-global", 600, 900000, now());
       const credential = invitationCredential(body.token);
-      if (!credential) throw error(401, "INVALID_INVITATION");
+      if (!credential) {
+        await rateLimit(ledger, "invite-failures", 600, 900000, now());
+        throw error(401, "INVALID_INVITATION");
+      }
       const fingerprint = hash(credential),
         s = await ledger.read();
       const row = Object.values(s.invitations).find(
@@ -512,7 +530,10 @@ export function createApplication({
               s.invitationLinks[fingerprint].generation === r.generation)) &&
           r.active,
       );
-      if (!row) throw error(401, "INVALID_INVITATION");
+      if (!row) {
+        await rateLimit(ledger, "invite-failures", 600, 900000, now());
+        throw error(401, "INVALID_INVITATION");
+      }
       await rateLimit(ledger, hash("invite:" + row.id), 20, 900000, now());
       const current = await notion.read(row.id);
       if (current.archived || !current.validCapacity)
@@ -546,6 +567,7 @@ export function createApplication({
           createdAt: now(),
           updatedAt: now(),
         };
+        pruneSessions(s, now());
         s.sessions[hash(value)] = {
           kind: "guest",
           householdId: r.id,

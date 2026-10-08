@@ -29,7 +29,6 @@ export function createAdminEmail({ ledger, mailer, adminEmails, origin, now }) {
       if (address.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address))
         throw error(422, "INVALID_EMAIL");
       if (!mailer.configured) throw error(503, "EMAIL_SIGN_IN_UNAVAILABLE");
-      await rateLimit(ledger, "admin-email-global", 60, 3600000, now());
       await rateLimit(ledger, "admin-email:" + hash(address), 3, 900000, now());
       const raw = token();
       const allowed = await ledger.transaction((s) => {
@@ -44,6 +43,8 @@ export function createAdminEmail({ ledger, mailer, adminEmails, origin, now }) {
         return true;
       });
       if (allowed) {
+        // Shared budget bounds outgoing mail only; non-admin addresses cost nothing.
+        await rateLimit(ledger, "admin-email-sends", 60, 3600000, now());
         try {
           await mailer.send({
             id: token(),
@@ -58,7 +59,6 @@ export function createAdminEmail({ ledger, mailer, adminEmails, origin, now }) {
       return { requested: true };
     },
     async consume(raw) {
-      await rateLimit(ledger, "admin-email-verify", 120, 900000, now());
       if (typeof raw !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(raw))
         throw error(401, "EMAIL_LINK_INVALID");
       return ledger.transaction((s) => {

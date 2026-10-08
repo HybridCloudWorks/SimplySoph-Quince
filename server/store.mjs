@@ -19,14 +19,32 @@ export class Conflict extends Error {}
 // One small event ledger; GCS generation preconditions serialize transactions across instances.
 // Mutators must have NO external side effects: a conflicting transaction is retried.
 export class Ledger {
-  constructor(adapter) {
+  constructor(
+    adapter,
+    { sleep = (ms) => new Promise((r) => setTimeout(r, ms)), random = Math.random } = {},
+  ) {
     this.adapter = adapter;
+    this.sleep = sleep;
+    this.random = random;
+    this.queue = Promise.resolve();
   }
   async read() {
     return (await this.adapter.load()).state;
   }
-  async transaction(fn) {
+  // Transactions on one instance run one at a time, so they never conflict with
+  // each other; generation conflicts then only come from the other instance and
+  // are retried with jittered exponential backoff instead of immediately.
+  transaction(fn) {
+    const run = this.queue.then(() => this.attempt(fn));
+    this.queue = run.catch(() => {});
+    return run;
+  }
+  async attempt(fn) {
     for (let attempt = 0; attempt < 8; attempt++) {
+      if (attempt)
+        await this.sleep(
+          Math.min(400, 25 * 2 ** (attempt - 1)) * (0.5 + this.random()),
+        );
       const { state, generation } = await this.adapter.load();
       const result = await fn(state);
       try {
@@ -90,7 +108,9 @@ export function cloudAdapter(bucketName) {
           metadata: { cacheControl: "no-store" },
         });
       } catch (e) {
-        if (e.code === 412) throw new Conflict();
+        // 412: another writer won. 429: GCS per-object write throttling, which
+        // guarantees nothing was written, so a reload-and-retry is safe.
+        if (e.code === 412 || e.code === 429) throw new Conflict();
         throw e;
       }
     },

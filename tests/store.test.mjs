@@ -36,15 +36,49 @@ test("concurrent ledger transactions preserve both updates", async () => {
     "two",
   ]);
 });
-test("unresolved generation conflicts fail with a retryable error", async () => {
-  const ledger = new Ledger({
-    load: async () => ({ state: initialState(), generation: 1 }),
-    save: async () => {
-      throw new Conflict();
+test("unresolved generation conflicts back off, then fail with a retryable error", async () => {
+  const waits = [];
+  const ledger = new Ledger(
+    {
+      load: async () => ({ state: initialState(), generation: 1 }),
+      save: async () => {
+        throw new Conflict();
+      },
     },
-  });
+    { sleep: async (ms) => waits.push(ms), random: () => 0.5 },
+  );
   await assert.rejects(
     () => ledger.transaction(() => true),
     (e) => e.code === "BUSY",
   );
+  assert.deepEqual(waits, [25, 50, 100, 200, 400, 400, 400]);
+});
+test("transactions on one instance are serialized and a failure does not block the next", async () => {
+  const backend = memoryAdapter();
+  let saves = 0,
+    conflicts = 0;
+  const ledger = new Ledger({
+    load: () => backend.load(),
+    save: async (state, generation) => {
+      saves++;
+      try {
+        await backend.save(state, generation);
+      } catch (e) {
+        conflicts++;
+        throw e;
+      }
+    },
+  });
+  await Promise.allSettled([
+    ...Array.from({ length: 10 }, (_, i) =>
+      ledger.transaction((s) => s.audit.push({ action: String(i) })),
+    ),
+    ledger.transaction(() => {
+      throw new Error("mutator failed");
+    }),
+    ledger.transaction((s) => s.audit.push({ action: "after" })),
+  ]);
+  assert.equal(conflicts, 0);
+  assert.equal(saves, 11);
+  assert.equal((await ledger.read()).audit.length, 11);
 });
