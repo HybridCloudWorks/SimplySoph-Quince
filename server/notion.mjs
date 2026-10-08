@@ -283,8 +283,10 @@ export function notionClient({
       } while (cursor);
       return rows;
     },
-    async list() {
-      return structuredClone(await cached("list", () => this.listFresh()));
+    async list({ fresh = false } = {}) {
+      return structuredClone(
+        await (fresh ? this.listFresh() : cached("list", () => this.listFresh())),
+      );
     },
     async listFresh() {
       let cursor,

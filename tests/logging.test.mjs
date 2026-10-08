@@ -42,8 +42,15 @@ test("unexpected failures log ERROR with a stack; known 5xx codes log WARNING", 
     throw Object.assign(new Error(), { status: 503, code: "BUSY" });
   };
   await fetch(s.base + "/api/config");
+  fail = () => {
+    throw Object.assign(new Error("socket hang up"), { code: "ECONNRESET" });
+  };
+  const leaked = await fetch(s.base + "/api/config");
+  assert.deepEqual(await leaked.json(), { error: "SERVICE_UNAVAILABLE" });
   await settle();
   assert.equal(s.entries[0].severity, "ERROR");
+  assert.equal(s.entries[2].severity, "ERROR", "system error codes are unexpected");
+  assert.match(s.entries[2].stack_trace, /socket hang up/);
   assert.match(s.entries[0].stack_trace, /TypeError: boom/);
   assert.equal(s.entries[1].severity, "WARNING");
   assert.equal(s.entries[1].code, "BUSY");

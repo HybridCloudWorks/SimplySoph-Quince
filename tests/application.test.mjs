@@ -1403,3 +1403,27 @@ test("invitation emails carry a server-minted private link with quick answers; r
   });
   await assert.rejects(open, (e) => e.code === "INVALID_INVITATION");
 });
+
+test("unknown admin emails, link tokens and MFA challenges never queue a ledger write", async () => {
+  const f = await fixture();
+  const original = f.ledger.transaction.bind(f.ledger);
+  let writes = 0;
+  f.ledger.transaction = (fn) => (writes++, original(fn));
+  const post = (path, body) =>
+    f.app.dispatch({ path: "/api/" + path, method: "POST", headers: { origin }, body });
+  for (let i = 0; i < 5; i++) {
+    assert.deepEqual(
+      await post("auth/admin-email/request", { email: `nobody${i}@example.com` }),
+      { requested: true },
+    );
+    await assert.rejects(
+      () => post("auth/admin-email/verify", { token: String(i).repeat(43) }),
+      (e) => e.status === 401,
+    );
+    await assert.rejects(
+      () => post("auth/mfa", { challenge: "unknown-" + i, code: "000000" }),
+      (e) => e.code === "SIGN_IN_AGAIN",
+    );
+  }
+  assert.equal(writes, 0);
+});

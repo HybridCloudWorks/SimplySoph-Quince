@@ -120,7 +120,8 @@ export function createApplication({
         adminDelegateEmails.includes(address) &&
         !adminEmails.includes(address)
       ) {
-        const rows = await notion.list();
+        // Authorization reads Notion fresh: a revoked eligibility must apply at once.
+        const rows = await notion.list({ fresh: true });
         if (
           !rows.some(
             (r) =>
@@ -136,7 +137,7 @@ export function createApplication({
     const a = (await ledger.read()).accounts?.[accountId];
     if (!a || !a.permissions.includes("admin"))
       throw error(403, "ADMIN_NOT_ALLOWED");
-    const row = await notion.read(a.householdId);
+    const row = await notion.read(a.householdId, { fresh: true });
     if (row.archived || !row.administratorEligible)
       throw error(403, "ADMIN_NOT_ELIGIBLE");
   }
@@ -515,11 +516,13 @@ export function createApplication({
       const pendingChallenge = (await ledger.read()).challenges[
         hash(safeText(body.challenge, 100))
       ];
-      // Each challenge allows 5 code attempts; only unknown challenges share a budget.
-      if (!pendingChallenge)
+      // Each challenge allows 5 code attempts; unknown challenges share a budget
+      // and are rejected from a read, never entering the ledger write queue.
+      if (!pendingChallenge) {
         await rateLimit(ledger, "mfa-unknown-challenge", 300, 900000, now());
-      if (pendingChallenge)
-        await checkAdministratorEligibility(
+        throw error(401, "SIGN_IN_AGAIN");
+      }
+      await checkAdministratorEligibility(
           pendingChallenge.accountId,
           pendingChallenge.email,
         );

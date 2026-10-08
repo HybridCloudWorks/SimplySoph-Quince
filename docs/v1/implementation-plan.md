@@ -38,6 +38,8 @@ Code items 2–8 are **done** on this branch (156/156 tests, 66/66 documents). I
 |---|---|---|---|
 | 10a | Fold the Notion sync lease and receipt-mail claim into the RSVP transaction (5 → 2 ledger writes per RSVP) | M | Arch |
 | 10b | `{link}` placeholder so group emails (and SMS once approved) carry each household's minted link | S | UX |
+| 10c | Ledger queue guard: per-attempt timeout on GCS load/save and reject when the per-instance queue is too deep (review L1) | S | Review |
+| 10d | Tie minted email links to their outbox draft and revoke them when a draft is archived or never sent (review L2) | S | Review |
 | 11 | Bulk send with one sample preview per language and a typed-count confirm, throttled to about 1/s, exempt from the per-admin hourly limit (needs family sign-off) | M | UX, Arch |
 | 12 | Dashboard polling (`/api/admin/status`, ETag = ledger generation); RSVPs in the Notifications inbox | S–M | Arch, UX |
 | 13 | Append-only `events[]` written with each state change and mirrored to logs; RSVP, delivery and role events | M | Arch |

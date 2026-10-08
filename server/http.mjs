@@ -11,12 +11,17 @@ const types = {
   ".txt": "text/plain; charset=utf-8",
   ".ics": "text/calendar; charset=utf-8",
 };
+// Application errors (auth.mjs error()) carry a numeric HTTP status and a
+// string code; anything else (GCS ApiError, ECONNRESET, bugs) is unexpected.
+const expected = (e) =>
+  !!e && Number.isInteger(e.status) && typeof e.code === "string";
 // Structured log entry for API traffic. Paths only: query strings, bodies,
 // cookies and invitation fragments are never logged.
 function apiLog(log, req, res, started, error) {
   const status = res.statusCode,
+    known = expected(error),
     entry = {
-      severity: status >= 500 ? (error?.code ? "WARNING" : "ERROR") : "INFO",
+      severity: status >= 500 ? (known ? "WARNING" : "ERROR") : "INFO",
       message: `${req.method} ${req.logPath} ${status}`,
       httpRequest: {
         requestMethod: req.method,
@@ -25,9 +30,9 @@ function apiLog(log, req, res, started, error) {
         latency: ((performance.now() - started) / 1000).toFixed(3) + "s",
       },
     };
-  if (error?.code) entry.code = error.code;
+  if (known) entry.code = error.code;
   // Unexpected failures carry a stack so Error Reporting can group them.
-  if (status >= 500 && !error?.code && error)
+  if (status >= 500 && error && !known)
     entry.stack_trace = String(error.stack || error).slice(0, 4000);
   log(entry);
 }
@@ -187,9 +192,12 @@ export function createHttpServer({ app = null, root, origin, log = null }) {
       res.end(req.method === "HEAD" ? undefined : await readFile(target));
     } catch (e) {
       failure = e;
-      res.statusCode = e.status || 503;
+      // Unexpected errors never leak provider or system codes to the client.
+      res.statusCode = expected(e) ? e.status : 503;
       res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ error: e.code || "SERVICE_UNAVAILABLE" }));
+      res.end(
+        JSON.stringify({ error: expected(e) ? e.code : "SERVICE_UNAVAILABLE" }),
+      );
     }
   });
 }

@@ -1,5 +1,13 @@
 import { randomUUID, createHmac } from "node:crypto";
-import { token, hash, error, cookie, rateLimit, pruneSessions } from "./auth.mjs";
+import {
+  token,
+  hash,
+  error,
+  cookie,
+  rateLimit,
+  withinLimit,
+  pruneSessions,
+} from "./auth.mjs";
 
 export const pagePermissions = ["gifts", "padrinos", "costs", "admin"];
 const normalizeEmail = (value) => {
@@ -125,13 +133,14 @@ export function createAccounts({
           900000,
           now(),
         );
+        // The shared budget bounds outgoing mail only. When spent, the send is
+        // skipped silently so the response never reveals which addresses exist.
         if (
           !Object.values(s.accounts || {}).some(
             (a) => a.emailKey === emailKey(address),
-          )
+          ) &&
+          (await withinLimit(ledger, "email-login-sends", 120, 3600000, now()))
         ) {
-          // The shared budget bounds outgoing mail only; unknown addresses cost nothing.
-          await rateLimit(ledger, "email-login-sends", 120, 3600000, now());
           await issue({
             address,
             householdId: session.householdId,
@@ -144,8 +153,10 @@ export function createAccounts({
         const account = Object.values(s.accounts || {}).find(
           (a) => a.emailKey === emailKey(address),
         );
-        if (accountActive(s, account)) {
-          await rateLimit(ledger, "email-login-sends", 120, 3600000, now());
+        if (
+          accountActive(s, account) &&
+          (await withinLimit(ledger, "email-login-sends", 120, 3600000, now()))
+        ) {
           const invite = s.invitations[account.householdId];
           await issue({
             address,

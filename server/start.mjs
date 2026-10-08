@@ -183,13 +183,15 @@ server.listen(port, host, () =>
     message: `Sophia ${app ? "service" : "preview"}: http://${host}:${server.address().port}/`,
   }),
 );
-process.on("unhandledRejection", (e) =>
+// Log, then exit so Cloud Run replaces the instance (Node's default crash).
+process.on("unhandledRejection", (e) => {
   log({
     severity: "ERROR",
     message: "Unhandled rejection",
     stack_trace: String(e?.stack || e).slice(0, 4000),
-  }),
-);
+  });
+  process.exit(1);
+});
 for (const signal of ["SIGTERM", "SIGINT"])
   process.on(signal, () => {
     server.close(() => process.exit(0));
