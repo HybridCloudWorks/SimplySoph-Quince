@@ -11,8 +11,34 @@ const types = {
   ".txt": "text/plain; charset=utf-8",
   ".ics": "text/calendar; charset=utf-8",
 };
-export function createHttpServer({ app = null, root, origin }) {
+// Structured log entry for API traffic. Paths only: query strings, bodies,
+// cookies and invitation fragments are never logged.
+function apiLog(log, req, res, started, error) {
+  const status = res.statusCode,
+    entry = {
+      severity: status >= 500 ? (error?.code ? "WARNING" : "ERROR") : "INFO",
+      message: `${req.method} ${req.logPath} ${status}`,
+      httpRequest: {
+        requestMethod: req.method,
+        requestUrl: req.logPath,
+        status,
+        latency: ((performance.now() - started) / 1000).toFixed(3) + "s",
+      },
+    };
+  if (error?.code) entry.code = error.code;
+  // Unexpected failures carry a stack so Error Reporting can group them.
+  if (status >= 500 && !error?.code && error)
+    entry.stack_trace = String(error.stack || error).slice(0, 4000);
+  log(entry);
+}
+export function createHttpServer({ app = null, root, origin, log = null }) {
   return http.createServer(async (req, res) => {
+    const started = performance.now();
+    let failure;
+    if (log)
+      res.on("finish", () => {
+        if (req.logPath) apiLog(log, req, res, started, failure);
+      });
     res.setHeader("Cache-Control", "private, no-store");
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Referrer-Policy", "no-referrer");
@@ -25,6 +51,7 @@ export function createHttpServer({ app = null, root, origin }) {
     try {
       const url = new URL(req.url, "http://localhost");
       if (url.pathname.startsWith("/api/")) {
+        req.logPath = url.pathname;
         if (!app)
           throw Object.assign(new Error(), {
             status: 503,
@@ -159,6 +186,7 @@ export function createHttpServer({ app = null, root, origin }) {
       );
       res.end(req.method === "HEAD" ? undefined : await readFile(target));
     } catch (e) {
+      failure = e;
       res.statusCode = e.status || 503;
       res.setHeader("Content-Type", "application/json");
       res.end(JSON.stringify({ error: e.code || "SERVICE_UNAVAILABLE" }));
