@@ -13,27 +13,31 @@ Dates assume today is **Oct 8, 2026**, the RSVP deadline is **Oct 31**, and the 
   - Resubmission values, plus tests that keep them in sync with the code.
 - `DEPLOYMENT.md` rewritten from the code. The full set of 27 variables is documented.
 - Stale Twilio and WhatsApp docs removed or corrected. `.env.example` completed, with the personal email removed.
-- 144/144 tests and 66/66 document checks pass (`npm run check`).
+- 144/144 tests and 66/66 document checks passed at the end of Phase 0.
 
 ## Phase 1, P0: before any invitation goes out (target Oct 9–15)
 
-| # | Item | Why | Effort | Source |
-|---|---|---|---|---|
-| 1 | **Owner:** deploy this release, then resubmit the campaign using `docs/sms-campaign-registration.md`. Configure Advanced Opt-Out with `SOPHIA` and the new replies | Vetting takes days; start the clock now | S | Twilio |
-| 2 | Structured JSON request logs; log every 5xx with a stack trace; Cloud Logging alert on 5xx; billing budget alert | Today failures are invisible | S | Arch |
-| 3 | Move rate limits to memory, keyed per credential/IP, verified before charging (fixes H1). Add an in-process mutex and jittered backoff to `Ledger.transaction`. Fold the sync lease and mail claim into the RSVP transaction (~7 → 2 writes) | Prevents `BUSY` storms and anonymous lockout during the invitation burst | M | Arch, Security |
-| 4 | Link sessions keep working after registration (RSVP-scoped); explain rejected links | Today registering breaks "Edit response" and WhatsApp links | S–M | UX |
-| 5 | Server-minted links for email invitations and reminders; quick-answer **Attending / Can't attend** | Removes copy-paste; ≤3-tap RSVP | M | UX |
-| 6 | Notion limiter (~2.5 req/s), 429/Retry-After backoff, 30–60 s roster cache | A send-out burst could fail guest pages with `NOTION_429` | S–M | Notion |
-| 7 | Per-household status column and filters; record `openedAt` | Organizers can't see who is pending | M | UX |
-| 8 | Copy fixes: garbled Spanish characters, English-only links, "Notion"/UUID shown to guests | Guest-facing quality | S | UX |
-| 9 | Run the **acceptance gate** in `DEPLOYMENT.md` end to end with the disposable household | Nothing is verified yet | M | All |
-| 10 | Publish a DMARC record (`p=none` first) for simplysoph.com | Delivery to Gmail/Yahoo | S | Deploy |
+Code items 2–8 are **done** on this branch (156/156 tests, 66/66 documents). Items 1, 9 and 10, and the alerting half of item 2, need the owner.
+
+| # | Item | Status |
+|---|---|---|
+| 1 | **Owner:** deploy this release, then resubmit the campaign using `docs/sms-campaign-registration.md`. Configure Advanced Opt-Out with `SOPHIA` and the new replies | Owner |
+| 2 | Structured JSON request logs; 5xx logged with stack traces | **Done** · Owner: create the log-based alert on `severity>=ERROR` for `misxv-api` and a billing budget alert |
+| 3 | Rate limits moved to memory. Shared budgets count only failures, so valid credentials are never locked out (H1). Ledger transactions on one instance run one at a time, with jittered backoff and GCS 429 retry | **Done**. Folding the sync lease and mail claim into the RSVP transaction (5 → 2 writes) is moved to P1 |
+| 4 | After registration the private link reopens an RSVP-only session (contact hidden and preserved); rejected links explain why | **Done** |
+| 5 | Server-minted private links in invitation and reminder emails, plus **We'll be there / We can't make it** quick answers (pre-filled, guest confirms) | **Done**. A `{link}` placeholder for group email/SMS is moved to P1 |
+| 6 | Notion pacing (2.5 req/s), 429/Retry-After retry, no retry of page creates on 5xx, 30 s roster cache, fresh reads at decision points | **Done** |
+| 7 | Per-household status (no link, revoked, created, emailed, opened, attending, declined), status filter with counts, dashboard funnel, `openedAt` | **Done** |
+| 8 | Copy fixes: corrupted Spanish characters, stale "original code" advice, English-only links, consistent informal Spanish, no Notion/UUID shown to guests | **Done** |
+| 9 | Run the **acceptance gate** in `DEPLOYMENT.md` end to end with the disposable household | Owner |
+| 10 | Publish a DMARC record (`p=none` first) for simplysoph.com | Owner |
 
 ## Phase 2, P1: before the RSVP deadline (target Oct 16–24)
 
 | # | Item | Effort | Source |
 |---|---|---|---|
+| 10a | Fold the Notion sync lease and receipt-mail claim into the RSVP transaction (5 → 2 ledger writes per RSVP) | M | Arch |
+| 10b | `{link}` placeholder so group emails (and SMS once approved) carry each household's minted link | S | UX |
 | 11 | Bulk send with one sample preview per language and a typed-count confirm, throttled to about 1/s, exempt from the per-admin hourly limit (needs family sign-off) | M | UX, Arch |
 | 12 | Dashboard polling (`/api/admin/status`, ETag = ledger generation); RSVPs in the Notifications inbox | S–M | Arch, UX |
 | 13 | Append-only `events[]` written with each state change and mirrored to logs; RSVP, delivery and role events | M | Arch |
