@@ -194,10 +194,8 @@ test("email registration requires saved RSVP and verification; codes cannot reop
     () => f.publicPost("auth/email/verify", { token: f.link }),
     (e) => e.code === "EMAIL_LINK_INVALID",
   );
-  await assert.rejects(
-    () => f.publicPost("invitation-session", { token: f.guestToken }),
-    (e) => e.code === "EMAIL_SIGN_IN_REQUIRED",
-  );
+  // The pre-registration session is invalidated; the private link now opens a
+  // fresh RSVP-only session instead (covered in detail below).
   await assert.rejects(
     () => f.guest("invitation"),
     (e) => e.code === "SIGN_IN_REQUIRED",
@@ -1304,4 +1302,52 @@ test("anonymous junk sign-ins and invitation codes cannot lock out valid credent
     await post("invitation-session", { token: "x".repeat(43) }).catch(() => {});
   assert.ok((await post("invitation-session", { token: f.guestToken })).setCookie);
   assert.equal((await f.ledger.read()).limits, undefined);
+});
+
+test("after registration the private link reopens the RSVP only, with contact hidden and preserved", async () => {
+  const f = await registeredFixture();
+  const opened = await f.publicPost("invitation-session", { token: f.guestToken });
+  const as = (path, body, extra = {}) =>
+    f.app.dispatch({
+      path: "/api/" + path,
+      method: body ? "POST" : "GET",
+      body,
+      headers: {
+        origin,
+        cookie: opened.setCookie.split(";")[0],
+        "x-csrf-token": opened.csrf,
+        ...extra,
+      },
+    });
+  const session = await as("session");
+  assert.equal(session.scope, "rsvp");
+  assert.equal(session.verified, false);
+  const inv = await as("invitation");
+  assert.equal(inv.contactHidden, true);
+  assert.deepEqual(inv.contact, { email: "", phone: "", address: null });
+  assert.equal(inv.response.contact.email, "");
+  // Every non-RSVP route treats the link session as signed out.
+  for (const path of ["profile", "account", "messages"])
+    await assert.rejects(() => as(path), (e) => e.code === "SIGN_IN_REQUIRED");
+  // Submitting with hidden contact keeps the registered contact and receipt address.
+  const before = (await f.ledger.read()).profiles[household].contact;
+  const input = f.input();
+  input.previousSubmissionId = inv.previousSubmissionId;
+  input.contact = { email: "attacker@example.com", phone: "", address: null };
+  await as("rsvp", input, { "idempotency-key": "11111111-1111-4111-8111-111111111111" });
+  const state = await f.ledger.read();
+  assert.deepEqual(state.profiles[household].contact, before);
+  assert.equal(
+    state.responses["11111111-1111-4111-8111-111111111111"].contact.email,
+    before.email,
+  );
+  assert.ok(!f.sent.some((m) => m.to === "attacker@example.com"));
+  // A typed invitation code still cannot reopen a registered household.
+  await f.ledger.transaction((s) => {
+    s.invitations[household].codeHash = hash("ABCDEFGHJKLMNPQR");
+  });
+  await assert.rejects(
+    () => f.publicPost("invitation-session", { token: "ABCD-EFGH-JKLM-NPQR" }),
+    (e) => e.code === "EMAIL_SIGN_IN_REQUIRED",
+  );
 });

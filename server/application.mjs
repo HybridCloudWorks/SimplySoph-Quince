@@ -152,9 +152,20 @@ export function createApplication({
         s.invitations[row.householdId].generation === row.generation &&
         (row.accountId
           ? accountActive(s, s.accounts?.[row.accountId])
-          : !Object.values(s.accounts || {}).some(
+          : row.scope === "rsvp" ||
+            !Object.values(s.accounts || {}).some(
               (a) => a.householdId === row.householdId,
             )));
+  // After a household registers, its private link still opens the RSVP, but
+  // only the RSVP: contact details stay hidden and every other route treats the
+  // session as signed out. Account pages need the verified email sign-in.
+  const rsvpScopeRoutes = new Set([
+    "GET /api/session",
+    "GET /api/invitation",
+    "POST /api/rsvp",
+    "POST /api/logout",
+  ]);
+  const hiddenContact = () => ({ email: "", phone: "", address: null });
   async function context(req) {
     const raw = (req.headers?.cookie || "")
       .split(";")
@@ -536,6 +547,8 @@ export function createApplication({
         throw error(401, "INVALID_INVITATION");
       }
       await rateLimit(ledger, hash("invite:" + row.id), 20, 900000, now());
+      // Typed codes (80-bit) stay closed after registration; 256-bit links reopen RSVP only.
+      const viaCode = row.codeHash === fingerprint;
       const current = await notion.read(row.id, { fresh: true });
       if (current.archived || !current.validCapacity)
         throw error(401, "INVALID_INVITATION");
@@ -553,8 +566,8 @@ export function createApplication({
             ))
         )
           throw error(401, "INVALID_INVITATION");
-        if (accounts.accountFor(s, row.id))
-          throw error(409, "EMAIL_SIGN_IN_REQUIRED");
+        const registered = !!accounts.accountFor(s, row.id);
+        if (registered && viaCode) throw error(409, "EMAIL_SIGN_IN_REQUIRED");
         s.profiles ??= {};
         s.profiles[row.id] ??= {
           id: row.id,
@@ -573,14 +586,20 @@ export function createApplication({
           kind: "guest",
           householdId: r.id,
           generation: r.generation,
+          ...(registered ? { scope: "rsvp" } : {}),
           csrf,
           expiresAt: now() + 1800000,
         };
       });
       return { csrf, setCookie: cookie(value) };
     }
-    const ctx = await context(req),
-      { session } = ctx;
+    const ctx = await context(req);
+    if (
+      ctx.session?.scope === "rsvp" &&
+      !rsvpScopeRoutes.has(method + " " + path)
+    )
+      ctx.session = null;
+    const { session } = ctx;
     if (session && method !== "GET")
       await rateLimit(
         ledger,
@@ -594,6 +613,7 @@ export function createApplication({
         kind: session?.kind ?? null,
         csrf: session?.csrf ?? null,
         verified: !!session?.accountId,
+        scope: session?.scope ?? null,
         permissions: allowedPages(ctx.state, session),
         owner: session?.kind === "admin" && ownerSession(session),
       };
@@ -708,13 +728,19 @@ export function createApplication({
         deadline,
         previousSubmissionId: row.latestSubmissionId,
         response: row.latestSubmissionId
-          ? s.responses[row.latestSubmissionId]
+          ? session.scope === "rsvp"
+            ? { ...s.responses[row.latestSubmissionId], contact: hiddenContact() }
+            : s.responses[row.latestSubmissionId]
           : null,
-        contact: s.profiles?.[row.id]?.contact || {
-          email: row.email,
-          phone: row.phone,
-          address: null,
-        },
+        contact:
+          session.scope === "rsvp"
+            ? hiddenContact()
+            : s.profiles?.[row.id]?.contact || {
+                email: row.email,
+                phone: row.phone,
+                address: null,
+              },
+        contactHidden: session.scope === "rsvp",
         syncState: row.syncState,
       };
     }
@@ -825,6 +851,14 @@ export function createApplication({
           },
           now(),
         );
+        // A link-only session cannot see or change the registered household's
+        // contact details, so the saved contact (and receipt address) is kept.
+        if (session.scope === "rsvp")
+          data.contact = structuredClone(
+            s.profiles?.[row.id]?.contact ??
+              s.responses[current.latestSubmissionId]?.contact ??
+              hiddenContact(),
+          );
         const response = {
           ...data,
           id,

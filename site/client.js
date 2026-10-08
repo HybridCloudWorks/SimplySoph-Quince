@@ -219,9 +219,15 @@ export function notify(text) {
 export function field(
   label,
   name,
-  { type = "text", value = "", required = false, max = 254 } = {},
+  {
+    type = "text",
+    value = "",
+    required = false,
+    max = 254,
+    autocomplete = "",
+  } = {},
 ) {
-  return `<label>${esc(label)}<input name="${esc(name)}" type="${type}" value="${esc(value)}" ${required ? "required" : ""} maxlength="${max}"></label>`;
+  return `<label>${esc(label)}<input name="${esc(name)}" type="${type}" value="${esc(value)}" ${required ? "required" : ""} maxlength="${max}"${autocomplete ? ` autocomplete="${esc(autocomplete)}"` : ""}></label>`;
 }
 export async function submit(form, fn) {
   form.addEventListener("submit", async (e) => {
