@@ -45,6 +45,86 @@ body > main {
   max-width: 760px;
   margin: 35px auto;
 }
+.nowrap {
+  white-space: nowrap;
+}
+/* SMS program pages (/sms/, /sms-terms/). Markup text must stay word-for-word
+   with the registered campaign, so readability is handled here, not in copy. */
+.sms-page h2 {
+  font-size: clamp(2rem, 6vw, 3.2rem);
+  overflow-wrap: break-word;
+}
+.sms-page h3 {
+  margin-top: 2rem;
+}
+.sms-cta {
+  background: #fffcf5;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--gold);
+  padding: 18px 20px;
+  margin: 0 0 1.5rem;
+}
+.sms-cta strong {
+  color: var(--wine);
+  letter-spacing: 0.06em;
+}
+.sms-cta a {
+  color: var(--wine);
+  font-weight: 700;
+}
+.sms-page ol {
+  padding-left: 1.4em;
+  margin: 0 0 2rem;
+}
+.sms-page li + li {
+  margin-top: 0.9rem;
+}
+.sms-page li::marker {
+  color: var(--wine);
+  font-weight: 700;
+}
+/* Auto-replies render as phone-style message bubbles under small labels. */
+.sms-replies {
+  margin: 2rem 0;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--line);
+}
+.sms-replies dt {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--wine);
+  margin: 0 0 8px;
+}
+.sms-replies dd {
+  margin: 0 0 22px;
+  max-width: 34rem;
+  background: #efe3ce;
+  border-radius: 16px 16px 16px 4px;
+  padding: 12px 16px;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.sms-replies dd:last-child {
+  margin-bottom: 0;
+}
+.sms-replies q {
+  quotes: none;
+}
+@media (max-width: 760px) {
+  .sms-cta {
+    padding: 16px;
+  }
+  .sms-page ol {
+    padding-left: 1.2em;
+  }
+}
+/* Footer labels (e.g. "SMS Updates") wrap between links, never inside one. */
+footer a {
+  white-space: nowrap;
+}
 .ornament {
   display: block;
   text-align: center;
