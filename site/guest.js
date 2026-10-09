@@ -1,10 +1,11 @@
 import { whatsappPreferences } from "./guest-whatsapp.js";
 import { mediaUpload } from "./media-upload.js";
-import { experienceReady, eventContent } from "./experience.js";
+import { experienceReady, eventContent, liveContent } from "./experience.js";
 import {
   registryCards,
   contactTopics,
   contactTopicsEs,
+  calendarLink,
 } from "./celebration.mjs";
 import { api, esc, es, tr, route, field, submit, notify } from "./client.js";
 const portal = document.querySelector("#portal");
@@ -178,6 +179,49 @@ function summary(response) {
     )
     .join("")}</ul>`;
 }
+// The page after saving adapts to the answer: attending households get only
+// the calendars and directions they need; declining households get a warm note.
+const calendarKind = { ceremony: "ceremony", dinner: "dinner", dance: "reception" };
+function confirmation(inv, session) {
+  const r = inv.response,
+    attending = Object.entries(r.attendance).filter(
+      ([e, v]) => inv.invited[e] && v.adultsTeens + v.kids > 0,
+    ),
+    open = Date.now() <= Date.parse(inv.deadline),
+    until = new Date(inv.deadline).toLocaleDateString(es ? "es-US" : "en-US", {
+      month: "long",
+      day: "numeric",
+    });
+  const saved = `<p>${tr("Saved", "Guardada")}: ${esc(new Date(r.submittedAt).toLocaleString(es ? "es-US" : "en-US", { dateStyle: "medium", timeStyle: "short" }))}</p>`;
+  const edit = open
+    ? `<p>${tr(`You can change your answer until ${until}.`, `Puedes cambiar tu respuesta hasta el ${until}.`)}</p><p><a class="button" href="${route("rsvp")}">${tr("Edit response", "Editar respuesta")}</a></p>`
+    : `<p>${tr("The RSVP deadline has passed. To change your answer, please contact the family.", "La fecha límite ya pasó. Para cambiar tu respuesta, contacta a la familia.")}</p><p><a href="${route("contact")}">${tr("Contact the family", "Contacta a la familia")}</a></p>`;
+  const sync = `<p class="hint">${inv.syncState === "synced" ? tr("The family’s guest list has been updated.", "La lista de invitados de la familia se actualizó.") : tr("Your response is safely saved. The family’s guest list will update shortly.", "Tu respuesta está guardada. La lista de invitados de la familia se actualizará en breve.")}</p>`;
+  // WhatsApp needs the household's own session; a link-only session after
+  // registration signs in from My Account instead.
+  const whatsapp =
+    session.scope === "rsvp"
+      ? ""
+      : `<details class="card"><summary>${tr("Optional: get event updates on WhatsApp", "Opcional: recibe novedades del evento por WhatsApp")}</summary><section id="whatsapp-preferences"></section></details>`;
+  const account = `<p><a class="button burgundy" href="${route("account")}">${session.verified ? tr("Open my guest account", "Abrir mi cuenta") : session.scope === "rsvp" ? tr("Sign in to my guest account", "Iniciar sesión en mi cuenta") : tr("Register my email for future visits", "Registrar mi correo para próximas visitas")}</a></p>`;
+  if (!attending.length)
+    return `<div class="notice success"><h2>${tr("Thank you for letting us know.", "Gracias por avisarnos.")}</h2><p>${tr(`We’ll miss you, ${esc(inv.name)}. You’re always in our hearts.`, `Te extrañaremos, ${esc(inv.name)}. Siempre estarás en nuestro corazón.`)}</p>${saved}</div><p>${tr("Would you like to leave Sophia a note?", "¿Quieres dejarle un mensaje a Sophia?")}</p><p><a class="button burgundy" href="${route("guestbook")}">${tr("Write in the guestbook", "Escribir en el libro de visitas")}</a></p>${edit}${sync}${account}`;
+  const calendars = attending
+    .map(
+      ([e]) =>
+        `<div><strong>${eventNames[e]}</strong>${calendarLink(calendarKind[e], eventContent, es ? "es" : "en", liveContent)}</div>`,
+    )
+    .join("");
+  const places = [
+    attending.some(([e]) => e === "ceremony") &&
+      `<a href="${route("ceremony")}">${tr("Ceremony location & parking", "Ubicación y estacionamiento de la ceremonia")}</a>`,
+    attending.some(([e]) => e !== "ceremony") &&
+      `<a href="${route("reception")}">${tr("Dinner & reception location", "Ubicación de la cena y recepción")}</a>`,
+  ]
+    .filter(Boolean)
+    .join("");
+  return `<div class="notice success"><h2>${tr("We can’t wait to celebrate with you!", "¡Te esperamos con mucha ilusión!")}</h2><p>${tr("Thank you", "Gracias")}, ${esc(inv.name)}.</p>${saved}</div>${summary(r)}<h3>${tr("Add to your calendar", "Agrega a tu calendario")}</h3><div class="calendar-actions">${calendars}</div><h3>${tr("Getting there", "Cómo llegar")}</h3><div class="row-actions">${places}</div>${edit}${sync}${whatsapp}${account}`;
+}
 async function showPortal() {
   if (!portal) return;
   const session = await api("session");
@@ -249,11 +293,9 @@ async function showPortal() {
       portal.innerHTML = `<p>${tr("No saved RSVP was found for this invitation.", "No encontramos una respuesta guardada para esta invitación.")}</p><a href="${route("rsvp")}">RSVP</a>`;
       return;
     }
-    portal.innerHTML = `<div class="notice success"><h2>${tr("Your response is saved.", "Tu respuesta está guardada.")}</h2><p>${tr("Thank you", "Gracias")}, ${esc(inv.name)}.</p><p>${tr("Saved", "Guardada")}: ${esc(new Date(inv.response.submittedAt).toLocaleString(es ? "es-US" : "en-US", { dateStyle: "medium", timeStyle: "short" }))}</p></div>${summary(inv.response)}<p>${inv.syncState === "synced" ? tr("The family’s guest list has been updated.", "La lista de invitados de la familia se actualizó.") : tr("Your response is safely saved. The family’s guest list will update shortly.", "Tu respuesta está guardada. La lista de invitados de la familia se actualizará en breve.")}</p><div class="row-actions"><a class="button burgundy" href="${route("rsvp")}">${tr("Edit response", "Editar respuesta")}</a><a href="${route("details")}">${tr("Calendar & event details", "Calendario y detalles")}</a></div>`;
-    portal.insertAdjacentHTML(
-      "beforeend",
-      `<p><a class="button burgundy" href="${route("account")}">${session.verified ? tr("Open my guest account", "Abrir mi cuenta") : session.scope === "rsvp" ? tr("Sign in to my guest account", "Iniciar sesión en mi cuenta") : tr("Register my email for future visits", "Registrar mi correo para próximas visitas")}</a></p>`,
-    );
+    portal.innerHTML = confirmation(inv, session);
+    const updates = portal.querySelector("#whatsapp-preferences");
+    if (updates) whatsappPreferences(updates, inv.contact.phone || "");
     return;
   }
   if (view === "share") {

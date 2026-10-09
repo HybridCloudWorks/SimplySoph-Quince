@@ -41,11 +41,11 @@ Code items 2–8 are **done** on this branch (156/156 tests, 66/66 documents). I
 | 10c | Ledger queue guard: per-attempt timeout on GCS load/save and reject when the per-instance queue is too deep (review L1) | S | Review |
 | 10d | **Done:** minted email links open only after their email was sent (review L2) | S | Review |
 | 11 | **Done:** batch invitations and reminders. Preview recipients, skips and one sample per language, then a typed-count confirm; the open tab sends groups of 10 at about 28/min; Stop and Continue; bulk link creation for households without links. Owner rule: every send has a person in the loop, and single sends stay available | M | UX, Arch |
-| 12 | Dashboard polling (`/api/admin/status`, ETag = ledger generation); RSVPs in the Notifications inbox | S–M | Arch, UX |
+| 12 | **Done:** open admin tabs check `/api/admin/pulse` every 30 s while visible (one ledger read, no Notion). The dashboard and inbox redraw (never over a field being typed in), the guest list shows a refresh banner so selections survive, and the Notifications link shows an unread count. RSVPs land in the inbox in the same save, **in-app only, never emailed** | S–M | Arch, UX |
 | 13 | Append-only `events[]` written with each state change and mirrored to logs; RSVP, delivery and role events | M | Arch |
 | 14 | Cloud Scheduler (OIDC) drains pending Notion and consent projections every 10 min | S | Notion |
 | 15 | Permission sets plus `requirePermission`; owner-only role endpoint with fresh TOTP; MFA enrollment links, owner notification and reset (M1–M3) | M | Security |
-| 16 | WhatsApp/SMS opt-in on the RSVP confirmation page; confirmation page changes with the answer; calendar for the events they're attending only | S–M | UX |
+| 16 | **Done:** the confirmation page adapts to the answer. Attending households get calendar links for only the events they attend, directions and an optional WhatsApp sign-up. Declining households get a warm note and the guestbook. Both show the edit deadline (read-only after it). The SMS keyword call to action is deliberately **not** repeated here: the registered campaign names `/sms/` as the only place it appears | S–M | UX |
 | 17 | Invited-event checkboxes and `Website invitation` status in Notion | M | Notion |
 | 18 | **Owner:** WhatsApp templates approved (fix `reminder_es`); eligible non-US test | S | Twilio |
 | 19 | SMS activation **only after** the campaign is approved: Twilio acceptance steps 1–6 | S | Twilio |

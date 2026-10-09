@@ -979,6 +979,26 @@ export function createApplication({
             locale: current.locale || "en",
           });
         audit(s, row.id, "rsvp", id, now());
+        // In-app only: RSVPs reach the family's inbox inside the same save,
+        // with no email (the owner requires a person in the loop for sending).
+        const people = Object.values(data.attendance).reduce(
+          (n, v) => n + v.adultsTeens + v.kids,
+          0,
+        );
+        const note = randomUUID();
+        s.notifications ??= {};
+        s.notifications[note] = {
+          id: note,
+          kind: "rsvp",
+          householdId: row.id,
+          title: `${row.name} ${response.previousSubmissionId ? "updated their RSVP" : "responded"}`,
+          text: people
+            ? `Attending: ${people} ${people === 1 ? "person" : "people"}`
+            : "Not attending",
+          at: now(),
+          read: false,
+          emailState: "none",
+        };
         return claim(s, response);
       });
       // Provider calls run outside the ledger transaction; a crash here leaves
@@ -1188,6 +1208,27 @@ export function createApplication({
           audit(s, session.actor, "site-settings", "event", now());
           return { site };
         });
+      }
+      // Cheap change check for open admin tabs (ledger read only, no Notion call).
+      if (path === "/api/admin/pulse" && method === "GET") {
+        const s = ctx.state,
+          notes = Object.values(s.notifications || {}).filter((n) => !n.archived),
+          unread = notes.filter((n) => !n.read).length,
+          last = s.audit.at(-1);
+        return {
+          unread,
+          token: hash(
+            JSON.stringify([
+              s.audit.length,
+              last?.at,
+              last?.action,
+              last?.id,
+              notes.length,
+              unread,
+              Object.values(s.invitations).filter((r) => r.syncState === "pending").length,
+            ]),
+          ).slice(0, 16),
+        };
       }
       if (path === "/api/admin/notifications" && method === "GET")
         return {
