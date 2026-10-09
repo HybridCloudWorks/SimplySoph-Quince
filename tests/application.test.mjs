@@ -194,10 +194,8 @@ test("email registration requires saved RSVP and verification; codes cannot reop
     () => f.publicPost("auth/email/verify", { token: f.link }),
     (e) => e.code === "EMAIL_LINK_INVALID",
   );
-  await assert.rejects(
-    () => f.publicPost("invitation-session", { token: f.guestToken }),
-    (e) => e.code === "EMAIL_SIGN_IN_REQUIRED",
-  );
+  // The pre-registration session is invalidated; the private link now opens a
+  // fresh RSVP-only session instead (covered in detail below).
   await assert.rejects(
     () => f.guest("invitation"),
     (e) => e.code === "SIGN_IN_REQUIRED",
@@ -968,7 +966,17 @@ test("distribution groups deduplicate recipients, drafts are idempotent, and sta
   );
 });
 
-test("SMS draft eligibility requires explicit consent and a date and respects opt out", async () => {
+// Seeds the ledger as if the guest texted the program keyword and it synced.
+async function keywordOptIn(f, phone) {
+  await f.ledger.transaction((s) => {
+    s.smsPreferences = {
+      [hash(phone)]: { phone, type: "START", at: 1, syncState: "synced" },
+    };
+    s.smsConsentPhones = { [household]: phone };
+  });
+}
+
+test("SMS draft eligibility requires a verified keyword opt-in, not a Notion checkbox", async () => {
   const f = await fixture();
   f.row.phone = "+18175550100";
   f.row.distributionGroups = ["Family"];
@@ -977,15 +985,30 @@ test("SMS draft eligibility requires explicit consent and a date and respects op
     groups: ["Family"],
     ids: [],
     subject: "Reminder",
-    text: "See you soon",
+    text: "Simply Soph Media: See you soon. Reply STOP to opt out.",
     channel: "sms",
   };
   await assert.rejects(
     () => f.admin("mail/batch-draft", p),
     (e) => e.code === "NO_ELIGIBLE_RECIPIENTS",
   );
+  // Organizer-entered consent alone is a hidden opt-in path the campaign forbids.
   f.row.smsConsent = true;
   f.row.smsConsentAt = "2026-09-28";
+  await assert.rejects(
+    () => f.admin("mail/batch-draft", p),
+    (e) => e.code === "NO_ELIGIBLE_RECIPIENTS",
+  );
+  await keywordOptIn(f, f.row.phone);
+  await assert.rejects(
+    () =>
+      f.admin("mail/batch-draft", {
+        ...p,
+        requestId: "sms-draft-003",
+        text: "See you soon",
+      }),
+    (e) => e.code === "SMS_BRAND_OR_STOP_MISSING",
+  );
   assert.equal((await f.admin("mail/batch-draft", p)).count, 1);
   assert.equal(f.sends(), 0);
   f.row.smsOptOut = true;
@@ -1000,12 +1023,13 @@ test("SMS admin review requires authentication and sending stays disabled", asyn
   f.row.phone = "+18175550100";
   f.row.smsConsent = true;
   f.row.smsConsentAt = "2026-09-28";
+  await keywordOptIn(f, f.row.phone);
   const draft = await f.admin("mail/batch-draft", {
     requestId: "sms-review-001",
     ids: [household],
     groups: [],
     subject: "RSVP",
-    text: "SimplySoph: RSVP at https://example.com",
+    text: "Simply Soph Media: RSVP at https://example.com Reply STOP to opt out.",
     channel: "sms",
   });
   const preview = await f.admin("sms/preview", undefined, { id: draft.ids[0] });
@@ -1257,4 +1281,149 @@ test("invited delegate signs in by email plus MFA without owner authority", asyn
     () => delegated("seating"),
     (e) => e.code === "ADMIN_NOT_ELIGIBLE",
   );
+});
+
+test("anonymous junk sign-ins and invitation codes cannot lock out valid credentials", async () => {
+  const f = await fixture({
+    verifyGoogle: async (credential) => {
+      if (credential !== "valid") throw Object.assign(new Error(), { status: 401, code: "SIGN_IN_FAILED" });
+      return { id: "organizer", email: "organizer@gmail.com" };
+    },
+  });
+  const post = (path, body) =>
+    f.app.dispatch({ path: "/api/" + path, method: "POST", headers: { origin }, body, ip: "attacker" });
+  const codes = [];
+  for (let i = 0; i < 70; i++)
+    await post("auth/google", { credential: "junk" }).catch((e) => codes.push(e.code));
+  assert.equal(codes.filter((c) => c === "SIGN_IN_FAILED").length, 60);
+  assert.equal(codes.filter((c) => c === "TOO_MANY_REQUESTS").length, 10);
+  assert.ok((await post("auth/google", { credential: "valid" })).challenge);
+  for (let i = 0; i < 610; i++)
+    await post("invitation-session", { token: "x".repeat(43) }).catch(() => {});
+  assert.ok((await post("invitation-session", { token: f.guestToken })).setCookie);
+  assert.equal((await f.ledger.read()).limits, undefined);
+});
+
+test("after registration the private link reopens the RSVP only, with contact hidden and preserved", async () => {
+  const f = await registeredFixture();
+  const opened = await f.publicPost("invitation-session", { token: f.guestToken });
+  const as = (path, body, extra = {}) =>
+    f.app.dispatch({
+      path: "/api/" + path,
+      method: body ? "POST" : "GET",
+      body,
+      headers: {
+        origin,
+        cookie: opened.setCookie.split(";")[0],
+        "x-csrf-token": opened.csrf,
+        ...extra,
+      },
+    });
+  const session = await as("session");
+  assert.equal(session.scope, "rsvp");
+  assert.equal(session.verified, false);
+  const inv = await as("invitation");
+  assert.equal(inv.contactHidden, true);
+  assert.deepEqual(inv.contact, { email: "", phone: "", address: null });
+  assert.equal(inv.response.contact.email, "");
+  // Every non-RSVP route treats the link session as signed out.
+  for (const path of ["profile", "account", "messages"])
+    await assert.rejects(() => as(path), (e) => e.code === "SIGN_IN_REQUIRED");
+  // Submitting with hidden contact keeps the registered contact and receipt address.
+  const before = (await f.ledger.read()).profiles[household].contact;
+  const input = f.input();
+  input.previousSubmissionId = inv.previousSubmissionId;
+  input.contact = { email: "attacker@example.com", phone: "", address: null };
+  await as("rsvp", input, { "idempotency-key": "11111111-1111-4111-8111-111111111111" });
+  const state = await f.ledger.read();
+  assert.deepEqual(state.profiles[household].contact, before);
+  assert.equal(
+    state.responses["11111111-1111-4111-8111-111111111111"].contact.email,
+    before.email,
+  );
+  assert.ok(!f.sent.some((m) => m.to === "attacker@example.com"));
+  // A typed invitation code still cannot reopen a registered household.
+  await f.ledger.transaction((s) => {
+    s.invitations[household].codeHash = hash("ABCDEFGHJKLMNPQR");
+  });
+  await assert.rejects(
+    () => f.publicPost("invitation-session", { token: "ABCD-EFGH-JKLM-NPQR" }),
+    (e) => e.code === "EMAIL_SIGN_IN_REQUIRED",
+  );
+});
+
+test("household status moves from issued to opened to attending or declined", async () => {
+  const f = await fixture();
+  const status = async () => (await f.admin("guests")).guests[0].status;
+  // The fixture opens the invitation during setup; start from a fresh link.
+  await f.ledger.transaction((s) => {
+    s.invitations[household].openedAt = null;
+  });
+  assert.equal(await status(), "issued");
+  await f.app.dispatch({
+    path: "/api/invitation-session",
+    method: "POST",
+    headers: { origin },
+    body: { token: f.guestToken },
+  });
+  assert.equal(await status(), "opened");
+  assert.ok((await f.admin("guests")).guests[0].openedAt);
+  await f.guest("rsvp", f.input(), { "idempotency-key": "22222222-2222-4222-8222-222222222222" });
+  assert.equal(await status(), "attending");
+  const none = f.input();
+  for (const e of Object.keys(none.attendance)) none.attendance[e] = { adultsTeens: 0, kids: 0 };
+  none.previousSubmissionId = "22222222-2222-4222-8222-222222222222";
+  await f.guest("rsvp", none, { "idempotency-key": "33333333-3333-4333-8333-333333333333" });
+  assert.equal(await status(), "declined");
+  const dash = await f.admin("dashboard");
+  assert.equal(dash.statuses.declined, 1);
+  assert.equal(dash.statuses.attending, 0);
+  await f.admin("revoke", { id: household });
+  assert.equal(await status(), "revoked");
+});
+
+test("invitation emails carry a server-minted private link with quick answers; reissue revokes it", async () => {
+  const f = await fixture();
+  const { id } = await f.admin("mail/draft", { id: household, type: "invitation" });
+  const preview = await f.admin("mail/preview", undefined, { id });
+  const minted = preview.html.match(/\/rsvp\/#([A-Za-z0-9_-]{43})"/)[1];
+  assert.ok(preview.html.includes(`#${minted}.yes`));
+  assert.ok(preview.html.includes(`#${minted}.no`));
+  const open = () =>
+    f.app.dispatch({
+      path: "/api/invitation-session",
+      method: "POST",
+      headers: { origin },
+      body: { token: minted },
+    });
+  assert.ok((await open()).setCookie);
+  await f.admin("invitation", {
+    id: household,
+    invited: { ceremony: true, dinner: true, dance: false },
+  });
+  await assert.rejects(open, (e) => e.code === "INVALID_INVITATION");
+});
+
+test("unknown admin emails, link tokens and MFA challenges never queue a ledger write", async () => {
+  const f = await fixture();
+  const original = f.ledger.transaction.bind(f.ledger);
+  let writes = 0;
+  f.ledger.transaction = (fn) => (writes++, original(fn));
+  const post = (path, body) =>
+    f.app.dispatch({ path: "/api/" + path, method: "POST", headers: { origin }, body });
+  for (let i = 0; i < 5; i++) {
+    assert.deepEqual(
+      await post("auth/admin-email/request", { email: `nobody${i}@example.com` }),
+      { requested: true },
+    );
+    await assert.rejects(
+      () => post("auth/admin-email/verify", { token: String(i).repeat(43) }),
+      (e) => e.status === 401,
+    );
+    await assert.rejects(
+      () => post("auth/mfa", { challenge: "unknown-" + i, code: "000000" }),
+      (e) => e.code === "SIGN_IN_AGAIN",
+    );
+  }
+  assert.equal(writes, 0);
 });

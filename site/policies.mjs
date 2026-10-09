@@ -3,7 +3,7 @@ export const policies = {
     en: [
       "This website is intended exclusively for invited guests and participants of a private family event.",
       "Information submitted through this website, including RSVP responses, contact requests, and uploaded content, is used solely for event planning, communication, and website administration purposes.",
-      "Personal information will not be sold, rented, or knowingly disclosed to unrelated third parties except when required by law or to support the operation of this website through authorized service providers.",
+      "Personal information will not be sold, rented, or knowingly disclosed to unrelated third parties except when required by law or to support the operation of this website through authorized service providers. No mobile information or text messaging opt-in data and consent will be shared with third parties or affiliates for marketing or promotional purposes.",
       "Users are responsible for providing accurate information and should avoid submitting sensitive personal information that is not necessary for event participation.",
       "Website administrators reserve the right to monitor, moderate, or remove content that is inappropriate, unlawful, or inconsistent with the purpose of this private event website.",
       "By using this website, visitors acknowledge and consent to the collection and use of information as described in this notice.",
@@ -11,7 +11,7 @@ export const policies = {
     es: [
       "Este sitio web está destinado exclusivamente a invitados y participantes de un evento familiar privado.",
       "La información enviada, incluidas las confirmaciones de asistencia, solicitudes de contacto y archivos, se utiliza únicamente para la planificación del evento, la comunicación y la administración del sitio.",
-      "La información personal no se venderá, alquilará ni divulgará deliberadamente a terceros ajenos, excepto cuando lo exija la ley o para facilitar el funcionamiento del sitio mediante proveedores de servicios autorizados.",
+      "La información personal no se venderá, alquilará ni divulgará deliberadamente a terceros ajenos, excepto cuando lo exija la ley o para facilitar el funcionamiento del sitio mediante proveedores de servicios autorizados. No compartiremos información móvil ni datos de suscripción y consentimiento de mensajes con terceros ni afiliados para fines de mercadeo o promoción.",
       "Los usuarios son responsables de proporcionar información correcta y deben evitar enviar información personal sensible que no sea necesaria para participar en el evento.",
       "Los administradores se reservan el derecho de supervisar, moderar o eliminar contenido inapropiado, ilícito o incompatible con la finalidad de este sitio privado.",
       "Al utilizar este sitio, los visitantes reconocen y consienten la recopilación y el uso de información descritos en este aviso.",

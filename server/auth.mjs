@@ -112,17 +112,57 @@ export function googleVerifier(clientId, allowEmails) {
     return { id: p.sub, email: p.email.toLowerCase() };
   };
 }
+// Rate-limit counters live in process memory, keyed per ledger instance, not in
+// the ledger: one counter write per request multiplied contention on the single
+// ledger object. Limits therefore apply per Cloud Run instance (max 2).
+const counters = new WeakMap(),
+  maxCounters = 20000;
 export async function rateLimit(ledger, key, max, windowMs, now) {
-  return ledger.transaction((s) => {
-    for (const [id, session] of Object.entries(s.sessions))
-      if (session.expiresAt <= now) delete s.sessions[id];
-    for (const [k, v] of Object.entries(s.limits))
-      if (v.until <= now) delete s.limits[k];
-    const row = s.limits[key] ?? { count: 0, until: now + windowMs };
-    if (row.count >= max) throw error(429, "TOO_MANY_REQUESTS");
-    row.count++;
-    s.limits[key] = row;
-  });
+  let map = counters.get(ledger);
+  if (!map) counters.set(ledger, (map = { rows: new Map(), prunedAt: 0 }));
+  // Prune expired rows at most once a minute, and bound memory by evicting the
+  // oldest counters (Map keeps insertion order) when unique keys flood in.
+  if (now - map.prunedAt > 60000) {
+    map.prunedAt = now;
+    for (const [k, v] of map.rows) if (v.until <= now) map.rows.delete(k);
+  }
+  while (map.rows.size >= maxCounters)
+    map.rows.delete(map.rows.keys().next().value);
+  map = map.rows;
+  let row = map.get(key);
+  if (!row || row.until <= now)
+    map.set(key, (row = { count: 0, until: now + windowMs }));
+  if (row.count >= max) throw error(429, "TOO_MANY_REQUESTS");
+  row.count++;
+}
+// Like rateLimit, but reports exhaustion instead of throwing, for budgets whose
+// exhaustion must stay invisible to the caller (e.g. outgoing sign-in mail).
+export async function withinLimit(ledger, key, max, windowMs, now) {
+  try {
+    await rateLimit(ledger, key, max, windowMs, now);
+    return true;
+  } catch (e) {
+    if (e.status === 429) return false;
+    throw e;
+  }
+}
+// Shared budgets count only rejected credentials, so anonymous junk can never
+// lock out a caller presenting a valid one (it only turns further failures into 429).
+export async function chargeFailures(ledger, key, max, windowMs, now, attempt) {
+  try {
+    return await attempt();
+  } catch (e) {
+    if (e.status === 401 || e.status === 403)
+      await rateLimit(ledger, key, max, windowMs, now);
+    throw e;
+  }
+}
+// Expired sessions were previously pruned as a side effect of every rate-limit
+// write; prune inside the transactions that create sessions instead.
+export function pruneSessions(s, now) {
+  for (const [id, session] of Object.entries(s.sessions))
+    if (session.expiresAt <= now) delete s.sessions[id];
+  delete s.limits;
 }
 export function newMfaSecret() {
   return base32(randomBytes(20));

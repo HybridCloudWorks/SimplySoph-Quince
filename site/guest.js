@@ -15,8 +15,8 @@ const eventNames = {
 };
 const statusError = (message) =>
   `<p class="notice" role="alert">${esc(message)}</p><a href="${route("contact")}">${tr("Contact the family", "Contacta a la familia")}</a>`;
-function accessForm(value = "") {
-  portal.innerHTML = `<h2>${tr("Open your invitation", "Abre tu invitación")}</h2><p>${tr("Use your household’s private invitation link or paste the invitation code below.", "Usa el enlace privado de tu familia o pega el código de invitación.")}</p><form id="access">${field(tr("Invitation code", "Código de invitación"), "token", { value, required: true, max: 1000 })}<p class="error" role="alert"></p><button type="submit" class="button burgundy">${tr("Continue", "Continuar")}</button></form>`;
+function accessForm(value = "", reason = "") {
+  portal.innerHTML = `${reason ? `<p class="notice" role="alert">${esc(reason)}</p>` : ""}<h2>${tr("Open your invitation", "Abre tu invitación")}</h2><p>${tr("Use your household’s private invitation link or paste the invitation code below.", "Usa el enlace privado de tu familia o pega el código de invitación.")}</p><form id="access">${field(tr("Invitation code", "Código de invitación"), "token", { value, required: true, max: 1000 })}<p class="error" role="alert"></p><button type="submit" class="button burgundy">${tr("Continue", "Continuar")}</button></form>`;
   submit(document.querySelector("#access"), async (data) => {
     let token = data.get("token").trim();
     if (token.startsWith("https://")) {
@@ -25,7 +25,7 @@ function accessForm(value = "") {
         throw new Error(
           tr("Use the link from this website.", "Usa el enlace de este sitio."),
         );
-      token = u.hash.slice(1);
+      token = u.hash.slice(1).split(".")[0];
     }
     await api("invitation-session", { token });
     await showPortal();
@@ -96,10 +96,28 @@ async function accountPage(inv, session) {
 function countField(event, key, max, value) {
   return `<label>${tr(key === "kids" ? "Children" : "Adults / teens", key === "kids" ? "Niños" : "Adultos / jóvenes")}<select name="${event}.${key}" required><option value="">${tr("Choose a count", "Elige una cantidad")}</option>${Array.from({ length: max + 1 }, (_, n) => `<option value="${n}"${n === value ? " selected" : ""}>${n}</option>`).join("")}</select></label>`;
 }
+// Set from an email quick-answer link (#token.yes / #token.no); pre-fills the
+// form only. Nothing is saved until the guest confirms.
+let quickAnswer = null;
 function rsvpForm(inv) {
-  const saved = inv.response,
-    contact = inv.draftContact || inv.contact || saved?.contact;
-  portal.innerHTML = `<h2>${esc(inv.name)}</h2><p>${tr("Tell us how many people will attend each part of the celebration. Choose zero if nobody will attend.", "Indica cuántas personas asistirán a cada parte de la celebración. Elige cero si nadie asistirá.")}</p><form id="response">${Object.entries(
+  let saved = inv.response;
+  const contact = inv.draftContact || inv.contact || saved?.contact;
+  if (quickAnswer && !inv.draftContact) {
+    const attendance = {};
+    for (const e of Object.keys(eventNames))
+      attendance[e] =
+        quickAnswer === "yes" && inv.invited[e]
+          ? { adultsTeens: inv.capacity.adultsTeens, kids: inv.capacity.kids }
+          : { adultsTeens: 0, kids: 0 };
+    saved = { ...saved, attendance };
+  }
+  portal.innerHTML = `<h2>${esc(inv.name)}</h2>${
+    quickAnswer === "yes"
+      ? `<p class="notice">${tr("We filled in everyone on your invitation. Adjust the counts if needed, then review and save.", "Incluimos a todos los de tu invitación. Ajusta las cantidades si hace falta y luego revisa y guarda.")}</p>`
+      : quickAnswer === "no"
+        ? `<p class="notice">${tr("We set every count to zero. Review and save to let the family know you can’t attend.", "Pusimos todas las cantidades en cero. Revisa y guarda para avisar a la familia que no podrán asistir.")}</p>`
+        : ""
+  }<p>${tr("Tell us how many people will attend each part of the celebration. Choose zero if nobody will attend.", "Indica cuántas personas asistirán a cada parte de la celebración. Elige cero si nadie asistirá.")}</p><form id="response">${Object.entries(
     eventNames,
   )
     .map(([e, label]) =>
@@ -107,9 +125,11 @@ function rsvpForm(inv) {
         ? `<fieldset><legend>${label}</legend><div class="field-grid">${countField(e, "adultsTeens", inv.capacity.adultsTeens, saved?.attendance[e]?.adultsTeens)}${countField(e, "kids", inv.capacity.kids, saved?.attendance[e]?.kids)}</div></fieldset>`
         : `<p class="hint">${label}: ${tr("not included in this invitation", "no incluido en esta invitación")}</p>`,
     )
-    .join(
-      "",
-    )}<div class="field-grid">${field(tr("Email", "Correo electrónico"), "email", { type: "email", value: contact.email })}${field(tr("Phone (optional)", "Teléfono (opcional)"), "phone", { type: "tel", value: contact.phone, max: 40 })}</div>${field(tr("Mailing address (optional)", "Dirección postal (opcional)"), "address", { value: contact.address || "", max: 500 })}<label>${tr("Dietary/accessibility needs or song request (optional)", "Necesidades alimentarias/de accesibilidad o canción (opcional)")}<textarea name="requests" maxlength="1000">${esc(saved?.requests || "")}</textarea></label><p class="hint">${tr("Meal selections will be offered if the family confirms menu choices.", "Ofreceremos selección de comida si la familia confirma opciones de menú.")}</p><p class="error" role="alert"></p><button class="button burgundy" type="submit">${tr("Review response", "Revisar respuesta")}</button></form>`;
+    .join("")}${
+    inv.contactHidden
+      ? `<p class="hint">${tr("Your contact details are kept in your guest account. Sign in from My Account to change them.", "Tus datos de contacto están en tu cuenta de invitado. Inicia sesión en Mi Cuenta para cambiarlos.")}</p>`
+      : `<div class="field-grid">${field(tr("Email", "Correo electrónico"), "email", { type: "email", value: contact.email, autocomplete: "email" })}${field(tr("Phone (optional)", "Teléfono (opcional)"), "phone", { type: "tel", value: contact.phone, max: 40, autocomplete: "tel" })}</div>${field(tr("Mailing address (optional)", "Dirección postal (opcional)"), "address", { value: contact.address || "", max: 500, autocomplete: "street-address" })}`
+  }<label>${tr("Dietary/accessibility needs or song request (optional)", "Necesidades alimentarias/de accesibilidad o canción (opcional)")}<textarea name="requests" maxlength="1000">${esc(saved?.requests || "")}</textarea></label><p class="hint">${tr("Meal selections will be offered if the family confirms menu choices.", "Ofreceremos selección de comida si la familia confirma opciones de menú.")}</p><p class="error" role="alert"></p><button class="button burgundy" type="submit">${tr("Review response", "Revisar respuesta")}</button></form>`;
   submit(document.querySelector("#response"), async (data) => {
     const attendance = {};
     for (const e of Object.keys(eventNames))
@@ -122,11 +142,13 @@ function rsvpForm(inv) {
     const input = {
       previousSubmissionId: inv.previousSubmissionId,
       attendance,
-      contact: {
-        email: data.get("email"),
-        phone: data.get("phone"),
-        address: data.get("address") || null,
-      },
+      contact: inv.contactHidden
+        ? { email: "", phone: "", address: null }
+        : {
+            email: data.get("email"),
+            phone: data.get("phone"),
+            address: data.get("address") || null,
+          },
       requests: data.get("requests"),
     };
     review(inv, input);
@@ -227,10 +249,10 @@ async function showPortal() {
       portal.innerHTML = `<p>${tr("No saved RSVP was found for this invitation.", "No encontramos una respuesta guardada para esta invitación.")}</p><a href="${route("rsvp")}">RSVP</a>`;
       return;
     }
-    portal.innerHTML = `<div class="notice success"><h2>${tr("Your response is saved.", "Tu respuesta está guardada.")}</h2><p>${tr("Thank you", "Gracias")}, ${esc(inv.name)}.</p><p>${tr("Receipt", "Comprobante")}: ${esc(inv.response.id)}</p></div>${summary(inv.response)}<p>${inv.syncState === "synced" ? tr("The family’s invitation list has been updated.", "La lista de invitados se actualizó.") : tr("Your response is safely saved. Updating the family’s Notion view is pending.", "Tu respuesta está guardada. La actualización de la vista de Notion está pendiente.")}</p><div class="row-actions"><a class="button burgundy" href="${route("rsvp")}">${tr("Edit response", "Editar respuesta")}</a><a href="${route("details")}">${tr("Calendar & event details", "Calendario y detalles")}</a></div>`;
+    portal.innerHTML = `<div class="notice success"><h2>${tr("Your response is saved.", "Tu respuesta está guardada.")}</h2><p>${tr("Thank you", "Gracias")}, ${esc(inv.name)}.</p><p>${tr("Saved", "Guardada")}: ${esc(new Date(inv.response.submittedAt).toLocaleString(es ? "es-US" : "en-US", { dateStyle: "medium", timeStyle: "short" }))}</p></div>${summary(inv.response)}<p>${inv.syncState === "synced" ? tr("The family’s guest list has been updated.", "La lista de invitados de la familia se actualizó.") : tr("Your response is safely saved. The family’s guest list will update shortly.", "Tu respuesta está guardada. La lista de invitados de la familia se actualizará en breve.")}</p><div class="row-actions"><a class="button burgundy" href="${route("rsvp")}">${tr("Edit response", "Editar respuesta")}</a><a href="${route("details")}">${tr("Calendar & event details", "Calendario y detalles")}</a></div>`;
     portal.insertAdjacentHTML(
       "beforeend",
-      `<p><a class="button burgundy" href="${route("account")}">${session.verified ? tr("Open my guest account", "Abrir mi cuenta") : tr("Register my email for future visits", "Registrar mi correo para próximas visitas")}</a></p>`,
+      `<p><a class="button burgundy" href="${route("account")}">${session.verified ? tr("Open my guest account", "Abrir mi cuenta") : session.scope === "rsvp" ? tr("Sign in to my guest account", "Iniciar sesión en mi cuenta") : tr("Register my email for future visits", "Registrar mi correo para próximas visitas")}</a></p>`,
     );
     return;
   }
@@ -296,12 +318,24 @@ if (portal && fragment && document.body.dataset.route === "account") {
   });
 } else if (portal && fragment && document.body.dataset.route === "rsvp") {
   history.replaceState(null, "", location.pathname);
+  const [linkToken, answer] = fragment.split(".");
+  fragment = linkToken;
+  if (["yes", "no"].includes(answer)) quickAnswer = answer;
   try {
     await api("invitation-session", { token: fragment });
     fragment = "";
     await showPortal();
-  } catch {
-    accessForm(fragment);
+  } catch (e) {
+    // Say why instead of silently showing the raw token in the code form.
+    accessForm(
+      "",
+      e.code === "INVALID_INVITATION"
+        ? tr(
+            "This invitation link is no longer active. It may have been replaced by a newer link; check your most recent invitation email or contact the family.",
+            "Este enlace de invitación ya no está activo. Puede que haya sido reemplazado por uno más reciente; revisa tu correo de invitación más reciente o contacta a la familia.",
+          )
+        : e.message,
+    );
   }
 } else if (portal) {
   try {

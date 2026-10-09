@@ -205,7 +205,14 @@ async function dashboard() {
       ([title, n]) =>
         `<article class="card"><p>${title}</p><p class="stat">${n}</p></article>`,
     )
-    .join("")}</div>${table(
+    .join("")}</div><h2>Invitation status</h2><div class="cards">${Object.entries(
+    d.statuses || {},
+  )
+    .map(
+      ([k, n]) =>
+        `<article class="card"><p>${esc(statusLabels[k] || k)}</p><p class="stat">${n}</p></article>`,
+    )
+    .join("")}</div><p><a href="/admin/guests/">Filter households by status</a></p>${table(
     ["Event", "Adults/teens", "Children", "Total"],
     Object.entries(d.counts).map(
       ([e, c]) =>
@@ -217,15 +224,38 @@ async function dashboard() {
       .join("") || "<p>No email drafted.</p>"
   }${button("Retry pending Notion updates", "sync", "")}${button("Prepare RSVP columns in Notion", "schema", "")}`;
 }
+const statusLabels = {
+  "not-issued": "No link yet",
+  revoked: "Link revoked",
+  issued: "Link created, not emailed",
+  sent: "Invitation emailed",
+  opened: "Opened, no answer",
+  attending: "Attending",
+  declined: "Declined",
+};
+const when = (iso) =>
+  iso
+    ? new Date(iso).toLocaleString("en-US", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      })
+    : "";
 let guests = [];
 async function guestList() {
   const data = await api("admin/guests");
   guests = data.guests;
-  root.innerHTML = `<p>Review household capacity and event eligibility before creating a private invitation. Blank Kids values need correction in Notion.</p><div class="row-actions">${button("Export CSV", "export", "")}${button("Import CSV", "import-form", "")}</div><div id="guest-editor"></div>${field("Filter guests", "filter")}${table(
-    ["Household", "Invited capacity", "Email", "Response / sync", "Actions"],
+  root.innerHTML = `<p>Review household capacity and event eligibility before creating a private invitation. Blank Kids values need correction in Notion.</p><div class="row-actions">${button("Export CSV", "export", "")}${button("Import CSV", "import-form", "")}</div><div id="guest-editor"></div><div class="field-grid">${field("Filter guests", "filter")}<label>Status<select name="status"><option value="">All statuses</option>${Object.entries(
+    statusLabels,
+  )
+    .map(
+      ([k, v]) =>
+        `<option value="${k}">${esc(v)} (${guests.filter((g) => g.status === k).length})</option>`,
+    )
+    .join("")}</select></label></div>${table(
+    ["Household", "Status", "Invited capacity", "Email", "Response / sync", "Actions"],
     guests.map(
       (r) =>
-        `<tr data-guest-row><td>${esc(r.name)}<br><span class="badge">${esc(r.role)}</span></td><td>${r.capacity.adultsTeens ?? "?"} adults/teens · ${r.capacity.kids ?? "?"} children${r.validCapacity ? "" : "<br>Needs review"}</td><td>${esc(r.email)}</td><td>${
+        `<tr data-guest-row data-status="${esc(r.status)}"><td>${esc(r.name)}<br><span class="badge">${esc(r.role)}</span></td><td><span class="badge">${esc(statusLabels[r.status] || r.status)}</span>${r.respondedAt || r.openedAt ? `<br><small>${esc(when(r.respondedAt || r.openedAt))}</small>` : ""}</td><td>${r.capacity.adultsTeens ?? "?"} adults/teens · ${r.capacity.kids ?? "?"} children${r.validCapacity ? "" : "<br>Needs review"}</td><td>${esc(r.email)}</td><td>${
           r.response
             ? Object.entries(r.response.attendance)
                 .map(([e, v]) => `${e}: ${v.adultsTeens + v.kids}`)
@@ -234,11 +264,13 @@ async function guestList() {
         }<br>${esc(r.syncState)}</td><td><a href="https://www.notion.so/${encodeURIComponent(r.id.replaceAll("-", ""))}" target="_blank" rel="noopener noreferrer">Edit household in Notion</a>${button("Review / create link", "invite-form", r.id)}${r.active ? button("Revoke link", "revoke", r.id) : ""}</td></tr>`,
     ),
   )}`;
-  root.querySelector("[name=filter]").oninput = (e) => {
+  const text = root.querySelector("[name=filter]"),
+    status = root.querySelector("[name=status]");
+  text.oninput = status.onchange = () => {
     for (const row of root.querySelectorAll("[data-guest-row]"))
-      row.hidden = !row.textContent
-        .toLowerCase()
-        .includes(e.target.value.toLowerCase());
+      row.hidden =
+        !row.textContent.toLowerCase().includes(text.value.toLowerCase()) ||
+        (status.value && row.dataset.status !== status.value);
   };
 }
 function invitationEditor(id) {
@@ -253,7 +285,7 @@ function invitationEditor(id) {
       ),
       locale: f.get("locale"),
     });
-    box.innerHTML = `<div class="notice success"><p>Save this private link and code securely. They are shown once and open this household’s first RSVP. Registered guests return using a verified email link.</p><textarea id="private-link" readonly>${esc(result.link)}</textarea><p>Invitation code: <code>${esc(result.code)}</code></p><p>No email has been sent.</p>${button("Draft invitation email", "draft-invitation", id)}</div>`;
+    box.innerHTML = `<div class="notice success"><p>This link and code are shown once and open this household’s RSVP; creating a new link revokes older ones. To email the invitation, use “Draft invitation email” — the email carries its own private link and quick-answer buttons, so you never need to copy this one. Keep the code only for a printed invitation.</p><textarea id="private-link" readonly>${esc(result.link)}</textarea><p>Invitation code: <code>${esc(result.code)}</code></p><p>No email has been sent.</p>${button("Draft invitation email", "draft-invitation", id)}</div>`;
   });
   box.scrollIntoView({ block: "nearest" });
 }
@@ -433,7 +465,7 @@ async function updates() {
       (a.displayName || a.name).localeCompare(b.displayName || b.name),
     );
   const composer = document.createElement("div");
-  composer.innerHTML = `<form id="compose-mail" class="card"><h2>Draft an event email</h2><label>Household<select name="id" required><option value="">Choose a recipient</option>${households.map((r) => `<option value="${esc(r.id)}">${esc(r.displayName || r.name)} · ${esc(r.email)}</option>`).join("")}</select></label><label>Message type<select name="type"><option value="reminder">RSVP reminder</option><option value="details">Event details</option><option value="change">Schedule or parking update</option><option value="thanks">After-event thank you</option></select></label>${field("Current private invitation link (required for reminders)", "link", { max: 1000 })}<label>Update message (required for schedule/parking changes)<textarea name="updateText" maxlength="2000"></textarea></label><p>Each draft is addressed to the selected household only. Review its language and contents below before sending.</p>${formEnd("Save email draft")}`;
+  composer.innerHTML = `<form id="compose-mail" class="card"><h2>Draft an event email</h2><label>Household<select name="id" required><option value="">Choose a recipient</option>${households.map((r) => `<option value="${esc(r.id)}">${esc(r.displayName || r.name)} · ${esc(r.email)}</option>`).join("")}</select></label><label>Message type<select name="type"><option value="reminder">RSVP reminder</option><option value="details">Event details</option><option value="change">Schedule or parking update</option><option value="thanks">After-event thank you</option></select></label><label>Update message (required for schedule/parking changes)<textarea name="updateText" maxlength="2000"></textarea></label><p>Each draft is addressed to the selected household only. Review its language and contents below before sending.</p>${formEnd("Save email draft")}`;
   panel.querySelector("#email-outbox").before(composer);
   submit(document.querySelector("#compose-mail"), async (f) => {
     await api("admin/mail/draft", Object.fromEntries(f));
@@ -485,11 +517,7 @@ root.addEventListener("click", (e) => {
       await guestList();
     }
     if (action === "draft-invitation") {
-      await api("admin/mail/draft", {
-        id,
-        type: "invitation",
-        link: document.querySelector("#private-link").value,
-      });
+      await api("admin/mail/draft", { id, type: "invitation" });
       notify(
         "Draft saved. Review it in Announcements & Emails before sending.",
       );

@@ -2,7 +2,7 @@
 
 Multi-page English/Spanish guest website and private family administration for **Friday, January 15, 2027**, Fort Worth. RSVP deadline: **October 31, 2026, 11:59 PM Central**.
 
-The multi-page site is live at **https://misxv.simplysoph.com**. It builds 53 routes plus `404.html`, including the corrected invitation. Pushes to `feature/complete-quince-site` and `main` automatically publish after the Node checks and dependency audit pass. Other branches and pull requests only run checks. Production RSVP, email and private administration still require provider activation; static publication does not enable them. Review PR #1 and `VALIDATION.md` for verification.
+The multi-page site is live at **https://misxv.simplysoph.com**. `npm run check` builds 65 routes plus `404.html` and validates all 66 documents. Only pushes to `main` publish, after the Node 24 checks and dependency audit pass; other branches and pull requests only run checks. The API is deployed separately to Cloud Run. Invitations must not go out until the acceptance gate in `DEPLOYMENT.md` passes. The v1.0 design set and plan are in [`docs/v1/`](docs/v1/README.md).
 
 ## Run and check
 
@@ -25,7 +25,8 @@ Open http://127.0.0.1:4173/. Without production configuration, the site serves e
 - `server/application.mjs`: authenticated API workflows; no provider credentials in browser assets.
 - `server/store.mjs`: private Google Cloud Storage ledger with generation preconditions for durable concurrent transactions.
 - `server/notion.mjs`: real Notion data-source adapter; preserves original invited capacities and projects website responses into separate columns.
-- `server/mail.mjs`: Microsoft Graph sender; records accepted, failed or uncertain outcomes without blind retries.
+- `server/mail.mjs`: Microsoft Graph sender (optional SendGrid fallback); records accepted, failed or uncertain outcomes without blind retries.
+- `server/sms.mjs`, `server/whatsapp.mjs`: Twilio SMS/WhatsApp with keyword consent, reviewed sends and signed callbacks; see `docs/twilio-setup.md`.
 - `DEPLOYMENT.md`: service configuration, release gates, provider setup and rollback.
 - `PAGE-SCOPE.md`: all requested pages and their responsibilities.
 - `ACCOUNT-ACCESS.md`: invitation onboarding, verified email links, per-account private pages and MFA administration.
@@ -33,7 +34,7 @@ Open http://127.0.0.1:4173/. Without production configuration, the site serves e
 
 ## Team workflow
 
-Use the GitHub repository as the shared code source. Give collaborators repository access separately from ChatGPT project access. Work on individual branches, use pull requests and require the Node 24 checks. The current release branch and main automatically publish checked pushes; see PUBLISHING.md. Shared ChatGPT context does not grant Google, Microsoft or Notion permissions. Never put guest exports, invitation links or credentials into chats, GitHub issues, commits or CI artifacts.
+Use the GitHub repository as the shared code source. Give collaborators repository access separately from ChatGPT project access. Work on individual branches, use pull requests and require the Node 24 checks. Only main publishes checked pushes; see PUBLISHING.md. Shared ChatGPT context does not grant Google, Microsoft or Notion permissions. Never put guest exports, invitation links or credentials into chats, GitHub issues, commits or CI artifacts.
 
 ## Content still needed from the family
 

@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { normalizeInvitation, notionClient } from "../server/notion.mjs";
+import {
+  normalizeInvitation,
+  notionClient,
+  notionRetryable,
+} from "../server/notion.mjs";
 const page = (kids) => ({
   id: "12345678-1234-1234-1234-123456789012",
   properties: {
@@ -153,4 +157,71 @@ test("WhatsApp projection refuses a page outside the invitations data source", a
   );
   await assert.rejects(() => client.projectWhatsappOptOut(page("1").id));
   assert.equal(writes, 0);
+});
+
+function pacedClient(responder) {
+  let now = 0;
+  const calls = [],
+    waits = [];
+  const client = notionClient({
+    token: "fixture-secret",
+    sourceId: "source",
+    clock: () => now,
+    sleep: async (ms) => {
+      waits.push(ms);
+      now += ms;
+    },
+    fetchImpl: async (url, options) => {
+      calls.push(options.method + " " + url.split("/v1/")[1]);
+      return responder(url, options, calls.length);
+    },
+  });
+  return { client, calls, waits, advance: (ms) => (now += ms) };
+}
+const okPage = () =>
+  new Response(JSON.stringify({ ...page("1"), parent: { data_source_id: "source" } }), { status: 200 });
+const id = page("1").id;
+
+test("roster reads are paced, cached briefly and refreshed after a write or on demand", async () => {
+  const t = pacedClient((url, options) =>
+    options.method === "GET" ? okPage() : new Response("{}", { status: 200 }),
+  );
+  await t.client.read(id);
+  await t.client.read(id);
+  assert.equal(t.calls.length, 1, "second read served from cache");
+  await t.client.read(id, { fresh: true });
+  assert.equal(t.calls.length, 2, "fresh read bypasses cache");
+  assert.deepEqual(t.waits, [400], "requests are spaced 400 ms apart");
+  await t.client.projectSmsOptOut(id);
+  const before = t.calls.length;
+  await t.client.read(id);
+  assert.equal(t.calls.length, before + 1, "a write clears the cache");
+  t.advance(30001);
+  await t.client.read(id);
+  assert.equal(t.calls.length, before + 2, "cache expires");
+});
+
+test("429 is retried for any request; 5xx is never retried for page creates", async () => {
+  assert.equal(notionRetryable("POST", "pages", 429), true);
+  assert.equal(notionRetryable("POST", "pages", 502), false);
+  assert.equal(notionRetryable("POST", "data_sources/x/query", 502), true);
+  assert.equal(notionRetryable("PATCH", "pages/x", 503), true);
+  assert.equal(notionRetryable("GET", "pages/x", 404), false);
+  const limited = pacedClient((url, options, n) =>
+    n === 1
+      ? new Response("{}", { status: 429, headers: { "retry-after": "2" } })
+      : okPage(),
+  );
+  await limited.client.read(id, { fresh: true });
+  assert.equal(limited.calls.length, 2);
+  assert.ok(limited.waits.includes(2000));
+  // Long provider pauses fail fast instead of holding a guest request open.
+  const paused = pacedClient(
+    () => new Response("{}", { status: 429, headers: { "retry-after": "30" } }),
+  );
+  await assert.rejects(
+    () => paused.client.read(id, { fresh: true }),
+    (e) => e.code === "NOTION_429",
+  );
+  assert.equal(paused.calls.length, 1);
 });

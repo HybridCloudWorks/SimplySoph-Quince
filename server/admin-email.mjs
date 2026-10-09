@@ -1,4 +1,4 @@
-import { token, hash, error, rateLimit } from "./auth.mjs";
+import { token, hash, error, rateLimit, withinLimit } from "./auth.mjs";
 import { accountActive } from "./accounts.mjs";
 
 export function adminIdentity(state, address, owners) {
@@ -29,8 +29,14 @@ export function createAdminEmail({ ledger, mailer, adminEmails, origin, now }) {
       if (address.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address))
         throw error(422, "INVALID_EMAIL");
       if (!mailer.configured) throw error(503, "EMAIL_SIGN_IN_UNAVAILABLE");
-      await rateLimit(ledger, "admin-email-global", 60, 3600000, now());
       await rateLimit(ledger, "admin-email:" + hash(address), 3, 900000, now());
+      // Read first: unknown addresses must never enter the ledger write queue.
+      // A spent send budget is skipped silently so it cannot reveal admins.
+      if (
+        !adminIdentity(await ledger.read(), address, adminEmails) ||
+        !(await withinLimit(ledger, "admin-email-sends", 60, 3600000, now()))
+      )
+        return { requested: true };
       const raw = token();
       const allowed = await ledger.transaction((s) => {
         s.adminEmailLinks ??= {};
@@ -58,8 +64,11 @@ export function createAdminEmail({ ledger, mailer, adminEmails, origin, now }) {
       return { requested: true };
     },
     async consume(raw) {
-      await rateLimit(ledger, "admin-email-verify", 120, 900000, now());
       if (typeof raw !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(raw))
+        throw error(401, "EMAIL_LINK_INVALID");
+      // Unknown tokens are rejected from a read and never queue a write.
+      const known = (await ledger.read()).adminEmailLinks?.[hash(raw)];
+      if (!known || known.expiresAt <= now())
         throw error(401, "EMAIL_LINK_INVALID");
       return ledger.transaction((s) => {
         const link = s.adminEmailLinks?.[hash(raw)];

@@ -1,5 +1,13 @@
 import { randomUUID, createHmac } from "node:crypto";
-import { token, hash, error, cookie, rateLimit } from "./auth.mjs";
+import {
+  token,
+  hash,
+  error,
+  cookie,
+  rateLimit,
+  withinLimit,
+  pruneSessions,
+} from "./auth.mjs";
 
 export const pagePermissions = ["gifts", "padrinos", "costs", "admin"];
 const normalizeEmail = (value) => {
@@ -49,7 +57,7 @@ export function createAccounts({
   }) {
     const raw = token(),
       id = randomUUID();
-    await ledger.transaction((s) => {
+    const locale = await ledger.transaction((s) => {
       s.emailLinks ??= {};
       for (const [k, link] of Object.entries(s.emailLinks))
         if (link.expiresAt <= now()) delete s.emailLinks[k];
@@ -66,10 +74,11 @@ export function createAccounts({
         name,
         expiresAt: now() + 900000,
       };
+      return invite.locale || "en";
     });
     // Token is a fragment, never an access-log query parameter. GET/scanners do not
     // consume it: the page requires an explicit user click and a same-origin POST.
-    const url = `${origin}/account/#${raw}`;
+    const url = `${origin}${locale === "es" ? "/es" : ""}/account/#${raw}`;
     try {
       await mailer.send({
         id,
@@ -95,7 +104,6 @@ export function createAccounts({
     async request(body, session) {
       if (!mailer.configured) throw error(503, "EMAIL_SIGN_IN_UNAVAILABLE");
       const address = normalizeEmail(body.email);
-      await rateLimit(ledger, "email-login-global", 120, 3600000, now());
       await rateLimit(
         ledger,
         "email-login:" + emailKey(address),
@@ -125,11 +133,14 @@ export function createAccounts({
           900000,
           now(),
         );
+        // The shared budget bounds outgoing mail only. When spent, the send is
+        // skipped silently so the response never reveals which addresses exist.
         if (
           !Object.values(s.accounts || {}).some(
             (a) => a.emailKey === emailKey(address),
-          )
-        )
+          ) &&
+          (await withinLimit(ledger, "email-login-sends", 120, 3600000, now()))
+        ) {
           await issue({
             address,
             householdId: session.householdId,
@@ -137,11 +148,15 @@ export function createAccounts({
             registration: true,
             name: body.name.trim(),
           });
+        }
       } else {
         const account = Object.values(s.accounts || {}).find(
           (a) => a.emailKey === emailKey(address),
         );
-        if (accountActive(s, account)) {
+        if (
+          accountActive(s, account) &&
+          (await withinLimit(ledger, "email-login-sends", 120, 3600000, now()))
+        ) {
           const invite = s.invitations[account.householdId];
           await issue({
             address,
@@ -154,13 +169,16 @@ export function createAccounts({
       return { requested: true };
     },
     async consume(raw) {
-      await rateLimit(ledger, "email-verify-global", 300, 900000, now());
-      if (typeof raw !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(raw))
+      const pending =
+        typeof raw === "string" && /^[A-Za-z0-9_-]{43}$/.test(raw)
+          ? (await ledger.read()).emailLinks?.[hash(raw)]
+          : null;
+      if (!pending || pending.expiresAt <= now()) {
+        // Only rejected links share a budget; valid links are never blocked by it.
+        await rateLimit(ledger, "email-verify-failures", 300, 900000, now());
         throw error(401, "EMAIL_LINK_INVALID");
-      const pending = (await ledger.read()).emailLinks?.[hash(raw)];
-      if (!pending || pending.expiresAt <= now())
-        throw error(401, "EMAIL_LINK_INVALID");
-      const fresh = await notion.read(pending.householdId);
+      }
+      const fresh = await notion.read(pending.householdId, { fresh: true });
       if (fresh.archived) throw error(401, "EMAIL_LINK_INVALID");
       const value = token(),
         csrf = token();
@@ -209,6 +227,7 @@ export function createAccounts({
         if (!accountActive(s, a) || a.emailKey !== link.emailKey)
           throw error(401, "EMAIL_LINK_INVALID");
         delete s.emailLinks[hash(raw)];
+        pruneSessions(s, now());
         s.sessions[hash(value)] = {
           kind: "guest",
           accountId: a.id,

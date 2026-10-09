@@ -1,7 +1,7 @@
 import { createAdminRecords } from "./admin-records.mjs";
 import { audience, recipientName, validEmail } from "./audience.mjs";
 import { createWhatsapp } from "./whatsapp.mjs";
-import { createSms, smsPreview } from "./sms.mjs";
+import { createSms, smsCompliantText, smsPreview } from "./sms.mjs";
 import { createPlanning } from "./planning.mjs";
 import { createAdminEmail } from "./admin-email.mjs";
 import { createNotifications } from "./notifications.mjs";
@@ -18,6 +18,8 @@ import {
   unseal,
   cookie,
   rateLimit,
+  chargeFailures,
+  pruneSessions,
   newMfaSecret,
   verifyTotp,
   invitationCode,
@@ -118,7 +120,8 @@ export function createApplication({
         adminDelegateEmails.includes(address) &&
         !adminEmails.includes(address)
       ) {
-        const rows = await notion.list();
+        // Authorization reads Notion fresh: a revoked eligibility must apply at once.
+        const rows = await notion.list({ fresh: true });
         if (
           !rows.some(
             (r) =>
@@ -134,7 +137,7 @@ export function createApplication({
     const a = (await ledger.read()).accounts?.[accountId];
     if (!a || !a.permissions.includes("admin"))
       throw error(403, "ADMIN_NOT_ALLOWED");
-    const row = await notion.read(a.householdId);
+    const row = await notion.read(a.householdId, { fresh: true });
     if (row.archived || !row.administratorEligible)
       throw error(403, "ADMIN_NOT_ELIGIBLE");
   }
@@ -150,9 +153,56 @@ export function createApplication({
         s.invitations[row.householdId].generation === row.generation &&
         (row.accountId
           ? accountActive(s, s.accounts?.[row.accountId])
-          : !Object.values(s.accounts || {}).some(
+          : row.scope === "rsvp" ||
+            !Object.values(s.accounts || {}).some(
               (a) => a.householdId === row.householdId,
             )));
+  // After a household registers, its private link still opens the RSVP, but
+  // only the RSVP: contact details stay hidden and every other route treats the
+  // session as signed out. Account pages need the verified email sign-in.
+  const rsvpScopeRoutes = new Set([
+    "GET /api/session",
+    "GET /api/invitation",
+    "POST /api/rsvp",
+    "POST /api/logout",
+  ]);
+  const hiddenContact = () => ({ email: "", phone: "", address: null });
+  // One derived status per household for the organizer dashboard; computed from
+  // the ledger on read so it can never drift from the underlying records.
+  const householdStatuses = [
+    "not-issued",
+    "revoked",
+    "issued",
+    "sent",
+    "opened",
+    "attending",
+    "declined",
+  ];
+  function householdStatus(s, id) {
+    const invite = s.invitations[id];
+    if (!invite) return { status: "not-issued" };
+    if (!invite.active) return { status: "revoked" };
+    const response = s.responses[invite.latestSubmissionId];
+    if (response) {
+      const people = Object.values(response.attendance).reduce(
+        (n, v) => n + v.adultsTeens + v.kids,
+        0,
+      );
+      return {
+        status: people > 0 ? "attending" : "declined",
+        respondedAt: response.submittedAt,
+      };
+    }
+    if (invite.openedAt) return { status: "opened", openedAt: invite.openedAt };
+    const sent = Object.values(s.outbox).some(
+      (j) =>
+        j.householdId === id &&
+        ["invitation", "reminder"].includes(j.type) &&
+        j.generation === invite.generation &&
+        j.state === "accepted",
+    );
+    return { status: sent ? "sent" : "issued" };
+  }
   async function context(req) {
     const raw = (req.headers?.cookie || "")
       .split(";")
@@ -167,8 +217,9 @@ export function createApplication({
       sessionHash: raw ? hash(raw) : null,
     };
   }
-  async function guestInvitation(session) {
-    const row = await notion.read(session.householdId),
+  // Page views may use the short Notion cache; RSVP submission reads fresh.
+  async function guestInvitation(session, { fresh = false } = {}) {
+    const row = await notion.read(session.householdId, { fresh }),
       s = await ledger.read(),
       record = s.invitations[row.id];
     if (
@@ -242,7 +293,7 @@ export function createApplication({
     if (!mailer.configured) throw error(503, "MAIL_NOT_CONFIGURED");
     const pending = (await ledger.read()).outbox[id];
     if (!pending || pending.archived) throw error(404, "NOT_FOUND");
-    const currentGuest = await notion.read(pending.householdId);
+    const currentGuest = await notion.read(pending.householdId, { fresh: true });
     if (currentGuest.archived) throw error(409, "INVITATION_INACTIVE");
     const job = await ledger.transaction((s) => {
       const j = s.outbox[id];
@@ -310,7 +361,7 @@ export function createApplication({
         type,
         locale,
         household: household.name,
-        url: url || origin + "/rsvp/",
+        url: url || origin + (locale === "es" ? "/es" : "") + "/rsvp/",
         eventDate:
           locale === "es"
             ? "Viernes, 15 de enero de 2027"
@@ -376,8 +427,6 @@ export function createApplication({
     }
     if (method !== "GET" && headers.origin !== origin)
       throw error(403, "ORIGIN_REJECTED");
-    if (method !== "GET")
-      await rateLimit(ledger, "global-writes", 6000, 3600000, now());
     if (path === "/api/config" && method === "GET")
       return {
         clientId,
@@ -418,12 +467,25 @@ export function createApplication({
       ["/api/auth/google", "/api/auth/admin-email/verify"].includes(path) &&
       method === "POST"
     ) {
-      await rateLimit(ledger, "google-login", 60, 900000, now());
-      const identity =
-          path === "/api/auth/google"
-            ? await verifyGoogle(safeText(body.credential, 10000))
-            : await adminEmail.consume(body.token),
+      const identity = await chargeFailures(
+          ledger,
+          "admin-login-failures",
+          60,
+          900000,
+          now(),
+          () =>
+            path === "/api/auth/google"
+              ? verifyGoogle(safeText(body.credential, 10000))
+              : adminEmail.consume(body.token),
+        ),
         challenge = token();
+      await rateLimit(
+        ledger,
+        "admin-login:" + hash(identity.email),
+        10,
+        900000,
+        now(),
+      );
       const result = await ledger.transaction((s) => {
         for (const [id, c] of Object.entries(s.challenges))
           if (c.expiresAt <= now()) delete s.challenges[id];
@@ -451,12 +513,16 @@ export function createApplication({
       return { challenge, ...result };
     }
     if (path === "/api/auth/mfa" && method === "POST") {
-      await rateLimit(ledger, "mfa-global", 300, 900000, now());
       const pendingChallenge = (await ledger.read()).challenges[
         hash(safeText(body.challenge, 100))
       ];
-      if (pendingChallenge)
-        await checkAdministratorEligibility(
+      // Each challenge allows 5 code attempts; unknown challenges share a budget
+      // and are rejected from a read, never entering the ledger write queue.
+      if (!pendingChallenge) {
+        await rateLimit(ledger, "mfa-unknown-challenge", 300, 900000, now());
+        throw error(401, "SIGN_IN_AGAIN");
+      }
+      await checkAdministratorEligibility(
           pendingChallenge.accountId,
           pendingChallenge.email,
         );
@@ -483,6 +549,7 @@ export function createApplication({
           lastStep: step,
           email: c.email,
         };
+        pruneSessions(s, now());
         s.sessions[hash(sessionToken)] = {
           kind: "admin",
           actor: c.id,
@@ -499,9 +566,11 @@ export function createApplication({
       return { csrf, setCookie: cookie(sessionToken) };
     }
     if (path === "/api/invitation-session" && method === "POST") {
-      await rateLimit(ledger, "invite-global", 600, 900000, now());
       const credential = invitationCredential(body.token);
-      if (!credential) throw error(401, "INVALID_INVITATION");
+      if (!credential) {
+        await rateLimit(ledger, "invite-failures", 600, 900000, now());
+        throw error(401, "INVALID_INVITATION");
+      }
       const fingerprint = hash(credential),
         s = await ledger.read();
       const row = Object.values(s.invitations).find(
@@ -512,9 +581,14 @@ export function createApplication({
               s.invitationLinks[fingerprint].generation === r.generation)) &&
           r.active,
       );
-      if (!row) throw error(401, "INVALID_INVITATION");
+      if (!row) {
+        await rateLimit(ledger, "invite-failures", 600, 900000, now());
+        throw error(401, "INVALID_INVITATION");
+      }
       await rateLimit(ledger, hash("invite:" + row.id), 20, 900000, now());
-      const current = await notion.read(row.id);
+      // Typed codes (80-bit) stay closed after registration; 256-bit links reopen RSVP only.
+      const viaCode = row.codeHash === fingerprint;
+      const current = await notion.read(row.id, { fresh: true });
       if (current.archived || !current.validCapacity)
         throw error(401, "INVALID_INVITATION");
       const value = token(),
@@ -531,8 +605,9 @@ export function createApplication({
             ))
         )
           throw error(401, "INVALID_INVITATION");
-        if (accounts.accountFor(s, row.id))
-          throw error(409, "EMAIL_SIGN_IN_REQUIRED");
+        const registered = !!accounts.accountFor(s, row.id);
+        if (registered && viaCode) throw error(409, "EMAIL_SIGN_IN_REQUIRED");
+        r.openedAt ??= now();
         s.profiles ??= {};
         s.profiles[row.id] ??= {
           id: row.id,
@@ -546,18 +621,25 @@ export function createApplication({
           createdAt: now(),
           updatedAt: now(),
         };
+        pruneSessions(s, now());
         s.sessions[hash(value)] = {
           kind: "guest",
           householdId: r.id,
           generation: r.generation,
+          ...(registered ? { scope: "rsvp" } : {}),
           csrf,
           expiresAt: now() + 1800000,
         };
       });
       return { csrf, setCookie: cookie(value) };
     }
-    const ctx = await context(req),
-      { session } = ctx;
+    const ctx = await context(req);
+    if (
+      ctx.session?.scope === "rsvp" &&
+      !rsvpScopeRoutes.has(method + " " + path)
+    )
+      ctx.session = null;
+    const { session } = ctx;
     if (session && method !== "GET")
       await rateLimit(
         ledger,
@@ -571,6 +653,7 @@ export function createApplication({
         kind: session?.kind ?? null,
         csrf: session?.csrf ?? null,
         verified: !!session?.accountId,
+        scope: session?.scope ?? null,
         permissions: allowedPages(ctx.state, session),
         owner: session?.kind === "admin" && ownerSession(session),
       };
@@ -685,13 +768,19 @@ export function createApplication({
         deadline,
         previousSubmissionId: row.latestSubmissionId,
         response: row.latestSubmissionId
-          ? s.responses[row.latestSubmissionId]
+          ? session.scope === "rsvp"
+            ? { ...s.responses[row.latestSubmissionId], contact: hiddenContact() }
+            : s.responses[row.latestSubmissionId]
           : null,
-        contact: s.profiles?.[row.id]?.contact || {
-          email: row.email,
-          phone: row.phone,
-          address: null,
-        },
+        contact:
+          session.scope === "rsvp"
+            ? hiddenContact()
+            : s.profiles?.[row.id]?.contact || {
+                email: row.email,
+                phone: row.phone,
+                address: null,
+              },
+        contactHidden: session.scope === "rsvp",
         syncState: row.syncState,
       };
     }
@@ -778,7 +867,7 @@ export function createApplication({
       requireAuth("guest");
       const id = headers["idempotency-key"];
       if (!uuid(id)) throw error(422, "IDEMPOTENCY_REQUIRED");
-      const row = await guestInvitation(session),
+      const row = await guestInvitation(session, { fresh: true }),
         fingerprint = digestInput(body);
       const receipt = await ledger.transaction((s) => {
         const current = s.invitations[row.id];
@@ -802,6 +891,14 @@ export function createApplication({
           },
           now(),
         );
+        // A link-only session cannot see or change the registered household's
+        // contact details, so the saved contact (and receipt address) is kept.
+        if (session.scope === "rsvp")
+          data.contact = structuredClone(
+            s.profiles?.[row.id]?.contact ??
+              s.responses[current.latestSubmissionId]?.contact ??
+              hiddenContact(),
+          );
         const response = {
           ...data,
           id,
@@ -1140,7 +1237,7 @@ export function createApplication({
           throw error(422, "INVALID_PERMISSIONS");
         const current = ctx.state.accounts?.[body.id];
         if (!current) throw error(404, "NOT_FOUND");
-        const fresh = await notion.read(current.householdId);
+        const fresh = await notion.read(current.householdId, { fresh: true });
         if (
           body.permissions.includes("admin") &&
           (!fresh.administratorEligible || fresh.archived)
@@ -1225,6 +1322,7 @@ export function createApplication({
               : {}),
             response:
               s.responses[s.invitations[row.id]?.latestSubmissionId] ?? null,
+            ...householdStatus(s, row.id),
           })),
         };
       }
@@ -1238,6 +1336,12 @@ export function createApplication({
           households: rows.filter((r) => !r.archived).length,
           active: Object.values(s.invitations).filter((r) => r.active).length,
           responded: responses.length,
+          statuses: rows
+            .filter((r) => !r.archived)
+            .reduce(
+              (a, r) => (a[householdStatus(s, r.id).status]++, a),
+              Object.fromEntries(householdStatuses.map((k) => [k, 0])),
+            ),
           pendingSync: Object.values(s.invitations).filter(
             (r) => r.syncState === "pending",
           ).length,
@@ -1263,7 +1367,7 @@ export function createApplication({
         };
       }
       if (path === "/api/admin/invitation" && method === "POST") {
-        const row = await notion.read(body.id);
+        const row = await notion.read(body.id, { fresh: true });
         if (!row.validCapacity || row.archived)
           throw error(422, "CAPACITY_NEEDS_REVIEW");
         if (events.some((e) => typeof body.invited?.[e] !== "boolean"))
@@ -1282,6 +1386,7 @@ export function createApplication({
             generation: (previous?.generation || 0) + 1,
             tokenHash: hash(value),
             codeHash: hash(code),
+            openedAt: null,
           };
           const link =
             origin + (body.locale === "es" ? "/es" : "") + "/rsvp/#" + value;
@@ -1499,7 +1604,11 @@ export function createApplication({
           !["email", "sms"].includes(channel)
         )
           throw error(422, "MESSAGE_REQUIRED");
-        if (channel === "sms") smsPreview(text);
+        if (channel === "sms") {
+          smsPreview(text);
+          if (!smsCompliantText(text))
+            throw error(422, "SMS_BRAND_OR_STOP_MISSING");
+        }
         const recipients = audience(
           await notion.list(),
           body,
@@ -1610,7 +1719,7 @@ export function createApplication({
           )
         )
           throw error(422, "INVALID_MAIL_TYPE");
-        const row = await notion.read(body.id),
+        const row = await notion.read(body.id, { fresh: true }),
           s = await ledger.read(),
           invite = s.invitations[row.id];
         if (!invite?.active || !row.email)
@@ -1621,27 +1730,28 @@ export function createApplication({
           origin +
           (invite.locale === "es" ? "/es" : "") +
           (body.type === "thanks" ? "/thank-you/" : "/details/");
-        if (["invitation", "reminder"].includes(body.type)) {
-          url = safeText(body.link, 1000);
-          let u;
-          try {
-            u = new URL(url);
-          } catch {
-            throw error(422, "PRIVATE_LINK_REQUIRED");
-          }
-          if (
-            u.origin !== origin ||
-            !["/rsvp/", "/es/rsvp/"].includes(u.pathname) ||
-            hash(u.hash.slice(1)) !== invite.tokenHash
-          )
-            throw error(422, "PRIVATE_LINK_REQUIRED");
-        }
+        // Invitations and reminders carry a private link the server mints per
+        // draft (sealed in the outbox), so organizers never copy or paste links.
+        // It shares the household's generation: issuing a new link revokes it.
+        const personal = ["invitation", "reminder"].includes(body.type),
+          minted = personal ? token() : null;
+        if (personal)
+          url =
+            origin + (invite.locale === "es" ? "/es" : "") + "/rsvp/#" + minted;
         return ledger.transaction((s) => {
           if (
             !s.invitations[row.id]?.active ||
             s.invitations[row.id].generation !== invite.generation
           )
             throw error(409, "INVITATION_INACTIVE");
+          if (personal) {
+            s.invitationLinks ??= {};
+            s.invitationLinks[hash(minted)] = {
+              householdId: row.id,
+              generation: invite.generation,
+              channel: "email",
+            };
+          }
           return {
             id: queue(s, {
               type: body.type,

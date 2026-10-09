@@ -1,71 +1,65 @@
-# Twilio SMS Setup — SimplySoph Mis XV
+# Twilio runbook: SMS and WhatsApp
 
-Prepared September 28, 2026. Owner will finish account/API setup in about 24 hours. SMS destinations: **United States and Canada only**. Email stays with Microsoft 365 (`misxv@simplysoph.com`). Guest sign-in continues by email link; Twilio Verify is not needed for this scope.
+This is the only current Twilio guide. It replaces `twilio-runtime-status.md` and `whatsapp-setup.md`, which mixed point-in-time logs with stale plans. **Treat every live Twilio claim as unverified until the acceptance steps below are completed and recorded.** The gap analysis is in [v1/twilio-gap-analysis.md](v1/twilio-gap-analysis.md). The exact campaign field values are in [sms-campaign-registration.md](sms-campaign-registration.md).
 
-## Keyword Registration Update
+## What the code does
 
-The owner now identifies the operator as **Simply Soph Media** and the event sender as **+16827868002**, using the Sole Proprietor A2P campaign flow. See [current keywords, exact replies and consent description](sms-campaign-registration.md). Earlier trial/no-number observations below are historical, not current ownership checks. Keyword consent handling and public SMS pages are now implemented; provider configuration and live acceptance tests remain pending.
+| Concern | SMS (US/Canada 10DLC) | WhatsApp (international) |
+|---|---|---|
+| Opt-in | Guest texts `SOPHIA` (or `START`/`UNSTOP`) to +1 682-786-8002. It only counts when Twilio classifies it `OptOutType=START`, the message timestamp is confirmed via the REST API, Notion is updated and the phone matches an invited household (`server/sms.mjs`) | Guest records WhatsApp consent on the website, then sends `START` from that phone (`server/whatsapp.mjs`) |
+| Eligibility to send | `smsKeywordConsent()`: synced START receipt + phone bound to the household + not suppressed. **A Notion checkbox alone is never enough** | Synced START + matching consent record + approved template |
+| Message content | Must start with `Simply Soph Media:` and contain `STOP` (`smsCompliantText()`); enforced at draft and review | Approved Content API template with one private-link variable |
+| Sending | One reviewed draft at a time; send attempt claimed before the provider call; uncertain results are never retried | Same |
+| Opt-out | Twilio Advanced Opt-Out replies; app suppresses locally first, then projects to Notion | `STOP`/`BAJA`, local suppression first |
+| Callbacks | `POST /api/twilio/inbound`, `POST /api/twilio/status` | `POST /api/whatsapp/inbound`, `POST /api/whatsapp/status` |
+| Signature URL | `PUBLIC_ORIGIN` + fixed path (never the Host header), so it validates behind the Firebase Hosting rewrite. URLs must match exactly: no trailing slash, no query string | Same |
+| Activation gates | `SMS_ENABLED=true` **and** `SMS_ACTIVATION_REVIEWED=true` **and** `TWILIO_AUTH_TOKEN`; startup fails if a flag is set without the transport | `WHATSAPP_ENABLED`, `WHATSAPP_ACTIVATION_REVIEWED`, `WHATSAPP_FROM`, `WHATSAPP_TEMPLATES_JSON` |
 
-## Previous Deployment Status
+Inbound texts never submit an RSVP or sign anyone in. Guests always RSVP on the website with their private link.
 
-Release `c2f4953` passed both GitHub CI runs and 105 automated tests on September 28, 2026. Static admin controls were published to `misxv-simplysoph`; the live JavaScript matches the local release byte-for-byte. Cloud Run revision `misxv-api-00009-6xn` serves 100 percent of traffic. The public unsigned callback test returns `403 TWILIO_SIGNATURE_INVALID`; `/api/config` remains healthy with email configured. SMS remains disabled with no Twilio credentials bound, and no SMS was sent. Local browser review used a synthetic household, not guest records.
+## Runtime settings
 
-Live console verification after owner sign-in found only “My first Twilio account,” marked Trial, and its unfiltered Active Numbers page showed no Twilio numbers. The reported approved sender has not been located. Before credential activation, resolve whether the approved sender belongs to a different login or complete sender setup for this account. SendGrid domain/sender approval does not approve an SMS number. No number purchase, account upgrade or messaging registration was submitted.
+| Setting | Where | Notes |
+|---|---|---|
+| `TWILIO_ACCOUNT_SID` | Cloud Run env | Must be the account that owns the campaign **and** the WhatsApp sender. Callbacks from any other account return 403 |
+| `TWILIO_MESSAGING_SERVICE_SID` | Cloud Run env | Must be the service linked to the A2P campaign. Callbacks from any other service return 403 |
+| `TWILIO_API_KEY_SID` / `TWILIO_API_KEY_SECRET` | env / Secret Manager | Restricted key. Needs Messages **read** (verifying START timestamps). Messages **create** is granted only at activation |
+| `TWILIO_AUTH_TOKEN` | Secret Manager, pinned version | Validates webhook signatures. Rotating it breaks callbacks until the new version is deployed |
+| `WHATSAPP_FROM` | Cloud Run env | `+16827868002` |
+| `WHATSAPP_TEMPLATES_JSON` | Cloud Run env | JSON array of **approved** templates only. Invalid JSON stops startup |
 
-The website prepares SMS drafts from selected Notion distribution groups/people with a US/Canada phone, SMS consent/date and no opt-out. **Live sending is disabled.** Server dispatch, administrator review, segment estimates, signed HTTP callbacks and durable STOP suppression are implemented. Dispatch re-reads Notion, claims an attempt before the provider call, and does not retry uncertain responses. Adding credentials alone does not activate sending: both `SMS_ENABLED=true` and `SMS_ACTIVATION_REVIEWED=true` are required after acceptance review. No Twilio account, number, service, API key or Google secret was provisioned by this code change.
+Find the live identifiers in `ops/event-resources.json`. Never put values in Git, chat, screenshots or browser code. `npm run sms:setup` prints an offline checklist with presence/format only.
 
-Admin → Announcements & Emails → SMS Drafts → Review SMS displays the recipient, message and estimated segments. Exact rates are not yet configured, so the UI does not invent a dollar quote. Dispatch is one reviewed draft at a time. Incoming messages do not submit an RSVP: guests follow their private invitation link to the website. Email account verification remains unchanged. International WhatsApp is a separate next phase in [whatsapp-setup.md](whatsapp-setup.md).
+## Console configuration (verify every item; do not trust earlier notes)
 
-Callback paths, once this release is deployed: `https://misxv.simplysoph.com/api/twilio/status` and `https://misxv.simplysoph.com/api/twilio/inbound`. Configure Advanced Opt-Out on the dedicated service; Twilio handles its standard replies and this application returns empty TwiML to avoid duplicate replies. STOP is suppressed locally first and projected to Notion's SMS Opt Out field for matching households. Pending failures can be retried from the admin page. Verified START/UNSTOP now records explicit keyword consent. Provider message timestamps reject stale opt-ins; suppression is cleared only after matching Notion records are updated successfully. Delivery status is distinct from provider acceptance. A process crash after claiming a send requires reconciliation, never a reset to draft.
+1. **One account.** Confirm which Twilio account owns +16827868002, the Sole Proprietor brand, the A2P campaign and the WhatsApp sender. Make all runtime settings point to that account.
+2. **One Messaging Service.** Attach the event number only to the service linked to the campaign. Two services exist in the inventory (`MG641…` empty, `MG6d6…` linked to the rejected campaign). Use the campaign-linked service, and set `TWILIO_MESSAGING_SERVICE_SID` to it. Retire the empty one through the cleanup review.
+3. **Advanced Opt-Out** on that service:
+   - Opt-in keywords: `SOPHIA`, `START`, `UNSTOP`. Reply = `smsProgram.confirmation`.
+   - Help keywords: `HELP`, `INFO`. Reply = `smsProgram.help`.
+   - Opt-out: Twilio's standard set. Reply = `smsProgram.stop`.
 
-Run `npm run sms:setup` to print an offline configuration checklist. It prints field names and presence/format status only, never credential values, and makes no network calls. A complete report is not proof of working credentials, verification or delivery. Do not paste values into terminal commands, chat or GitHub.
+   Paste these replies from `site/sms-program.mjs` exactly. **VERIFY:** a real text of `SOPHIA` from a handset must arrive at `/api/twilio/inbound` with `OptOutType=START`. If Twilio does not classify the custom keyword that way, the app will ignore it.
+4. **Integration:** inbound "Send a webhook" → `https://misxv.simplysoph.com/api/twilio/inbound`; status callback → `https://misxv.simplysoph.com/api/twilio/status`.
+5. **Geo permissions:** United States and Canada only for SMS.
+6. **WhatsApp sender:** callbacks to `/api/whatsapp/inbound` and `/api/whatsapp/status`. Confirm the WhatsApp sender is not part of the SMS Messaging Service.
 
-## Owner Checklist For Tomorrow
+## Acceptance (record date, tester and result for each)
 
-1. Sign in or create your account in the [Twilio Console](https://console.twilio.com/). Enable account MFA and use a family-controlled email. Prefer a dedicated event project/subaccount if the account will serve other projects. Record its exact identity privately.
-2. Review the actual number/message charges and account billing before purchasing anything. Configure usage alerts; alerts are not spending caps.
-3. Complete a truthful Compliance Profile and confirm Twilio supports this private family-event use case. The current toll-free purchase flow requires a business, nonprofit or sole-proprietor profile. **Do not invent a business, tax ID or consent history.** If none fits, ask Twilio which registration path supports the event before buying a number.
-4. Once eligibility is confirmed, obtain one SMS-capable toll-free number dedicated to the event and submit verification. A paid account and approved toll-free verification are required for US/Canada texting. Submission can take longer than one day to be approved. Follow [Twilio's current console guide](https://www.twilio.com/docs/messaging/compliance/toll-free/console-onboarding).
-5. Create a Messaging Service named **SimplySoph Mis XV** and attach only that event number. Limit [SMS Geo Permissions](https://www.twilio.com/docs/messaging/guides/sms-geo-permissions) to the United States and Canada. Configure [Advanced Opt-Out](https://www.twilio.com/docs/messaging/tutorials/advanced-opt-out) for STOP/START/HELP and appropriate English/Spanish responses. We will verify behavior before activation.
-6. Create a dedicated API key named **misxv-2027-runtime**, using the narrowest permissions supported for the required messaging operations. Avoid a Main key. Keep the API secret and account Auth Token out of chat. Follow [Twilio API key documentation](https://www.twilio.com/docs/iam/api-keys/key-resource-v2010).
-7. Return here with **“Twilio account ready”**, sender verification status, and whether you used a separate event account/subaccount. We will prepare the Google secret slots and guide you through entering the values. Do not configure callback URLs until their signed handlers are deployed and tested.
+1. Unsigned POST to each callback returns 403. A correctly signed malformed POST returns 422 and writes nothing.
+2. From an owner handset matching a disposable Notion test household: `SOPHIA` → confirmation reply arrives once (no duplicate from the app); ledger shows a synced START; Notion `SMS Consent` updates.
+3. `HELP` → help reply. `STOP` → opt-out reply; the draft review now returns `SMS_OPTED_OUT`; Notion `SMS Opt Out` is set.
+4. `START` again → re-subscribed only after Notion sync.
+5. With a brand-compliant draft, grant Messages create, set both SMS flags on, send **one** reviewed message to the owner phone. Verify `accepted` → `delivered` in the ledger.
+6. Turn the flags back off until the family approves the first real campaign.
 
-## Credential Handoff
+## Known limits
 
-The two Secret Manager containers were created empty on September 28, 2026 after the owner reported their account and sender approved. They are inventoried for retirement review. Credential versions, runtime access grants and environment bindings are still pending. All values must belong to the same selected Twilio account/subaccount. An API key secret authenticates outbound API requests; the account Auth Token is separately required to validate Twilio webhook signatures.
+- **10DLC covers US carriers.** Canada generally works from a US long code. Puerto Rico, USVI and Guam numbers are rejected by the code today. Use WhatsApp or email for every other country.
+- **Meta blocks marketing templates to US numbers.** WhatsApp is for international guests only.
+- **Webhook latency.** A START waits on a Twilio REST call and a Notion write before replying. Twilio times out after 15 s (error 11200). Watch the Twilio debugger during acceptance.
+- **MMS STOP.** Only `SM…` message IDs are accepted. A STOP sent as MMS is still enforced by Twilio, but is not recorded locally.
 
-| Runtime Setting                | Planned Storage                              | Purpose                               |
-| ------------------------------ | -------------------------------------------- | ------------------------------------- |
-| `TWILIO_ACCOUNT_SID`           | Cloud Run environment (starts `AC`)          | Dedicated account/subaccount identity |
-| `TWILIO_MESSAGING_SERVICE_SID` | Cloud Run environment (starts `MG`)          | Dedicated sender pool                 |
-| `TWILIO_API_KEY_SID`           | Cloud Run environment (starts `SK`)          | Dedicated API key identity            |
-| `TWILIO_API_KEY_SECRET`        | Secret Manager `misxv-twilio-api-key-secret` | Outbound messaging authentication     |
-| `TWILIO_AUTH_TOKEN`            | Secret Manager `misxv-twilio-auth-token`     | Incoming webhook signature validation |
+## Retirement
 
-Use Google project `simplysoph-66c78`, signed in as `saulpatinojr@gmail.com`. Create and inventory the two secrets only during credential handoff. Grant access only to the event runtime service account, pin deployed secret versions, and never put values into browser code, committed `.env` files or screenshots. Runtime consumes these settings when populated; empty placeholders do not activate sending.
-
-## Messaging Registration Draft
-
-Use-case description to adapt truthfully: “Optional event updates for invited guests attending Sophia's quinceañera on January 15, 2027. Messages concern RSVP reminders, schedule or venue updates, and event information. No purchased lists or third-party marketing.”
-
-Provide Twilio with the actual opt-in path and evidence once implemented and reviewed. Existing guest phone numbers, an invitation, or an email RSVP do not establish SMS consent. Do not submit the draft below as evidence of a live consent form.
-
-Proposed unchecked opt-in copy: “Send me optional SimplySoph Mis XV event updates by text at this number. Message frequency varies. Message and data rates may apply. Reply STOP to opt out or HELP for help. Text updates are optional and are not required to RSVP.” Link the reviewed privacy/terms pages next to the checkbox and provide a Spanish equivalent. Store the consent text version, timestamp, source and phone alongside the Notion consent fields.
-
-Example message, for registration/review only: “SimplySoph Mis XV: Please RSVP by October 31 at https://misxv.simplysoph.com/rsvp/. Reply STOP to opt out or HELP for help.” Do not include private invitation credentials in public examples. Actual messages require recipient review; longer messages and Unicode may use multiple billable segments.
-
-## Activation Work After Credentials Are Ready
-
-- Acceptance-test the implemented admin/MFA-protected reviewed send action. It persists an attempt before dispatch, deduplicates campaign destinations and never blindly retries uncertain responses. Provider acceptance is not delivery.
-- Keep sending off until sender approval, callback verification and acceptance tests pass. Preserve draft-only behavior when credentials are missing. Do not enable bulk sending merely because credentials exist.
-- Link SMS drafts to their Notion household/source selection. At dispatch, re-read the current phone, consent/date, group membership and opt-out; recheck access/revocation and deduplicate the final destination. Older drafts lacking this provenance must be regenerated.
-- Enforce US/Canada server-side and in Twilio Geo Permissions. A `+1` prefix alone is insufficient because it also covers other countries/territories. Use maintained phone-country metadata and fail closed for ambiguous destinations. Preview message segments and cost before sending.
-- Deploy and verify the implemented signature-validated inbound and delivery callbacks using the exact public HTTPS URL. Test forged requests, mismatched account/service/message identities and duplicate callbacks. Callback authentication is separate from browser session/CSRF rules.
-- Persist STOP suppression immediately in the website ledger and write it to Notion with retry tracking. An unavailable Notion update must not permit further sends. HELP returns approved family support details; START must not bypass consent/eligibility checks. Test carrier/provider opt-out behavior too.
-- Test with mock provider calls first. Then review and send only an explicitly approved test to an owner-controlled phone. Verify STOP, HELP, opt-in handling, delivery failures, repeated callbacks, timeout handling and Notion projection before guest distribution. No guest messages are part of setup.
-
-## February 1, 2027 Review And Event Cleanup
-
-This is a **review date, not automatic deletion**. Before provisioning, capture a scoped baseline and extend the resource inventory validator/tests to support Twilio resources. Record each new number, Messaging Service, API key, Google secret and permission immediately in `ops/event-resources.json` with exact identity, creation evidence, dependencies and removal checks. Keep credentials and guest exports out of that file.
-
-After the family approves retirement: stop dispatch and callbacks, settle in-flight messages, export approved records privately, release the event number to stop its recurring charge, delete the event Messaging Service, revoke the event API key, remove event secret versions/bindings and event-only permissions, and review remaining charges. Remove a dedicated subaccount only after checking its contents. Preserve shared Twilio accounts, Microsoft 365 email, the Google project, domain and Notion family records. Releasing a number may be irreversible; confirm the exact number at cleanup. Follow `CLEANUP.md` and reconcile the live inventory before any deletion.
+After the family approves retirement: turn off both flags, settle in-flight messages, export approved records privately, release the event number, delete only the event Messaging Service(s), revoke the event API key, remove event secret versions and bindings, and review remaining charges. Preserve shared Twilio/Meta accounts. Follow `CLEANUP.md` and reconcile `ops/event-resources.json` before any deletion.

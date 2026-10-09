@@ -169,14 +169,29 @@ const root = path.resolve(
   host = env.HOST ?? (env.K_SERVICE ? "0.0.0.0" : "127.0.0.1");
 if (!Number.isInteger(port) || port < 0 || port > 65535)
   throw new Error("Invalid port");
-const server = createHttpServer({ app, root, origin });
+// Cloud Logging parses one JSON object per stdout line (severity, httpRequest).
+const log = (entry) =>
+  process.stdout.write(
+    JSON.stringify({ time: new Date().toISOString(), ...entry }) + "\n",
+  );
+const server = createHttpServer({ app, root, origin, log });
 server.requestTimeout = 120000;
 server.headersTimeout = 15000;
 server.listen(port, host, () =>
-  console.log(
-    `Sophia ${app ? "service" : "preview"}: http://${host}:${server.address().port}/`,
-  ),
+  log({
+    severity: "NOTICE",
+    message: `Sophia ${app ? "service" : "preview"}: http://${host}:${server.address().port}/`,
+  }),
 );
+// Log, then exit so Cloud Run replaces the instance (Node's default crash).
+process.on("unhandledRejection", (e) => {
+  log({
+    severity: "ERROR",
+    message: "Unhandled rejection",
+    stack_trace: String(e?.stack || e).slice(0, 4000),
+  });
+  process.exit(1);
+});
 for (const signal of ["SIGTERM", "SIGINT"])
   process.on(signal, () => {
     server.close(() => process.exit(0));
