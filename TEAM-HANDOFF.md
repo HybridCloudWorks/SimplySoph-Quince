@@ -1,7 +1,7 @@
 # Team handoff
 
-Repository: https://github.com/saulpatinojr/SimplySoph-Quince
-Draft review: https://github.com/saulpatinojr/SimplySoph-Quince/pull/1
+Repository: https://github.com/HybridCloudWorks/SimplySoph-Quince
+Draft review: https://github.com/HybridCloudWorks/SimplySoph-Quince/pull/1
 Branch: feature/complete-quince-site
 
 Use README.md, PAGE-SCOPE.md and DEPLOYMENT.md as the current implementation contract. Earlier five-page/demo proposals are superseded.

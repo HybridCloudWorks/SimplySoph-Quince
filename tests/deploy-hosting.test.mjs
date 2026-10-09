@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { assertReleaseContext, servingConfig } from '../scripts/deploy-hosting.mjs';
 
-const env = {GITHUB_EVENT_NAME:'push',GITHUB_REPOSITORY:'saulpatinojr/SimplySoph-Quince',GITHUB_REF_NAME:'main',GITHUB_REF:'refs/heads/main',GITHUB_SHA:'a'.repeat(40)};
+const env = {GITHUB_EVENT_NAME:'push',GITHUB_REPOSITORY:'HybridCloudWorks/SimplySoph-Quince',GITHUB_REF_NAME:'main',GITHUB_REF:'refs/heads/main',GITHUB_SHA:'a'.repeat(40)};
 test('production rejects PRs, foreign repositories, arbitrary branches and malformed revisions', () => {
   assert.doesNotThrow(() => assertReleaseContext(env));
   for (const changed of [{GITHUB_EVENT_NAME:'pull_request'},{GITHUB_REPOSITORY:'other/repo'},{GITHUB_REF_NAME:'feature/unreviewed'},{GITHUB_SHA:'main'},{GITHUB_REF:'refs/pull/1/merge'}]) {

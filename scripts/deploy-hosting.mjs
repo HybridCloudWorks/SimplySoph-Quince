@@ -8,7 +8,8 @@ import { GoogleAuth } from 'google-auth-library';
 
 const site = 'misxv-simplysoph';
 const project = 'simplysoph-66c78';
-const repository = 'saulpatinojr/SimplySoph-Quince';
+// The repository moved to the HybridCloudWorks org (same immutable ID 1389834350).
+const repository = 'HybridCloudWorks/SimplySoph-Quince';
 const api = 'https://firebasehosting.googleapis.com/v1beta1/';
 const branches = ['main'];
 
