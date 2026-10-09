@@ -1567,3 +1567,28 @@ test("a temporary outage while sending keeps the email ready to retry", async ()
   outage = false;
   assert.equal((await f.admin("mail/batch/send", { id: batchId(9) })).accepted, 1);
 });
+
+test("RSVPs reach the in-app inbox without emailing organizers, and the pulse reflects them", async () => {
+  const f = await fixture();
+  const before = await f.admin("pulse");
+  const organizerMail = () => f.sent.filter((m) => m.to === "organizer@gmail.com").length;
+  await f.guest("rsvp", f.input(), { "idempotency-key": "66666666-6666-4666-8666-666666666666" });
+  const after = await f.admin("pulse");
+  assert.notEqual(after.token, before.token);
+  assert.equal(after.unread, before.unread + 1);
+  const note = (await f.admin("notifications")).notifications.find((n) => n.kind === "rsvp");
+  assert.equal(note.title, "Test family responded");
+  assert.equal(note.text, "Attending: 4 people");
+  assert.equal(note.emailState, "none");
+  assert.equal(organizerMail(), 0, "RSVP alerts are never emailed");
+  await f.admin("notifications", { id: note.id });
+  assert.equal((await f.admin("pulse")).unread, after.unread - 1);
+  const update = f.input();
+  update.previousSubmissionId = "66666666-6666-4666-8666-666666666666";
+  for (const e of Object.keys(update.attendance)) update.attendance[e] = { adultsTeens: 0, kids: 0 };
+  f.advance(1000);
+  await f.guest("rsvp", update, { "idempotency-key": "77777777-7777-4777-8777-777777777777" });
+  const latest = (await f.admin("notifications")).notifications.filter((n) => n.kind === "rsvp")[0];
+  assert.equal(latest.title, "Test family updated their RSVP");
+  assert.equal(latest.text, "Not attending");
+});
