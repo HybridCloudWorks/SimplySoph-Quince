@@ -946,7 +946,7 @@
         ],
         "evidence": "API read before changes: inboundRequestUrl/statusCallback null, useInboundWebhookOnNumber true; work/twilio-callback-baseline.json."
       },
-      "creationEvidence": "Owner submitted campaign and attached PN494bb71fbd58650f119df26763a77940. Agent configured POST inbound and delivery callbacks for misxv.simplysoph.com and branded keyword responses. 2026-10-09: a campaign on this service is in progress. The Sole Proprietor package shows Incomplete registration (profile Approved, brand Registered, campaign stage Not registered) until approval; Continue registration would delete the in-progress campaign and must not be used. Owner updated Advanced Opt-Out to the program version 2026-10-08 replies (opt-in SOPHIA/START/UNSTOP, help HELP/INFO, standard opt-out set) and confirmed POST inbound /api/twilio/inbound and status /api/twilio/status. If the in-progress campaign is rejected (30909), edit and resubmit that same campaign with the values in docs/sms-campaign-registration.md.",
+      "creationEvidence": "Owner submitted campaign and attached PN494bb71fbd58650f119df26763a77940. Agent configured POST inbound and delivery callbacks for misxv.simplysoph.com and branded keyword responses. 2026-10-09: a campaign on this service is in progress. The Sole Proprietor package shows Incomplete registration (profile Approved, brand Registered, campaign stage Not registered) until approval; Continue registration would delete the in-progress campaign and must not be used. Owner updated Advanced Opt-Out to the program version 2026-10-08 replies (opt-in SOPHIA/START/UNSTOP, help HELP/INFO, standard opt-out set) and confirmed POST inbound /api/twilio/inbound and status /api/twilio/status. If the in-progress campaign is rejected (30909), edit and resubmit that same campaign with the values in docs/sms-campaign-registration.md. 2026-10-09: campaign CMc4a08f0e5cf080f32a30ab202995f92a (submitted 2026-09-29) was rejected with 30909 because the registered message flow described an invitation-based checkbox the reviewer could not verify. The owner edited the same campaign in place (no new fee) with the program version 2026-10-09 values from docs/sms-campaign-registration.md (keywords SOPHIA,START,UNSTOP; confirmation with Terms and Privacy links) and updated the Advanced Opt-Out opt-in reply to match. Awaiting review.",
       "verifyBeforeCleanup": "Confirm event-only scope, campaign status and sender ownership. Review/export February 1, no automatic deletion.",
       "cleanupSteps": "After retirement approval disable dispatch, remove event callback routing and revoke runtime credentials; decide separately whether to delete owner-created campaign/service or release number. Preserve shared Twilio and Meta accounts.",
       "verifyAfterCleanup": "Verify callbacks and event grants removed; reconcile retained campaign/number charges.",
@@ -1102,6 +1102,50 @@
       "dependsOn": [
         "misxv-deploy-route-role",
         "misxv-deploy-identity"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "misxv-alert-email-channel",
+      "type": "monitoring-notification-channel",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "projects/simplysoph-66c78/notificationChannels/9092479709067024374",
+      "baseline": {
+        "verifiedAt": "2026-10-09T18:00:00.000Z",
+        "scope": "Cloud Monitoring notification channels and alert policies in simplysoph-66c78",
+        "evidence": "Monitoring API listed 0 notification channels and 0 alert policies before creation.",
+        "allowedTypes": [
+          "monitoring-notification-channel"
+        ]
+      },
+      "creationEvidence": "Created 2026-10-09 via the Monitoring API as the project owner: email channel 'Mis XV alerts (owner)' to the project owner's Gmail, userLabels event=misxv-2027.",
+      "verifyBeforeCleanup": "Confirm no other alert policy uses this channel.",
+      "cleanupSteps": "After deleting misxv-api-error-alert, delete only notification channel 9092479709067024374.",
+      "verifyAfterCleanup": "Confirm the channel is absent and unrelated channels remain.",
+      "dependsOn": [],
+      "status": "active"
+    },
+    {
+      "id": "misxv-api-error-alert",
+      "type": "log-alert-policy",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "projects/simplysoph-66c78/alertPolicies/6152721770906490326",
+      "baseline": {
+        "verifiedAt": "2026-10-09T18:00:00.000Z",
+        "scope": "Cloud Monitoring notification channels and alert policies in simplysoph-66c78",
+        "evidence": "Monitoring API listed 0 notification channels and 0 alert policies before creation.",
+        "allowedTypes": [
+          "log-alert-policy"
+        ]
+      },
+      "creationEvidence": "Created 2026-10-09 via the Monitoring API: 'misxv-api errors', log match resource.type=cloud_run_revision AND service_name=misxv-api AND severity>=ERROR, notification rate limit 5 min, auto-close 7 days, userLabels event=misxv-2027.",
+      "verifyBeforeCleanup": "Stop the event API first so no new alerts fire.",
+      "cleanupSteps": "Delete only alert policy 6152721770906490326.",
+      "verifyAfterCleanup": "Confirm the policy is absent and unrelated policies remain.",
+      "dependsOn": [
+        "misxv-alert-email-channel"
       ],
       "status": "active"
     }

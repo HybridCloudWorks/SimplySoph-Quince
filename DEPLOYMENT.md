@@ -55,7 +55,7 @@ Every variable `server/start.mjs` reads. Secrets come from **pinned** Secret Man
 2. Runtime service account: `objectUser` on the event bucket only; Secret Accessor on individual event secrets only. No project Editor, no downloadable keys.
 3. Google OAuth client: exact production origin plus explicitly chosen preview origins only. Keep a second owner and authenticator recovery material.
 4. Notion connection: read/update/insert on **only** the organizer-approved databases (Invitations, Budget, Godparents). No user profiles, comments or agents.
-5. Microsoft: Exchange application RBAC limited to `misxv@simplysoph.com`; verify another mailbox is denied. No tenant-wide `Mail.Send`. Review SPF/DKIM/DMARC before any invitation send (DMARC is not yet published).
+5. Microsoft: Exchange application RBAC limited to `misxv@simplysoph.com`; verify another mailbox is denied. No tenant-wide `Mail.Send`. SPF authorizes Microsoft 365. DKIM selector1 is valid; the selector2 CNAME is missing since DNS moved to Cloudflare and must be restored before Microsoft rotates keys. DMARC is published at `p=none` with no report address.
 6. Twilio: see [docs/twilio-setup.md](docs/twilio-setup.md). Grant Messages *create* to the runtime key only at activation.
 
 ## Deploy the API

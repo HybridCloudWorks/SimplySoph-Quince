@@ -22,7 +22,7 @@ Code items 2–8 are **done** on this branch (156/156 tests, 66/66 documents). I
 | # | Item | Status |
 |---|---|---|
 | 1 | **Owner:** deploy this release, then resubmit the campaign using `docs/sms-campaign-registration.md`. Configure Advanced Opt-Out with `SOPHIA` and the new replies | Owner |
-| 2 | Structured JSON request logs; 5xx logged with stack traces | **Done** · Owner: create the log-based alert on `severity>=ERROR` for `misxv-api` and a billing budget alert |
+| 2 | Structured JSON request logs; 5xx logged with stack traces | **Done**, and the `misxv-api errors` log alert emails the owner (created 2026-10-09). Owner: billing budget alert |
 | 3 | Rate limits moved to memory. Shared budgets count only failures, so valid credentials are never locked out (H1). Ledger transactions on one instance run one at a time, with jittered backoff and GCS 429 retry | **Done**. Folding the sync lease and mail claim into the RSVP transaction (5 → 2 writes) is moved to P1 |
 | 4 | After registration the private link reopens an RSVP-only session (contact hidden and preserved); rejected links explain why | **Done** |
 | 5 | Server-minted private links in invitation and reminder emails, plus **We'll be there / We can't make it** quick answers (pre-filled, guest confirms) | **Done**. A `{link}` placeholder for group email/SMS is moved to P1 |
@@ -30,7 +30,7 @@ Code items 2–8 are **done** on this branch (156/156 tests, 66/66 documents). I
 | 7 | Per-household status (no link, revoked, created, emailed, opened, attending, declined), status filter with counts, dashboard funnel, `openedAt` | **Done** |
 | 8 | Copy fixes: corrupted Spanish characters, stale "original code" advice, English-only links, consistent informal Spanish, no Notion/UUID shown to guests | **Done** |
 | 9 | Run the **acceptance gate** in `DEPLOYMENT.md` end to end with the disposable household | Owner |
-| 10 | Publish a DMARC record (`p=none` first) for simplysoph.com | Owner |
+| 10 | DMARC: published at `p=none` (verified 2026-10-09). Owner, optional: add `rua=` reports. Owner: restore the DKIM selector2 CNAME in Cloudflare | Owner |
 
 ## Phase 2, P1: before the RSVP deadline (target Oct 16–24)
 
@@ -78,7 +78,7 @@ Each item needs a date, a tester and evidence recorded in `ops/event-resources.j
 - [ ] No secrets in the repo (`git grep` for SIDs/keys), in `dist/`, or in logs.
 
 ### Invitations and RSVP (disposable household)
-- [ ] Email invitation arrives with valid SPF/DKIM (and DMARC once published), in EN and ES.
+- [ ] Email invitation arrives with valid SPF/DKIM/DMARC, in EN and ES. The first test (2026-10-09) was accepted by Microsoft but not yet found in Gmail; check message trace.
 - [ ] Link opens; RSVP in ≤3 taps; edit works **after** registering an account.
 - [ ] Capacity limits, decline, mixed attendance, concurrent edits and replay all behave correctly.
 - [ ] Notion `Website …` columns update; Notion outage → pending → retry reconciles.
