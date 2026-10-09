@@ -42,4 +42,27 @@ for (const page of pages) {
       `Public Registry navigation is missing or restricted in ${page}`,
     );
 }
-console.log(`All ${pages.length} documents and local links/assets passed.`);
+// Follow relative imports between published scripts: a module the build forgot
+// to copy otherwise passes the page checks and breaks only in the browser.
+const scripts = new Set();
+const pending = [];
+for (const page of pages) {
+  const html = await readFile(path.join(root, page), "utf8");
+  for (const [, url] of html.matchAll(/<script[^>]+src="(\/[^"]+\.m?js)"/g))
+    pending.push(path.join(root, url));
+}
+while (pending.length) {
+  const file = pending.pop();
+  if (scripts.has(file)) continue;
+  scripts.add(file);
+  const source = await readFile(file, "utf8").catch(() => {
+    throw new Error(`Script not published: ${path.relative(root, file)}`);
+  });
+  for (const [, spec] of source.matchAll(
+    /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)["'](\.{1,2}\/[^"']+)["']/g,
+  ))
+    pending.push(path.resolve(path.dirname(file), spec));
+}
+console.log(
+  `All ${pages.length} documents, ${scripts.size} scripts and local links/assets passed.`,
+);

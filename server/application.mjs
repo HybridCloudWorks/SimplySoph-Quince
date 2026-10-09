@@ -5,6 +5,7 @@ import { createSms, smsCompliantText, smsPreview } from "./sms.mjs";
 import { createPlanning } from "./planning.mjs";
 import { createAdminEmail } from "./admin-email.mjs";
 import { createNotifications } from "./notifications.mjs";
+import { createMailBatches } from "./mail-batches.mjs";
 import { normalizeVideo, mediaResponse } from "./video.mjs";
 import { calendar, contactTopics, escapeHtml } from "../site/celebration.mjs";
 import { siteSettings, validateSettings } from "./site-settings.mjs";
@@ -54,6 +55,14 @@ const audit = (s, actor, action, id, now) => {
   s.audit.push({ actor, action, id, at: new Date(now).toISOString() });
   s.audit = s.audit.slice(-5000);
 };
+// A minted link matches the household's current generation and, when it was
+// minted for an email draft, opens only once that email was actually sent.
+const linkOpens = (s, fingerprint, r) => {
+  const link = s.invitationLinks?.[fingerprint];
+  if (link?.householdId !== r.id || link.generation !== r.generation) return false;
+  if (!link.draftId) return true;
+  return ["accepted", "unknown", "sending"].includes(s.outbox[link.draftId]?.state);
+};
 const responseCount = (r) =>
   r?.attendance?.dinner
     ? r.attendance.dinner.adultsTeens + r.attendance.dinner.kids
@@ -82,6 +91,7 @@ export function createApplication({
   adminDelegateEmails = [],
   notificationEmails = adminEmails,
   now = Date.now,
+  mailSleep,
 }) {
   if (!Buffer.isBuffer(key) || key.length !== 32)
     throw new Error("32-byte application key required");
@@ -400,6 +410,17 @@ export function createApplication({
   });
   const records = createAdminRecords({ ledger, key, now });
   const planning = createPlanning({ ledger, documents, notion, now });
+  const batches = createMailBatches({
+    ledger,
+    notion,
+    queue: (s, args) => queue(s, args),
+    dispatchMail: (id) => dispatchMail(id),
+    audit,
+    mailer,
+    origin,
+    now,
+    sleep: mailSleep,
+  });
   const adminEmail = createAdminEmail({
     ledger,
     mailer,
@@ -577,8 +598,7 @@ export function createApplication({
         (r) =>
           (r.tokenHash === fingerprint ||
             r.codeHash === fingerprint ||
-            (s.invitationLinks?.[fingerprint]?.householdId === r.id &&
-              s.invitationLinks[fingerprint].generation === r.generation)) &&
+            linkOpens(s, fingerprint, r)) &&
           r.active,
       );
       if (!row) {
@@ -599,10 +619,7 @@ export function createApplication({
           !r?.active ||
           (r.tokenHash !== fingerprint &&
             r.codeHash !== fingerprint &&
-            !(
-              s.invitationLinks?.[fingerprint]?.householdId === r.id &&
-              s.invitationLinks[fingerprint].generation === r.generation
-            ))
+            !linkOpens(s, fingerprint, r))
         )
           throw error(401, "INVALID_INVITATION");
         const registered = !!accounts.accountFor(s, row.id);
@@ -1703,6 +1720,20 @@ export function createApplication({
       }
       if (path === "/api/admin/sms/sync" && method === "POST")
         return sms.retrySync();
+      if (path === "/api/admin/invitations/issue-batch" && method === "POST")
+        return batches.issue(body, session.actor, events);
+      if (path === "/api/admin/mail/invitation-batch" && method === "POST")
+        return batches.create(body, session.actor);
+      if (path === "/api/admin/mail/batches" && method === "GET")
+        return { batches: batches.list(ctx.state) };
+      if (path === "/api/admin/mail/batch" && method === "GET")
+        return batches.detail(ctx.state, req.query?.id, (c) => unseal(c, key));
+      if (path === "/api/admin/mail/batch/confirm" && method === "POST")
+        return batches.confirm(body, session.actor);
+      if (path === "/api/admin/mail/batch/send" && method === "POST")
+        return batches.send(body, session.actor);
+      if (path === "/api/admin/mail/batch/cancel" && method === "POST")
+        return batches.cancel(body, session.actor);
       if (path === "/api/admin/mail/preview" && method === "GET") {
         const row = ctx.state.outbox[req.query?.id];
         if (!row) throw error(404, "NOT_FOUND");
@@ -1744,24 +1775,24 @@ export function createApplication({
             s.invitations[row.id].generation !== invite.generation
           )
             throw error(409, "INVITATION_INACTIVE");
+          const id = queue(s, {
+            type: body.type,
+            household: row,
+            recipient: row.email,
+            locale: invite.locale,
+            url,
+            updateText: safeText(body.updateText || "", 2000),
+          });
           if (personal) {
             s.invitationLinks ??= {};
             s.invitationLinks[hash(minted)] = {
               householdId: row.id,
               generation: invite.generation,
               channel: "email",
+              draftId: id,
             };
           }
-          return {
-            id: queue(s, {
-              type: body.type,
-              household: row,
-              recipient: row.email,
-              locale: invite.locale,
-              url,
-              updateText: safeText(body.updateText || "", 2000),
-            }),
-          };
+          return { id };
         });
       }
       if (path === "/api/admin/mail/send" && method === "POST") {

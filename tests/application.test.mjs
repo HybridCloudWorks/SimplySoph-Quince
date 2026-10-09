@@ -1396,6 +1396,9 @@ test("invitation emails carry a server-minted private link with quick answers; r
       headers: { origin },
       body: { token: minted },
     });
+  // A minted link stays closed until its own email has actually been sent.
+  await assert.rejects(open, (e) => e.code === "INVALID_INVITATION");
+  await f.admin("mail/send", { id, confirm: true });
   assert.ok((await open()).setCookie);
   await f.admin("invitation", {
     id: household,
@@ -1426,4 +1429,141 @@ test("unknown admin emails, link tokens and MFA challenges never queue a ledger 
     );
   }
   assert.equal(writes, 0);
+});
+
+const batchId = (n) => "00000000-0000-4000-8000-" + String(n).padStart(12, "0");
+test("invitation batches need a typed-count confirmation before anything sends", async () => {
+  const f = await fixture({ mailSleep: async () => {} });
+  const created = await f.admin("mail/invitation-batch", {
+    requestId: batchId(1),
+    type: "invitation",
+    ids: [household, "not-a-guest"],
+  });
+  assert.equal(created.total, 1);
+  assert.equal(created.skipped, 1);
+  // Same request is idempotent; a different selection under it is refused.
+  assert.equal((await f.admin("mail/invitation-batch", { requestId: batchId(1), type: "invitation", ids: [household, "not-a-guest"] })).total, 1);
+  await assert.rejects(
+    () => f.admin("mail/invitation-batch", { requestId: batchId(1), type: "invitation", ids: [household] }),
+    (e) => e.code === "SETTINGS_CHANGED",
+  );
+  const detail = await f.admin("mail/batch", undefined, { id: batchId(1) });
+  assert.equal(detail.skippedList[0].reason, "not-in-guest-list");
+  assert.ok(detail.samples.en.html.includes("/rsvp/#"));
+  const minted = detail.samples.en.html.match(/\/rsvp\/#([A-Za-z0-9_-]{43})"/)[1];
+  const open = () =>
+    f.app.dispatch({ path: "/api/invitation-session", method: "POST", headers: { origin }, body: { token: minted } });
+  await assert.rejects(() => f.admin("mail/batch/send", { id: batchId(1) }), (e) => e.code === "BATCH_NOT_CONFIRMED");
+  await assert.rejects(() => f.admin("mail/batch/confirm", { id: batchId(1), count: 2 }), (e) => e.code === "CONFIRM_COUNT_MISMATCH");
+  await assert.rejects(open, (e) => e.code === "INVALID_INVITATION");
+  assert.equal(f.sends(), 0);
+  await f.admin("mail/batch/confirm", { id: batchId(1), count: 1 });
+  const sent = await f.admin("mail/batch/send", { id: batchId(1) });
+  assert.equal(sent.accepted, 1);
+  assert.equal(sent.done, true);
+  assert.equal(f.sends(), 1);
+  assert.ok((await open()).setCookie, "the link opens once its email was sent");
+  assert.equal((await f.admin("guests")).guests[0].status, "opened");
+  // A second invitation batch skips a household that was already invited.
+  const again = await f.admin("mail/invitation-batch", { requestId: batchId(2), type: "invitation", ids: [household] });
+  assert.equal(again.total, 0);
+  assert.equal(again.state, "empty");
+});
+
+test("reminder batches skip responders, recent contacts and cancelled drafts never send", async () => {
+  const f = await fixture({ mailSleep: async () => {} });
+  await f.admin("mail/invitation-batch", { requestId: batchId(3), type: "invitation", ids: [household] });
+  await f.admin("mail/batch/confirm", { id: batchId(3), count: 1 });
+  await f.admin("mail/batch/send", { id: batchId(3) });
+  const reminder = (n) => f.admin("mail/invitation-batch", { requestId: batchId(n), type: "reminder", ids: [household] });
+  const early = await f.admin("mail/batch", undefined, { id: (await reminder(4)).id });
+  assert.equal(early.skippedList[0].reason, "contacted-in-last-72-hours");
+  // Backdate the sent invitation (advancing the clock would expire the admin session).
+  await f.ledger.transaction((s) => {
+    for (const j of Object.values(s.outbox)) j.attemptAt -= 72 * 3600000 + 1;
+  });
+  const later = await reminder(5);
+  assert.equal(later.total, 1);
+  await f.admin("mail/batch/cancel", { id: later.id });
+  await assert.rejects(() => f.admin("mail/batch/send", { id: later.id }), (e) => e.code === "BATCH_NOT_CONFIRMED");
+  assert.equal(f.sends(), 1);
+  await f.guest("rsvp", f.input(), { "idempotency-key": "44444444-4444-4444-8444-444444444444" });
+  const answered = await f.admin("mail/batch", undefined, { id: (await reminder(6)).id });
+  assert.equal(answered.skippedList[0].reason, "already-responded");
+});
+
+test("a batch being sent elsewhere cannot be sent twice at once", async () => {
+  const f = await fixture({ mailSleep: async () => {} });
+  await f.admin("mail/invitation-batch", { requestId: batchId(7), type: "invitation", ids: [household] });
+  await f.admin("mail/batch/confirm", { id: batchId(7), count: 1 });
+  await f.ledger.transaction((s) => {
+    s.mailBatches[batchId(7)].lease = { owner: "other-tab", until: Date.now() * 2 };
+  });
+  await assert.rejects(() => f.admin("mail/batch/send", { id: batchId(7) }), (e) => e.code === "BATCH_ALREADY_SENDING");
+  assert.equal(f.sends(), 0);
+});
+
+test("bulk link creation only covers households without a link and sends nothing", async () => {
+  const other = { id: "22222222-2222-4222-8222-222222222222", name: "Other family", capacity: { adultsTeens: 2, kids: 0 }, email: "other@example.com", phone: "", validCapacity: true, administratorEligible: false, archived: false };
+  const f = await fixture({ notion: { list: async () => [structuredClone(other)] } });
+  const before = (await f.ledger.read()).invitations[household].generation;
+  const r = await f.admin("invitations/issue-batch", {
+    ids: [other.id, household],
+    invited: { ceremony: true, dinner: true, dance: false },
+    locale: "es",
+  });
+  assert.equal(r.issued, 1);
+  const s = await f.ledger.read();
+  assert.equal(s.invitations[other.id].locale, "es");
+  assert.equal(s.invitations[household].generation, before, "existing links are never revoked");
+  assert.equal(f.sends(), 0);
+  await assert.rejects(
+    () => f.admin("invitations/issue-batch", { ids: [other.id], invited: { ceremony: false, dinner: false, dance: false } }),
+    (e) => e.code === "EVENTS_REQUIRED",
+  );
+});
+
+test("invitation batches skip households that already responded", async () => {
+  const f = await fixture({ mailSleep: async () => {} });
+  await f.guest("rsvp", f.input(), { "idempotency-key": "55555555-5555-4555-8555-555555555555" });
+  const r = await f.admin("mail/invitation-batch", { requestId: batchId(8), type: "invitation", ids: [household] });
+  assert.equal(r.total, 0);
+  const d = await f.admin("mail/batch", undefined, { id: r.id });
+  assert.equal(d.skippedList[0].reason, "already-responded");
+});
+
+test("a temporary outage while sending keeps the email ready to retry", async () => {
+  let outage = false,
+    current;
+  const f = await fixture({
+    mailSleep: async () => {},
+    notion: {
+      read: async () => {
+        if (outage) throw Object.assign(new Error(), { status: 503, code: "NOTION_503" });
+        // The fixture reads during setup, before `current` exists; same row data.
+        return structuredClone(
+          current?.row ?? {
+            id: household,
+            name: "Test family",
+            capacity: { adultsTeens: 2, kids: 1 },
+            email: "test@example.com",
+            phone: "",
+            validCapacity: true,
+            administratorEligible: true,
+            archived: false,
+          },
+        );
+      },
+    },
+  });
+  current = f;
+  await f.admin("mail/invitation-batch", { requestId: batchId(9), type: "invitation", ids: [household] });
+  await f.admin("mail/batch/confirm", { id: batchId(9), count: 1 });
+  outage = true;
+  await assert.rejects(() => f.admin("mail/batch/send", { id: batchId(9) }), (e) => e.code === "NOTION_503");
+  assert.equal(f.sends(), 0);
+  const waiting = await f.admin("mail/batch", undefined, { id: batchId(9) });
+  assert.equal(waiting.remaining, 1, "the email is still waiting, not set aside");
+  outage = false;
+  assert.equal((await f.admin("mail/batch/send", { id: batchId(9) })).accepted, 1);
 });

@@ -26,6 +26,30 @@ const messages = {
     "Select Recipients With Valid Contact Details. SMS Also Requires The Guest To Have Texted SOPHIA From That Phone.",
     "Selecciona destinatarios con datos válidos. Para SMS, el invitado debe haber enviado SOPHIA desde ese teléfono.",
   ],
+  CONFIRM_COUNT_MISMATCH: [
+    "Type The Exact Number Of Emails Shown To Confirm. Nothing Was Sent.",
+    "Escribe el número exacto de correos para confirmar. No se envió nada.",
+  ],
+  BATCH_NOT_CONFIRMED: [
+    "Confirm This Batch Before Sending.",
+    "Confirma este lote antes de enviarlo.",
+  ],
+  BATCH_NOT_DRAFT: [
+    "This Batch Was Already Confirmed Or Cancelled. Reopen It To See Its Status.",
+    "Este lote ya fue confirmado o cancelado.",
+  ],
+  BATCH_ALREADY_SENDING: [
+    "This Batch Is Being Sent From Another Tab. Wait A Minute, Then Reopen It.",
+    "Este lote se está enviando desde otra pestaña. Espera un minuto y vuelve a abrirlo.",
+  ],
+  INVALID_AUDIENCE: [
+    "Select At Least One Household.",
+    "Selecciona al menos una familia.",
+  ],
+  EVENTS_REQUIRED: [
+    "Choose At Least One Event For The Invitation.",
+    "Elige al menos un evento para la invitación.",
+  ],
   SMS_BRAND_OR_STOP_MISSING: [
     "Start The Text With “Simply Soph Media:” And Include STOP Opt-Out Wording.",
     "Empieza el mensaje con “Simply Soph Media:” e incluye la opción STOP.",
