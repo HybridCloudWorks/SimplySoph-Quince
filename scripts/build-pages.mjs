@@ -347,6 +347,7 @@ for (const file of [
   "admin-experience.js",
   "admin-planning.js",
   "admin-audience.js",
+  "admin-batches.js",
   "admin-history.js",
   "admin-whatsapp.js",
   "guest-whatsapp.js",

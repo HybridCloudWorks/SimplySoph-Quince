@@ -4,10 +4,13 @@ import { readFile } from "node:fs/promises";
 import { smsProgram } from "../site/sms-program.mjs";
 
 // Twilio rejects campaigns (30909) when the registered text and live behavior diverge.
-const doc = await readFile(
-  new URL("../docs/sms-campaign-registration.md", import.meta.url),
-  "utf8",
-);
+// Normalize line endings so Windows (CRLF) checkouts parse the same as CI.
+const doc = (
+  await readFile(
+    new URL("../docs/sms-campaign-registration.md", import.meta.url),
+    "utf8",
+  )
+).replace(/\r\n/g, "\n");
 const flow = doc.match(/## message_flow\s+```\n([\s\S]*?)\n```/)[1];
 
 test("registered campaign replies match the program the code and pages use", () => {

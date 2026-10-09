@@ -92,6 +92,19 @@ Rules that hold for every channel:
 - `accepted` means the provider took the message. It does not mean delivered.
 - `unknown` and `sending` are never retried automatically. Reconcile them against the provider (Sent Items or the Twilio logs) first.
 
+**Batch email (invitations and reminders).** In Admin → Invitations:
+1. Select households, then use **Create links** (only for households without one; nothing is emailed) or **Email invitation** / **Email reminder**.
+2. Review the recipients, the skipped households with reasons, and one sample per language.
+3. Type the number of emails to confirm. The open admin tab sends them in groups of 10 at about 28 per minute, under Exchange Online's 30 per minute limit.
+4. Closing the tab or pressing **Stop** halts sending. A confirmed batch can be continued later from **Recent email batches**. Nothing sends on a timer.
+
+Which households are skipped:
+- **Both types:** households that already responded.
+- **Invitations:** households that already received one.
+- **Reminders:** households emailed in the last 72 hours, or that have already had 3 reminders.
+
+Each email carries its own private link, which opens only after that email was sent. A single household is a batch of one.
+
 SMS only goes to phones whose owner texted the program keyword (`SOPHIA`, `START`, `UNSTOP`). The receipt must be synced and bound to the household. **An organizer-ticked Notion consent box alone never makes a number textable.** Every SMS must start with `Simply Soph Media:` and include `STOP`.
 
 ## Acceptance gate before any real invitation
