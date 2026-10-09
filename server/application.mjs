@@ -247,26 +247,27 @@ export function createApplication({
       latestSubmissionId: record.latestSubmissionId ?? null,
     };
   }
-  async function syncOne(householdId) {
-    const owner = token();
-    const task = await ledger.transaction((s) => {
-      const row = s.invitations[householdId];
-      const profile = s.profiles?.[householdId];
-      if (
-        !row ||
-        (!row.latestSubmissionId && !profile) ||
-        row.syncLease?.until > now()
-      )
-        return null;
-      row.syncLease = { owner, until: now() + 90000 };
-      const response = s.responses[row.latestSubmissionId];
-      const account = Object.values(s.accounts || {}).find(
-        (a) => a.householdId === householdId,
-      );
-      return structuredClone({ response, profile, account });
-    });
-    if (!task) return;
-    let failure = null;
+  // Notion sync and outbound mail are split into ledger steps (claim/finish,
+  // run inside a transaction) and provider calls (outside any transaction), so
+  // the RSVP path can fold both claims into its own save and both results into
+  // one final save. syncOne and dispatchMail compose the same steps standalone.
+  function claimSync(s, householdId, owner) {
+    const row = s.invitations[householdId];
+    const profile = s.profiles?.[householdId];
+    if (
+      !row ||
+      (!row.latestSubmissionId && !profile) ||
+      row.syncLease?.until > now()
+    )
+      return null;
+    row.syncLease = { owner, until: now() + 90000 };
+    const response = s.responses[row.latestSubmissionId];
+    const account = Object.values(s.accounts || {}).find(
+      (a) => a.householdId === householdId,
+    );
+    return structuredClone({ response, profile, account });
+  }
+  async function projectSync(householdId, task) {
     try {
       if (task.response)
         await notion.project(householdId, {
@@ -275,29 +276,91 @@ export function createApplication({
         });
       else await notion.projectContact(householdId, task.profile.contact);
       if (task.account) await notion.projectAccount(householdId, task.account);
+      return null;
     } catch (e) {
-      failure = e.code || "NOTION_UNAVAILABLE";
+      return e.code || "NOTION_UNAVAILABLE";
     }
-    await ledger.transaction((s) => {
-      const row = s.invitations[householdId];
-      if (row.syncLease?.owner === owner) delete row.syncLease;
-      // Always leave a newer response pending after an old projection finishes.
-      const account = Object.values(s.accounts || {}).find(
-        (a) => a.householdId === householdId,
-      );
+  }
+  function finishSync(s, householdId, owner, task, failure) {
+    const row = s.invitations[householdId];
+    if (row.syncLease?.owner === owner) delete row.syncLease;
+    // Always leave a newer response pending after an old projection finishes.
+    const account = Object.values(s.accounts || {}).find(
+      (a) => a.householdId === householdId,
+    );
+    if (
+      failure ||
+      (row.latestSubmissionId || null) !== (task.response?.id || null) ||
+      s.profiles?.[householdId]?.version !== task.profile?.version ||
+      account?.version !== task.account?.version
+    ) {
+      row.syncState = "pending";
+      row.syncError = failure;
+    } else {
+      row.syncState = "synced";
+      row.syncError = null;
+    }
+    return row.syncState;
+  }
+  async function syncOne(householdId) {
+    const owner = token();
+    const task = await ledger.transaction((s) =>
+      claimSync(s, householdId, owner),
+    );
+    if (!task) return;
+    const failure = await projectSync(householdId, task);
+    await ledger.transaction((s) =>
+      finishSync(s, householdId, owner, task, failure),
+    );
+  }
+  // Throws (leaving the draft untouched) unless the draft may be sent now.
+  function claimMail(s, id, currentGuest) {
+    const j = s.outbox[id];
+    if (!j || j.archived) throw error(404, "NOT_FOUND");
+    if (j.state !== "draft") throw error(409, "MAIL_ALREADY_ATTEMPTED");
+    const invite = s.invitations[j.householdId];
+    if (j.type === "custom") {
       if (
-        failure ||
-        (row.latestSubmissionId || null) !== (task.response?.id || null) ||
-        s.profiles?.[householdId]?.version !== task.profile?.version ||
-        account?.version !== task.account?.version
-      ) {
-        row.syncState = "pending";
-        row.syncError = failure;
-      } else {
-        row.syncState = "synced";
-        row.syncError = null;
-      }
-    });
+        invite?.active === false ||
+        (!j.directlySelected &&
+          !currentGuest.distributionGroups?.some((g) => j.groups.includes(g)))
+      )
+        throw error(409, "MAIL_DRAFT_STALE");
+    } else if (!invite?.active || invite.generation !== j.generation)
+      throw error(409, "MAIL_DRAFT_STALE");
+    const expectedRecipient = j.responseId
+      ? (s.profiles?.[j.householdId]?.contact.email ??
+        s.responses[invite.latestSubmissionId]?.contact.email)
+      : currentGuest.email;
+    if (
+      expectedRecipient?.trim().toLowerCase() !== j.to.trim().toLowerCase() ||
+      (j.responseId && j.responseId !== invite.latestSubmissionId)
+    )
+      throw error(409, "MAIL_DRAFT_STALE");
+    j.state = "sending";
+    j.attemptAt = now();
+    return structuredClone(j);
+  }
+  async function sendMail(job) {
+    try {
+      const result = await mailer.send({
+        ...job,
+        html: unseal(job.content, key),
+      });
+      return { state: "accepted", code: null, provider: result?.provider || null };
+    } catch (e) {
+      return {
+        state: e.code === "MAIL_DELIVERY_UNKNOWN" ? "unknown" : "failed",
+        code: e.code,
+        provider: null,
+      };
+    }
+  }
+  function finishMail(s, id, outcome) {
+    s.outbox[id].state = outcome.state;
+    s.outbox[id].error = outcome.code;
+    s.outbox[id].provider = outcome.provider;
+    s.outbox[id].finishedAt = now();
   }
   async function dispatchMail(id) {
     if (!mailer.configured) throw error(503, "MAIL_NOT_CONFIGURED");
@@ -305,54 +368,10 @@ export function createApplication({
     if (!pending || pending.archived) throw error(404, "NOT_FOUND");
     const currentGuest = await notion.read(pending.householdId, { fresh: true });
     if (currentGuest.archived) throw error(409, "INVITATION_INACTIVE");
-    const job = await ledger.transaction((s) => {
-      const j = s.outbox[id];
-      if (!j || j.archived) throw error(404, "NOT_FOUND");
-      if (j.state !== "draft") throw error(409, "MAIL_ALREADY_ATTEMPTED");
-      const invite = s.invitations[j.householdId];
-      if (j.type === "custom") {
-        if (
-          invite?.active === false ||
-          (!j.directlySelected &&
-            !currentGuest.distributionGroups?.some((g) => j.groups.includes(g)))
-        )
-          throw error(409, "MAIL_DRAFT_STALE");
-      } else if (!invite?.active || invite.generation !== j.generation)
-        throw error(409, "MAIL_DRAFT_STALE");
-      const expectedRecipient = j.responseId
-        ? (s.profiles?.[j.householdId]?.contact.email ??
-          s.responses[invite.latestSubmissionId]?.contact.email)
-        : currentGuest.email;
-      if (
-        expectedRecipient?.trim().toLowerCase() !== j.to.trim().toLowerCase() ||
-        (j.responseId && j.responseId !== invite.latestSubmissionId)
-      )
-        throw error(409, "MAIL_DRAFT_STALE");
-      j.state = "sending";
-      j.attemptAt = now();
-      return structuredClone(j);
-    });
-    let provider = null;
-    let state = "accepted",
-      code = null;
-    try {
-      const result = await mailer.send({
-        ...job,
-        id,
-        html: unseal(job.content, key),
-      });
-      provider = result?.provider || null;
-    } catch (e) {
-      code = e.code;
-      state = code === "MAIL_DELIVERY_UNKNOWN" ? "unknown" : "failed";
-    }
-    await ledger.transaction((s) => {
-      s.outbox[id].state = state;
-      s.outbox[id].error = code;
-      s.outbox[id].provider = provider;
-      s.outbox[id].finishedAt = now();
-    });
-    return { id, state };
+    const job = await ledger.transaction((s) => claimMail(s, id, currentGuest));
+    const outcome = await sendMail(job);
+    await ledger.transaction((s) => finishMail(s, id, outcome));
+    return { id, state: outcome.state };
   }
   function queue(
     s,
@@ -885,8 +904,28 @@ export function createApplication({
       const id = headers["idempotency-key"];
       if (!uuid(id)) throw error(422, "IDEMPOTENCY_REQUIRED");
       const row = await guestInvitation(session, { fresh: true }),
-        fingerprint = digestInput(body);
-      const receipt = await ledger.transaction((s) => {
+        fingerprint = digestInput(body),
+        owner = token();
+      // One save records the response and claims the Notion sync and the
+      // receipt email; one final save records both outcomes (2 writes, not 5).
+      const claim = (s, response) => {
+        const draft = Object.values(s.outbox).find(
+          (j) =>
+            j.responseId === response.id &&
+            ["receipt", "update"].includes(j.type) &&
+            j.state === "draft" &&
+            !j.archived,
+        );
+        let job = null;
+        if (draft && mailer.configured)
+          try {
+            job = claimMail(s, draft.id, row);
+          } catch {
+            /* Stale receipt: the RSVP stays saved; the family can review it. */
+          }
+        return { response, task: claimSync(s, row.id, owner), job };
+      };
+      const { response: receipt, task, job } = await ledger.transaction((s) => {
         const current = s.invitations[row.id];
         if (!current?.active || current.generation !== session.generation)
           throw error(401, "INVITATION_INACTIVE");
@@ -897,7 +936,7 @@ export function createApplication({
             existing.fingerprint !== fingerprint
           )
             throw error(409, "IDEMPOTENCY_CONFLICT");
-          return existing;
+          return claim(s, existing);
         }
         const data = validateHouseholdRsvp(
           body,
@@ -940,27 +979,27 @@ export function createApplication({
             locale: current.locale || "en",
           });
         audit(s, row.id, "rsvp", id, now());
-        return response;
+        return claim(s, response);
       });
-      await syncOne(row.id);
-      const receiptJob = Object.values((await ledger.read()).outbox).find(
-        (j) =>
-          j.responseId === receipt.id &&
-          ["receipt", "update"].includes(j.type) &&
-          j.state === "draft",
-      );
-      if (receiptJob) {
-        try {
-          await dispatchMail(receiptJob.id);
-        } catch {
-          /* RSVP remains durably saved; family can review the delivery state. */
-        }
-      }
+      // Provider calls run outside the ledger transaction; a crash here leaves
+      // the sync lease to expire (sync retried later) and the receipt claimed
+      // as "sending" (never resent blindly), exactly as the standalone paths do.
+      const failure = task ? await projectSync(row.id, task) : null;
+      const outcome = job ? await sendMail(job) : null;
+      const syncState =
+        task || job
+          ? await ledger.transaction((s) => {
+              if (job) finishMail(s, job.id, outcome);
+              return task
+                ? finishSync(s, row.id, owner, task, failure)
+                : s.invitations[row.id].syncState;
+            })
+          : (await ledger.read()).invitations[row.id].syncState;
       return {
         id: receipt.id,
         submittedAt: receipt.submittedAt,
         saved: true,
-        syncState: (await ledger.read()).invitations[row.id].syncState,
+        syncState,
       };
     }
     if (path === "/api/messages" && method === "POST") {
