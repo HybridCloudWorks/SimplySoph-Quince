@@ -37,8 +37,8 @@ Code items 2–8 are **done** on this branch (156/156 tests, 66/66 documents). I
 | # | Item | Effort | Source |
 |---|---|---|---|
 | 10a | **Done:** the Notion sync lease and receipt-mail claim fold into the RSVP save, and both outcomes go into one final save: 5 → 2 ledger writes per RSVP, measured by a test | M | Arch |
-| 10b | `{link}` placeholder so group emails (and SMS once approved) carry each household's minted link | S | UX |
-| 10c | Ledger queue guard: per-attempt timeout on GCS load/save and reject when the per-instance queue is too deep (review L1) | S | Review |
+| 10b | **Done:** `{link}` in a group email or SMS gives each household's draft its own minted link. It is sealed in the draft, filled in only when the message is sent, opens only after that send, and dies if the household's link is reissued. Households without an active link are skipped and listed | S | UX |
+| 10c | **Done:** ledger loads and saves time out after 5 s. One slow load is retried; a timed-out save is never re-run (it may still land) and logs at ERROR. More than 32 queued transactions per instance return a retryable `BUSY` (review L1) | S | Review |
 | 10d | **Done:** minted email links open only after their email was sent (review L2) | S | Review |
 | 11 | **Done:** batch invitations and reminders. Preview recipients, skips and one sample per language, then a typed-count confirm; the open tab sends groups of 10 at about 28/min; Stop and Continue; bulk link creation for households without links. Owner rule: every send has a person in the loop, and single sends stay available | M | UX, Arch |
 | 12 | **Done:** open admin tabs check `/api/admin/pulse` every 30 s while visible (one ledger read, no Notion). The dashboard and inbox redraw (never over a field being typed in), the guest list shows a refresh banner so selections survive, and the Notifications link shows an unread count. RSVPs land in the inbox in the same save, **in-app only, never emailed** | S–M | Arch, UX |

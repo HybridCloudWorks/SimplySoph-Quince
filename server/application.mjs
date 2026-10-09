@@ -56,13 +56,17 @@ const audit = (s, actor, action, id, now) => {
   s.audit = s.audit.slice(-5000);
 };
 // A minted link matches the household's current generation and, when it was
-// minted for an email draft, opens only once that email was actually sent.
+// minted for an email or SMS draft, opens only once that message was actually sent.
 const linkOpens = (s, fingerprint, r) => {
   const link = s.invitationLinks?.[fingerprint];
   if (link?.householdId !== r.id || link.generation !== r.generation) return false;
   if (!link.draftId) return true;
-  return ["accepted", "unknown", "sending"].includes(s.outbox[link.draftId]?.state);
+  const draft =
+    link.channel === "sms" ? s.smsDrafts?.[link.draftId] : s.outbox[link.draftId];
+  return ["accepted", "unknown", "sending"].includes(draft?.state);
 };
+// Group messages may contain {link}; each household's draft gets its own link.
+const LINK_PLACEHOLDER = "{link}";
 const responseCount = (r) =>
   r?.attendance?.dinner
     ? r.attendance.dinner.adultsTeens + r.attendance.dinner.kids
@@ -101,6 +105,8 @@ export function createApplication({
     transport: smsTransport,
     webhook: smsWebhook,
     now,
+    render: (d) =>
+      d.link ? d.text.replaceAll(LINK_PLACEHOLDER, unseal(d.link, key)) : d.text,
   });
   const whatsapp = createWhatsapp({
     ledger,
@@ -322,6 +328,8 @@ export function createApplication({
     if (j.type === "custom") {
       if (
         invite?.active === false ||
+        // A {link} draft dies with its link: reissuing revokes it.
+        (j.generation !== undefined && invite?.generation !== j.generation) ||
         (!j.directlySelected &&
           !currentGuest.distributionGroups?.some((g) => j.groups.includes(g)))
       )
@@ -1713,6 +1721,7 @@ export function createApplication({
           channel,
         );
         if (!recipients.length) throw error(422, "NO_ELIGIBLE_RECIPIENTS");
+        const personal = text.includes(LINK_PLACEHOLDER);
         const fingerprint = hash(
           JSON.stringify({
             groups: body.groups,
@@ -1729,10 +1738,35 @@ export function createApplication({
               throw error(409, "SETTINGS_CHANGED");
             return s.campaigns[body.requestId].result;
           }
-          const ids = [];
+          const ids = [],
+            skipped = [];
           s.smsDrafts ??= {};
           for (const row of recipients) {
             const id = randomUUID();
+            // {link}: mint a private link per household, bound to this draft so
+            // it opens only after the message is sent. Households without an
+            // active invitation are skipped and reported, never sent a dead link.
+            let url = null,
+              invite = null;
+            if (personal) {
+              invite = s.invitations[row.id];
+              if (!invite?.active) {
+                skipped.push(row.displayName);
+                continue;
+              }
+              const minted = token();
+              url =
+                origin + (invite.locale === "es" ? "/es" : "") + "/rsvp/#" + minted;
+              if (channel === "sms")
+                smsPreview(text.replaceAll(LINK_PLACEHOLDER, url));
+              s.invitationLinks ??= {};
+              s.invitationLinks[hash(minted)] = {
+                householdId: row.id,
+                generation: invite.generation,
+                channel,
+                draftId: id,
+              };
+            }
             ids.push(id);
             if (channel === "sms")
               s.smsDrafts[id] = {
@@ -1744,6 +1778,7 @@ export function createApplication({
                 to: row.destination,
                 name: row.displayName,
                 text,
+                ...(url && { link: seal(url, key), generation: invite.generation }),
                 state: "draft",
                 at: now(),
               };
@@ -1755,16 +1790,23 @@ export function createApplication({
                 to: row.destination,
                 subject,
                 content: seal(
-                  `<p>${escapeHtml(text).replaceAll("\n", "<br>")}</p>`,
+                  `<p>${escapeHtml(text)
+                    .replaceAll("\n", "<br>")
+                    .replaceAll(
+                      LINK_PLACEHOLDER,
+                      url ? `<a href="${url}">${url}</a>` : LINK_PLACEHOLDER,
+                    )}</p>`,
                   key,
                 ),
                 state: "draft",
                 createdAt: now(),
                 groups: body.groups,
                 directlySelected: body.ids.includes(row.id),
+                ...(url && { generation: invite.generation }),
               };
           }
-          const result = { ids, count: ids.length, channel };
+          if (!ids.length && skipped.length) throw error(422, "LINKS_NOT_READY");
+          const result = { ids, count: ids.length, channel, skipped };
           s.campaigns[body.requestId] = { fingerprint, result };
           return result;
         });
@@ -1783,7 +1825,7 @@ export function createApplication({
         return whatsapp.retrySync();
       if (path === "/api/admin/sms/drafts" && method === "GET")
         return {
-          drafts: Object.values(ctx.state.smsDrafts || {}).map((d) => ({
+          drafts: Object.values(ctx.state.smsDrafts || {}).map(({ link, ...d }) => ({
             ...d,
             delivery: ctx.state.smsDelivery?.[d.providerId]?.status || null,
           })),

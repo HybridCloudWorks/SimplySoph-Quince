@@ -134,7 +134,7 @@ Record date, tester and evidence for each item in the inventory. Status as of th
 - **Logs.** API requests are written to stdout as Cloud Logging JSON: method, path, status and latency only. Unexpected failures log `ERROR` with a stack trace; known 5xx codes such as `BUSY` log `WARNING`. Create a log-based alert on `severity>=ERROR` for `misxv-api`.
 - **Rate limits.** Counters are kept in memory per instance, so effective limits are up to 2× with two instances. Shared budgets count only rejected credentials or outgoing mail, so anonymous junk cannot lock out valid users. Per-identity, per-household and per-actor budgets limit legitimate use, and each MFA challenge allows 5 attempts. Forwarding headers are not trusted.
 - **Admin live updates.** Each visible admin tab reads `/api/admin/pulse` every 30 s: one ledger read, no Notion call, no writes. New and updated RSVPs appear in the Notifications inbox in-app only; no email is sent for them.
-- **Ledger writes.** Transactions on one instance run one at a time. Conflicts with the other instance and GCS 429 throttling are retried with jittered backoff (up to 8 attempts) before returning `BUSY`.
+- **Ledger writes.** Transactions on one instance run one at a time. Conflicts with the other instance and GCS 429 throttling are retried with jittered backoff (up to 8 attempts) before returning `BUSY`. Each GCS load or save times out after 5 s: one slow load is retried, a timed-out save is never re-run (it may still have landed) and is logged at ERROR, and more than 32 queued transactions on one instance return `BUSY` immediately.
 - **Media.**
   - Limits: 8 MB per file, 25 MP per image, video 60 s and 4096 px per side.
   - One video conversion per instance at a time.

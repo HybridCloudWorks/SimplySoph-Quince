@@ -52,6 +52,9 @@ export function createSms({
   transport,
   webhook = {},
   now = Date.now,
+  // Fills a sealed per-household {link} only when the text leaves the server;
+  // stored drafts and admin listings keep the placeholder.
+  render = (draft) => draft.text,
 }) {
   const enabled = transport?.enabled === true;
   const destination = (row) =>
@@ -77,6 +80,7 @@ export function createSms({
       destination(row) !== draft.to ||
       !smsKeywordConsent(state, row.id, draft.to) ||
       state.invitations[row.id]?.active === false ||
+      (draft.link && state.invitations[row.id]?.generation !== draft.generation) ||
       (!draft.directlySelected &&
         !row.distributionGroups?.some((g) => draft.groups.includes(g)))
     )
@@ -87,7 +91,7 @@ export function createSms({
       id,
       to: draft.to,
       text: draft.text,
-      ...smsPreview(draft.text),
+      ...smsPreview(render(draft)),
       reviewToken: hash(
         JSON.stringify([
           draft.id,
@@ -112,7 +116,8 @@ export function createSms({
       if (
         d.text !== preview.text ||
         d.to !== preview.to ||
-        s.invitations[d.householdId]?.active === false
+        s.invitations[d.householdId]?.active === false ||
+        (d.link && s.invitations[d.householdId]?.generation !== d.generation)
       )
         throw error(409, "SMS_DRAFT_STALE");
       if (s.smsSuppression?.[hash(d.to)]) throw error(409, "SMS_OPTED_OUT");
@@ -128,7 +133,7 @@ export function createSms({
     });
     let result;
     try {
-      result = await transport.send({ to: job.to, text: job.text });
+      result = await transport.send({ to: job.to, text: render(job) });
     } catch (e) {
       await ledger.transaction((s) => {
         s.smsDrafts[id].state =

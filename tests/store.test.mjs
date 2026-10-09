@@ -82,3 +82,53 @@ test("transactions on one instance are serialized and a failure does not block t
   assert.equal(saves, 11);
   assert.equal((await ledger.read()).audit.length, 11);
 });
+
+const never = () => new Promise(() => {});
+
+test("one slow ledger load is retried; a hung load fails fast instead of holding the queue", async () => {
+  const backend = memoryAdapter();
+  let loads = 0;
+  const ledger = new Ledger(
+    { load: () => (loads++ === 0 ? never() : backend.load()), save: (s, g) => backend.save(s, g) },
+    { sleep: async () => {}, timeoutMs: 5 },
+  );
+  assert.equal(await ledger.transaction(() => "saved"), "saved");
+  const stuck = new Ledger({ load: never, save: async () => {} }, { sleep: async () => {}, timeoutMs: 5 });
+  await assert.rejects(() => stuck.transaction(() => true), /Ledger load timed out/);
+  await assert.rejects(() => stuck.read(), /Ledger load timed out/);
+});
+
+test("a timed-out ledger save is never re-run and does not block the next transaction", async () => {
+  const backend = memoryAdapter();
+  let saves = 0,
+    runs = 0;
+  const ledger = new Ledger(
+    {
+      load: () => backend.load(),
+      save: (s, g) => (saves++ === 0 ? never() : backend.save(s, g)),
+    },
+    { sleep: async () => {}, timeoutMs: 5 },
+  );
+  await assert.rejects(
+    () => ledger.transaction((s) => (runs++, s.audit.push({ action: "uncertain" }))),
+    /Ledger save timed out/,
+  );
+  assert.equal(runs, 1);
+  await ledger.transaction((s) => s.audit.push({ action: "next" }));
+  assert.deepEqual((await ledger.read()).audit.map((r) => r.action), ["next"]);
+});
+
+test("a ledger queue deeper than the limit sheds load with a retryable error", async () => {
+  let release;
+  const gate = new Promise((r) => (release = r));
+  const backend = memoryAdapter();
+  const ledger = new Ledger(
+    { load: async () => (await gate, backend.load()), save: (s, g) => backend.save(s, g) },
+    { maxQueue: 2, timeoutMs: 1000 },
+  );
+  const queued = [ledger.transaction(() => 1), ledger.transaction(() => 2)];
+  await assert.rejects(() => ledger.transaction(() => 3), (e) => e.code === "BUSY" && e.status === 503);
+  release();
+  assert.deepEqual(await Promise.all(queued), [1, 2]);
+  assert.equal(await ledger.transaction(() => 4), 4);
+});
