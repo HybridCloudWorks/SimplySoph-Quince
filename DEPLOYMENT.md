@@ -32,7 +32,7 @@ Every variable `server/start.mjs` reads. Secrets come from **pinned** Secret Man
 | `SCOPED_NOTION_CONNECTION_CONFIRMED` | Live | No | — | Literal `true` after verifying the connection's page access |
 | `ADMIN_GOOGLE_CLIENT_ID` | Live | No | — | Web OAuth client; authorized origin = `PUBLIC_ORIGIN` |
 | `ADMIN_EMAILS` | Live | No | — | Owners (break-glass role, comma-separated). Removing an email invalidates their sessions |
-| `ADMIN_DELEGATE_EMAILS` | No | No | empty | Delegates: email link + MFA; also need **Administrator Eligible** on their Notion row |
+| `ADMIN_DELEGATE_EMAILS` | No | No | empty | Delegates: email link + MFA; also need **Administrator Eligible** on their Notion row, and an owner must allow their first authenticator setup (Guest Access → Authenticator setup) |
 | `NOTIFICATION_EMAILS` | No | No | `ADMIN_EMAILS` | All of these receive generic review notifications |
 | `M365_TENANT_ID`, `M365_CLIENT_ID` | Live | No | — | Entra app with Exchange **application RBAC** `Mail.Send` scoped to the event mailbox |
 | `M365_CLIENT_SECRET` | Live | **Yes** | — | Same app; expiry must cover the event |

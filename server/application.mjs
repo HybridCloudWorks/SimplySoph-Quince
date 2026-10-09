@@ -9,7 +9,7 @@ import { createMailBatches } from "./mail-batches.mjs";
 import { normalizeVideo, mediaResponse } from "./video.mjs";
 import { calendar, contactTopics, escapeHtml } from "../site/celebration.mjs";
 import { siteSettings, validateSettings } from "./site-settings.mjs";
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import sharp from "sharp";
 import {
   token,
@@ -62,6 +62,13 @@ const linkOpens = (s, fingerprint, r) => {
   if (link?.householdId !== r.id || link.generation !== r.generation) return false;
   if (!link.draftId) return true;
   return ["accepted", "unknown", "sending"].includes(s.outbox[link.draftId]?.state);
+};
+// Constant-time comparison for secrets such as CSRF tokens.
+const sameSecret = (given, expected) => {
+  if (typeof given !== "string" || typeof expected !== "string") return false;
+  const a = Buffer.from(given),
+    b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
 };
 const responseCount = (r) =>
   r?.attendance?.dinner
@@ -124,6 +131,30 @@ export function createApplication({
   ];
   const ownerSession = (session) =>
     !session.accountId && adminEmails.includes(session.email);
+  // Owners (ADMIN_EMAILS) set up their own authenticator. Anyone else may set
+  // one up only inside a 24-hour window an owner opens, so whoever first
+  // completes a delegate's sign-in cannot silently claim that admin account.
+  const setupAllowed = (s, email) =>
+    adminEmails.includes(email) || s.mfaSetup?.[hash(email)]?.expiresAt > now();
+  // Append-only and never trimmed (unlike the general audit list).
+  function roleEvent(s, actor, target, change) {
+    s.roleEvents ??= [];
+    s.roleEvents.push({ actor, target, change, at: new Date(now()).toISOString() });
+  }
+  // A current code from the signed-in owner's own authenticator, for changes
+  // that hand out administrator access.
+  function requireFreshCode(s, session, code) {
+    const me = s.admins[session.actor];
+    if (!me) throw error(403, "MFA_REQUIRED");
+    const step = verifyTotp(unseal(me.secret, key), code, now(), me.lastStep ?? -1);
+    if (step === null) throw error(401, "INVALID_MFA");
+    me.lastStep = step;
+  }
+  function securityNote(s, title) {
+    const id = randomUUID();
+    s.notifications ??= {};
+    s.notifications[id] = { id, kind: "security", title, at: now(), read: false, emailState: "none" };
+  }
   async function checkAdministratorEligibility(accountId, address) {
     if (!accountId) {
       if (
@@ -537,6 +568,8 @@ export function createApplication({
         }
         const secret = newMfaSecret();
         const admin = s.admins[identity.id];
+        if (!admin && !setupAllowed(s, identity.email))
+          throw error(403, "MFA_SETUP_NOT_ALLOWED");
         s.challenges[hash(challenge)] = {
           ...identity,
           expiresAt: now() + 300000,
@@ -584,6 +617,14 @@ export function createApplication({
         const secret = unseal(existing?.secret || c.pendingSecret, key),
           step = verifyTotp(secret, body.code, now(), existing?.lastStep ?? -1);
         if (step === null) return { failed: true };
+        if (!existing) {
+          // First authenticator setup: the owner's window must still be open,
+          // and it is used up so it cannot enroll a second device.
+          if (!setupAllowed(s, c.email)) throw error(403, "MFA_SETUP_NOT_ALLOWED");
+          delete s.mfaSetup?.[hash(c.email)];
+          roleEvent(s, c.id, c.email, "authenticator-set-up");
+          securityNote(s, `Authenticator set up for ${c.email}`);
+        }
         s.admins[c.id] = {
           secret: seal(secret, key),
           lastStep: step,
@@ -696,7 +737,7 @@ export function createApplication({
     const requireAuth = (kind) => {
       if (!session || (kind && session.kind !== kind))
         throw error(401, "SIGN_IN_REQUIRED");
-      if (method !== "GET" && headers["x-csrf-token"] !== session.csrf)
+      if (method !== "GET" && !sameSecret(headers["x-csrf-token"], session.csrf))
         throw error(403, "CSRF_REJECTED");
     };
     if (path === "/api/gallery" && method === "GET") {
@@ -734,6 +775,8 @@ export function createApplication({
           throw error(403, "ADMIN_NOT_ALLOWED");
         const id = "account:" + a.id,
           admin = s.admins[id];
+        if (!admin && !setupAllowed(s, a.email))
+          throw error(403, "MFA_SETUP_NOT_ALLOWED");
         s.challenges[hash(challenge)] = {
           id,
           email: a.email,
@@ -1354,9 +1397,21 @@ export function createApplication({
             throw error(403, "OWNER_REQUIRED");
           if (adminEmails.includes(a.email) && !body.active)
             throw error(403, "OWNER_PROTECTED");
+          const wasAdmin = a.permissions.includes("admin"),
+            isAdmin = body.permissions.includes("admin");
+          // Granting administration needs a current code from the owner's own
+          // authenticator; removing it stays one click for emergencies.
+          if (isAdmin && !wasAdmin) requireFreshCode(s, session, body.code);
           a.permissions = [...new Set(body.permissions)];
           a.active = body.active;
           a.version++;
+          if (wasAdmin !== isAdmin)
+            roleEvent(s, session.actor, a.email, isAdmin ? "admin-granted" : "admin-removed");
+          if (wasAdmin && !isAdmin) {
+            // A later re-grant must go through a fresh, owner-opened setup.
+            delete s.admins["account:" + a.id];
+            delete s.mfaSetup?.[hash(a.email)];
+          }
           if (!a.active || !a.permissions.includes("admin")) {
             for (const [id, v] of Object.entries(s.sessions))
               if (v.accountId === a.id && (!a.active || v.kind === "admin"))
@@ -1373,6 +1428,41 @@ export function createApplication({
         await syncOne(householdId);
         return { saved: true };
       }
+      // Owner opens a 24-hour authenticator-setup window for a delegate or a
+      // promoted guest, optionally resetting a lost authenticator first.
+      if (path === "/api/admin/mfa-setup" && method === "POST") {
+        if (!ownerSession(session)) throw error(403, "OWNER_REQUIRED");
+        const email = String(body.email || "").trim().toLowerCase();
+        return ledger.transaction((s) => {
+          requireFreshCode(s, session, body.code);
+          const account = Object.values(s.accounts || {}).find(
+            (a) => a.email === email && accountActive(s, a) && a.permissions.includes("admin"),
+          );
+          if (adminEmails.includes(email)) throw error(403, "OWNER_PROTECTED");
+          if (!account && !adminDelegateEmails.includes(email))
+            throw error(422, "NOT_AN_ADMINISTRATOR");
+          if (body.reset === true) {
+            for (const [id, a] of Object.entries(s.admins))
+              if (a.email === email) delete s.admins[id];
+            for (const [id, v] of Object.entries(s.sessions))
+              if (v.kind === "admin" && v.email === email) delete s.sessions[id];
+            for (const [id, v] of Object.entries(s.challenges))
+              if (v.email === email) delete s.challenges[id];
+          }
+          s.mfaSetup ??= {};
+          s.mfaSetup[hash(email)] = { email, by: session.actor, expiresAt: now() + 86400000 };
+          roleEvent(s, session.actor, email, body.reset === true ? "authenticator-reset" : "authenticator-setup-allowed");
+          audit(s, session.actor, "mfa-setup-allowed", email, now());
+          return { allowedUntil: new Date(now() + 86400000).toISOString() };
+        });
+      }
+      if (path === "/api/admin/role-events" && method === "GET")
+        return {
+          events: (ctx.state.roleEvents || []).slice(-50).reverse(),
+          pendingSetups: Object.values(ctx.state.mfaSetup || {})
+            .filter((x) => x.expiresAt > now())
+            .map((x) => ({ email: x.email, until: new Date(x.expiresAt).toISOString() })),
+        };
       if (path === "/api/admin/pages" && method === "GET")
         return { pages: ctx.state.privatePages || {} };
       if (path === "/api/admin/pages" && method === "POST") {
@@ -1500,6 +1590,8 @@ export function createApplication({
         });
       }
       if (path === "/api/admin/import" && method === "POST") {
+        // Creates Notion rows in bulk: owners only.
+        if (!ownerSession(session)) throw error(403, "OWNER_REQUIRED");
         if (
           !Array.isArray(body.rows) ||
           !body.rows.length ||
@@ -1546,8 +1638,11 @@ export function createApplication({
         }
         return { created, stopped: false };
       }
-      if (path === "/api/admin/schema" && method === "POST")
+      if (path === "/api/admin/schema" && method === "POST") {
+        // Changes the Notion database structure: owners only.
+        if (!ownerSession(session)) throw error(403, "OWNER_REQUIRED");
         return { added: await notion.prepareSchema() };
+      }
       if (path === "/api/admin/sync" && method === "POST") {
         const s = await ledger.read();
         const ids = Object.values(s.invitations)
