@@ -51,13 +51,21 @@ Sample 1 avoids "ñ" so it stays in one GSM-7 segment.
 
 ## How to submit
 
-The rejected campaign is no longer registered: the A2P page shows **Sole Proprietor Package: Incomplete registration**, with the profile Approved, the brand Registered and the campaign **Not registered**.
+**Never use "Continue registration" while a campaign exists.** The A2P page shows *Sole Proprietor Package: Incomplete registration* (campaign stage *Not registered*) until a campaign is approved. Continuing from there deletes the campaign that is in progress, and a new one costs another $15 vetting fee.
 
-1. Click **Continue registration → Register Sole Proprietor Campaign**.
-2. Select the **existing** Messaging Service **Sole Proprietor A2P Messaging Service** (`MG6d6cc68fbd2ca1c60f35b7698a467049`). It holds the opt-out replies and webhooks, and the server only accepts callbacks from it. Do not create another service.
-3. Map the fields:
-   - Campaign description → *Use case description*.
-   - Sample message #1 and #2 → *Sample messages*.
-   - **How do end-users consent to receive messages?** → *message_flow*.
-   - Keywords and replies → the table above.
-4. Submit. The fee is $15 one-time plus $2 per month, and vetting typically takes several business days. Record the submission date and outcome in `ops/event-resources.json`.
+First check the existing campaign: open **Messaging → Services → Sole Proprietor A2P Messaging Service (`MG6d6cc68fbd2ca1c60f35b7698a467049`) → Compliance info**, or **Messaging → Regulatory Compliance → Campaigns**. Compare its status and submitted text with this document.
+
+| Campaign status | Submitted text | Action |
+|---|---|---|
+| In progress / Pending | Matches this document (mentions `SOPHIA`) | Nothing. Wait for the vetting result |
+| In progress / Pending | Old text (`START` only, no `SOPHIA`) | Wait. In-progress campaigns cannot be edited. If it is rejected, edit and resubmit it with the values above |
+| Failed / Rejected (30909) | Any | Click **Edit** on that campaign, paste the values above, and resubmit. Do not create a new campaign |
+| Verified | Any | Done. Activation follows `docs/twilio-setup.md` |
+
+When editing, map the fields:
+- Campaign description → *Use case description*.
+- Sample message #1 and #2 → *Sample messages*.
+- **How do end-users consent to receive messages?** → *message_flow*.
+- Keywords and replies → the table above.
+
+Record each submission date and outcome in `ops/event-resources.json`.
