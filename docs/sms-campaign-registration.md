@@ -49,4 +49,15 @@ Sample 1 avoids "ñ" so it stays in one GSM-7 segment.
 | Brand consistent | Footer said "SimplySoph"; samples said "SimplySoph RSVP" | Footer, page, replies and samples all say "Simply Soph Media" |
 | Privacy non-sharing | Limited to "for marketing or promotional purposes" | Carrier-standard non-sharing statement on privacy, SMS terms and general policy |
 
-After resubmitting: do not create a new campaign; edit and resubmit the rejected one. Vetting typically takes several business days. Record the submission date and outcome in `ops/event-resources.json`.
+## How to submit
+
+The rejected campaign is no longer registered: the A2P page shows **Sole Proprietor Package: Incomplete registration**, with the profile Approved, the brand Registered and the campaign **Not registered**.
+
+1. Click **Continue registration → Register Sole Proprietor Campaign**.
+2. Select the **existing** Messaging Service **Sole Proprietor A2P Messaging Service** (`MG6d6cc68fbd2ca1c60f35b7698a467049`). It holds the opt-out replies and webhooks, and the server only accepts callbacks from it. Do not create another service.
+3. Map the fields:
+   - Campaign description → *Use case description*.
+   - Sample message #1 and #2 → *Sample messages*.
+   - **How do end-users consent to receive messages?** → *message_flow*.
+   - Keywords and replies → the table above.
+4. Submit. The fee is $15 one-time plus $2 per month, and vetting typically takes several business days. Record the submission date and outcome in `ops/event-resources.json`.

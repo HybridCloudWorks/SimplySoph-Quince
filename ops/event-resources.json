@@ -335,7 +335,7 @@
         "evidence": "Private work/deployment-baseline.txt; exact identity, pool and custom role absent before provisioning; new identities had no grants"
       },
       "creationEvidence": "Created and confirmed by gcloud on 2026-09-27T09:06:03.951Z; no service account keys created",
-      "exactScope": "GitHub OIDC; immutable repository 1389834350 owner 34853639; push only; refs/heads/main or refs/heads/feature/complete-quince-site; exact .github/workflows/check.yml workflow_ref",
+      "exactScope": "GitHub OIDC attribute condition (updated 2026-10-09 after the repository moved to the HybridCloudWorks organization): assertion.repository_id=='1389834350' && assertion.repository_owner_id=='312844660' && assertion.event_name=='push' && assertion.ref=='refs/heads/main' && assertion.workflow_ref=='HybridCloudWorks/SimplySoph-Quince/.github/workflows/check.yml@refs/heads/main'. Previously owner 34853639 (saulpatinojr) and also refs/heads/feature/complete-quince-site; that branch no longer publishes. First successful publish under the new condition: run 37870415623, release commit 81c6eaa.",
       "verifyBeforeCleanup": "Match exact identity and grant to this inventory; disable the GitHub production deploy job and wait for running releases to finish; preserve all unrelated resources",
       "cleanupSteps": "Remove only this exact event resource or binding after its dependents: projects/424903425639/locations/global/workloadIdentityPools/misxv-github/providers/github. For a binding remove only the recorded member/role/condition, preserving other policy entries. For the pool/provider disable before deleting.",
       "verifyAfterCleanup": "Verify this exact resource or binding is absent and GitHub cannot use it; preserve shared project, default Hosting site, other roles and identities",
@@ -690,7 +690,7 @@
         ],
         "evidence": "gcloud run services describe reported service not found; new service therefore had no prior invoker policy"
       },
-      "creationEvidence": "Revision misxv-api-00001-t75 Ready on 2026-09-28T04:19:21.390463Z; image sha256:773dbca3ed93929d68f9e425d2098ac45600e2be86edf91f908e99824ca4c0cc; 1 CPU/1GiB, concurrency 4, min 0/max 2, request CPU, 120s timeout; exact secret versions pinned",
+      "creationEvidence": "Revision misxv-api-00001-t75 Ready on 2026-09-28T04:19:21.390463Z; image sha256:773dbca3ed93929d68f9e425d2098ac45600e2be86edf91f908e99824ca4c0cc; 1 CPU/1GiB, concurrency 4, min 0/max 2, request CPU, 120s timeout; exact secret versions pinned 2026-10-09: revision misxv-api-00014-2vm serves 100% of traffic with image us-central1-docker.pkg.dev/simplysoph-66c78/misxv-api/api@sha256:de496f9cf1804e3e9298596de0a216c9bd1839e4a9b15cbcb10d38509beab3a2 (source commit 81c6eaa, Cloud Build 7c14c72c). Previous known-good revision for rollback: misxv-api-00013-2zk. Verified: /api/config live, unsigned Twilio callback 403, structured request logs present.",
       "verifyBeforeCleanup": "Close intake and sending, export wanted ledger/media and retain decryption key until exports are readable; detach Hosting API rewrite",
       "cleanupSteps": "Remove event public invoker grant, then delete only misxv-api in us-central1 and its event revisions after review; preserve project and other services",
       "verifyAfterCleanup": "Verify event service absent, API unavailable and other services unchanged",
@@ -837,7 +837,8 @@
       "cleanupSteps": "At February 1 review, decide retention first. After separate deletion approval, detach event sender and delete only MG64189f3d8d7622baf0aefd9b3f265261. Preserve Twilio account and number unless separately approved for release.",
       "verifyAfterCleanup": "Confirm exact service absent, runtime service binding removed and no queued event messages; preserve other services and shared account.",
       "dependsOn": [],
-      "status": "active"
+      "status": "removed",
+      "removalEvidence": "Owner deleted the empty Messaging Service MG64189f3d8d7622baf0aefd9b3f265261 (Simply Soph Media - Mis XV 2027) in Twilio Console on 2026-10-09, after the event number had moved to MG6d6cc68fbd2ca1c60f35b7698a467049 and before the 30909 resubmission, so it could not be selected by mistake. No campaign was linked and the runtime never used it (Cloud Run TWILIO_MESSAGING_SERVICE_SID verified as MG6d6cc68fbd2ca1c60f35b7698a467049 on 2026-10-09)."
     },
     {
       "id": "misxv-twilio-runtime-key",
@@ -945,7 +946,7 @@
         ],
         "evidence": "API read before changes: inboundRequestUrl/statusCallback null, useInboundWebhookOnNumber true; work/twilio-callback-baseline.json."
       },
-      "creationEvidence": "Owner submitted campaign and attached PN494bb71fbd58650f119df26763a77940. Agent configured POST inbound and delivery callbacks for misxv.simplysoph.com and branded keyword responses.",
+      "creationEvidence": "Owner submitted campaign and attached PN494bb71fbd58650f119df26763a77940. Agent configured POST inbound and delivery callbacks for misxv.simplysoph.com and branded keyword responses. 2026-10-09: original campaign rejected with 30909 and no longer registered (Console shows the Sole Proprietor campaign stage as Not registered; profile Approved, brand Registered). Owner updated Advanced Opt-Out to the program version 2026-10-08 replies (opt-in SOPHIA/START/UNSTOP, help HELP/INFO, standard opt-out set) and confirmed POST inbound /api/twilio/inbound and status /api/twilio/status. A new campaign is registered against this existing service with the values in docs/sms-campaign-registration.md.",
       "verifyBeforeCleanup": "Confirm event-only scope, campaign status and sender ownership. Review/export February 1, no automatic deletion.",
       "cleanupSteps": "After retirement approval disable dispatch, remove event callback routing and revoke runtime credentials; decide separately whether to delete owner-created campaign/service or release number. Preserve shared Twilio and Meta accounts.",
       "verifyAfterCleanup": "Verify callbacks and event grants removed; reconcile retained campaign/number charges.",

@@ -33,7 +33,7 @@ Find the live identifiers in `ops/event-resources.json`. Never put values in Git
 ## Console configuration (verify every item; do not trust earlier notes)
 
 1. **One account.** Confirm which Twilio account owns +16827868002, the Sole Proprietor brand, the A2P campaign and the WhatsApp sender. Make all runtime settings point to that account.
-2. **One Messaging Service.** Attach the event number only to the service linked to the campaign. Two services exist in the inventory (`MG641…` empty, `MG6d6…` linked to the rejected campaign). Use the campaign-linked service, and set `TWILIO_MESSAGING_SERVICE_SID` to it. Retire the empty one through the cleanup review.
+2. **One Messaging Service.** The event uses only **Sole Proprietor A2P Messaging Service** (`MG6d6cc68fbd2ca1c60f35b7698a467049`), and `TWILIO_MESSAGING_SERVICE_SID` is set to it. It must contain only +16827868002 and is the service the campaign registers against. The earlier empty service (`MG64189f3…`) was deleted on 2026-10-09.
 3. **Advanced Opt-Out** on that service:
    - Opt-in keywords: `SOPHIA`, `START`, `UNSTOP`. Reply = `smsProgram.confirmation`.
    - Help keywords: `HELP`, `INFO`. Reply = `smsProgram.help`.
