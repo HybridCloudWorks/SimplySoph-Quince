@@ -36,7 +36,7 @@ Code items 2–8 are **done** on this branch (156/156 tests, 66/66 documents). I
 
 | # | Item | Effort | Source |
 |---|---|---|---|
-| 10a | Fold the Notion sync lease and receipt-mail claim into the RSVP transaction (5 → 2 ledger writes per RSVP) | M | Arch |
+| 10a | **Done:** the Notion sync lease and receipt-mail claim fold into the RSVP save, and both outcomes go into one final save: 5 → 2 ledger writes per RSVP, measured by a test | M | Arch |
 | 10b | `{link}` placeholder so group emails (and SMS once approved) carry each household's minted link | S | UX |
 | 10c | Ledger queue guard: per-attempt timeout on GCS load/save and reject when the per-instance queue is too deep (review L1) | S | Review |
 | 10d | **Done:** minted email links open only after their email was sent (review L2) | S | Review |

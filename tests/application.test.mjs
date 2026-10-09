@@ -1568,6 +1568,44 @@ test("a temporary outage while sending keeps the email ready to retry", async ()
   assert.equal((await f.admin("mail/batch/send", { id: batchId(9) })).accepted, 1);
 });
 
+test("an RSVP with a receipt email takes two ledger writes", async () => {
+  const f = await fixture();
+  const original = f.ledger.transaction.bind(f.ledger);
+  let writes = 0;
+  f.ledger.transaction = (fn) => (writes++, original(fn));
+  const saved = await f.guest("rsvp", f.input(), { "idempotency-key": "88888888-8888-4888-8888-888888888888" });
+  assert.equal(saved.syncState, "synced");
+  const s = await f.ledger.read();
+  const receipt = Object.values(s.outbox).find((j) => j.responseId === saved.id);
+  assert.equal(receipt.state, "accepted");
+  assert.equal(s.invitations[household].syncLease, undefined);
+  assert.equal(writes, 2, `expected 2 ledger writes, got ${writes}`);
+});
+
+test("folded RSVP saves keep outage, replay and no-mail behavior", async () => {
+  const f = await fixture();
+  f.failSync();
+  const key = { "idempotency-key": "99999999-9999-4999-8999-999999999999" };
+  const first = await f.guest("rsvp", f.input(), key);
+  let s = await f.ledger.read();
+  assert.equal(first.syncState, "pending", "a Notion outage leaves the sync pending");
+  assert.equal(s.invitations[household].syncLease, undefined, "the lease is released");
+  assert.equal(Object.values(s.outbox).find((j) => j.responseId === first.id).state, "accepted");
+  const sends = f.sends();
+  // Replaying the same request returns the saved RSVP and never resends the receipt.
+  const replay = await f.guest("rsvp", f.input(), key);
+  assert.equal(replay.id, first.id);
+  assert.equal(f.sends(), sends);
+  s = await f.ledger.read();
+  assert.equal(Object.values(s.outbox).filter((j) => j.responseId === first.id).length, 1);
+
+  const quiet = await fixture({ mailer: { configured: false, send: async () => assert.fail("must not send") } });
+  const saved = await quiet.guest("rsvp", quiet.input(), { "idempotency-key": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" });
+  assert.equal(saved.syncState, "synced");
+  const draft = Object.values((await quiet.ledger.read()).outbox).find((j) => j.responseId === saved.id);
+  assert.equal(draft.state, "draft", "without mail configured the receipt waits as a draft");
+});
+
 test("RSVPs reach the in-app inbox without emailing organizers, and the pulse reflects them", async () => {
   const f = await fixture();
   const before = await f.admin("pulse");

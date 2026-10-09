@@ -127,7 +127,7 @@ Record date, tester and evidence for each item in the inventory. Status as of th
 
 ## Reliability and limits
 
-- **Ledger.** GCS generation preconditions serialize writes across instances. A failed write never returns a saved receipt. The 20 MB cap suits one small event; media bytes are stored separately. Each request makes several ledger writes, including the rate-limit counters, so bursts can return `BUSY`. Reducing write amplification is P0 in [docs/v1/implementation-plan.md](docs/v1/implementation-plan.md).
+- **Ledger.** GCS generation preconditions serialize writes across instances. A failed write never returns a saved receipt. The 20 MB cap suits one small event; media bytes are stored separately. Rate-limit counters live in memory, not the ledger. An RSVP takes 2 ledger writes: one save records the response and claims the Notion sync and the receipt email, and one final save records both outcomes. Heavy bursts can still return a retryable `BUSY`.
 - **Invitation links.** 256-bit secrets, stored only as hashes. Revoking or rotating a link invalidates its sessions and unsent drafts.
 - **Data authority.** Notion owns invited capacity. The ledger owns accepted website responses.
 - **Notion client.** Requests are paced to 2.5/s per instance and retried on 429 (honoring `Retry-After` up to 10 s). Server errors are retried for reads and updates, never for page creates. Guest-list reads are cached for 30 s, and any write clears the cache. RSVP submit, invitation exchange, sign-in, admin actions and every outbound send read fresh. Page views and admin-eligibility checks may lag a direct Notion edit by up to 30 s.
