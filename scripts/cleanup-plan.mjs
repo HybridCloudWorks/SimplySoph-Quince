@@ -10,7 +10,8 @@ const types = new Set(['cloud-run-service', 'artifact-repository', 'secret',
   'workspace-mailbox', 'workspace-alias', 'notion-records', 'budget-alert',
   'github-deployment-access', 'entra-application', 'exchange-role-assignment',
   'm365-shared-mailbox', 'm365-alias', 'm365-mailbox-delegate',
-  'twilio-content-template', 'twilio-whatsapp-sender', 'twilio-api-key', 'twilio-messaging-service', 'firebase-hosting-site', 'firebase-custom-domain']);
+  'twilio-content-template', 'twilio-whatsapp-sender', 'twilio-api-key', 'twilio-messaging-service', 'firebase-hosting-site', 'firebase-custom-domain',
+  'monitoring-notification-channel', 'log-alert-policy']);
 const safeText = value => typeof value === 'string' && value.trim().length > 0
   && value.length <= 2000 && !/[\r\n\x00-\x1f]/.test(value);
 const requireField = (condition, message) => { if (!condition) throw new Error(message); };
