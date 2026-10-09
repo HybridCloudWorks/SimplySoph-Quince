@@ -27,7 +27,13 @@ import {
   invitationCredential,
 } from "./auth.mjs";
 import { validateHouseholdRsvp } from "./rsvp-validation.mjs";
-import { renderEmail } from "../emails/templates.mjs";
+import {
+  renderEmail,
+  emailSchedule,
+  firstSentence,
+  longDate,
+} from "../emails/templates.mjs";
+import { event as eventInfo } from "../site/content.mjs";
 import {
   createAccounts,
   accountActive,
@@ -93,7 +99,7 @@ export function createApplication({
   key,
   origin,
   clientId = "",
-  deadline = "2026-10-31T23:59:00-05:00",
+  deadline = eventInfo.deadline,
   adminEmails = [],
   adminDelegateEmails = [],
   notificationEmails = adminEmails,
@@ -416,7 +422,8 @@ export function createApplication({
       responseId = null,
     },
   ) {
-    const id = randomUUID(),
+    const site = siteSettings(s),
+      id = randomUUID(),
       rendered = renderEmail({
         type,
         locale,
@@ -426,10 +433,13 @@ export function createApplication({
           locale === "es"
             ? "Viernes, 15 de enero de 2027"
             : "Friday, January 15, 2027",
-        rsvpDeadline:
-          locale === "es"
-            ? "31 de octubre de 2026, 11:59 p. m. (hora central)"
-            : "October 31, 2026, 11:59 PM Central",
+        rsvpDeadline: longDate(deadline, locale),
+        schedule: emailSchedule(
+          site,
+          s.invitations[household.id]?.invited,
+          locale,
+        ),
+        note: firstSentence(site.quote?.[locale]),
         dateConfirmed: true,
         receiptCommitted: !!responseId,
         preview: false,

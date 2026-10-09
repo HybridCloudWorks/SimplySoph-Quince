@@ -2,7 +2,7 @@ export const event = {
   name: "Sophia",
   date: "2027-01-15",
   startsAt: "2027-01-15T16:00:00-06:00",
-  deadline: "2026-10-31T23:59:00-05:00",
+  deadline: "2026-11-15T23:59:00-06:00",
   timezone: "America/Chicago",
   sender: "misxv@simplysoph.com",
 };
@@ -67,7 +67,7 @@ export const adminRoutes = [
 export const copy = {
   en: {
     date: "Friday, January 15, 2027",
-    deadline: "October 31, 2026 · 11:59 PM Central",
+    deadline: "November 15, 2026 · 11:59 PM Central",
     tagline: "A celebration of grace and golden dreams.",
     intro: "Today begins a new chapter… join me to celebrate it.",
     rsvp: "Respond to your invitation",
@@ -88,7 +88,7 @@ export const copy = {
   },
   es: {
     date: "Viernes, 15 de enero de 2027",
-    deadline: "31 de octubre de 2026 · 11:59 p. m. (hora central)",
+    deadline: "15 de noviembre de 2026 · 11:59 p. m. (hora central)",
     tagline: "Una celebración de gracia y sueños dorados.",
     intro: "Hoy comienza un nuevo capítulo… acompáñame a celebrarlo.",
     rsvp: "Responde a tu invitación",

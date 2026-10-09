@@ -1,6 +1,6 @@
 # Prioritized implementation plan and production-readiness checklist
 
-Dates assume today is **Oct 8, 2026**, the RSVP deadline is **Oct 31**, and the event is **Jan 15, 2027**. Effort: S ≤ ½ day, M ≈ 1–2 days, L ≥ 3 days.
+Dates assume today is **Oct 8, 2026**, the RSVP deadline is **Nov 15** (moved from Oct 31 on Oct 9), and the event is **Jan 15, 2027**. Effort: S ≤ ½ day, M ≈ 1–2 days, L ≥ 3 days.
 
 ## Phase 0: done in this change
 
@@ -51,7 +51,7 @@ Code items 2–8 are **done** on this branch (156/156 tests, 66/66 documents). I
 | 19 | SMS activation **only after** the campaign is approved: Twilio acceptance steps 1–6 | S | Twilio |
 | 20 | If START webhooks approach the 15 s Twilio limit: acknowledge first, project to Notion asynchronously | S | Twilio |
 
-## Phase 3, P2: after Oct 31
+## Phase 3, P2: after Nov 15
 
 - Merge the Twilio transports and introduce the `Channel` interface, plus a single delivery record. Do it once a second channel is actually live (L).
 - Split `application.mjs` by route group (M).

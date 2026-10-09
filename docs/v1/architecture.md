@@ -119,7 +119,7 @@ Dashboard poll (ETag) ◄─────────── derived status + coun
 |---|---|---|
 | Invited / Delivered | Invitation with **Attending** and **Can't attend** buttons | — |
 | Opened, no answer | Quick-answer card and deadline countdown | RSVP form, WhatsApp/SMS reminders opt-in |
-| Accepted | Celebration card, "edit until Oct 31" | Calendar for the events they're attending, directions/parking, dietary/accessibility, guestbook. On event day: photo upload, gallery, livestream |
+| Accepted | Celebration card, "edit until Nov 15" | Calendar for the events they're attending, directions/parking, dietary/accessibility, guestbook. On event day: photo upload, gallery, livestream |
 | Declined | "We'll miss you" | Guestbook, livestream, change answer before deadline |
 | Closed (after deadline) | Read-only receipt | Contact the family |
 
