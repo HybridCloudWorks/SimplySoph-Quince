@@ -45,7 +45,7 @@ Code items 2–8 are **done** on this branch (156/156 tests, 66/66 documents). I
 | 13 | Append-only `events[]` written with each state change and mirrored to logs; RSVP, delivery and role events | M | Arch |
 | 14 | Cloud Scheduler (OIDC) drains pending Notion and consent projections every 10 min | S | Notion |
 | 15 | Permission sets plus `requirePermission`; owner-only role endpoint with fresh TOTP; MFA enrollment links, owner notification and reset (M1–M3) | M | Security |
-| 16 | WhatsApp/SMS opt-in on the RSVP confirmation page; confirmation page changes with the answer; calendar for the events they're attending only | S–M | UX |
+| 16 | **Done:** the confirmation page adapts to the answer. Attending households get calendar links for only the events they attend, directions and an optional WhatsApp sign-up. Declining households get a warm note and the guestbook. Both show the edit deadline (read-only after it). The SMS keyword call to action is deliberately **not** repeated here: the registered campaign names `/sms/` as the only place it appears | S–M | UX |
 | 17 | Invited-event checkboxes and `Website invitation` status in Notion | M | Notion |
 | 18 | **Owner:** WhatsApp templates approved (fix `reminder_es`); eligible non-US test | S | Twilio |
 | 19 | SMS activation **only after** the campaign is approved: Twilio acceptance steps 1–6 | S | Twilio |
