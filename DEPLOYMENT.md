@@ -30,7 +30,9 @@ Every variable `server/start.mjs` reads. Secrets come from **pinned** Secret Man
 | `NOTION_TOKEN` | Live | **Yes** | — | Dedicated connection scoped to the approved databases only |
 | `NOTION_SOURCE_ID` | Live | No | — | Invitations **data-source** ID (not a page/view ID) |
 | `SCOPED_NOTION_CONNECTION_CONFIRMED` | Live | No | — | Literal `true` after verifying the connection's page access |
-| `ADMIN_GOOGLE_CLIENT_ID` | Live | No | — | Web OAuth client; authorized origin = `PUBLIC_ORIGIN` |
+| `ADMIN_GOOGLE_CLIENT_ID` | Live | No | — | Web OAuth client; authorized origin = `PUBLIC_ORIGIN`. Also used for guest Google sign-in on `/account/` |
+| `MICROSOFT_CLIENT_ID` | No | No | empty → Microsoft sign-in hidden | Application (client) ID of the **Mis XV sign-in** Entra app (single-page app, no secret; see Provisioning 7) |
+| `MICROSOFT_TENANT_ID` | With `MICROSOFT_CLIENT_ID` | No | — | `83d9aa10-e1de-455e-a9b8-1cc73e99685a` (simplysoph.com). Work accounts from any other organization are refused; personal Microsoft accounts are always accepted |
 | `ADMIN_EMAILS` | Live | No | — | Owners (break-glass role, comma-separated). Removing an email invalidates their sessions |
 | `ADMIN_DELEGATE_EMAILS` | No | No | empty | Delegates: email link + MFA; also need **Administrator Eligible** on their Notion row, and an owner must allow their first authenticator setup (Guest Access → Authenticator setup) |
 | `NOTIFICATION_EMAILS` | No | No | `ADMIN_EMAILS` | All of these receive generic review notifications |
@@ -55,8 +57,13 @@ Every variable `server/start.mjs` reads. Secrets come from **pinned** Secret Man
 2. Runtime service account: `objectUser` on the event bucket only; Secret Accessor on individual event secrets only. No project Editor, no downloadable keys.
 3. Google OAuth client: exact production origin plus explicitly chosen preview origins only. Keep a second owner and authenticator recovery material.
 4. Notion connection: read/update/insert on **only** the organizer-approved databases (Invitations, Budget, Godparents). No user profiles, comments or agents.
-5. Microsoft: Exchange application RBAC limited to `misxv@simplysoph.com`; verify another mailbox is denied. No tenant-wide `Mail.Send`. SPF authorizes Microsoft 365. DKIM selector1 is valid; the selector2 CNAME is missing since DNS moved to Cloudflare and must be restored before Microsoft rotates keys. DMARC is published at `p=none` with no report address.
+5. Microsoft: Exchange application RBAC limited to `misxv@simplysoph.com`; verify another mailbox is denied. No tenant-wide `Mail.Send`. SPF authorizes Microsoft 365. DKIM selector1 signs and passes; the selector2 CNAME was restored in Cloudflare (verified Oct 9, 2026). DMARC is published at `p=none` with no report address.
 6. Twilio: see [docs/twilio-setup.md](docs/twilio-setup.md). Grant Messages *create* to the runtime key only at activation.
+7. Microsoft sign-in app (optional; the owner creates it in the [Microsoft Entra admin center](https://entra.microsoft.com) → App registrations → **New registration**):
+   - Name `Mis XV sign-in`. Supported account types: **Accounts in any organizational directory and personal Microsoft accounts**. Redirect URI: platform **Single-page application (SPA)**, `https://misxv.simplysoph.com/admin/login/`.
+   - **Authentication** → Single-page application → add `https://misxv.simplysoph.com/account/` and `https://misxv.simplysoph.com/es/account/`. Leave both implicit-grant boxes unchecked. Do not create a client secret: the browser uses PKCE.
+   - **Token configuration** → Add optional claim → ID → `email` (accept the Graph `email` permission prompt). Then **Manifest** → under `optionalClaims.idToken` add `{ "name": "amr", "essential": false }` so Microsoft can prove MFA.
+   - Set `MICROSOFT_CLIENT_ID` to the Application (client) ID and `MICROSOFT_TENANT_ID` as above, redeploy, and record the app as `entra-application` in the inventory.
 
 ## Deploy the API
 

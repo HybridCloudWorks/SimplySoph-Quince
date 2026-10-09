@@ -4,6 +4,8 @@ import {
   createHmac,
   createCipheriv,
   createDecipheriv,
+  createPublicKey,
+  verify as verifySignature,
   timingSafeEqual,
 } from "node:crypto";
 import { OAuth2Client } from "google-auth-library";
@@ -110,6 +112,128 @@ export function googleVerifier(clientId, allowEmails) {
     )
       throw error(403, "ADMIN_NOT_ALLOWED");
     return { id: p.sub, email: p.email.toLowerCase() };
+  };
+}
+// Guest sign-in with Google: any verified Gmail or Workspace address. The caller
+// maps it to a registered guest account; it never grants administration.
+export function googleIdentityVerifier(clientId) {
+  const client = new OAuth2Client();
+  return async (credential) => {
+    if (!clientId) throw error(503, "SSO_NOT_CONFIGURED");
+    let p;
+    try {
+      p = (
+        await client.verifyIdToken({ idToken: credential, audience: clientId })
+      ).getPayload();
+    } catch {
+      throw error(401, "SIGN_IN_FAILED");
+    }
+    if (!p.email_verified || (!p.email?.endsWith("@gmail.com") && !p.hd))
+      throw error(403, "SSO_EMAIL_NOT_VERIFIED");
+    // Google ID tokens carry no reliable proof of two-step verification.
+    return {
+      provider: "google",
+      subject: p.sub,
+      email: p.email.toLowerCase(),
+      mfa: false,
+    };
+  };
+}
+// Personal Microsoft accounts (Outlook, Hotmail, Live) sign in through this tenant.
+export const MSA_TENANT = "9188040d-6c67-4c5b-b112-36a304b66dad";
+// Verifies a v2.0 Microsoft ID token obtained by the browser (authorization code
+// with PKCE, no client secret). Only personal accounts and the family's own work
+// tenant are accepted; every other organization is refused even though the app
+// registration lets Microsoft show its sign-in page.
+export function microsoftVerifier({
+  clientId,
+  tenantId,
+  fetchImpl = fetch,
+  now = Date.now,
+}) {
+  const tenants = new Set([MSA_TENANT, tenantId].filter(Boolean)),
+    keys = new Map();
+  async function key(tid, kid) {
+    let entry = keys.get(tid);
+    // Keys rotate: refetch on an unknown kid, at most once every 5 minutes.
+    if (!entry?.byKid.has(kid) && (!entry || now() - entry.at > 300000)) {
+      let body;
+      try {
+        const r = await fetchImpl(
+          `https://login.microsoftonline.com/${tid}/discovery/v2.0/keys`,
+          { signal: AbortSignal.timeout(10000) },
+        );
+        if (!r.ok) throw new Error();
+        body = await r.json();
+      } catch {
+        throw error(503, "SSO_KEYS_UNAVAILABLE");
+      }
+      entry = {
+        at: now(),
+        byKid: new Map(
+          (body.keys || []).filter((k) => k.kty === "RSA").map((k) => [k.kid, k]),
+        ),
+      };
+      keys.set(tid, entry);
+    }
+    return entry.byKid.get(kid);
+  }
+  const part = (s) => JSON.parse(Buffer.from(s, "base64url").toString());
+  return async (credential, expectedNonce) => {
+    if (!clientId) throw error(503, "SSO_NOT_CONFIGURED");
+    const pieces = typeof credential === "string" ? credential.split(".") : [];
+    let header, p;
+    try {
+      if (pieces.length !== 3) throw new Error();
+      [header, p] = [part(pieces[0]), part(pieces[1])];
+    } catch {
+      throw error(401, "SIGN_IN_FAILED");
+    }
+    // Check the cheap claims first so other tenants never trigger a key fetch.
+    if (
+      header.alg !== "RS256" ||
+      typeof header.kid !== "string" ||
+      typeof p.tid !== "string" ||
+      !tenants.has(p.tid)
+    )
+      throw error(403, "SSO_TENANT_NOT_ALLOWED");
+    const jwk = await key(p.tid, header.kid);
+    if (
+      !jwk ||
+      !verifySignature(
+        "RSA-SHA256",
+        Buffer.from(pieces[0] + "." + pieces[1]),
+        createPublicKey({ key: jwk, format: "jwk" }),
+        Buffer.from(pieces[2], "base64url"),
+      )
+    )
+      throw error(401, "SIGN_IN_FAILED");
+    const t = now() / 1000,
+      skew = 300;
+    if (
+      p.aud !== clientId ||
+      p.iss !== `https://login.microsoftonline.com/${p.tid}/v2.0` ||
+      !(p.exp > t - skew) ||
+      (p.nbf && p.nbf > t + skew) ||
+      typeof expectedNonce !== "string" ||
+      typeof p.nonce !== "string" ||
+      p.nonce.length !== expectedNonce.length ||
+      !timingSafeEqual(Buffer.from(p.nonce), Buffer.from(expectedNonce)) ||
+      typeof p.sub !== "string"
+    )
+      throw error(401, "SIGN_IN_FAILED");
+    // Microsoft includes email for multitenant apps only when the domain owner
+    // verified it (personal accounts, or a verified domain in the tenant).
+    const email = typeof p.email === "string" ? p.email.trim().toLowerCase() : "";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254)
+      throw error(403, "SSO_EMAIL_NOT_VERIFIED");
+    return {
+      provider: "microsoft",
+      subject: p.tid + ":" + p.sub,
+      email,
+      // "mfa" in amr is Microsoft's proof of a second factor (optional claim).
+      mfa: Array.isArray(p.amr) && p.amr.includes("mfa"),
+    };
   };
 }
 // Rate-limit counters live in process memory, keyed per ledger instance, not in

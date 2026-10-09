@@ -1,7 +1,11 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Ledger, cloudAdapter } from "./store.mjs";
-import { googleVerifier } from "./auth.mjs";
+import {
+  googleVerifier,
+  googleIdentityVerifier,
+  microsoftVerifier,
+} from "./auth.mjs";
 import { notionClient } from "./notion.mjs";
 import { graphMailer, sendgridMailer, eventMailer } from "./mail.mjs";
 import { createApplication } from "./application.mjs";
@@ -115,6 +119,13 @@ if (env.EVENT_BUCKET) {
       fallback: env.SENDGRID_FALLBACK_ENABLED === "true",
     }),
     verifyGoogle: googleVerifier(env.ADMIN_GOOGLE_CLIENT_ID, adminEmails),
+    // Optional: Microsoft sign-in appears only when MICROSOFT_CLIENT_ID is set.
+    verifyMicrosoft: microsoftVerifier({
+      clientId: env.MICROSOFT_CLIENT_ID,
+      tenantId: env.MICROSOFT_TENANT_ID,
+    }),
+    verifyGoogleIdentity: googleIdentityVerifier(env.ADMIN_GOOGLE_CLIENT_ID),
+    microsoftClientId: env.MICROSOFT_CLIENT_ID || "",
     documents: {
       async put(id, bytes) {
         await adapter.bucket.file("private/documents/" + id).save(bytes, {

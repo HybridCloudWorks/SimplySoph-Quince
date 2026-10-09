@@ -3,7 +3,7 @@ import { audience, recipientName, validEmail } from "./audience.mjs";
 import { createWhatsapp } from "./whatsapp.mjs";
 import { createSms, smsCompliantText, smsPreview } from "./sms.mjs";
 import { createPlanning } from "./planning.mjs";
-import { createAdminEmail } from "./admin-email.mjs";
+import { createAdminEmail, adminIdentity } from "./admin-email.mjs";
 import { createNotifications } from "./notifications.mjs";
 import { createMailBatches } from "./mail-batches.mjs";
 import { normalizeVideo, mediaResponse } from "./video.mjs";
@@ -82,6 +82,15 @@ export function createApplication({
   notion,
   mailer,
   verifyGoogle,
+  // Microsoft (personal and the family's work tenant) and Google identities for
+  // SSO; see microsoftVerifier and googleIdentityVerifier in auth.mjs.
+  verifyMicrosoft = async () => {
+    throw error(503, "SSO_NOT_CONFIGURED");
+  },
+  verifyGoogleIdentity = async () => {
+    throw error(503, "SSO_NOT_CONFIGURED");
+  },
+  microsoftClientId = "",
   media,
   documents,
   smsTransport,
@@ -136,6 +145,46 @@ export function createApplication({
   // completes a delegate's sign-in cannot silently claim that admin account.
   const setupAllowed = (s, email) =>
     adminEmails.includes(email) || s.mfaSetup?.[hash(email)]?.expiresAt > now();
+  // SSO tickets are sealed and stateless. The nonce inside goes to Microsoft and
+  // must come back in the ID token; it is spent in the transaction that signs in.
+  // The purpose keeps admin and guest sign-in apart: a guest ticket cannot open
+  // the admin route or the reverse.
+  const ssoTicket = (purpose) => {
+    const nonce = token();
+    return {
+      nonce,
+      ticket: seal(JSON.stringify({ n: nonce, p: purpose, e: now() + 600000 }), key),
+    };
+  };
+  function openTicket(raw, purpose) {
+    let t;
+    try {
+      t = JSON.parse(unseal(safeText(raw, 1000), key));
+    } catch {
+      throw error(401, "SIGN_IN_AGAIN");
+    }
+    if (t.p !== purpose || !(t.e > now())) throw error(401, "SIGN_IN_AGAIN");
+    return t.n;
+  }
+  function spendNonce(s, nonce) {
+    s.ssoNonces ??= {};
+    for (const [k, until] of Object.entries(s.ssoNonces))
+      if (until <= now()) delete s.ssoNonces[k];
+    if (s.ssoNonces[hash(nonce)]) throw error(401, "SIGN_IN_AGAIN");
+    s.ssoNonces[hash(nonce)] = now() + 600000;
+  }
+  // The first SSO sign-in binds the provider account to the email. A different
+  // provider account later presenting the same email (a recycled address) is
+  // refused; the emailed sign-in link still works, and an owner's authenticator
+  // reset clears an administrator's binding.
+  function bindSso(s, identity) {
+    s.ssoBindings ??= {};
+    const k = hash(identity.provider + ":" + identity.email),
+      subject = hash(identity.subject);
+    if (s.ssoBindings[k] && s.ssoBindings[k] !== subject)
+      throw error(403, "SSO_ACCOUNT_CHANGED");
+    s.ssoBindings[k] = subject;
+  }
   // Append-only and never trimmed (unlike the general audit list).
   function roleEvent(s, actor, target, change) {
     s.roleEvents ??= [];
@@ -501,6 +550,7 @@ export function createApplication({
     if (path === "/api/config" && method === "GET")
       return {
         clientId,
+        microsoftClientId,
         deadline,
         mailConfigured: mailer.configured,
         live: true,
@@ -534,10 +584,21 @@ export function createApplication({
     }
     if (path === "/api/auth/admin-email/request" && method === "POST")
       return adminEmail.request(body);
+    if (path === "/api/auth/sso/start" && method === "POST") {
+      if (!["admin", "guest"].includes(body.purpose))
+        throw error(422, "INVALID_PURPOSE");
+      return ssoTicket(body.purpose);
+    }
     if (
-      ["/api/auth/google", "/api/auth/admin-email/verify"].includes(path) &&
+      [
+        "/api/auth/google",
+        "/api/auth/admin-email/verify",
+        "/api/auth/microsoft",
+      ].includes(path) &&
       method === "POST"
     ) {
+      const nonce =
+        path === "/api/auth/microsoft" ? openTicket(body.ticket, "admin") : null;
       const identity = await chargeFailures(
           ledger,
           "admin-login-failures",
@@ -547,7 +608,9 @@ export function createApplication({
           () =>
             path === "/api/auth/google"
               ? verifyGoogle(safeText(body.credential, 10000))
-              : adminEmail.consume(body.token),
+              : nonce
+                ? verifyMicrosoft(safeText(body.credential, 20000), nonce)
+                : adminEmail.consume(body.token),
         ),
         challenge = token();
       await rateLimit(
@@ -557,21 +620,60 @@ export function createApplication({
         900000,
         now(),
       );
+      // Microsoft sign-ins reach the same administrators as the emailed link:
+      // owners, delegates and guest accounts holding the admin permission.
+      let who = identity;
+      if (nonce) {
+        who = adminIdentity(
+          await ledger.read(),
+          identity.email,
+          authorizedAdminEmails,
+        );
+        if (!who) throw error(403, "ADMIN_NOT_ALLOWED");
+      }
+      // Microsoft's own proof of a second factor ("mfa" in amr) replaces the
+      // authenticator code. Personal accounts usually lack it and get the code.
+      if (nonce && identity.mfa) {
+        await checkAdministratorEligibility(who.accountId, who.email);
+        const sessionToken = token(),
+          csrf = token();
+        await ledger.transaction((s) => {
+          const current = adminIdentity(s, identity.email, authorizedAdminEmails);
+          if (!current) throw error(403, "ADMIN_NOT_ALLOWED");
+          spendNonce(s, nonce);
+          bindSso(s, identity);
+          pruneSessions(s, now());
+          s.sessions[hash(sessionToken)] = {
+            kind: "admin",
+            actor: current.id,
+            email: current.email,
+            csrf,
+            ...(current.accountId ? { accountId: current.accountId } : {}),
+            expiresAt: now() + 1800000,
+          };
+          audit(s, current.id, "admin-sign-in-microsoft-mfa", current.id, now());
+        });
+        return { signedIn: true, csrf, setCookie: cookie(sessionToken) };
+      }
       const result = await ledger.transaction((s) => {
+        if (nonce) {
+          spendNonce(s, nonce);
+          bindSso(s, identity);
+        }
         for (const [id, c] of Object.entries(s.challenges))
           if (c.expiresAt <= now()) delete s.challenges[id];
-        if (!identity.accountId) {
+        if (!who.accountId) {
           const existing = Object.entries(s.admins).find(
-            ([, a]) => a.email === identity.email,
+            ([, a]) => a.email === who.email,
           );
-          if (existing) identity.id = existing[0];
+          if (existing) who = { ...who, id: existing[0] };
         }
         const secret = newMfaSecret();
-        const admin = s.admins[identity.id];
-        if (!admin && !setupAllowed(s, identity.email))
+        const admin = s.admins[who.id];
+        if (!admin && !setupAllowed(s, who.email))
           throw error(403, "MFA_SETUP_NOT_ALLOWED");
         s.challenges[hash(challenge)] = {
-          ...identity,
+          ...who,
           expiresAt: now() + 300000,
           attempts: 0,
           pendingSecret: admin ? null : seal(secret, key),
@@ -584,6 +686,37 @@ export function createApplication({
             };
       });
       return { challenge, ...result };
+    }
+    // Guest SSO signs in to the guest account registered with the same email.
+    // It only ever creates a guest session: administration always goes through
+    // /admin/login/ and its own checks, whatever permissions the account holds.
+    if (path === "/api/auth/sso/guest" && method === "POST") {
+      if (!["microsoft", "google"].includes(body.provider))
+        throw error(422, "INVALID_PROVIDER");
+      const nonce =
+        body.provider === "microsoft" ? openTicket(body.ticket, "guest") : null;
+      const identity = await chargeFailures(
+        ledger,
+        "guest-sso-failures",
+        300,
+        900000,
+        now(),
+        () =>
+          nonce
+            ? verifyMicrosoft(safeText(body.credential, 20000), nonce)
+            : verifyGoogleIdentity(safeText(body.credential, 10000)),
+      );
+      await rateLimit(
+        ledger,
+        "guest-sso:" + hash(identity.email),
+        10,
+        900000,
+        now(),
+      );
+      return accounts.ssoSession(identity.email, (s) => {
+        if (nonce) spendNonce(s, nonce);
+        bindSso(s, identity);
+      });
     }
     if (path === "/api/auth/mfa" && method === "POST") {
       const pendingChallenge = (await ledger.read()).challenges[
@@ -1448,6 +1581,8 @@ export function createApplication({
               if (v.kind === "admin" && v.email === email) delete s.sessions[id];
             for (const [id, v] of Object.entries(s.challenges))
               if (v.email === email) delete s.challenges[id];
+            for (const provider of ["microsoft", "google"])
+              delete s.ssoBindings?.[hash(provider + ":" + email)];
           }
           s.mfaSetup ??= {};
           s.mfaSetup[hash(email)] = { email, by: session.actor, expiresAt: now() + 86400000 };

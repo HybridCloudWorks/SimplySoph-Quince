@@ -468,6 +468,21 @@ button:disabled {
   opacity: 0.5;
   cursor: wait;
 }
+/* Microsoft's sign-in button: white with the four-square mark, per its brand rules. */
+.sso-button {
+  background: #fff;
+  color: #5e5e5e;
+  border: 1px solid #8c8c8c;
+  gap: 12px;
+}
+.sso-choices {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--line);
+}
 dialog {
   border: 1px solid var(--line);
   max-width: 600px;
