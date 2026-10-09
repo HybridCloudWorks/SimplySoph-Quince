@@ -173,10 +173,11 @@ export function createApplication({
     if (s.ssoNonces[hash(nonce)]) throw error(401, "SIGN_IN_AGAIN");
     s.ssoNonces[hash(nonce)] = now() + 600000;
   }
-  // The first SSO sign-in binds the provider account to the email. A different
-  // provider account later presenting the same email (a recycled address) is
-  // refused; the emailed sign-in link still works, and an owner's authenticator
-  // reset clears an administrator's binding.
+  // Guest SSO: the first sign-in binds the provider account to the email. A
+  // different provider account later presenting the same email (a recycled
+  // address) is refused; the emailed sign-in link still works. Administrators are
+  // linked separately, and only after their authenticator code passes
+  // (/api/auth/mfa); an owner's authenticator reset clears that link.
   function bindSso(s, identity) {
     s.ssoBindings ??= {};
     const k = hash(identity.provider + ":" + identity.email),
@@ -597,8 +598,12 @@ export function createApplication({
       ].includes(path) &&
       method === "POST"
     ) {
+      // Provider sign-ins carry a sealed, admin-only ticket whose nonce must come
+      // back inside the ID token; the emailed link is its own one-time secret.
       const nonce =
-        path === "/api/auth/microsoft" ? openTicket(body.ticket, "admin") : null;
+        path === "/api/auth/admin-email/verify"
+          ? null
+          : openTicket(body.ticket, "admin");
       const identity = await chargeFailures(
           ledger,
           "admin-login-failures",
@@ -607,7 +612,7 @@ export function createApplication({
           now(),
           () =>
             path === "/api/auth/google"
-              ? verifyGoogle(safeText(body.credential, 10000))
+              ? verifyGoogle(safeText(body.credential, 10000), nonce)
               : nonce
                 ? verifyMicrosoft(safeText(body.credential, 20000), nonce)
                 : adminEmail.consume(body.token),
@@ -620,10 +625,12 @@ export function createApplication({
         900000,
         now(),
       );
+      const microsoft = identity.provider === "microsoft",
+        binding = microsoft ? hash("microsoft:" + identity.email) : null;
       // Microsoft sign-ins reach the same administrators as the emailed link:
       // owners, delegates and guest accounts holding the admin permission.
       let who = identity;
-      if (nonce) {
+      if (microsoft) {
         who = adminIdentity(
           await ledger.read(),
           identity.email,
@@ -631,35 +638,24 @@ export function createApplication({
         );
         if (!who) throw error(403, "ADMIN_NOT_ALLOWED");
       }
-      // Microsoft's own proof of a second factor ("mfa" in amr) replaces the
-      // authenticator code. Personal accounts usually lack it and get the code.
-      if (nonce && identity.mfa) {
+      // Microsoft's proof of a second factor ("mfa" in amr) replaces the code
+      // only for an administrator who already has an authenticator AND whose
+      // Microsoft account was linked by an earlier sign-in that passed it. A
+      // mailbox alone cannot mint that: a new Microsoft account for the same
+      // email is not linked, so it gets the authenticator code.
+      const linked = (s) =>
+        microsoft &&
+        identity.mfa &&
+        s.ssoBindings?.[binding] === hash(identity.subject);
+      let eligible = false;
+      if (linked(await ledger.read())) {
         await checkAdministratorEligibility(who.accountId, who.email);
-        const sessionToken = token(),
-          csrf = token();
-        await ledger.transaction((s) => {
-          const current = adminIdentity(s, identity.email, authorizedAdminEmails);
-          if (!current) throw error(403, "ADMIN_NOT_ALLOWED");
-          spendNonce(s, nonce);
-          bindSso(s, identity);
-          pruneSessions(s, now());
-          s.sessions[hash(sessionToken)] = {
-            kind: "admin",
-            actor: current.id,
-            email: current.email,
-            csrf,
-            ...(current.accountId ? { accountId: current.accountId } : {}),
-            expiresAt: now() + 1800000,
-          };
-          audit(s, current.id, "admin-sign-in-microsoft-mfa", current.id, now());
-        });
-        return { signedIn: true, csrf, setCookie: cookie(sessionToken) };
+        eligible = true;
       }
+      const sessionToken = token(),
+        csrf = token();
       const result = await ledger.transaction((s) => {
-        if (nonce) {
-          spendNonce(s, nonce);
-          bindSso(s, identity);
-        }
+        if (nonce) spendNonce(s, nonce);
         for (const [id, c] of Object.entries(s.challenges))
           if (c.expiresAt <= now()) delete s.challenges[id];
         if (!who.accountId) {
@@ -668,12 +664,31 @@ export function createApplication({
           );
           if (existing) who = { ...who, id: existing[0] };
         }
-        const secret = newMfaSecret();
         const admin = s.admins[who.id];
+        if (eligible && admin && linked(s)) {
+          const current = adminIdentity(s, identity.email, authorizedAdminEmails);
+          if (!current) throw error(403, "ADMIN_NOT_ALLOWED");
+          pruneSessions(s, now());
+          s.sessions[hash(sessionToken)] = {
+            kind: "admin",
+            actor: who.id,
+            email: who.email,
+            csrf,
+            ...(who.accountId ? { accountId: who.accountId } : {}),
+            expiresAt: now() + 1800000,
+          };
+          audit(s, who.id, "admin-sign-in-microsoft-mfa", who.id, now());
+          return { signedIn: true };
+        }
+        const secret = newMfaSecret();
         if (!admin && !setupAllowed(s, who.email))
           throw error(403, "MFA_SETUP_NOT_ALLOWED");
         s.challenges[hash(challenge)] = {
           ...who,
+          // Linked to this email only after the authenticator code passes.
+          ...(microsoft
+            ? { sso: { binding, subject: hash(identity.subject) } }
+            : {}),
           expiresAt: now() + 300000,
           attempts: 0,
           pendingSecret: admin ? null : seal(secret, key),
@@ -685,6 +700,8 @@ export function createApplication({
               provisioningUri: `otpauth://totp/SimplySoph:${encodeURIComponent(identity.email)}?secret=${secret}&issuer=SimplySoph`,
             };
       });
+      if (result.signedIn)
+        return { signedIn: true, csrf, setCookie: cookie(sessionToken) };
       return { challenge, ...result };
     }
     // Guest SSO signs in to the guest account registered with the same email.
@@ -693,8 +710,7 @@ export function createApplication({
     if (path === "/api/auth/sso/guest" && method === "POST") {
       if (!["microsoft", "google"].includes(body.provider))
         throw error(422, "INVALID_PROVIDER");
-      const nonce =
-        body.provider === "microsoft" ? openTicket(body.ticket, "guest") : null;
+      const nonce = openTicket(body.ticket, "guest");
       const identity = await chargeFailures(
         ledger,
         "guest-sso-failures",
@@ -702,9 +718,9 @@ export function createApplication({
         900000,
         now(),
         () =>
-          nonce
+          body.provider === "microsoft"
             ? verifyMicrosoft(safeText(body.credential, 20000), nonce)
-            : verifyGoogleIdentity(safeText(body.credential, 10000)),
+            : verifyGoogleIdentity(safeText(body.credential, 10000), nonce),
       );
       await rateLimit(
         ledger,
@@ -714,7 +730,7 @@ export function createApplication({
         now(),
       );
       return accounts.ssoSession(identity.email, (s) => {
-        if (nonce) spendNonce(s, nonce);
+        spendNonce(s, nonce);
         bindSso(s, identity);
       });
     }
@@ -763,6 +779,12 @@ export function createApplication({
           lastStep: step,
           email: c.email,
         };
+        // The code passed: link the Microsoft account that started this sign-in,
+        // replacing any earlier one, so its MFA can stand in for the code later.
+        if (c.sso) {
+          s.ssoBindings ??= {};
+          s.ssoBindings[c.sso.binding] = c.sso.subject;
+        }
         pruneSessions(s, now());
         s.sessions[hash(sessionToken)] = {
           kind: "admin",

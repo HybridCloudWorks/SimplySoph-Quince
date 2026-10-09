@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { generateKeyPairSync, sign, createHmac } from "node:crypto";
 import { Ledger, memoryAdapter } from "../server/store.mjs";
 import { createApplication } from "../server/application.mjs";
-import { hash, error, microsoftVerifier, MSA_TENANT } from "../server/auth.mjs";
+import { hash, error, totp, microsoftVerifier, MSA_TENANT } from "../server/auth.mjs";
 
 const origin = "https://misxv.simplysoph.com",
   at = Date.parse("2026-10-09T18:00:00Z"),
@@ -60,7 +60,7 @@ test("a signed personal-account token verifies and normalizes the email", async 
 
 test("amr mfa is the only proof of a second factor", async () => {
   const { verify } = verifier();
-  const work = { tid: TENANT, iss: `https://login.microsoftonline.com/${TENANT}/v2.0` };
+  const work = { tid: TENANT, iss: `https://login.microsoftonline.com/${TENANT}/v2.0`, acct: 0, xms_edov: true };
   assert.equal((await verify(idToken(claims({ ...work, amr: ["pwd", "mfa"] })), "n-1")).mfa, true);
   assert.equal((await verify(idToken(claims({ ...work, amr: ["pwd"] })), "n-1")).mfa, false);
   assert.equal((await verify(idToken(claims({ ...work, amr: "mfa" })), "n-1")).mfa, false);
@@ -94,6 +94,28 @@ test("audience, issuer, nonce, expiry, signature and algorithm are enforced", as
 test("a token without a verified email is refused", async () => {
   const { verify } = verifier();
   await assert.rejects(verify(idToken(claims({ email: undefined })), "n-1"), (e) => e.code === "SSO_EMAIL_NOT_VERIFIED");
+});
+
+test("work accounts must be tenant members with a verified email domain", async () => {
+  const { verify } = verifier();
+  const work = { tid: TENANT, iss: `https://login.microsoftonline.com/${TENANT}/v2.0` };
+  const refused = (extra) =>
+    assert.rejects(verify(idToken(claims({ ...work, ...extra })), "n-1"), (e) => e.code === "SSO_EMAIL_NOT_VERIFIED");
+  await refused({});
+  await refused({ acct: 1, xms_edov: true });
+  await refused({ acct: 0, xms_edov: false });
+  assert.equal((await verify(idToken(claims({ ...work, acct: 0, xms_edov: "1" })), "n-1")).email, "guest@outlook.com");
+});
+
+test("a nonce with the same length in characters but not bytes is a 401", async () => {
+  const { verify } = verifier();
+  await assert.rejects(verify(idToken(claims({ nonce: "n-é" })), "n-1"), (e) => e.status === 401);
+});
+
+test("concurrent sign-ins share one key fetch", async () => {
+  const { verify, fetched } = verifier();
+  await Promise.all([1, 2, 3].map(() => verify(idToken(claims()), "n-1")));
+  assert.equal(fetched.length, 1);
 });
 
 test("an unknown key id refetches keys at most once every five minutes", async () => {
@@ -135,12 +157,11 @@ async function fixture() {
     mailer: { configured: true, send: async () => {} },
     verifyGoogle: async () => ({ id: "g", email: "owner@outlook.com" }),
     verifyMicrosoft,
-    verifyGoogleIdentity: async (credential) => ({
-      provider: "google",
-      subject: "g-" + credential,
-      email: credential + "@gmail.com",
-      mfa: false,
-    }),
+    verifyGoogleIdentity: async (credential, nonce) => {
+      const c = JSON.parse(credential);
+      if (c.nonce !== nonce) throw error(401, "SIGN_IN_FAILED");
+      return { provider: "google", subject: "g-" + c.email, email: c.email, mfa: false };
+    },
     microsoftClientId: CLIENT,
     media: { put: async () => {}, get: async () => Buffer.alloc(0) },
     key,
@@ -169,7 +190,7 @@ async function fixture() {
   const session = (cookie) => app.dispatch({ path: "/api/session", method: "GET", headers: { origin, cookie }, ip: "x" });
   const start = (purpose) => post("auth/sso/start", { purpose });
   const ms = (t, email, extra = {}) => JSON.stringify({ nonce: t.nonce, email, sub: "s-" + email, ...extra });
-  return { app, ledger, post, session, start, ms, advance: (ms) => (clock += ms) };
+  return { app, ledger, post, session, start, ms, advance: (ms) => (clock += ms), now: () => clock };
 }
 const cookieOf = (r) => r.setCookie.split(";")[0];
 
@@ -178,24 +199,49 @@ test("config advertises the Microsoft client id", async () => {
   assert.equal((await f.app.dispatch({ path: "/api/config", method: "GET", headers: {} })).microsoftClientId, CLIENT);
 });
 
-test("an administrator proven by Microsoft MFA signs in without the authenticator code", async () => {
+// Signs in with Microsoft and finishes with the authenticator code when asked.
+async function adminWithCode(f, extra = {}) {
+  const t = await f.start("admin");
+  const r = await f.post("auth/microsoft", { ticket: t.ticket, credential: f.ms(t, "owner@outlook.com", { mfa: true, ...extra }) });
+  if (r.signedIn) return r;
+  f.secret ??= r.enrollmentSecret;
+  f.advance(30000); // a fresh 30-second step, so the code is not a replay
+  return f.post("auth/mfa", { challenge: r.challenge, code: totp(f.secret, Math.floor(f.now() / 30000)) });
+}
+
+test("Microsoft MFA skips the code only after a sign-in that passed the code linked that account", async () => {
   const f = await fixture();
   const t = await f.start("admin");
-  const r = await f.post("auth/microsoft", { ticket: t.ticket, credential: f.ms(t, "owner@outlook.com", { mfa: true }) });
-  assert.equal(r.signedIn, true);
-  const s = await f.session(cookieOf(r));
+  const first = await f.post("auth/microsoft", { ticket: t.ticket, credential: f.ms(t, "owner@outlook.com", { mfa: true }) });
+  assert.ok(first.challenge && !first.setCookie, "the first Microsoft sign-in still needs the authenticator");
+  assert.equal((await f.ledger.read()).ssoBindings?.[hash("microsoft:owner@outlook.com")], undefined, "not linked before the code passes");
+  f.secret = first.enrollmentSecret;
+  f.advance(30000);
+  await f.post("auth/mfa", { challenge: first.challenge, code: totp(f.secret, Math.floor(f.now() / 30000)) });
+  const t2 = await f.start("admin");
+  const second = await f.post("auth/microsoft", { ticket: t2.ticket, credential: f.ms(t2, "owner@outlook.com", { mfa: true }) });
+  assert.equal(second.signedIn, true);
+  const s = await f.session(cookieOf(second));
   assert.equal(s.kind, "admin");
-  assert.equal(s.owner, true);
-  const state = await f.ledger.read();
-  assert.ok(state.audit.some((a) => a.action === "admin-sign-in-microsoft-mfa"));
+  assert.ok((await f.ledger.read()).audit.some((a) => a.action === "admin-sign-in-microsoft-mfa"));
 });
 
-test("without Microsoft MFA the administrator still needs the authenticator code", async () => {
+test("a new Microsoft account for an admin's email cannot skip the code (mailbox takeover)", async () => {
   const f = await fixture();
+  await adminWithCode(f); // the real owner links their Microsoft account
+  const t = await f.start("admin");
+  const attacker = await f.post("auth/microsoft", { ticket: t.ticket, credential: f.ms(t, "owner@outlook.com", { mfa: true, sub: "attacker" }) });
+  assert.ok(attacker.challenge && !attacker.setCookie);
+  // Only passing the owner's authenticator relinks the email to another account.
+  assert.notEqual((await f.ledger.read()).ssoBindings[hash("microsoft:owner@outlook.com")], hash("attacker"));
+});
+
+test("without Microsoft MFA the administrator always needs the code", async () => {
+  const f = await fixture();
+  await adminWithCode(f);
   const t = await f.start("admin");
   const r = await f.post("auth/microsoft", { ticket: t.ticket, credential: f.ms(t, "owner@outlook.com") });
-  assert.ok(r.challenge && !r.setCookie);
-  assert.ok(r.enrollmentSecret, "the owner sets up an authenticator on first sign-in");
+  assert.ok(r.challenge && !r.setCookie && !r.enrollmentSecret);
 });
 
 test("a Microsoft account that is not an administrator is refused on the admin route", async () => {
@@ -215,6 +261,24 @@ test("guest sign-in never grants administration, even to an account with the adm
   assert.equal(s.kind, "guest");
   assert.equal(s.verified, true);
   assert.equal(s.owner, false);
+});
+
+test("Google guest sign-in needs its own one-time guest ticket", async () => {
+  const f = await fixture();
+  const t = await f.start("guest"),
+    body = { provider: "google", ticket: t.ticket, credential: f.ms(t, "guest@outlook.com") };
+  assert.equal((await f.session(cookieOf(await f.post("auth/sso/guest", body)))).kind, "guest");
+  await assert.rejects(f.post("auth/sso/guest", body), (e) => e.code === "SIGN_IN_AGAIN");
+  await assert.rejects(f.post("auth/sso/guest", { provider: "google", credential: "{}" }), (e) => e.code === "SIGN_IN_AGAIN");
+  const a = await f.start("admin");
+  await assert.rejects(f.post("auth/sso/guest", { provider: "google", ticket: a.ticket, credential: f.ms(a, "guest@outlook.com") }), (e) => e.code === "SIGN_IN_AGAIN");
+});
+
+test("admin Google sign-in needs an admin ticket", async () => {
+  const f = await fixture();
+  await assert.rejects(f.post("auth/google", { credential: "x" }), (e) => e.code === "SIGN_IN_AGAIN");
+  const g = await f.start("guest");
+  await assert.rejects(f.post("auth/google", { credential: "x", ticket: g.ticket }), (e) => e.code === "SIGN_IN_AGAIN");
 });
 
 test("tickets are bound to their purpose", async () => {
@@ -240,12 +304,13 @@ test("a ticket works once and expires after ten minutes", async () => {
 
 test("guest SSO needs a registered account and never creates one", async () => {
   const f = await fixture();
-  await assert.rejects(f.post("auth/sso/guest", { provider: "google", credential: "nobody" }), (e) => e.code === "SSO_NO_ACCOUNT");
+  const t = await f.start("guest");
+  await assert.rejects(f.post("auth/sso/guest", { provider: "google", ticket: t.ticket, credential: f.ms(t, "nobody@gmail.com") }), (e) => e.code === "SSO_NO_ACCOUNT");
   assert.equal(Object.keys((await f.ledger.read()).accounts).length, 1);
   await assert.rejects(f.post("auth/sso/guest", { provider: "github", credential: "x" }), (e) => e.code === "INVALID_PROVIDER");
 });
 
-test("a different provider account claiming a bound email is refused", async () => {
+test("a different provider account claiming a guest's bound email is refused", async () => {
   const f = await fixture();
   const t1 = await f.start("guest");
   await f.post("auth/sso/guest", { provider: "microsoft", ticket: t1.ticket, credential: f.ms(t1, "guest@outlook.com") });
@@ -254,6 +319,4 @@ test("a different provider account claiming a bound email is refused", async () 
     f.post("auth/sso/guest", { provider: "microsoft", ticket: t2.ticket, credential: f.ms(t2, "guest@outlook.com", { sub: "someone-new" }) }),
     (e) => e.code === "SSO_ACCOUNT_CHANGED",
   );
-  const state = await f.ledger.read();
-  assert.ok(state.ssoBindings[hash("microsoft:guest@outlook.com")]);
 });

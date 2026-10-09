@@ -103,14 +103,23 @@ export async function finishMicrosoft(clientId, purpose, params) {
 export function microsoftButton(label) {
   return `<button type="button" class="button sso-button" data-sso="microsoft"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 21 21"><path fill="#f25022" d="M1 1h9v9H1z"/><path fill="#7fba00" d="M11 1h9v9h-9z"/><path fill="#00a4ef" d="M1 11h9v9H1z"/><path fill="#ffb900" d="M11 11h9v9h-9z"/></svg>${label}</button>`;
 }
-// Google's own button; the credential callback receives an ID token.
-export function googleButton(target, clientId, onCredential, onError) {
+// Google's own button. Like Microsoft, it carries the nonce of a one-time,
+// purpose-bound ticket, so the ID token only works once and only here. The
+// callback receives the ID token and that ticket.
+export function googleButton(target, clientId, purpose, onCredential, onError) {
   const script = document.createElement("script");
   script.src = "https://accounts.google.com/gsi/client";
-  script.onload = () => {
+  script.onload = async () => {
+    let issued;
+    try {
+      issued = await api("auth/sso/start", { purpose });
+    } catch (e) {
+      return onError(e.message);
+    }
     google.accounts.id.initialize({
       client_id: clientId,
-      callback: (result) => onCredential(result.credential),
+      nonce: issued.nonce,
+      callback: (result) => onCredential(result.credential, issued.ticket),
     });
     google.accounts.id.renderButton(target, {
       theme: "outline",

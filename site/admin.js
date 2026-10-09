@@ -11,6 +11,7 @@ import {
   microsoftReturn,
   finishMicrosoft,
   microsoftButton,
+  googleButton,
 } from "./sso.js";
 const root = document.querySelector("#admin-app"),
   view = root.dataset.view;
@@ -132,26 +133,14 @@ async function login() {
     microsoftStart.onclick = () =>
       run(() => startMicrosoft(cfg.microsoftClientId, "admin"));
   if (!cfg.clientId) return;
-  const script = document.createElement("script");
-  script.src = "https://accounts.google.com/gsi/client";
-  script.onload = () => {
-    google.accounts.id.initialize({
-      client_id: cfg.clientId,
-      callback: (result) =>
-        run(async () => {
-          const data = await api("auth/google", {
-            credential: result.credential,
-          });
-          showMfa(data);
-        }),
-    });
-    google.accounts.id.renderButton(document.querySelector("#google-signin"), {
-      theme: "outline",
-      size: "large",
-    });
-  };
-  script.onerror = () => notify("Google sign-in could not load. Please retry.");
-  document.head.append(script);
+  googleButton(
+    document.querySelector("#google-signin"),
+    cfg.clientId,
+    "admin",
+    (credential, ticket) =>
+      run(async () => showMfa(await api("auth/google", { credential, ticket }))),
+    notify,
+  );
 }
 function showMfa(data) {
   document.querySelector("#mfa").innerHTML =

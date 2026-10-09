@@ -62,7 +62,7 @@ Every variable `server/start.mjs` reads. Secrets come from **pinned** Secret Man
 7. Microsoft sign-in app (optional; the owner creates it in the [Microsoft Entra admin center](https://entra.microsoft.com) → App registrations → **New registration**):
    - Name `Mis XV sign-in`. Supported account types: **Accounts in any organizational directory and personal Microsoft accounts**. Redirect URI: platform **Single-page application (SPA)**, `https://misxv.simplysoph.com/admin/login/`.
    - **Authentication** → Single-page application → add `https://misxv.simplysoph.com/account/` and `https://misxv.simplysoph.com/es/account/`. Leave both implicit-grant boxes unchecked. Do not create a client secret: the browser uses PKCE.
-   - **Token configuration** → Add optional claim → ID → `email` (accept the Graph `email` permission prompt). Then **Manifest** → under `optionalClaims.idToken` add `{ "name": "amr", "essential": false }` so Microsoft can prove MFA.
+   - **Token configuration** → Add optional claim → ID → check `email`, `acct` and `xms_edov` (accept the Graph `email` permission prompt). Then **Manifest** → under `optionalClaims.idToken` add `{ "name": "amr", "essential": false }` so Microsoft can prove MFA. Without `acct`/`xms_edov`, simplysoph.com work accounts are refused; personal accounts are unaffected.
    - Set `MICROSOFT_CLIENT_ID` to the Application (client) ID and `MICROSOFT_TENANT_ID` as above, redeploy, and record the app as `entra-application` in the inventory.
 
 ## Deploy the API

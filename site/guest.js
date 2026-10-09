@@ -73,9 +73,10 @@ async function ssoChoices() {
     googleButton(
       portal.querySelector("#google-guest"),
       cfg.clientId,
-      async (credential) => {
+      "guest",
+      async (credential, ticket) => {
         try {
-          await api("auth/sso/guest", { provider: "google", credential });
+          await api("auth/sso/guest", { provider: "google", credential, ticket });
           await showPortal();
           await permissionNavigation();
         } catch (e) {
