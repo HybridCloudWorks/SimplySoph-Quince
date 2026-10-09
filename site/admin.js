@@ -154,7 +154,7 @@ async function accountAccess() {
             )
             .join(
               "",
-            )}</fieldset>${a.deletedAt ? "</form>" : formEnd("Save Access")}${data.owner && !a.protectedOwner ? `<button type="button" data-account-action="${a.deletedAt ? "restore" : "delete"}" data-id="${esc(a.id)}">${a.deletedAt ? "Restore Account" : "Delete Account"}</button>` : ""}</article>`,
+            )}</fieldset>${data.owner && !a.deletedAt && !a.permissions.includes("admin") && a.administratorEligible ? field("Your authenticator code (needed only when granting administration)", "code", { max: 6, autocomplete: "one-time-code" }) : ""}${a.deletedAt ? "</form>" : formEnd("Save Access")}${data.owner && !a.protectedOwner ? `<button type="button" data-account-action="${a.deletedAt ? "restore" : "delete"}" data-id="${esc(a.id)}">${a.deletedAt ? "Restore Account" : "Delete Account"}</button>` : ""}</article>`,
       )
       .join("") || "<p>No verified guest accounts yet.</p>"
   }</div>`;
@@ -190,10 +190,34 @@ async function accountAccess() {
             ? a.active
             : f.has("active"),
         permissions,
+        ...(f.get("code") ? { code: f.get("code").trim() } : {}),
       });
       await accountAccess();
-      notify("Access saved. Changes apply to current sessions.");
+      notify(
+        permissions.includes("admin") && !a.permissions.includes("admin")
+          ? "Administration granted. Next, use Authenticator setup below to let them set up their authenticator within 24 hours."
+          : "Access saved. Changes apply to current sessions.",
+      );
     });
+  if (data.owner) await authenticatorSetup();
+}
+// Owner tools: open a 24-hour authenticator-setup window for a delegate or a
+// promoted guest (optionally resetting a lost authenticator), plus history.
+async function authenticatorSetup() {
+  const r = await api("admin/role-events");
+  const section = document.createElement("section");
+  section.className = "card";
+  section.innerHTML = `<h2>Authenticator setup</h2><p>Family administrators other than the site owner can set up their authenticator only within 24 hours after you allow it here. Allow it, then tell them to sign in at /admin/login/ right away. Use reset if they lost their phone: their current authenticator and admin sessions stop working.</p><form id="mfa-setup">${field("Administrator email", "email", { type: "email", required: true })}<label class="check"><input type="checkbox" name="reset">Reset their existing authenticator first</label>${field("Your authenticator code", "code", { required: true, max: 6, autocomplete: "one-time-code" })}${formEnd("Allow setup for 24 hours")}</form>${r.pendingSetups.length ? `<h3>Open setup windows</h3><ul>${r.pendingSetups.map((p) => `<li>${esc(p.email)} until ${esc(new Date(p.until).toLocaleString())}</li>`).join("")}</ul>` : ""}<h3>Role and authenticator history</h3>${r.events.length ? `<ul>${r.events.map((e) => `<li>${esc(new Date(e.at).toLocaleString())} · ${esc(e.change)} · ${esc(e.target)}</li>`).join("")}</ul>` : "<p>No changes recorded yet.</p>"}`;
+  root.append(section);
+  submit(section.querySelector("#mfa-setup"), async (f) => {
+    const result = await api("admin/mfa-setup", {
+      email: f.get("email"),
+      code: f.get("code").trim(),
+      reset: f.has("reset"),
+    });
+    notify(`Setup allowed until ${new Date(result.allowedUntil).toLocaleString()}.`);
+    await accountAccess();
+  });
 }
 async function dashboard() {
   const d = await api("admin/dashboard");

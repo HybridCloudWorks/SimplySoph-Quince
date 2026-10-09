@@ -86,6 +86,10 @@ After any sign-in, `/api/session` returns `role`. If it isn't `guest`, the clien
 | Users & Roles | Accounts, page access, role toggle (owner only), MFA reset, role history | `users:manage` / `roles:grant` |
 | Planning | Budget, godparents, documents (existing) | `events:manage` |
 
+## Status (2026-10-09)
+
+Shipped: owner-gated authenticator setup with reset (M2), a fresh owner code to grant admin with removal dropping the authenticator (M3, L3), owner-only Notion schema and import (part of M1), append-only role history, constant-time CSRF (L4), dead code removed (L5). Anonymous lockout (H1) was fixed earlier. Still open: finer permission sets beyond owner/admin, delegates' 30-minute grace after Notion un-marking (L1), and Notion dependence for delegates (L2).
+
 ## Fixes for the security findings
 
 | Finding | Fix |
