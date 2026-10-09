@@ -41,7 +41,7 @@ Code items 2–8 are **done** on this branch (156/156 tests, 66/66 documents). I
 | 10c | Ledger queue guard: per-attempt timeout on GCS load/save and reject when the per-instance queue is too deep (review L1) | S | Review |
 | 10d | **Done:** minted email links open only after their email was sent (review L2) | S | Review |
 | 11 | **Done:** batch invitations and reminders. Preview recipients, skips and one sample per language, then a typed-count confirm; the open tab sends groups of 10 at about 28/min; Stop and Continue; bulk link creation for households without links. Owner rule: every send has a person in the loop, and single sends stay available | M | UX, Arch |
-| 12 | Dashboard polling (`/api/admin/status`, ETag = ledger generation); RSVPs in the Notifications inbox | S–M | Arch, UX |
+| 12 | **Done:** open admin tabs check `/api/admin/pulse` every 30 s while visible (one ledger read, no Notion). The dashboard and inbox redraw (never over a field being typed in), the guest list shows a refresh banner so selections survive, and the Notifications link shows an unread count. RSVPs land in the inbox in the same save, **in-app only, never emailed** | S–M | Arch, UX |
 | 13 | Append-only `events[]` written with each state change and mirrored to logs; RSVP, delivery and role events | M | Arch |
 | 14 | Cloud Scheduler (OIDC) drains pending Notion and consent projections every 10 min | S | Notion |
 | 15 | Permission sets plus `requirePermission`; owner-only role endpoint with fresh TOTP; MFA enrollment links, owner notification and reset (M1–M3) | M | Security |

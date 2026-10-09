@@ -3,6 +3,7 @@ import { whatsappComposer } from "./admin-whatsapp.js";
 import { communicationHistory } from "./admin-history.js";
 import { audienceComposer } from "./admin-audience.js";
 import { batchToolbar } from "./admin-batches.js";
+import { startPulse, activityBanner } from "./admin-pulse.js";
 import { websiteEditor, notificationInbox } from "./admin-experience.js";
 import { api, esc, field, submit, notify } from "./client.js";
 const root = document.querySelector("#admin-app"),
@@ -569,6 +570,17 @@ try {
         await moderation();
       if (view === "admin/updates") await updates();
       if (view === "admin/history") await communicationHistory(root);
+      // Keep the open tab current; never re-render over a form being edited.
+      startPulse(async () => {
+        // The guest list only gets a banner, so selections are never lost.
+        if (view === "admin/guests") return activityBanner(root, guestList);
+        if (!["admin", "admin/notifications"].includes(view)) return;
+        // Never redraw over a field being typed in; try again next check.
+        if (root.contains(document.activeElement) && document.activeElement.matches("input[type=text], input:not([type]), textarea, select"))
+          return false;
+        if (view === "admin") await dashboard();
+        else await notificationInbox(root);
+      });
     }
   }
 } catch (e) {
