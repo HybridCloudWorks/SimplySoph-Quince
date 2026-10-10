@@ -696,7 +696,10 @@
         "2026-10-09: revision misxv-api-00015-qk2 serves 100% of traffic with image us-central1-docker.pkg.dev/simplysoph-66c78/misxv-api/api@sha256:77bd16f89c27503a4f2c60e69b64d523e79d4303b85e7661333f1ff37c8dbdab (source commit 225498f: batch invitations, live admin updates, 2-write RSVPs; Cloud Build e4d23e75). Rollback target: misxv-api-00014-2vm. Verified: site release 225498f, /api/config live, signed-out admin 401, unsigned Twilio callback 403, no ERROR logs after deploy.",
         "2026-10-09: revision misxv-api-00016-vkv serves 100% of traffic with image us-central1-docker.pkg.dev/simplysoph-66c78/misxv-api/api@sha256:54c6b5888b4591fff5533d22e1f31a0f872355eee086ea490c649b14cfeaa586 (source commit 90739ad: owner-gated admin authenticator setup, fresh-code grants, SMS program version 2026-10-09; Cloud Build daa1f033). Rollback target: misxv-api-00015-qk2. Verified: site release 90739ad, signed-out and forged admin requests 401, unsigned Twilio 403, no ERROR logs.",
         "2026-10-10: revision misxv-api-00017-tg6 with image us-central1-docker.pkg.dev/simplysoph-66c78/misxv-api/api@sha256:9d12a2a4ddfbbb3022b937c1212a9d4fd2043dc39e237b1f353e4f2a4d758ee4 (source commit ecbef69: RSVP deadline Nov 15, letter-style invitation email, event log, scheduled drain (off: no scheduler settings), Microsoft and Google sign-in) and env MICROSOFT_CLIENT_ID=7a448a2b-1b47-4423-a92d-2d840d8b0df0, MICROSOFT_TENANT_ID=83d9aa10-e1de-455e-a9b8-1cc73e99685a. Verified: /api/config shows the Microsoft client and the Nov 15 deadline, sso/start issues tickets, CSP allows login.microsoftonline.com, no WARNING logs; the owner’s live Microsoft sign-in reached the server and was correctly refused with MFA_SETUP_NOT_ALLOWED for an unenrolled admin account.",
-        "2026-10-10: revision misxv-api-00018-jf8 serves 100% of traffic with image us-central1-docker.pkg.dev/simplysoph-66c78/misxv-api/api@sha256:6cd57af3d2510b8f35f817e7ee110566a6d9305362578d4ae4e03c80d71ca865 (source commit 7aa91a0: QR-code authenticator setup; qrcode is now a runtime dependency). Rollback target: misxv-api-00017-tg6 (before that misxv-api-00016-vkv, which predates the Microsoft settings). Verified: site release 7aa91a0, /api/config live, no WARNING logs."
+        "2026-10-10: revision misxv-api-00018-jf8 serves 100% of traffic with image us-central1-docker.pkg.dev/simplysoph-66c78/misxv-api/api@sha256:6cd57af3d2510b8f35f817e7ee110566a6d9305362578d4ae4e03c80d71ca865 (source commit 7aa91a0: QR-code authenticator setup; qrcode is now a runtime dependency). Rollback target: misxv-api-00017-tg6 (before that misxv-api-00016-vkv, which predates the Microsoft settings). Verified: site release 7aa91a0, /api/config live, no WARNING logs.",
+        "2026-10-10: revision misxv-api-00019-hlj served 100% of traffic with image us-central1-docker.pkg.dev/simplysoph-66c78/misxv-api/api@sha256:db05d2cb73d384df831a2c904d8b7350a23af36c008216938145e4fc41d8434c (source commit 9f496a2: Phase 0 audit fixes, merged as 539105a). Rollback target: misxv-api-00018-jf8.",
+        "2026-10-10: revision misxv-api-00020-7h2 failed to start and never served traffic. In PowerShell the unquoted comma in --update-env-vars joined both scheduler values into SCHEDULER_AUDIENCE, and the server refuses a half-configured scheduler. Traffic stayed on misxv-api-00019-hlj.",
+        "2026-10-10: revision misxv-api-00021-jxd serves 100% of traffic with image us-central1-docker.pkg.dev/simplysoph-66c78/misxv-api/api@sha256:130ab9d7cf1c3c66f910e1d51fd8783a7e912b590266e2e2a30a1bec41507688 (source commit 4f08141: Notion-driven access model and security review fixes, merged as ea6a561; Cloud Build bf4be2cd). ADMIN_DELEGATE_EMAILS removed; SCHEDULER_AUDIENCE and SCHEDULER_SERVICE_ACCOUNT set. Rollback target: misxv-api-00019-hlj (its own environment restores the delegate setting). Verified: revision Ready with the expected image and environment, /api/config 200, signed-out admin 401, /api/pages/costs 404, unsigned and forged /api/internal/drain 401, no ERROR logs; site release ea6a561 published."
       ],
       "verifyBeforeCleanup": "Close intake and sending, export wanted ledger/media and retain decryption key until exports are readable; detach Hosting API rewrite",
       "cleanupSteps": "Remove event public invoker grant, then delete only misxv-api in us-central1 and its event revisions after review; preserve project and other services",
@@ -1196,6 +1199,51 @@
       "cleanupSteps": "Delete only application object 21930e5f-d8c6-4d86-8f2e-7f75aaab33f5, which also removes its service principal. Do not touch the Exchange mail application (M365_CLIENT_ID) or any other app.",
       "verifyAfterCleanup": "Graph returns 404 for the application and its service principal; the mail application still exists.",
       "dependsOn": [],
+      "status": "active"
+    },
+    {
+      "id": "misxv-scheduler-identity",
+      "type": "service-account",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "projects/simplysoph-66c78/serviceAccounts/108275554602429916331 (misxv-scheduler@simplysoph-66c78.iam.gserviceaccount.com)",
+      "baseline": {
+        "verifiedAt": "2026-10-10T06:20:00.000Z",
+        "scope": "Exact scheduler service account",
+        "allowedTypes": [
+          "service-account"
+        ],
+        "evidence": "gcloud iam service-accounts list for simplysoph-66c78 listed no misxv-scheduler account before creation."
+      },
+      "creationEvidence": "Created 2026-10-10 with display name \"Mis XV drain scheduler\"; gcloud returned unique ID 108275554602429916331. It holds no roles: it only identifies Cloud Scheduler to /api/internal/drain (SCHEDULER_SERVICE_ACCOUNT).",
+      "verifyBeforeCleanup": "Match the unique ID and email; confirm job misxv-drain is deleted or paused and no other workload uses this identity.",
+      "cleanupSteps": "Delete job misxv-drain first, remove SCHEDULER_AUDIENCE and SCHEDULER_SERVICE_ACCOUNT from the API, then delete only this service account.",
+      "verifyAfterCleanup": "The account is gone and an unsigned POST /api/internal/drain returns 404 (route off); other identities are untouched.",
+      "dependsOn": [],
+      "status": "active"
+    },
+    {
+      "id": "misxv-drain-job",
+      "type": "scheduler-job",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "projects/simplysoph-66c78/locations/us-central1/jobs/misxv-drain",
+      "baseline": {
+        "verifiedAt": "2026-10-10T06:21:00.000Z",
+        "scope": "Cloud Scheduler jobs in us-central1",
+        "allowedTypes": [
+          "scheduler-job"
+        ],
+        "evidence": "gcloud scheduler jobs list --location=us-central1 returned no jobs before creation."
+      },
+      "creationEvidence": "Created 2026-10-10T08:27:43Z by the owner: every 10 minutes (America/Chicago), POST https://misxv-api-kwkuku6pgq-uc.a.run.app/api/internal/drain with body {} and an OIDC token for misxv-scheduler, audience equal to SCHEDULER_AUDIENCE, 60-second deadline. Its first scheduled run at 2026-10-10T08:30:00Z returned 200. It retries RSVPs and opt-in projections that Notion missed and never messages guests.",
+      "verifyBeforeCleanup": "Confirm the event's Notion sync is no longer needed and nothing is pending.",
+      "cleanupSteps": "gcloud scheduler jobs delete misxv-drain --location=us-central1 --project=simplysoph-66c78 (pause first if unsure).",
+      "verifyAfterCleanup": "The job is not listed and no new /api/internal/drain requests appear in the API logs.",
+      "dependsOn": [
+        "misxv-scheduler-identity",
+        "misxv-api-service"
+      ],
       "status": "active"
     }
   ],
