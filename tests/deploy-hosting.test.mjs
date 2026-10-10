@@ -17,6 +17,10 @@ test('publisher preserves security headers and cannot select the protected defau
   assert.equal(config.trailingSlashBehavior,'ADD');
   assert.equal(config.headers[0].headers['X-Frame-Options'],'DENY');
   assert.match(config.headers[0].headers['Content-Security-Policy'],/default-src 'self'/);
+  assert.equal(config.headers[0].headers['Strict-Transport-Security'],'max-age=31536000; includeSubDomains');
+  // The site and the API deny the same device features.
+  const { permissionsPolicy } = await import('../server/http.mjs');
+  assert.equal(config.headers[0].headers['Permissions-Policy'],permissionsPolicy);
   assert.equal(config.headers.at(-1).headers['X-Release-Commit'],env.GITHUB_SHA);
   const apiHeaders = config.headers.filter(rule => rule.glob === '/api/**');
   assert.equal(apiHeaders.at(-1).headers['Cache-Control'],'private, no-store');

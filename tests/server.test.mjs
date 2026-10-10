@@ -54,6 +54,11 @@ test('Cloud Run port binding, health, pages, and 404 remain usable in preview',a
   assert.match(await home.text(),/Friday, January 15, 2027/);
   const missing=await fetch(new URL('does-not-exist',url));
   assert.equal(missing.status,404);
+  assert.match(home.headers.get('strict-transport-security'),/includeSubDomains/);
+  assert.match(home.headers.get('permissions-policy'),/camera=\(\)/);
+  // A malformed %-escape is a 400, not a 503 (SEC-14).
+  const malformed=await fetch(new URL('%E0%A4%A',url));
+  assert.equal(malformed.status,400);
   const head=await fetch(url,{method:'HEAD'});
   assert.equal(await head.text(),'');
   const write=await fetch(new URL('healthz',url),{method:'POST'});

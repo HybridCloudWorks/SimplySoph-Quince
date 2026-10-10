@@ -85,6 +85,10 @@ export const projectionSchema = {
 // 429 means Notion did nothing, so every request may retry it. Other transient
 // failures retry only for reads, queries and idempotent PATCHes: a retried page
 // create could duplicate a row.
+// Notion could not answer (network, rate limit or a server error), as opposed
+// to answering with something the caller must respect.
+export const notionOutage = (e) =>
+  /^NOTION_(UNAVAILABLE|429|5\d\d)$/.test(e?.code || "");
 export function notionRetryable(method, path, status) {
   if (status === 429) return true;
   const idempotent =
@@ -99,6 +103,10 @@ export function notionClient({
   clock = Date.now,
   minIntervalMs = 400,
   cacheMs = 30000,
+  // During a Notion outage, reads that opt in with `allowStale` (read-only page
+  // views) fall back to the last good answer this long (NOTION-6). Fresh reads
+  // and guest writes never do.
+  staleMs = 3600000,
 }) {
   // Notion allows ~3 requests/s per connection. Requests from this instance are
   // paced below that, and roster reads are cached briefly so a burst of guest
@@ -110,14 +118,25 @@ export function notionClient({
     nextSlot = Math.max(at, nextSlot) + minIntervalMs;
     if (wait > 0) await sleep(wait);
   }
-  const cache = new Map();
-  function cached(key, load) {
+  const cache = new Map(),
+    lastGood = new Map();
+  const remember = (key, value) => lastGood.set(key, { value, at: clock() });
+  // The shared cache only ever holds real answers; a stale fallback is handed
+  // to the caller that asked for it and never cached for anyone else.
+  function cached(key, load, allowStale = false) {
     const hit = cache.get(key);
-    if (hit && hit.until > clock()) return hit.value;
-    const value = load();
-    cache.set(key, { value, until: clock() + cacheMs });
-    value.catch(() => cache.delete(key));
-    return value;
+    let value = hit && hit.until > clock() ? hit.value : null;
+    if (!value) {
+      value = load().then((v) => (remember(key, v), v));
+      cache.set(key, { value, until: clock() + cacheMs });
+      value.catch(() => cache.delete(key));
+    }
+    if (!allowStale) return value;
+    return value.catch((e) => {
+      const good = lastGood.get(key);
+      if (notionOutage(e) && good && clock() - good.at < staleMs) return good.value;
+      throw e;
+    });
   }
   async function call(path, method = "GET", body) {
     if (!token || !sourceId) throw error(503, "NOTION_NOT_CONFIGURED");
@@ -280,10 +299,11 @@ export function notionClient({
       } while (cursor);
       return rows;
     },
-    async list({ fresh = false } = {}) {
-      return structuredClone(
-        await (fresh ? this.listFresh() : cached("list", () => this.listFresh())),
-      );
+    async list({ fresh = false, allowStale = false } = {}) {
+      if (!fresh) return structuredClone(await cached("list", () => this.listFresh(), allowStale));
+      const rows = await this.listFresh();
+      remember("list", rows);
+      return structuredClone(rows);
     },
     async listFresh() {
       let cursor,
@@ -301,7 +321,7 @@ export function notionClient({
     },
     // Pass { fresh: true } where a decision must reflect the latest Notion edit:
     // RSVP submit, invitation exchange, sign-in and every outbound send.
-    async read(id, { fresh = false } = {}) {
+    async read(id, { fresh = false, allowStale = false } = {}) {
       if (!/^[a-f0-9-]{36}$/.test(id)) throw error(404, "INVITATION_NOT_FOUND");
       const load = async () => {
         const p = await call("pages/" + id);
@@ -309,7 +329,7 @@ export function notionClient({
           throw error(403, "WRONG_DATA_SOURCE");
         return normalizeInvitation(p);
       };
-      const row = await (fresh ? load() : cached("page:" + id, load));
+      const row = await (fresh ? load() : cached("page:" + id, load, allowStale));
       return structuredClone(row);
     },
     async schema() {
