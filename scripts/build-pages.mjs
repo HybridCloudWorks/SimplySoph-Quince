@@ -274,7 +274,7 @@ function navigation(lang, current) {
 }
 function document({ route, title, lang = "en", admin = false }) {
   const t = copy[lang];
-  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer"><meta name="description" content="${esc(t.tagline)}"><title>${esc(title)} · Sophia</title><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/pages.css"><script type="module" src="/${admin ? "admin" : "guest"}.js"></script></head><body data-route="${route}"><a class="skip" href="#main">${lang === "es" ? "Ir al contenido" : "Skip to content"}</a>${navigation(lang, admin ? "" : route)}<main id="main">${
+  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer"><meta name="description" content="${esc(t.tagline)}"><title>${esc(title)} · Sophia</title><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/pages.css"><script type="module" src="/${admin ? "admin" : "guest"}.js"></script></head><body data-route="${route}"><a class="skip" href="#main">${lang === "es" ? "Ir al contenido" : "Skip to content"}</a>${navigation(lang, admin ? "" : route)}<main id="main">${
     admin
       ? `<section class="section admin-shell"><aside aria-label="Family administration">${adminRoutes
           .filter(
