@@ -50,7 +50,9 @@ export function createHttpServer({ app = null, root, origin, log = null }) {
       });
     res.setHeader("Cache-Control", "private, no-store");
     res.setHeader("X-Content-Type-Options", "nosniff");
-    res.setHeader("Referrer-Policy", "no-referrer");
+    // Origin only, never the path: Google sign-in checks the origin, and private
+    // invitation and sign-in tokens live after the #, which is never sent.
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
     res.setHeader("X-Frame-Options", "DENY");
     res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
     res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
@@ -100,25 +102,36 @@ export function createHttpServer({ app = null, root, origin, log = null }) {
               status: 415,
               code: "JSON_REQUIRED",
             });
+          const upload = [
+            "/api/photos",
+            "/api/videos",
+            "/api/admin/documents/upload",
+          ].includes(url.pathname);
+          // Uploads are only for signed-in visitors: without a session cookie the
+          // body is refused before it is read, so strangers cannot hold request
+          // slots with large or slow uploads (re-audit). The session itself is
+          // still checked by the app.
+          if (upload && !/(?:^|;\s*)__session=/.test(req.headers.cookie || ""))
+            throw Object.assign(new Error(), {
+              status: 401,
+              code: "SIGN_IN_REQUIRED",
+            });
           const chunks = [];
           let size = 0;
-          for await (const chunk of req) {
-            size += chunk.length;
-            if (
-              size >
-              ([
-                "/api/photos",
-                "/api/videos",
-                "/api/admin/documents/upload",
-              ].includes(url.pathname)
-                ? 12_000_000
-                : 120_000)
-            )
-              throw Object.assign(new Error(), {
-                status: 413,
-                code: "BODY_TOO_LARGE",
-              });
-            chunks.push(chunk);
+          // A body still arriving after 30 seconds is dropped.
+          const slow = setTimeout(() => req.destroy(), 30000);
+          try {
+            for await (const chunk of req) {
+              size += chunk.length;
+              if (size > (upload ? 12_000_000 : 120_000))
+                throw Object.assign(new Error(), {
+                  status: 413,
+                  code: "BODY_TOO_LARGE",
+                });
+              chunks.push(chunk);
+            }
+          } finally {
+            clearTimeout(slow);
           }
           try {
             const raw = Buffer.concat(chunks).toString();

@@ -20,12 +20,10 @@ const normalizeEmail = (value) => {
   return value.trim().toLowerCase();
 };
 export function accountActive(s, account) {
-  return !!(
-    account &&
-    account.active !== false &&
-    !account.deletedAt &&
-    s.invitations[account.householdId]?.active
-  );
+  // The household's invitation must not be revoked; a household whose link
+  // hasn't been issued yet can still sign in (re-audit D1).
+  const invite = s.invitations[account?.householdId];
+  return !!(account && account.active !== false && !account.deletedAt && (!invite || invite.active));
 }
 // The Notion row whose Email (or Additional Emails) is this address. An email on
 // two rows is ambiguous and signs in to neither.
@@ -64,9 +62,10 @@ export function createAccounts({
       s.emailLinks ??= {};
       for (const [k, link] of Object.entries(s.emailLinks))
         if (link.expiresAt <= now()) delete s.emailLinks[k];
+      // Email sign-in needs only that the invitation is not revoked (or not
+      // issued yet); the link generation does not matter (re-audit D1).
       const invite = s.invitations[householdId];
-      if (!invite?.active || invite.generation !== generation)
-        throw error(401, "INVITATION_INACTIVE");
+      if (invite && !invite.active) throw error(401, "INVITATION_INACTIVE");
       s.emailLinks[hash(raw)] = {
         id,
         email: address,
@@ -75,7 +74,7 @@ export function createAccounts({
         generation,
         expiresAt: now() + 900000,
       };
-      return invite.locale || "en";
+      return invite?.locale || "en";
     });
     // Token is a fragment, never an access-log query parameter. GET/scanners do not
     // consume it: the page requires an explicit user click and a same-origin POST.
@@ -85,6 +84,7 @@ export function createAccounts({
         id,
         to: address,
         subject: "Sophia · Your sign-in link / Tu enlace de acceso",
+        secret: true,
         html: `<p>Sign in to Sophia’s celebration website.</p><p>Inicia sesión en el sitio de la celebración de Sophia.</p><p><a href="${url}">Continue / Continuar</a></p><p>This link expires in 15 minutes and works once. If you did not request it, ignore this email.</p><p>Este enlace vence en 15 minutos y funciona una sola vez. Si no lo solicitaste, ignora este correo.</p>`,
       });
     } catch {
@@ -103,7 +103,7 @@ export function createAccounts({
   // Record the verified sign-in and open a full guest session, inside one save.
   function signIn(s, row, address, csrf, value) {
     const invite = s.invitations[row.id];
-    if (!invite?.active) throw error(403, "INVITATION_INACTIVE");
+    if (invite && !invite.active) throw error(403, "INVITATION_INACTIVE");
     s.accounts ??= {};
     const k = emailKey(address);
     let a = Object.values(s.accounts).find((v) => v.emailKey === k);
@@ -120,8 +120,13 @@ export function createAccounts({
       };
       s.accounts[a.id] = a;
     }
-    // Notion decides the household; an email moved to another row follows it.
-    if (a.householdId !== row.id) a.householdId = row.id;
+    // Notion decides the household; an email moved to another row follows it,
+    // and its sessions for the old household end.
+    if (a.householdId !== row.id) {
+      for (const [k, v] of Object.entries(s.sessions))
+        if (v.accountId === a.id) delete s.sessions[k];
+      a.householdId = row.id;
+    }
     a.name = row.name;
     a.lastSignInAt = now();
     s.profiles ??= {};
@@ -138,7 +143,7 @@ export function createAccounts({
       kind: "guest",
       accountId: a.id,
       householdId: row.id,
-      generation: invite.generation,
+      generation: invite?.generation ?? null,
       email: address,
       csrf,
       expiresAt: now() + 1800000,
@@ -158,7 +163,8 @@ export function createAccounts({
         // every link that was sent. When a limit is reached, or the address is
         // not on the guest list, the response is the same.
         if (
-          invite?.active &&
+          row &&
+          (!invite || invite.active) &&
           (await withinLimit(ledger, "email-to:" + emailKey(address), 3, 900000, now())) &&
           (await withinLimit(ledger, "email-login-sends", 120, 3600000, now()))
         )
@@ -166,7 +172,7 @@ export function createAccounts({
             await issue({
               address,
               householdId: row.id,
-              generation: invite.generation,
+              generation: invite?.generation ?? null,
             });
           } catch {
             // Only listed addresses reach this step, so a save error here must
@@ -197,8 +203,7 @@ export function createAccounts({
         if (
           !link ||
           link.expiresAt <= now() ||
-          !invite?.active ||
-          invite.generation !== link.generation
+          (invite && !invite.active)
         )
           throw error(401, "EMAIL_LINK_INVALID");
         delete s.emailLinks[hash(raw)];

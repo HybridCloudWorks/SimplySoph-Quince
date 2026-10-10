@@ -216,3 +216,28 @@ test("Google guest sign-in vouches only for Gmail and Workspace addresses (AUTHN
     OAuth2Client.prototype.verifyIdToken = original;
   }
 });
+
+test("an upload without a session cookie is refused before its body is read (re-audit)", async () => {
+  const { createHttpServer } = await import("../server/http.mjs");
+  let dispatched = 0;
+  const server = createHttpServer({
+    app: { dispatch: async () => (dispatched++, { ok: true }) },
+    root: process.cwd(),
+    origin: "https://misxv.simplysoph.com",
+  });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  const url = "http://127.0.0.1:" + server.address().port + "/api/photos";
+  try {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { origin: "https://misxv.simplysoph.com", "content-type": "application/json" },
+      body: JSON.stringify({ base64: "x".repeat(2_000_000) }),
+    });
+    assert.equal(r.status, 401);
+    assert.equal((await r.json()).error, "SIGN_IN_REQUIRED");
+    assert.equal(dispatched, 0, "the app never saw it");
+    assert.equal(r.headers.get("referrer-policy"), "strict-origin-when-cross-origin");
+  } finally {
+    server.close();
+  }
+});

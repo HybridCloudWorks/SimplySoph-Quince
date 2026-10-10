@@ -68,3 +68,17 @@ test("failed Microsoft authentication never submits a message", async () => {
   );
   assert.equal(calls, 1);
 });
+
+test("sign-in link emails are not kept in the shared mailbox's Sent Items (re-audit)", async () => {
+  const bodies = [];
+  const mail = graphMailer({
+    ...configuration,
+    fetchImpl: async (url, init) => {
+      if (init?.body && typeof init.body === "string") bodies.push(JSON.parse(init.body));
+      return url.includes("oauth2") ? Response.json({ access_token: "fixture-access" }) : new Response(null, { status: 202 });
+    },
+  });
+  await mail.send({ ...message, secret: true });
+  await mail.send(message);
+  assert.deepEqual(bodies.map((b) => b.saveToSentItems), [false, true]);
+});

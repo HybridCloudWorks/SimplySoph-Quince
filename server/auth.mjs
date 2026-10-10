@@ -260,6 +260,15 @@ export function microsoftVerifier({
     const email = typeof p.email === "string" ? p.email.trim().toLowerCase() : "";
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254)
       throw error(403, "SSO_EMAIL_NOT_VERIFIED");
+    // A personal Microsoft account can be registered with any address (Yahoo,
+    // iCloud, Gmail), which Microsoft checked once but does not own, so a
+    // recycled address could be taken over. As for Google, only Microsoft's own
+    // addresses are trusted here; others use the emailed link (re-audit).
+    if (
+      p.tid === MSA_TENANT &&
+      !/@(outlook|hotmail|live|msn|windowslive|passport)\.[a-z]{2,3}(\.[a-z]{2})?$/.test(email)
+    )
+      throw error(403, "SSO_EMAIL_NOT_VERIFIED");
     return {
       provider: "microsoft",
       subject: p.tid + ":" + p.sub,

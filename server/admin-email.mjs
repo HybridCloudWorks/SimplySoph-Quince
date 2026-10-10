@@ -39,6 +39,7 @@ export function createAdminEmail({
         id: token(),
         to: address,
         subject: "SimplySoph · Administrator sign-in",
+        secret: true,
         html: `<p>Continue to administrator verification. Your authenticator is still required.</p><p><a href="${origin}/admin/login/#${raw}">Confirm email and continue</a></p><p>This link works once and expires in 15 minutes. If you did not request it, ignore this email.</p>`,
       });
     } catch {

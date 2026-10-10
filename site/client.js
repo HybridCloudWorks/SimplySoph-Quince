@@ -95,8 +95,8 @@ const messages = {
     "Se está preparando otro video. Inténtalo de nuevo en un momento.",
   ],
   SIGN_IN_BUSY: [
-    "Several people are signing in right now. Please try again in a few seconds.",
-    "Varias personas están iniciando sesión. Inténtalo de nuevo en unos segundos.",
+    "Several people are signing in right now. Please try again in a few seconds, or use Sign in with Microsoft or Google.",
+    "Varias personas están iniciando sesión. Inténtalo de nuevo en unos segundos, o entra con Microsoft o Google.",
   ],
   PHOTO_BUSY: [
     "Several photos are being prepared right now. Please try this one again in a minute.",
@@ -165,6 +165,18 @@ const messages = {
   INVITATION_INACTIVE: [
     "This invitation isn't active right now. Please contact the family.",
     "Esta invitación no está activa en este momento. Comunícate con la familia.",
+  ],
+  INVITATION_NOT_READY: [
+    "Your invitation hasn't been sent yet. The RSVP opens once the family sends it.",
+    "Tu invitación aún no se ha enviado. La respuesta se abrirá cuando la familia la envíe.",
+  ],
+  ADMIN_SIGN_IN_PAUSED: [
+    "Too many wrong authenticator codes. Administrator sign-in is paused for an hour; the family has been told.",
+    "Demasiados códigos incorrectos. El acceso de administrador está en pausa por una hora; se avisó a la familia.",
+  ],
+  ADMIN_SETUP_BY_EMAIL: [
+    "Your first sign-in as an administrator uses the emailed link. Request it above, then set up your authenticator; Google or Microsoft work after that.",
+    "Tu primer acceso como administrador usa el enlace por correo. Solicítalo arriba y configura tu autenticador; después funcionan Google o Microsoft.",
   ],
   SIGN_IN_FAILED: [
     "We couldn't confirm that sign-in. Please try again.",
