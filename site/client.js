@@ -151,8 +151,12 @@ const messages = {
     "El acceso con Microsoft no está disponible por ahora. Inténtalo de nuevo en un minuto.",
   ],
   MFA_SETUP_NOT_ALLOWED: [
-    "Ask the site owner to allow authenticator setup for your email, then sign in again within 24 hours.",
-    "Pide al propietario del sitio que habilite la configuración del autenticador para tu correo y vuelve a iniciar sesión en 24 horas.",
+    "This email isn't set up for administration yet. The site owner must allow it under Guest Access → Authenticator setup (good for 24 hours); then sign in again.",
+    "Este correo aún no está configurado para la administración. El propietario del sitio debe permitirlo en Acceso de invitados → Configuración del autenticador (válido 24 horas); luego vuelve a iniciar sesión.",
+  ],
+  SIGN_IN_AGAIN: [
+    "That sign-in expired or was already used. Choose your sign-in option again.",
+    "Ese acceso venció o ya se usó. Vuelve a elegir tu forma de acceso.",
   ],
   MFA_REQUIRED: [
     "Set up your own authenticator first by signing out and signing in again.",

@@ -469,11 +469,24 @@ button:disabled {
   cursor: wait;
 }
 /* Microsoft's sign-in button: white with the four-square mark, per its brand rules. */
+/* It matches Google's large button (260 x 40) so the two sit side by side as equals. */
 .sso-button {
   background: #fff;
   color: #5e5e5e;
   border: 1px solid #8c8c8c;
-  gap: 12px;
+  justify-content: flex-start;
+  gap: 0;
+  width: 260px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 4px;
+  font: 500 14px/1 "Segoe UI", var(--sans);
+}
+/* Logo at the left edge, label centered, like Google's button. */
+.sso-button .sso-label {
+  flex: 1;
+  text-align: center;
 }
 .sso-choices {
   display: grid;
@@ -482,6 +495,26 @@ button:disabled {
   margin-top: 1.5rem;
   padding-top: 1.5rem;
   border-top: 1px solid var(--line);
+}
+.sso-choices h2 {
+  font: 600 1.4rem/1.2 var(--serif);
+  margin: 0;
+}
+.sso-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.sso-google {
+  width: 260px;
+  min-height: 40px;
+}
+.sso-note {
+  margin: 0;
+  max-width: 560px;
+  font-size: 0.85rem;
+  color: var(--muted);
 }
 dialog {
   border: 1px solid var(--line);
@@ -1158,7 +1191,7 @@ th,
   .success { background: #16302a; border-color: #6fbf8a; }
   .burgundy, .hero .burgundy, .communication-tabs button[aria-selected="true"] { color: var(--night-ink); }
   /* Unstyled buttons would fall back to the browser's dark gray. */
-  button.button:not(.burgundy):not(.gold) { background: var(--night-tint); color: var(--ink); border-color: #3b4d6b; }
+  button.button:not(.burgundy):not(.gold):not(.sso-button) { background: var(--night-tint); color: var(--ink); border-color: #3b4d6b; }
   dialog::backdrop { background: #03060caa; }
   .album-art { background: radial-gradient(ellipse at center, #2c3b54, transparent 65%), linear-gradient(135deg, #1c2940, #2c3b54); }
   .album-2 .album-art { background: radial-gradient(ellipse at center, #22324f, #101a2a); }
