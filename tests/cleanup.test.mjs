@@ -64,3 +64,8 @@ test('mailbox delegate cleanup requires exact permissions and precedes mailbox r
   data.resources[1].exactScope = 'Example mailbox ID; organizer identity; FullAccess and SendAs only';
   assert.deepEqual(validateInventory(data).map(r => r.id), ['delegate', 'mailbox']);
 });
+test('the real event inventory validates', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const data = JSON.parse(await readFile(new URL('../ops/event-resources.json', import.meta.url), 'utf8'));
+  assert.ok(validateInventory(data).length > 0);
+});

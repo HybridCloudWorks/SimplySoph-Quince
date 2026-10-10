@@ -36,6 +36,8 @@ export function validateInventory(data) {
     requireField(r.ownership === 'created-for-event' || r.ownership === 'event-change-to-existing', `Ownership required: ${r.id}`);
     requireField(['resource', 'creationEvidence', 'verifyBeforeCleanup', 'cleanupSteps', 'verifyAfterCleanup'].every(key => safeText(r[key])), `Missing lifecycle evidence or instructions: ${r.id}`);
     requireField(Array.isArray(r.dependsOn) && r.dependsOn.every(safeText), `Invalid dependencies: ${r.id}`);
+    // Redeploys append here, one short entry each, so creationEvidence stays under the text limit.
+    if (r.revisionHistory !== undefined) requireField(Array.isArray(r.revisionHistory) && r.revisionHistory.every(safeText), `Invalid revision history: ${r.id}`);
     requireField(r.status === 'active' || r.status === 'removed', `Invalid status: ${r.id}`);
     if (r.type === 'firebase-hosting-site') requireField(r.resource === 'projects/simplysoph-66c78/sites/misxv-simplysoph', 'Only the dedicated event Hosting site is allowed');
     if (r.type === 'firebase-custom-domain') requireField(r.resource === 'projects/simplysoph-66c78/sites/misxv-simplysoph/customDomains/misxv.simplysoph.com', 'Only the event custom domain is allowed');
