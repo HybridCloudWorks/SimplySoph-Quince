@@ -8,6 +8,7 @@ import { createApplication } from "./application.mjs";
 import { createHttpServer } from "./http.mjs";
 import { whatsappTransport as createWhatsappTransport } from "./whatsapp-transport.mjs";
 import { twilioTransport } from "./twilio.mjs";
+import { schedulerVerifier } from "./scheduler.mjs";
 const env = process.env,
   origin = env.PUBLIC_ORIGIN || "https://misxv.simplysoph.com";
 let app = null;
@@ -72,6 +73,11 @@ if (env.EVENT_BUCKET) {
     throw new Error(
       "WhatsApp activation requires configured credentials and completed review",
     );
+  // Both or neither: a half-configured scheduler would silently never drain.
+  if (!env.SCHEDULER_AUDIENCE !== !env.SCHEDULER_SERVICE_ACCOUNT)
+    throw new Error(
+      "Set both SCHEDULER_AUDIENCE and SCHEDULER_SERVICE_ACCOUNT, or neither",
+    );
   app = createApplication({
     adminDelegateEmails: (env.ADMIN_DELEGATE_EMAILS || "")
       .split(",")
@@ -115,6 +121,10 @@ if (env.EVENT_BUCKET) {
       fallback: env.SENDGRID_FALLBACK_ENABLED === "true",
     }),
     verifyGoogle: googleVerifier(env.ADMIN_GOOGLE_CLIENT_ID, adminEmails),
+    verifyScheduler: schedulerVerifier(
+      env.SCHEDULER_AUDIENCE,
+      env.SCHEDULER_SERVICE_ACCOUNT,
+    ),
     documents: {
       async put(id, bytes) {
         await adapter.bucket.file("private/documents/" + id).save(bytes, {

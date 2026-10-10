@@ -86,6 +86,8 @@ export function createApplication({
   notion,
   mailer,
   verifyGoogle,
+  // Async (authorizationHeader) => boolean from server/scheduler.mjs; null disables the drain.
+  verifyScheduler = null,
   media,
   documents,
   smsTransport,
@@ -486,8 +488,44 @@ export function createApplication({
     origin,
     now,
   });
+  // Up to 10 households whose RSVP is still waiting to reach Notion.
+  async function retryPendingRsvps() {
+    const s = await ledger.read();
+    const ids = Object.values(s.invitations)
+      .filter((r) => r.syncState === "pending")
+      .slice(0, 10)
+      .map((r) => r.id);
+    for (const id of ids) await syncOne(id);
+    return { attempted: ids.length };
+  }
+  // Scheduled catch-up for projections that failed earlier (Notion outage,
+  // rate limit). Each step is bounded and independent: one failing step never
+  // blocks the others, and nothing here sends a message to a guest.
+  async function drainPending() {
+    const steps = {
+      rsvp: retryPendingRsvps,
+      sms: () => sms.retrySync(),
+      whatsapp: () => whatsapp.retrySync(),
+    };
+    const result = {};
+    for (const [name, step] of Object.entries(steps)) {
+      try {
+        result[name] = await step();
+      } catch (e) {
+        result[name] = { error: e.code || "FAILED" };
+      }
+    }
+    return result;
+  }
   async function dispatch(req) {
     const { path, method = "GET", body = {}, headers = {} } = req;
+    if (path === "/api/internal/drain") {
+      if (method !== "POST") throw error(405, "METHOD_NOT_ALLOWED");
+      if (!verifyScheduler) throw error(404, "NOT_FOUND");
+      if (!(await verifyScheduler(headers.authorization)))
+        throw error(401, "UNAUTHORIZED");
+      return drainPending();
+    }
     if (["/api/whatsapp/status", "/api/whatsapp/inbound"].includes(path)) {
       if (method !== "POST") throw error(405, "METHOD_NOT_ALLOWED");
       return whatsapp.callback(
@@ -1651,15 +1689,8 @@ export function createApplication({
         if (!ownerSession(session)) throw error(403, "OWNER_REQUIRED");
         return { added: await notion.prepareSchema() };
       }
-      if (path === "/api/admin/sync" && method === "POST") {
-        const s = await ledger.read();
-        const ids = Object.values(s.invitations)
-          .filter((r) => r.syncState === "pending")
-          .slice(0, 10)
-          .map((r) => r.id);
-        for (const id of ids) await syncOne(id);
-        return { attempted: ids.length };
-      }
+      if (path === "/api/admin/sync" && method === "POST")
+        return retryPendingRsvps();
       if (path === "/api/admin/moderation" && method === "GET")
         return {
           messages: Object.values(ctx.state.messages),

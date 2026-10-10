@@ -139,7 +139,7 @@ async function fixture(options = {}) {
     input,
     row,
     guestToken,
-    failSync: () => (failing = true),
+    failSync: (on = true) => (failing = on),
     sends: () => sendCount,
     sent,
     advance: (ms) => {
@@ -1801,4 +1801,27 @@ test("Notion schema changes, imports and authenticator windows are owner-only", 
     () => f.app.dispatch({ path: "/api/admin/schema", method: "POST", body: {}, headers: { origin, cookie: "__session=" + delegate, "x-csrf-token": "dd" } }),
     (e) => e.code === "CSRF_REJECTED",
   );
+});
+
+test("the scheduled drain is disabled by default, rejects bad tokens and retries pending Notion syncs", async () => {
+  const drain = (f, authorization) =>
+    f.app.dispatch({ path: "/api/internal/drain", method: "POST", headers: { authorization }, body: {} });
+  const off = await fixture();
+  await assert.rejects(() => drain(off, "Bearer anything"), (e) => e.status === 404);
+  const f = await fixture({ verifyScheduler: async (h) => h === "Bearer scheduler-token" });
+  await assert.rejects(() => drain(f, "Bearer forged"), (e) => e.status === 401);
+  await assert.rejects(
+    () => f.app.dispatch({ path: "/api/internal/drain", method: "GET", headers: {} }),
+    (e) => e.status === 405,
+  );
+  f.failSync();
+  await f.guest("rsvp", f.input(), { "idempotency-key": "request-drain-1" });
+  assert.equal((await f.ledger.read()).invitations[household].syncState, "pending");
+  f.failSync(false);
+  const result = await drain(f, "Bearer scheduler-token");
+  assert.deepEqual(result.rsvp, { attempted: 1 });
+  assert.ok(result.sms && result.whatsapp);
+  assert.equal((await f.ledger.read()).invitations[household].syncState, "synced");
+  // Nothing left: the next run is a cheap no-op.
+  assert.deepEqual((await drain(f, "Bearer scheduler-token")).rsvp, { attempted: 0 });
 });

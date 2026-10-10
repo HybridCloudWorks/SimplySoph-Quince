@@ -45,6 +45,7 @@ Every variable `server/start.mjs` reads. Secrets come from **pinned** Secret Man
 | `WHATSAPP_FROM` | For WA | No | — | `+16827868002` |
 | `WHATSAPP_TEMPLATES_JSON` | No | No | `[]` | Approved templates only; invalid JSON stops startup |
 | `WHATSAPP_ENABLED`, `WHATSAPP_ACTIVATION_REVIEWED` | No | No | `false` | Both `true` required to send WhatsApp |
+| `SCHEDULER_AUDIENCE`, `SCHEDULER_SERVICE_ACCOUNT` | No | No | none → drain off | Both or neither (startup fails otherwise). The Cloud Run service URL the OIDC token is minted for, and the scheduler service account email. See "Scheduled drain" |
 | `PORT` / `HOST` | No | No | `4173` / `127.0.0.1` (`0.0.0.0` on Cloud Run) | Dockerfile sets `PORT=8080` |
 
 `.env.example` lists the same names for local use only.
@@ -74,9 +75,35 @@ gcloud run deploy misxv-api \
 ```
 
 - These limits are a starting point, not a spending cap. Configure a billing budget alert.
-- Public invocation is required for the Hosting rewrite. Every private route still enforces application authentication and an exact `Origin` match.
+- Public invocation is required for the Hosting rewrite. Every private route still enforces application authentication and an exact `Origin` match. The two exceptions authenticate differently: Twilio callbacks by signature, and `/api/internal/drain` by a Google-signed OIDC token.
 - Deploy a backward-compatible API **before** publishing a frontend that depends on it. Record the revision and digest in the inventory.
 - Hosting validates the `/api/**` rewrite with a service-scoped `run.services.get` grant. `scripts/deploy-hosting.mjs` refuses any other routing.
+
+## Scheduled drain
+
+`POST /api/internal/drain` retries work that failed earlier: up to 10 RSVPs still waiting to reach Notion, and up to 25 pending SMS and 25 pending WhatsApp opt-in/opt-out projections. It never sends a message to a guest. Each step runs on its own, so one failing step never blocks the others. The route returns 404 until both scheduler variables are set. It accepts only a Google-signed OIDC token whose audience is exactly `SCHEDULER_AUDIENCE` and whose verified email is exactly `SCHEDULER_SERVICE_ACCOUNT`.
+
+One-time setup (owner, `gcloud config configurations activate misxv`):
+
+```sh
+gcloud services enable cloudscheduler.googleapis.com --project=simplysoph-66c78
+gcloud iam service-accounts create misxv-scheduler --project=simplysoph-66c78 \
+  --display-name="Mis XV drain scheduler"          # no roles: it only identifies the caller
+URL=$(gcloud run services describe misxv-api --project=simplysoph-66c78 \
+  --region=us-central1 --format="value(status.url)")
+gcloud run services update misxv-api --project=simplysoph-66c78 --region=us-central1 \
+  --update-env-vars=SCHEDULER_AUDIENCE=$URL,SCHEDULER_SERVICE_ACCOUNT=misxv-scheduler@simplysoph-66c78.iam.gserviceaccount.com
+gcloud scheduler jobs create http misxv-drain --project=simplysoph-66c78 \
+  --location=us-central1 --schedule="*/10 * * * *" --time-zone="America/Chicago" \
+  --uri="$URL/api/internal/drain" --http-method=POST \
+  --headers=Content-Type=application/json --message-body="{}" \
+  --oidc-service-account-email=misxv-scheduler@simplysoph-66c78.iam.gserviceaccount.com \
+  --oidc-token-audience="$URL" --attempt-deadline=60s
+```
+
+- Verify: `gcloud scheduler jobs run misxv-drain --location=us-central1 --project=simplysoph-66c78`, then in the request logs find `POST /api/internal/drain` with status 200. An unsigned `curl -X POST $URL/api/internal/drain -H "Content-Type: application/json" -d "{}"` must return 401.
+- Record the service account and the job in `ops/event-resources.json`. Cloud Scheduler includes 3 free jobs per billing account.
+- Pause with `gcloud scheduler jobs pause misxv-drain …`. Removing the two variables turns the route off again.
 
 ## Channel activation
 
