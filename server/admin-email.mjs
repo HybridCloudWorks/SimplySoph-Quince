@@ -16,7 +16,7 @@ export function createAdminEmail({ ledger, mailer, admins, origin, now }) {
       // Unknown addresses never enter the ledger write queue. A spent send
       // budget is skipped silently so it cannot reveal who is an admin.
       if (
-        !(await admins.find(address)) ||
+        !(await admins.find(address, { fresh: false })) ||
         !(await withinLimit(ledger, "admin-email-sends", 60, 3600000, now()))
       )
         return { requested: true };

@@ -235,4 +235,7 @@ test("Additional Emails parse into lowercase sign-in addresses", () => {
   const row = normalizeInvitation(p);
   assert.equal(row.email, "main@example.com");
   assert.deepEqual(row.additionalEmails, ["grandma@example.com", "aunt@example.org"]);
+  // Separators are commas, semicolons or whitespace; letters are never separators.
+  p.properties["Additional Emails"] = { rich_text: [{ plain_text: "saulpatinojr@hotmail.com,jess@example.com\nsis s@x" }] };
+  assert.deepEqual(normalizeInvitation(p).additionalEmails, ["saulpatinojr@hotmail.com", "jess@example.com"]);
 });

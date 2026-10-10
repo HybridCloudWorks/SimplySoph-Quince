@@ -172,8 +172,8 @@ export function createAccounts({ ledger, mailer, notion, key, origin, now }) {
         throw error(401, "EMAIL_LINK_INVALID");
       }
       // The email must still be on that household's Notion row.
-      const row = await notion.read(pending.householdId, { fresh: true });
-      if (rosterMatch([row], pending.email)?.id !== row.id)
+      const row = rosterMatch(await notion.list({ fresh: true }), pending.email);
+      if (row?.id !== pending.householdId)
         throw error(401, "EMAIL_LINK_INVALID");
       const value = token(),
         csrf = token();

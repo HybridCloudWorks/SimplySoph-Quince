@@ -7,10 +7,12 @@ import { rosterMatch } from "./accounts.mjs";
 export function createAdminAccess({ notion, adminEmails, now }) {
   const confirmed = new Map(); // rowId|email -> until; a short positive cache only
   const isOwner = (email) => adminEmails.includes(email);
-  // Called at sign-in. Reads Notion fresh so a just-ticked box works at once.
-  async function find(address) {
+  // Called at sign-in. The link request uses the 30-second cached list, so a
+  // stranger typing addresses cannot force a Notion read each time; opening the
+  // link and entering the code read Notion fresh.
+  async function find(address, { fresh = true } = {}) {
     if (isOwner(address)) return { id: "owner:" + address, email: address };
-    const row = rosterMatch(await notion.list({ fresh: true }), address);
+    const row = rosterMatch(await notion.list({ fresh }), address);
     if (!row?.administratorEligible) return null;
     return { id: "admin:" + address, email: address, rowId: row.id };
   }
@@ -20,11 +22,8 @@ export function createAdminAccess({ notion, adminEmails, now }) {
     if (!session.rowId) return isOwner(session.email);
     const k = session.rowId + "|" + session.email;
     if (confirmed.get(k) > now()) return true;
-    const row = await notion.read(session.rowId, { fresh: true });
-    const ok =
-      !row.archived &&
-      row.administratorEligible &&
-      rosterMatch([row], session.email)?.id === row.id;
+    const row = rosterMatch(await notion.list({ fresh: true }), session.email);
+    const ok = row?.id === session.rowId && row.administratorEligible;
     if (ok) confirmed.set(k, now() + 5000);
     else confirmed.delete(k);
     return ok;

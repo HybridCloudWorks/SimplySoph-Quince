@@ -39,13 +39,16 @@ async function fixture(options = {}) {
   let failing = false,
     sendCount = 0;
   let clock = at;
-  const sent = [];
+  const sent = [],
+    extraRows = [],
+    listCalls = [];
   const notion = {
     async read() {
       return structuredClone(row);
     },
-    async list() {
-      return [structuredClone(row)];
+    async list({ fresh = false } = {}) {
+      listCalls.push(fresh);
+      return [structuredClone(row), ...structuredClone(extraRows)];
     },
     async project() {
       if (failing) throw { code: "NOTION_UNAVAILABLE" };
@@ -195,6 +198,8 @@ async function fixture(options = {}) {
     now: () => clock,
     input,
     row,
+    extraRows,
+    listCalls,
     guestToken,
     failSync: (on = true) => (failing = on),
     sends: () => sendCount,
@@ -1560,6 +1565,29 @@ test("ticking Administrator Eligible in Notion makes someone an admin; unticking
   // The owner in ADMIN_EMAILS is the one approved exception outside Notion.
   f.row.administratorEligible = false;
   assert.ok(await f.admin("accounts"));
+});
+
+test("an email that appears on a second Notion row loses admin access and guest links", async () => {
+  const f = await fixture();
+  const { as } = await adminSignIn(f, "test@example.com");
+  assert.equal((await as("session")).kind, "admin");
+  await f.publicPost("auth/email/request", { email: "test@example.com" });
+  const pending = linkOf(f.sent.at(-1));
+  f.extraRows.push({ ...f.row, id: "11111111-1111-4111-8111-111111111111", name: "Other family", additionalEmails: ["test@example.com"] });
+  f.advance(6000); // past the 5-second positive cache
+  await assert.rejects(() => as("admin/guests"), (e) => e.code === "SIGN_IN_REQUIRED");
+  await assert.rejects(() => f.publicPost("auth/email/verify", { token: pending }), (e) => e.code === "EMAIL_LINK_INVALID");
+});
+
+test("typing addresses on the admin sign-in never forces a fresh Notion read", async () => {
+  const f = await fixture();
+  f.listCalls.length = 0;
+  for (const email of ["a@example.com", "b@example.com", "test@example.com"])
+    await f.publicPost("auth/admin-email/request", { email });
+  assert.deepEqual(f.listCalls, [false, false, false]);
+  // Opening the emailed link still reads Notion fresh.
+  await f.publicPost("auth/admin-email/verify", { token: linkOf(f.sent.at(-1)) });
+  assert.equal(f.listCalls.at(-1), true);
 });
 
 test("an unticked or unknown email cannot start an admin sign-in", async () => {

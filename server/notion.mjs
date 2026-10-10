@@ -24,9 +24,9 @@ export function normalizeInvitation(page) {
     // Sign-in identity: the row's Email plus any Additional Emails (comma separated).
     email: (p.Email?.email ?? "").trim().toLowerCase(),
     additionalEmails: text(p["Additional Emails"])
-      .split(/[s,;]+/)
+      .split(/[\s,;]+/)
       .map((v) => v.trim().toLowerCase())
-      .filter((v) => /^[^s@]+@[^s@]+.[^s@]+$/.test(v)),
+      .filter((v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)),
     phone: p.Phone?.phone_number ?? "",
     administratorEligible: p["Administrator Eligible"]?.checkbox === true,
     role: p.Role?.select?.name ?? "",

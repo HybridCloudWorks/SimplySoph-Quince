@@ -183,8 +183,9 @@ export function createApplication({
   // Guest SSO: the first sign-in binds the provider account to the email. A
   // different provider account later presenting the same email (a recycled
   // address) is refused; the emailed sign-in link still works. Administrators are
-  // linked separately, and only after their authenticator code passes
-  // (/api/auth/mfa); an owner's authenticator reset clears that link.
+  // linked under a separate "admin-microsoft:" key, only after their
+  // authenticator code passes (/api/auth/mfa), so a guest sign-in never links an
+  // account for admin use. An owner's authenticator reset clears that link.
   function bindSso(s, identity) {
     s.ssoBindings ??= {};
     const k = hash(identity.provider + ":" + identity.email),
@@ -667,7 +668,7 @@ export function createApplication({
         now(),
       );
       const microsoft = identity.provider === "microsoft",
-        binding = microsoft ? hash("microsoft:" + identity.email) : null;
+        binding = microsoft ? hash("admin-microsoft:" + identity.email) : null;
       // Google and Microsoft reach the same administrators as the emailed link
       // (which already resolved them): the owner, or a ticked Notion row.
       let who = nonce ? await admins.find(identity.email) : identity;
@@ -1477,8 +1478,7 @@ export function createApplication({
             if (v.kind === "admin" && v.email === email) delete s.sessions[id];
           for (const [id, v] of Object.entries(s.challenges))
             if (v.email === email) delete s.challenges[id];
-          for (const provider of ["microsoft", "google"])
-            delete s.ssoBindings?.[hash(provider + ":" + email)];
+          delete s.ssoBindings?.[hash("admin-microsoft:" + email)];
           roleEvent(s, session.actor, email, "authenticator-reset");
           audit(s, session.actor, "authenticator-reset", email, now());
           return { reset: true };

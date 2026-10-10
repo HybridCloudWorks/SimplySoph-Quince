@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e ' *)",
+      "Bash(node -e 'const f=require\\(\"./firebase.json\"\\);console.log\\(JSON.stringify\\(f.hosting.headers||f.hosting[0]?.headers,null,1\\).slice\\(0,2500\\)\\)')"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\saulp\\Workspace\\SimplySoph-Quince-p2"
+    ]
+  }
+}
