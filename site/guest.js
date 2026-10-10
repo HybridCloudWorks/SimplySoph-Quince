@@ -109,9 +109,13 @@ async function ssoChoices() {
 async function accountPage(inv, session) {
   const data = await api("account");
   const { profile } = await api("profile");
-  portal.innerHTML = `<h2>${esc(data.account.name)}</h2><p>${esc(data.account.email)}</p><div class="row-actions"><a class="button burgundy" href="${route("rsvp")}">${tr("Update RSVP", "Actualizar respuesta")}</a><a href="${route("reception")}">${tr("Directions", "Cómo llegar")}</a><button id="guest-logout" class="plain-button">${tr("Sign out", "Cerrar sesión")}</button></div><form id="profile-form"><h3>${tr("Contact details", "Datos de contacto")}</h3>${field(tr("Contact email (does not change your sign-in email)", "Correo de contacto (no cambia tu correo de acceso)"), "email", { type: "email", value: profile.contact.email })}${field(tr("Phone", "Teléfono"), "phone", { value: profile.contact.phone, max: 40 })}${field(tr("Mailing address", "Dirección postal"), "address", { value: profile.contact.address || "", max: 500 })}<p role="alert" class="error"></p><button type="submit" class="button burgundy">${tr("Save contact details", "Guardar datos")}</button></form><section id="whatsapp-preferences" class="card"></section><div id="family-chat"></div>`;
+  portal.innerHTML = `<h2>${esc(data.account.name)}</h2><p>${esc(data.account.email)}</p><div class="row-actions"><a class="button burgundy" href="${route("rsvp")}">${tr("Update RSVP", "Actualizar respuesta")}</a><a href="${route("reception")}">${tr("Directions", "Cómo llegar")}</a><button id="guest-logout" class="plain-button">${tr("Sign out", "Cerrar sesión")}</button><button id="guest-logout-all" class="plain-button">${tr("Sign out on all devices", "Cerrar sesión en todos los dispositivos")}</button></div><form id="profile-form"><h3>${tr("Contact details", "Datos de contacto")}</h3>${field(tr("Contact email (does not change your sign-in email)", "Correo de contacto (no cambia tu correo de acceso)"), "email", { type: "email", value: profile.contact.email })}${field(tr("Phone", "Teléfono"), "phone", { value: profile.contact.phone, max: 40 })}${field(tr("Mailing address", "Dirección postal"), "address", { value: profile.contact.address || "", max: 500 })}<p role="alert" class="error"></p><button type="submit" class="button burgundy">${tr("Save contact details", "Guardar datos")}</button></form><section id="whatsapp-preferences" class="card"></section><div id="family-chat"></div>`;
   document.querySelector("#guest-logout").onclick = async () => {
     await api("logout", {});
+    location.reload();
+  };
+  document.querySelector("#guest-logout-all").onclick = async () => {
+    await api("logout-all", {});
     location.reload();
   };
   submit(document.querySelector("#profile-form"), async (f) => {

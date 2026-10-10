@@ -127,3 +127,27 @@ test("an admin Notion confirmed recently keeps working through an outage, briefl
   down = true;
   await assert.rejects(() => admins.stillAdmin(session), (e) => e.code === "NOTION_UNAVAILABLE");
 });
+
+test("Google guest sign-in accepts any verified email, not only Gmail or Workspace (AUTHN-11)", async () => {
+  const { OAuth2Client } = await import("google-auth-library");
+  const { googleIdentityVerifier } = await import("../server/auth.mjs");
+  const original = OAuth2Client.prototype.verifyIdToken;
+  let payload;
+  OAuth2Client.prototype.verifyIdToken = async () => ({ getPayload: () => payload });
+  try {
+    const verify = googleIdentityVerifier("client-id");
+    payload = { sub: "g-1", email: "Aunt@Hotmail.com", email_verified: true, nonce: "n-1" };
+    assert.deepEqual(await verify("token", "n-1"), {
+      provider: "google",
+      subject: "g-1",
+      email: "aunt@hotmail.com",
+      mfa: false,
+    });
+    payload = { ...payload, email_verified: false };
+    await assert.rejects(() => verify("token", "n-1"), (e) => e.code === "SSO_EMAIL_NOT_VERIFIED");
+    payload = { ...payload, email_verified: true, nonce: "other" };
+    await assert.rejects(() => verify("token", "n-1"), (e) => e.code === "SIGN_IN_FAILED");
+  } finally {
+    OAuth2Client.prototype.verifyIdToken = original;
+  }
+});

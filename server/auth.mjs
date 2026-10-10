@@ -124,8 +124,10 @@ export function googleVerifier(clientId, allowEmails) {
     return { id: p.sub, email: p.email.toLowerCase() };
   };
 }
-// Guest sign-in with Google: any verified Gmail or Workspace address. The caller
-// matches it to the guest list in Notion; it never grants administration.
+// Guest sign-in with Google: any verified email, including a Google account
+// registered with another provider's address (AUTHN-11). The caller matches it
+// to the guest list in Notion and binds the first Google account to that email;
+// it never grants administration (admins sign in separately, with their code).
 export function googleIdentityVerifier(clientId) {
   const client = new OAuth2Client();
   return async (credential, expectedNonce) => {
@@ -139,8 +141,7 @@ export function googleIdentityVerifier(clientId) {
       throw error(401, "SIGN_IN_FAILED");
     }
     if (!sameNonce(p.nonce, expectedNonce)) throw error(401, "SIGN_IN_FAILED");
-    if (!p.email_verified || (!p.email?.endsWith("@gmail.com") && !p.hd))
-      throw error(403, "SSO_EMAIL_NOT_VERIFIED");
+    if (!p.email_verified || !p.email) throw error(403, "SSO_EMAIL_NOT_VERIFIED");
     // Google ID tokens carry no reliable proof of two-step verification.
     return {
       provider: "google",

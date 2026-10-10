@@ -205,11 +205,21 @@ function enrollmentPanel(data) {
 }
 function showMfa(data) {
   const box = document.querySelector("#mfa");
-  box.innerHTML = `<form id="mfa-form" class="card"><h2>${data.enrollmentSecret ? "Set up your authenticator" : "Enter your authenticator code"}</h2>${data.enrollmentSecret ? enrollmentPanel(data) : "<p>Open your authenticator app and enter the 6-digit SimplySoph code to finish signing in.</p>"}${field("Authenticator code", "code", { required: true, max: 6, autocomplete: "one-time-code" })}${formEnd("Verify and sign in")}`;
+  const heading = data.recovered
+    ? "Recovery code accepted: set up your new authenticator"
+    : data.enrollmentSecret
+      ? "Set up your authenticator"
+      : "Enter your authenticator code";
+  // The site owner may type a recovery code instead (12 letters and numbers).
+  const hint = data.enrollmentSecret
+    ? ""
+    : "<p>Open your authenticator app and enter the 6-digit SimplySoph code to finish signing in. Site owner without your phone? Enter one of your recovery codes instead.</p>";
+  box.innerHTML = `<form id="mfa-form" class="card"><h2>${heading}</h2>${data.enrollmentSecret ? enrollmentPanel(data) : hint}${field(data.enrollmentSecret ? "Authenticator code" : "Authenticator or recovery code", "code", { required: true, max: 14, autocomplete: "one-time-code" })}${formEnd("Verify and sign in")}`;
   box.scrollIntoView({ behavior: "smooth", block: "center" });
   box.querySelector('[name="code"]').focus({ preventScroll: true });
   submit(document.querySelector("#mfa-form"), async (f) => {
-    await api("auth/mfa", { challenge: data.challenge, code: f.get("code") });
+    const result = await api("auth/mfa", { challenge: data.challenge, code: f.get("code").trim() });
+    if (result.recovered) return showMfa(result);
     location.assign("/admin/");
   });
 }
@@ -249,10 +259,26 @@ async function accountAccess() {
     };
   if (data.owner) {
     const r = await api("admin/role-events");
+    const changes = {
+      "authenticator-set-up": "Authenticator set up",
+      "authenticator-reset": "Authenticator reset",
+      "authenticator-replaced": "Authenticator replaced",
+      "recovery-codes-created": "Recovery codes created",
+      "recovery-code-used": "Recovery code used",
+    };
     root.insertAdjacentHTML(
       "beforeend",
-      `<section class="card"><h2>Authenticator history</h2>${r.events.length ? `<ul>${r.events.map((e) => `<li>${esc(new Date(e.at).toLocaleString())} · ${esc({ "authenticator-set-up": "Authenticator set up", "authenticator-reset": "Authenticator reset" }[e.change] || e.change)} · ${esc(e.target)}</li>`).join("")}</ul>` : "<p>No changes recorded yet.</p>"}</section>`,
+      `<section class="card" id="recovery"><h2>Your recovery codes</h2><p>If you lose your phone, a recovery code lets you sign in once and set up a new authenticator. You have <strong>${data.recoveryCodesLeft}</strong> unused ${data.recoveryCodesLeft === 1 ? "code" : "codes"}. Creating a new set cancels the old one.</p><div id="recovery-panel"><button type="button" class="button" id="recovery-new">Create new recovery codes</button></div></section><section class="card"><h2>Authenticator history</h2>${r.events.length ? `<ul>${r.events.map((e) => `<li>${esc(new Date(e.at).toLocaleString())} · ${esc(changes[e.change] || e.change)} · ${esc(e.target)}</li>`).join("")}</ul>` : "<p>No changes recorded yet.</p>"}</section>`,
     );
+    root.querySelector("#recovery-new").onclick = () => {
+      const panel = root.querySelector("#recovery-panel");
+      panel.innerHTML = `<form id="recovery-form">${field("Your authenticator code", "code", { required: true, max: 6, autocomplete: "one-time-code" })}${formEnd("Create recovery codes")}</form>`;
+      submit(panel.querySelector("#recovery-form"), async (f) => {
+        const { codes } = await api("admin/recovery-codes", { code: f.get("code").trim() });
+        panel.innerHTML = `<p class="notice">Save these now: print them or keep them somewhere safe away from your phone. They won’t be shown again, and each works once.</p><ol class="recovery-codes">${codes.map((c) => `<li><code>${esc(c)}</code></li>`).join("")}</ol>`;
+      });
+      panel.querySelector("input").focus();
+    };
   }
 }
 async function dashboard() {
@@ -610,6 +636,12 @@ root.addEventListener("click", (e) => {
 document.querySelector("#logout").onclick = () =>
   run(async () => {
     await api("logout", {});
+    location.assign("/admin/login/");
+  });
+// Ends this administrator's sessions on every device (AUTHN-10).
+document.querySelector("#logout-all").onclick = () =>
+  run(async () => {
+    await api("logout-all", {});
     location.assign("/admin/login/");
   });
 try {
