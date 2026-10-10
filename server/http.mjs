@@ -118,21 +118,17 @@ export function createHttpServer({ app = null, root, origin, log = null }) {
           // Uploads are only for signed-in visitors: without a current session
           // the body is refused before it is read, so strangers cannot hold
           // request slots or memory with large or slow uploads (re-audit).
-          if (
-            upload &&
-            !(
-              /(?:^|;\s*)__session=/.test(req.headers.cookie || "") &&
-              (await app.canUpload(req.headers.cookie))
-            )
-          )
-            throw Object.assign(new Error(), {
-              status: 401,
-              code: "SIGN_IN_REQUIRED",
-            });
           if (upload) {
+            sessionId = /(?:^|;\s*)__session=/.test(req.headers.cookie || "")
+              ? await app.canUpload(req.headers.cookie)
+              : null;
+            if (!sessionId)
+              throw Object.assign(new Error(), {
+                status: 401,
+                code: "SIGN_IN_REQUIRED",
+              });
             // One upload at a time per session (the page sends files one by
             // one), so a single sign-in cannot hold every slot (re-audit).
-            sessionId = (req.headers.cookie || "").match(/(?:^|;\s*)__session=([^;]*)/)[1];
             if (uploads >= maxUploads || uploading.has(sessionId))
               throw Object.assign(new Error(), { status: 503, code: "UPLOAD_BUSY" });
             uploads++;

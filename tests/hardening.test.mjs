@@ -249,7 +249,11 @@ test("a made-up or RSVP-only session is refused before an upload is read; 3 uplo
   const held = new Promise((r) => (release = r));
   const server = createHttpServer({
     app: {
-      canUpload: async (cookie) => ["__session=good", "__session=good2", "__session=good3", "__session=good4"].includes(cookie),
+      // Like the app: the resolved session's key, whatever the spacing.
+      canUpload: async (cookie) => {
+        const value = cookie.split("=")[1].split(";")[0].trim();
+        return ["good", "good2", "good3", "good4"].includes(value) ? "key-" + value : null;
+      },
       dispatch: async () => (dispatched++, await held, { ok: true }),
     },
     root: process.cwd(),
@@ -268,8 +272,8 @@ test("a made-up or RSVP-only session is refused before an upload is read; 3 uplo
     assert.equal(dispatched, 0);
     const running = [upload("__session=good")];
     while (dispatched < 1) await new Promise((r) => setTimeout(r, 5));
-    const same = await upload("__session=good");
-    assert.equal(same.status, 503, "one upload at a time per session");
+    const same = await upload("__session=good  ;a=1");
+    assert.equal(same.status, 503, "one upload at a time per session, however the cookie is spelled");
     assert.equal((await same.json()).error, "UPLOAD_BUSY");
     running.push(upload("__session=good2"), upload("__session=good3"));
     while (dispatched < 3) await new Promise((r) => setTimeout(r, 5));

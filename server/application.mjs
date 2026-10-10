@@ -2563,13 +2563,15 @@ export function createApplication({
     }
     throw error(404, "NOT_FOUND");
   }
-  // For the HTTP layer, before an upload body is read (http.mjs): is this
-  // cookie a current email sign-in or admin session? Invitation-link sessions
-  // are RSVP-only and never upload, so they cannot hold upload slots
-  // (re-audit). The route still checks the session's rights.
+  // For the HTTP layer, before an upload body is read (http.mjs): the key of
+  // this cookie's session if it is a current email sign-in or admin session,
+  // otherwise null. Invitation-link sessions are RSVP-only and never upload,
+  // so they cannot hold upload slots (re-audit). The key is the resolved
+  // session, so one session counts once however its cookie is spelled. The
+  // route still checks the session's rights.
   const canUpload = async (cookieHeader) => {
-    const { session } = await context({ headers: { cookie: cookieHeader } });
-    return !!session && (session.kind === "admin" || !!session.accountId);
+    const { session, sessionHash } = await context({ headers: { cookie: cookieHeader } });
+    return session && (session.kind === "admin" || session.accountId) ? sessionHash : null;
   };
   return { dispatch, syncOne, canUpload };
 }

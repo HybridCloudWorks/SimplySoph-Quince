@@ -2391,11 +2391,15 @@ test("only email sign-ins and admins may start an upload; RSVP-only link session
     body: { token: f.guestToken },
     headers: { origin },
   })).setCookie.split(";")[0];
-  assert.equal(await f.app.canUpload(linkCookie), false);
-  assert.equal(await f.app.canUpload("__session=" + token()), false);
+  assert.equal(await f.app.canUpload(linkCookie), null);
+  assert.equal(await f.app.canUpload("__session=" + token()), null);
   await f.publicPost("auth/email/request", { email: "test@example.com" });
   const s = await f.publicPost("auth/email/verify", { token: linkOf(f.sent.at(-1)) });
-  assert.equal(await f.app.canUpload(s.setCookie.split(";")[0]), true);
+  const cookie = s.setCookie.split(";")[0];
+  const key = await f.app.canUpload(cookie);
+  assert.ok(key);
+  // One session, one key, however the cookie header is spelled.
+  assert.equal(await f.app.canUpload(cookie + "  ;a=1"), key);
 });
 
 test("a guest's sign out everywhere ends guest sign-ins only, never that person's admin session (re-audit)", async () => {
