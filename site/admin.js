@@ -21,6 +21,11 @@ const formEnd = (label) =>
   `<p class="error" role="alert"></p><button type="submit" class="button burgundy">${label}</button></form>`;
 const table = (head, rows) =>
   `<div class="table-wrap"><table><thead><tr>${head.map((x) => `<th scope="col">${x}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`;
+// Records carry numeric timestamps (createdAt, at); Date.parse(number) is NaN,
+// which once left "Latest five" lists in insertion order (oldest first).
+const stamp = (r) =>
+  Number(r.at) || Number(r.createdAt) || Date.parse(r.at || r.createdAt) || 0;
+const newestFirst = (a, b) => stamp(b) - stamp(a);
 async function run(fn) {
   try {
     await fn();
@@ -145,13 +150,13 @@ async function login() {
   if (fragment) {
     history.replaceState(null, "", location.pathname);
     root.innerHTML =
-      '<p>Verify Your Email To Continue To MFA.</p><button id="verify-admin-email" class="button burgundy">Verify Email</button><div id="mfa"></div>';
+      '<p>Confirm your email to continue to your authenticator code.</p><button id="verify-admin-email" class="button burgundy">Confirm email</button><div id="mfa"></div>';
     document.querySelector("#verify-admin-email").onclick = () =>
       attempt("email", async () => {
         showMfa(await api("auth/admin-email/verify", { token: fragment }));
         document.querySelector("#verify-admin-email").remove();
         root.querySelector("p").textContent =
-          "Email Verified. Enter Your Authenticator Code.";
+          "Email confirmed. Enter your authenticator code.";
       });
     return;
   }
@@ -530,11 +535,7 @@ async function updates() {
   if (selected === "announcements") {
     const announcements = (d.announcements || [])
       .filter((a) => !a.archived)
-      .sort(
-        (a, b) =>
-          (Number(b.at) || Date.parse(b.createdAt) || 0) -
-          (Number(a.at) || Date.parse(a.createdAt) || 0),
-      )
+      .sort(newestFirst)
       .slice(0, 5);
     panel.innerHTML = `<form id="announcement" class="card"><h2>Publish A Website Announcement</h2>${field("English Title", "title", { required: true, max: 140 })}<label>English Message<textarea name="text" required maxlength="2000"></textarea></label>${field("Spanish Title", "titleEs", { max: 140 })}<label>Spanish Message<textarea name="textEs" maxlength="2000"></textarea></label>${formEnd("Publish On Website")}<section class="recent-records"><h2>Latest Five Announcements</h2><a href="/admin/history/?kind=announcements">View Full Announcement History</a>${announcements.map((a) => `<article class="compact-record"><h3>${esc(a.title)}</h3><p>${esc(a.text)}</p><small>${a.at ? esc(new Date(a.at).toLocaleString()) : ""} · ${a.published ? "Published" : "Unpublished"}</small></article>`).join("") || "<p>No Announcements Yet.</p>"}</section>`;
     submit(panel.querySelector("#announcement"), async (f) => {
@@ -548,11 +549,7 @@ async function updates() {
     ["Recipient", "Subject", "State", "Review"],
     d.outbox
       .filter((m) => !m.archived)
-      .sort(
-        (a, b) =>
-          (Number(b.at) || Date.parse(b.createdAt) || 0) -
-          (Number(a.at) || Date.parse(a.createdAt) || 0),
-      )
+      .sort(newestFirst)
       .slice(0, 5)
       .map(
         (m) =>
@@ -618,6 +615,16 @@ root.addEventListener("click", (e) => {
           .join("\r\n"),
       );
     if (action === "revoke") {
+      // One click used to revoke at once; name the household and ask first.
+      const name =
+        b.closest("tr")?.cells[1]?.textContent.trim().split("\n")[0] ||
+        "this household";
+      if (
+        !confirm(
+          `Revoke the invitation link for ${name}? Their current link will stop working. You can create a new one later.`,
+        )
+      )
+        return;
       await api("admin/revoke", { id });
       await guestList();
     }
@@ -658,8 +665,9 @@ try {
     const session = await api("session");
     if (session.kind !== "admin") {
       root.innerHTML =
-        '<p class="notice">Sign in with an authorized family account and MFA to access this page.</p><a class="button burgundy" href="/admin/login/">Family sign-in</a>';
+        '<p class="notice">Please sign in as an administrator to see this page.</p><a class="button burgundy" href="/admin/login/">Administrator sign-in</a>';
     } else {
+      document.querySelector(".admin-shell aside").hidden = false;
       if (view === "admin/site") await websiteEditor(root);
       if (view === "admin/notifications") await notificationInbox(root);
       if (view === "admin") await dashboard();

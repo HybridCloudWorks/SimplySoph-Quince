@@ -1863,3 +1863,33 @@ test("the event log records the invitation lifecycle in order without contact de
   const text = JSON.stringify(log);
   assert.ok(!text.includes("test@example.com"), "no email addresses in events");
 });
+
+test("public announcements carry only what the page shows, never admin notes", async () => {
+  const f = await fixture();
+  await f.admin("updates", { title: "Parking", text: "Use the north lot" });
+  const [a] = Object.values((await f.ledger.read()).announcements);
+  await f.admin("records", {
+    kind: "announcements",
+    id: a.id,
+    action: "update",
+    version: a.recordVersion || 0,
+    values: { notes: "PRIVATE-ADMIN-NOTE" },
+  });
+  const pub = await f.app.dispatch({ path: "/api/public", method: "GET" });
+  assert.equal(pub.announcements.length, 1);
+  assert.deepEqual(Object.keys(pub.announcements[0]).sort(), ["at", "id", "text", "textEs", "title", "titleEs"]);
+  assert.ok(!JSON.stringify(pub).includes("PRIVATE-ADMIN-NOTE"));
+});
+
+test("the invitation email date follows the event settings", async () => {
+  const f = await fixture();
+  const site = (await f.admin("site")).site;
+  const move = (iso) => iso.replace("2027-01-15", "2027-01-16");
+  await f.admin("site", {
+    ...site,
+    ceremony: { ...site.ceremony, start: move(site.ceremony.start), end: site.ceremony.end && move(site.ceremony.end) },
+  });
+  await f.admin("mail/draft", { id: household, type: "invitation" });
+  const draft = Object.values((await f.ledger.read()).outbox).at(-1);
+  assert.match(draft.subject, /Saturday, January 16, 2027/);
+});

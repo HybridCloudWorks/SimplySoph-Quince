@@ -71,6 +71,20 @@ const published = [
 for (const file of published)
   if (/^(<{7}|={7}|>{7})( |\r?$)/m.test(await readFile(file, "utf8")))
     throw new Error(`Merge conflict markers in ${path.relative(root, file)}`);
+// An unclosed block silently scopes every later rule (it once hid the approved
+// layouts inside the dark-mode media query), so braces must balance.
+for (const file of ["styles.css", "pages.css"]) {
+  const css = (await readFile(path.join(root, file), "utf8")).replace(
+    /\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g,
+    "",
+  );
+  let depth = 0;
+  for (const c of css) {
+    if (c === "{") depth++;
+    if (c === "}" && --depth < 0) break;
+  }
+  if (depth !== 0) throw new Error(`Unbalanced braces in ${file}`);
+}
 console.log(
   `All ${pages.length} documents, ${scripts.size} scripts and local links/assets passed.`,
 );

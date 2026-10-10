@@ -6,7 +6,7 @@ import {
 } from "./upload-batch.mjs";
 
 export function mediaUpload(portal, albums) {
-  portal.innerHTML = `<form id="photo"><h2>${tr("Add Your Photos & Videos", "Agrega Tus Fotos y Videos")}</h2><p id="upload-help">${tr("Select up to 10 files at once, up to 8 MB each. Photos: JPEG, PNG or WebP. Videos: MP4 or WebM, up to 60 seconds. Up to 20 submissions per household per day.", "Selecciona hasta 10 archivos a la vez, de hasta 8 MB cada uno. Fotos: JPEG, PNG o WebP. Videos: MP4 o WebM, hasta 60 segundos. Hasta 20 envíos por familia al día.")}</p><label>${tr("Choose Photos & Videos", "Elige Fotos y Videos")}<input type="file" name="file" accept="${uploadTypes.join(",")}" multiple required aria-describedby="upload-help"></label><div class="upload-fields"><label>${tr("Album", "Álbum")}<select name="album">${albums.map((a) => `<option value="${esc(a.id)}"${a.id === "event" ? " selected" : ""}>${esc(es ? a.es : a.en)}</option>`).join("")}</select></label>${field(tr("Caption For These Files (Optional)", "Descripción Para Estos Archivos (Opcional)"), "caption", { max: 200 })}</div><label class="check upload-consent"><input type="checkbox" name="consent" required><span>${tr("I have permission from the people pictured and agree to the", "Tengo permiso de las personas fotografiadas y acepto la")} <a href="${route("terms")}" target="_blank" rel="noopener">${tr("Media Policy", "Política de Medios")}</a>.</span></label><p class="error" role="alert"></p><div class="upload-actions"><button type="submit" class="button burgundy" disabled>${tr("Upload For Family Review", "Enviar Para Revisión Familiar")}</button><a href="${route("gallery")}">${tr("View The Gallery", "Ver La Galería")}</a></div><div id="upload-summary" role="status" aria-live="polite"></div><ol id="upload-results" aria-label="${tr("Selected files and upload results", "Archivos seleccionados y resultados")}"></ol></form>`;
+  portal.innerHTML = `<form id="photo"><h2>${tr("Add your photos & videos", "Agrega tus fotos y videos")}</h2><p id="upload-help">${tr("Select up to 10 files at once, up to 8 MB each. Photos: JPEG, PNG or WebP. Videos: MP4 or WebM, up to 60 seconds. Up to 20 submissions per household per day.", "Selecciona hasta 10 archivos a la vez, de hasta 8 MB cada uno. Fotos: JPEG, PNG o WebP. Videos: MP4 o WebM, hasta 60 segundos. Hasta 20 envíos por familia al día.")}</p><label>${tr("Choose photos & videos", "Elige fotos y videos")}<input type="file" name="file" accept="${uploadTypes.join(",")}" multiple required aria-describedby="upload-help"></label><div class="upload-fields"><label>${tr("Album", "Álbum")}<select name="album">${albums.map((a) => `<option value="${esc(a.id)}"${a.id === "event" ? " selected" : ""}>${esc(es ? a.es : a.en)}</option>`).join("")}</select></label>${field(tr("Caption for these files (optional)", "Descripción para estos archivos (opcional)"), "caption", { max: 200 })}</div><label class="check upload-consent"><input type="checkbox" name="consent" required><span>${tr("I have permission from the people pictured and agree to the", "Tengo permiso de las personas fotografiadas y acepto la")} <a href="${route("terms")}" target="_blank" rel="noopener">${tr("Media policy", "Política de medios")}</a>.</span></label><p class="error" role="alert"></p><div class="upload-actions"><button type="submit" class="button burgundy" disabled>${tr("Upload for family review", "Enviar para revisión familiar")}</button><a href="${route("gallery")}">${tr("View the gallery", "Ver la galería")}</a></div><div id="upload-summary" role="status" aria-live="polite"></div><ol id="upload-results" aria-label="${tr("Selected files and upload results", "Archivos seleccionados y resultados")}"></ol></form>`;
   const form = portal.querySelector("form"),
     input = form.elements.file,
     button = form.querySelector('[type="submit"]'),
@@ -20,15 +20,15 @@ export function mediaUpload(portal, albums) {
       queued: tr("Ready", "Listo"),
       uploading: tr("Uploading…", "Subiendo…"),
       received: tr(
-        "Received · Awaiting Family Review",
-        "Recibido · Pendiente de Revisión",
+        "Received · awaiting family review",
+        "Recibido · pendiente de revisión",
       ),
-      rejected: tr("Not Uploaded", "No Se Subió"),
+      rejected: tr("Not uploaded", "No se subió"),
       unknown: tr(
-        "Receipt Unconfirmed — Check With The Family Before Retrying",
-        "Recepción Sin Confirmar — Consulta a la Familia Antes de Reintentar",
+        "Receipt unconfirmed. Check with the family before retrying.",
+        "Recepción sin confirmar. Consulta a la familia antes de reintentar.",
       ),
-      invalid: tr("Not Uploaded", "No Se Subió"),
+      invalid: tr("Not uploaded", "No se subió"),
     };
     results.innerHTML = entries
       .map(
