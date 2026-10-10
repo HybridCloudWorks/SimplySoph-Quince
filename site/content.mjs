@@ -7,8 +7,16 @@ export const event = {
   sender: "misxv@simplysoph.com",
 };
 // Null/empty content awaits the family; never invent names, endorsements or payment links.
+// Text values are { en, es } or a plain string. Layouts follow the family-approved idea book:
+//   portrait: "/assets/…" photo beside the bio
+//   moments: [{ age: 0, text: { en, es } }] — "fifteen years in six moments", oldest first
+//   court: [{ name, role: "escort" | "dama" | "chambelan", pair: 1, line: { en, es }, photo }]
+//   hotels: [{ name, where: { en, es }, notes: { en, es }, url }]
+//   thanksNote: { en, es } — the thank-you page message, after the event
 export const family = {
   bio: null,
+  portrait: null,
+  moments: [],
   parentsMessage: null,
   court: [],
   padrinos: [],
@@ -20,6 +28,7 @@ export const family = {
   churchNotes: null,
   dressCode: null,
   highlightVideo: null,
+  thanksNote: null,
 };
 export const routes = [
   ["", "Home", "Inicio"],
