@@ -44,7 +44,7 @@ import { notionOutage } from "./notion.mjs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createAccounts, accountActive } from "./accounts.mjs";
+import { createAccounts, accountActive, rosterMatch } from "./accounts.mjs";
 const events = ["ceremony", "dinner", "dance"];
 const safeText = (s, max = 1000) => {
   if (
@@ -1010,7 +1010,16 @@ export function createApplication({
     ) {
       const startedAt = session.startedAt ?? session.expiresAt - 1800000,
         until = Math.min(now() + 1800000, startedAt + 43200000);
-      if (until > session.expiresAt) {
+      // Renew only while the sign-in email is still on that household's Notion
+      // row, so removing it still ends access within about 15 minutes. A Notion
+      // error skips the renewal; it never fails the request.
+      const stillListed =
+        !session.email ||
+        (await notion.list().then(
+          (rows) => rosterMatch(rows, session.email)?.id === session.householdId,
+          () => false,
+        ));
+      if (until > session.expiresAt && stillListed) {
         await ledger.transaction((s) => {
           const row = s.sessions[ctx.sessionHash];
           if (row) {

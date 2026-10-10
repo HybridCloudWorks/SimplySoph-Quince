@@ -1809,3 +1809,17 @@ test("recovery codes are for the site owner only (SEC-10)", async () => {
   await assert.rejects(() => as("admin/recovery-codes", { code: "000000" }), (e) => e.code === "OWNER_REQUIRED");
   assert.equal((await as("admin/accounts")).recoveryCodesLeft, undefined);
 });
+
+test("a guest whose email leaves the Notion row is not renewed, so access ends soon (AUTHN-7)", async () => {
+  const f = await fixture();
+  await f.publicPost("auth/email/request", { email: "test@example.com" });
+  const signed = await f.publicPost("auth/email/verify", { token: linkOf(f.sent.at(-1)) });
+  const cookie = signed.setCookie.split(";")[0];
+  const get = () => f.app.dispatch({ path: "/api/session", headers: { cookie } });
+  f.row.email = "someone-else@example.com";
+  f.advance(20 * 60000);
+  const r = await get();
+  assert.equal(r.setCookie, undefined, "not renewed");
+  f.advance(11 * 60000);
+  assert.equal((await get()).kind, null, "the original 30 minutes ran out");
+});
