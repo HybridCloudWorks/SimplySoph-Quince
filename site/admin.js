@@ -157,9 +157,23 @@ async function login() {
 }
 // The last step of every admin sign-in. It is brought into view and focused:
 // after Google or Microsoft it appears below the buttons and was easy to miss.
+// First-time setup: a standard QR code that Google Authenticator and Microsoft
+// Authenticator both scan, with the text key and a tap-to-add link as fallbacks
+// for setting up on the same phone.
+function enrollmentPanel(data) {
+  const qr = /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(
+      data.provisioningQr || "",
+    )
+      ? `<img class="mfa-qr" src="${data.provisioningQr}" width="240" height="240" alt="QR code that adds SimplySoph to your authenticator app">`
+      : "",
+    link = /^otpauth:\/\/totp\//.test(data.provisioningUri || "")
+      ? `<p><a class="button burgundy" href="${esc(data.provisioningUri)}">Add to my authenticator app</a></p>`
+      : "";
+  return `<div class="mfa-setup">${qr}<ol><li>Open <strong>Google Authenticator</strong> or <strong>Microsoft Authenticator</strong> on your phone.</li><li>Tap <strong>+</strong>. In Google, choose <strong>Scan a QR code</strong>; in Microsoft, choose <strong>Other account</strong>.</li><li>Scan this code, then type the 6-digit <strong>SimplySoph</strong> code below.</li></ol></div><details class="mfa-fallback"><summary>Can’t scan? Setting up on this phone?</summary>${link}<p>Or add the account manually: name <strong>SimplySoph</strong>, time-based, with this key:</p><code class="break">${esc(data.enrollmentSecret)}</code></details>`;
+}
 function showMfa(data) {
   const box = document.querySelector("#mfa");
-  box.innerHTML = `<form id="mfa-form" class="card"><h2>Enter your authenticator code</h2><p>${data.enrollmentSecret ? "First time: add a time-based SimplySoph account in your authenticator app with this private setup key, then enter the 6-digit code it shows." : "Open your authenticator app and enter the 6-digit SimplySoph code to finish signing in."}</p>${data.enrollmentSecret ? `<code class="break">${esc(data.enrollmentSecret)}</code>` : ""}${field("Authenticator code", "code", { required: true, max: 6, autocomplete: "one-time-code" })}${formEnd("Verify and sign in")}`;
+  box.innerHTML = `<form id="mfa-form" class="card"><h2>${data.enrollmentSecret ? "Set up your authenticator" : "Enter your authenticator code"}</h2>${data.enrollmentSecret ? enrollmentPanel(data) : "<p>Open your authenticator app and enter the 6-digit SimplySoph code to finish signing in.</p>"}${field("Authenticator code", "code", { required: true, max: 6, autocomplete: "one-time-code" })}${formEnd("Verify and sign in")}`;
   box.scrollIntoView({ behavior: "smooth", block: "center" });
   box.querySelector('[name="code"]').focus({ preventScroll: true });
   submit(document.querySelector("#mfa-form"), async (f) => {

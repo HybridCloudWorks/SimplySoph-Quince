@@ -314,6 +314,9 @@ test("guest administration requires owner grant and MFA; revoking grant rejects 
   });
   await f.admin("mfa-setup", { email: f.account.email, code: await f.ownerCode() });
   const c = await f.verified("auth/step-up", {});
+  // The guest-to-admin step-up offers the same QR setup as the login page.
+  assert.match(c.provisioningQr, /^data:image\/png;base64,/);
+  assert.ok(c.provisioningUri.includes(`secret=${c.enrollmentSecret}&issuer=SimplySoph`));
   await assert.rejects(
     () => f.verified("admin/accounts"),
     (e) => e.code === "SIGN_IN_REQUIRED",
