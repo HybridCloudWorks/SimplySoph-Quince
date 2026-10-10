@@ -50,6 +50,10 @@ const messages = {
     "Choose At Least One Event For The Invitation.",
     "Elige al menos un evento para la invitación.",
   ],
+  LINKS_NOT_READY: [
+    "None Of These Households Has An Active Private Link For {link}. Create Their Links First. Nothing Was Drafted.",
+    "Ninguno de estos hogares tiene un enlace privado activo para {link}. Crea sus enlaces primero. No se creó ningún borrador.",
+  ],
   SMS_BRAND_OR_STOP_MISSING: [
     "Start The Text With “Simply Soph Media:” And Include STOP Opt-Out Wording.",
     "Empieza el mensaje con “Simply Soph Media:” e incluye la opción STOP.",
