@@ -110,6 +110,7 @@ if (env.EVENT_BUCKET) {
     // Committed event-log entries are mirrored as one redacted log line each, so
     // a copy exists outside the ledger. Filter: jsonPayload.event.type="rsvp.submitted".
     ledger: new Ledger(adapter, { onEvents: eventMirror(log, key) }),
+    log,
     smsTransport,
     smsWebhook: {
       accountSid: env.TWILIO_ACCOUNT_SID,

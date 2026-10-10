@@ -41,6 +41,7 @@ import {
 import { event as eventInfo } from "../site/content.mjs";
 import { previewRoutes } from "../site/preview-content.mjs";
 import { notionOutage } from "./notion.mjs";
+import { attendanceOf, dinnerSeats } from "./attendance.mjs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -85,10 +86,6 @@ const sameSecret = (given, expected) => {
     b = Buffer.from(expected);
   return a.length === b.length && timingSafeEqual(a, b);
 };
-const responseCount = (r) =>
-  r?.attendance?.dinner
-    ? r.attendance.dinner.adultsTeens + r.attendance.dinner.kids
-    : 0;
 function digestInput(input) {
   return hash(JSON.stringify(input));
 }
@@ -132,6 +129,8 @@ export function createApplication({
   signInFloorMs = 0,
   // How many sign-in link requests may wait out that floor at once per instance.
   signInConcurrency = 16,
+  // Structured log line writer (start.mjs: one JSON line on stdout).
+  log = () => {},
 }) {
   if (!Buffer.isBuffer(key) || key.length !== 32)
     throw new Error("32-byte application key required");
@@ -239,13 +238,19 @@ export function createApplication({
       (c) => `${c.slice(0, 4)}-${c.slice(4, 8)}-${c.slice(8)}`,
     );
   // FLOW-8: where a "the family replied" email may go: the email the guest
-  // signed in with, while that account is active and still in this household;
-  // otherwise the household's Notion email. Never an address typed into a form.
-  function replyRecipient(s, message, notionEmail) {
+  // signed in with, while that account is active, still in this household and
+  // that email is still on the household's Notion row (re-audit D3); otherwise
+  // the row's Email. Never an address typed into a form.
+  function replyRecipient(s, message, row) {
     const account = s.accounts?.[message.accountId];
-    if (account && accountActive(s, account) && account.householdId === message.householdId)
+    if (
+      account &&
+      accountActive(s, account) &&
+      account.householdId === message.householdId &&
+      (row?.email === account.email || (row?.additionalEmails || []).includes(account.email))
+    )
       return account.email;
-    return notionEmail || null;
+    return row?.email || null;
   }
   const mfaPaused = (s, email) =>
     s.mfaFailures?.[hash("mfa-fail:" + email)]?.pausedUntil > now();
@@ -300,21 +305,20 @@ export function createApplication({
     "attending",
     "declined",
   ];
-  function householdStatus(s, id) {
-    const invite = s.invitations[id];
-    if (!invite) return { status: "not-issued" };
-    if (!invite.active) return { status: "revoked" };
-    const response = s.responses[invite.latestSubmissionId];
-    if (response) {
-      const people = Object.values(response.attendance).reduce(
-        (n, v) => n + v.adultsTeens + v.kids,
-        0,
-      );
+  // `row` is the household's Notion row: an answer typed into Notion counts
+  // too (attendanceOf), even before a link is issued.
+  function householdStatus(s, row) {
+    const id = row.id,
+      invite = s.invitations[id];
+    if (invite && !invite.active) return { status: "revoked" };
+    const answer = attendanceOf(s, row);
+    if (answer)
       return {
-        status: people > 0 ? "attending" : "declined",
-        respondedAt: response.submittedAt,
+        status: answer.attending ? "attending" : "declined",
+        respondedAt: answer.respondedAt,
+        answeredIn: answer.source,
       };
-    }
+    if (!invite) return { status: "not-issued" };
     if (invite.openedAt) return { status: "opened", openedAt: invite.openedAt };
     const sent = Object.values(s.outbox).some(
       (j) =>
@@ -382,6 +386,13 @@ export function createApplication({
   function claimSync(s, householdId, owner, { forceResponse = false } = {}) {
     const row = s.invitations[householdId];
     const profile = s.profiles?.[householdId];
+    // An admin's choice to write the website's answer holds until that answer
+    // is written: if another sync holds the row, or this attempt fails, the
+    // scheduled drain writes it later (re-audit N2).
+    if (forceResponse && row?.latestSubmissionId) {
+      row.forceSubmissionId = row.latestSubmissionId;
+      if (row.syncState === "synced") row.syncState = "pending";
+    }
     if (!row || (!row.latestSubmissionId && !profile) || row.syncLease?.until > now())
       return null;
     // The RSVP column and head counts are written only when the latest answer
@@ -392,10 +403,11 @@ export function createApplication({
     const projected =
       row.projectedSubmissionId ??
       (row.syncState === "synced" ? row.latestSubmissionId : null);
+    const forced = !!row.latestSubmissionId && row.forceSubmissionId === row.latestSubmissionId;
     const withResponse =
-      !!row.latestSubmissionId && (forceResponse || projected !== row.latestSubmissionId);
+      !!row.latestSubmissionId && (forced || projected !== row.latestSubmissionId);
     if (!withResponse && !profile) {
-      if (row.syncState === "pending") row.syncState = "synced";
+      if (row.syncState === "pending") (row.syncState = "synced"), (row.syncError = null);
       return null;
     }
     row.syncLease = { owner, until: now() + 90000 };
@@ -404,7 +416,27 @@ export function createApplication({
       submissionId: row.latestSubmissionId || null,
       response: withResponse ? s.responses[row.latestSubmissionId] : undefined,
       profile,
+      forced,
     });
+  }
+  // A retry (the scheduled drain, Retry on Overview, a later contact change)
+  // never writes over head counts the family changed in Notion after this
+  // answer was given, say after a phone call. It writes the contact columns
+  // only and marks the answer handled; the drift check then shows the
+  // difference on Invitations, where an admin chooses per household (re-audit
+  // N1). The guest's own RSVP and an admin's Write are written as they are.
+  async function holdBackEdited(householdId, task) {
+    if (!task.response || task.forced) return null;
+    try {
+      const row = await notion.read(householdId, { fresh: true });
+      if (Date.parse(row.lastEdited) > Date.parse(task.response.submittedAt)) {
+        task.profile ??= { contact: task.response.contact };
+        task.response = undefined;
+      }
+      return null;
+    } catch (e) {
+      return e.code || "NOTION_UNAVAILABLE";
+    }
   }
   async function projectSync(householdId, task) {
     try {
@@ -457,6 +489,12 @@ export function createApplication({
       row.syncState = "synced";
       row.syncError = null;
       row.projectedSubmissionId = task.submissionId;
+      // Notion now shows the website's answer the admin chose to write: the
+      // difference is settled at once, not at the next check (re-audit N8).
+      if (task.forced && task.response) {
+        delete row.forceSubmissionId;
+        delete s.drift?.[householdId];
+      }
     }
     logEvent(
       s,
@@ -475,7 +513,8 @@ export function createApplication({
       claimSync(s, householdId, owner, options),
     );
     if (!task) return;
-    const failure = await projectSync(householdId, task);
+    const failure =
+      (await holdBackEdited(householdId, task)) ?? (await projectSync(householdId, task));
     await ledger.transaction((s) =>
       finishSync(s, householdId, owner, task, failure),
     );
@@ -497,14 +536,15 @@ export function createApplication({
         throw error(409, "MAIL_DRAFT_STALE");
     } else if (!invite?.active || invite.generation !== j.generation)
       throw error(409, "MAIL_DRAFT_STALE");
-    const expectedRecipient = j.responseId
-      ? (s.profiles?.[j.householdId]?.contact.email ??
-        s.responses[invite.latestSubmissionId]?.contact.email)
-      : currentGuest.email;
-    if (
-      expectedRecipient?.trim().toLowerCase() !== j.to.trim().toLowerCase() ||
-      (j.responseId && j.responseId !== invite.latestSubmissionId)
-    )
+    // An RSVP receipt goes to an address that is still on the household's
+    // Notion row (Email or Additional Emails): the one the guest signed in with,
+    // or the row's Email. The contact email typed into the form never counts
+    // (re-audit). Other emails go to the row's current Email only.
+    const to = j.to.trim().toLowerCase();
+    const listed = j.responseId
+      ? [currentGuest.email, ...(currentGuest.additionalEmails || [])].includes(to)
+      : currentGuest.email?.trim().toLowerCase() === to;
+    if (!listed || (j.responseId && j.responseId !== invite.latestSubmissionId))
       throw error(409, "MAIL_DRAFT_STALE");
     j.state = "sending";
     j.attemptAt = now();
@@ -675,7 +715,9 @@ export function createApplication({
   // writes the ledger.
   function applyDrift(s, rows, started) {
     s.drift ??= {};
-    const both = (c) => `${c.adultsTeens ?? 0} adults/teens, ${c.kids ?? 0} kids`;
+    const count = (n, one, many) => `${n ?? 0} ${n === 1 ? one : many}`;
+    const both = (c) =>
+      `${count(c.adultsTeens, "adult/teen", "adults/teens")}, ${count(c.kids, "kid", "kids")}`;
     let differing = 0,
       changed = false;
     const fresh = [];
@@ -813,6 +855,13 @@ export function createApplication({
         result[name] = { error: e.code || "FAILED" };
       }
     }
+    // One line per run (counts and error codes only), so a step that keeps
+    // failing shows in the logs: jsonPayload.message="drain" (re-audit N6).
+    log({
+      severity: Object.values(result).some((r) => r?.error) ? "WARNING" : "INFO",
+      message: "drain",
+      drain: result,
+    });
     return result;
   }
   // Signed-in guests stay signed in while they use the site (AUTHN-7). A
@@ -1509,8 +1558,17 @@ export function createApplication({
             j.state === "draft" &&
             !j.archived,
         );
+        // At most 5 automatic receipts per household a day. Past that, a
+        // receipt waits as a draft in Communications for a person to send or
+        // archive, so repeated RSVPs cannot fill a family's inbox (re-audit).
+        const sentToday = Object.values(s.outbox).filter(
+          (j) =>
+            j.householdId === row.id &&
+            ["receipt", "update"].includes(j.type) &&
+            j.attemptAt > now() - 86400000,
+        ).length;
         let job = null;
-        if (draft && mailer.configured)
+        if (draft && mailer.configured && sentToday < 5)
           try {
             job = claimMail(s, draft.id, row);
           } catch {
@@ -1969,7 +2027,7 @@ export function createApplication({
               : {}),
             response:
               s.responses[s.invitations[row.id]?.latestSubmissionId] ?? null,
-            ...householdStatus(s, row.id),
+            ...householdStatus(s, row),
           })),
         };
       }
@@ -1978,15 +2036,21 @@ export function createApplication({
           rows = await notion.list({ allowStale: true }),
           responses = Object.values(s.invitations)
             .filter((r) => r.active && r.latestSubmissionId)
-            .map((r) => s.responses[r.latestSubmissionId]);
+            .map((r) => s.responses[r.latestSubmissionId]),
+          // Head counts follow the answer the family goes by: the website's,
+          // or Notion's for phone RSVPs and kept differences (re-audit N2).
+          answers = rows
+            .filter((r) => !r.archived && s.invitations[r.id]?.active !== false)
+            .map((r) => attendanceOf(s, r))
+            .filter(Boolean);
         return {
           households: rows.filter((r) => !r.archived).length,
           active: Object.values(s.invitations).filter((r) => r.active).length,
-          responded: responses.length,
+          responded: answers.length,
           statuses: rows
             .filter((r) => !r.archived)
             .reduce(
-              (a, r) => (a[householdStatus(s, r.id).status]++, a),
+              (a, r) => (a[householdStatus(s, r).status]++, a),
               Object.fromEntries(householdStatuses.map((k) => [k, 0])),
             ),
           pendingSync: Object.values(s.invitations).filter(
@@ -2000,7 +2064,7 @@ export function createApplication({
           counts: Object.fromEntries(
             events.map((e) => [
               e,
-              responses.reduce(
+              answers.reduce(
                 (a, r) => ({
                   adultsTeens: a.adultsTeens + r.attendance[e].adultsTeens,
                   kids: a.kids + r.attendance[e].kids,
@@ -2144,13 +2208,13 @@ export function createApplication({
       if (path === "/api/admin/moderation" && method === "GET") {
         // Each contact message shows, before replying, exactly where a reply
         // email would go (replyTo), so the admin confirms the real recipient.
-        const notionEmails = new Map(
-          (await notion.list({ allowStale: true }).catch(() => [])).map((r) => [r.id, r.email]),
+        const notionRows = new Map(
+          (await notion.list({ allowStale: true }).catch(() => [])).map((r) => [r.id, r]),
         );
         return {
           messages: Object.values(ctx.state.messages).map((m) =>
             m.kind === "contact"
-              ? { ...m, replyTo: replyRecipient(ctx.state, m, notionEmails.get(m.householdId)) }
+              ? { ...m, replyTo: replyRecipient(ctx.state, m, notionRows.get(m.householdId)) }
               : m,
           ),
           photos: Object.values(ctx.state.photos),
@@ -2166,13 +2230,15 @@ export function createApplication({
         // verified address now. Checked before the reply is saved, so a refusal
         // never leaves a saved reply that tempts a second try.
         const notifying = body.notify === true;
-        let to = null;
+        let to = null,
+          locale = "en";
         if (notifying) {
           if (!mailer.configured) throw error(409, "EMAIL_NOT_CONFIGURED");
           const found = ctx.state.messages[body.id];
           if (!found || found.kind !== "contact") throw error(404, "NOT_FOUND");
           const row = await notion.read(found.householdId, { fresh: true }).catch(() => null);
-          to = replyRecipient(ctx.state, found, row?.email);
+          to = replyRecipient(ctx.state, found, row);
+          locale = ctx.state.invitations[found.householdId]?.locale || "en";
           if (!to || to !== body.to) throw error(409, "RECIPIENT_CHANGED");
         }
         await ledger.transaction((s) => {
@@ -2191,7 +2257,7 @@ export function createApplication({
             id: token(),
             to,
             subject: "Sophia · The family replied / La familia respondió",
-            html: `<p>The family replied to your message on Sophia’s website.</p><p>La familia respondió tu mensaje en el sitio de Sophia.</p><p><a href="${origin}/account/">Read it in My account / Léelo en Mi cuenta</a></p>`,
+            html: `<p>The family replied to your message on Sophia’s website.</p><p>La familia respondió tu mensaje en el sitio de Sophia.</p><p><a href="${origin}${locale === "es" ? "/es" : ""}/account/">Read it in My account / Léelo en Mi cuenta</a></p>`,
           });
         } catch {
           emailed = false;
@@ -2234,18 +2300,25 @@ export function createApplication({
           return { state: row.state };
         });
       }
-      if (path === "/api/admin/seating" && method === "GET")
+      // Households with an issued link, plus phone RSVPs typed into Notion;
+      // dinner seats follow attendanceOf (re-audit N2).
+      const seatable = (s, r) =>
+        !r.archived && (s.invitations[r.id] ? s.invitations[r.id].active : !!attendanceOf(s, r));
+      if (path === "/api/admin/seating" && method === "GET") {
+        const rows = await notion.list({ allowStale: true });
         return {
           tables: Object.values(ctx.state.tables),
-          households: Object.values(ctx.state.invitations)
-            .filter((r) => r.active)
+          households: rows
+            .filter((r) => seatable(ctx.state, r))
             .map((r) => ({
               id: r.id,
               name: r.name,
-              count: responseCount(ctx.state.responses[r.latestSubmissionId]),
+              count: dinnerSeats(attendanceOf(ctx.state, r)),
             })),
         };
-      if (path === "/api/admin/seating" && method === "POST")
+      }
+      if (path === "/api/admin/seating" && method === "POST") {
+        const rows = new Map((await notion.list({ allowStale: true })).map((r) => [r.id, r]));
         return ledger.transaction((s) => {
           const id = body.id || randomUUID(),
             name = safeText(body.name, 80),
@@ -2262,23 +2335,22 @@ export function createApplication({
             throw error(422, "INVALID_TABLE");
           let count = 0;
           for (const h of households) {
-            if (!s.invitations[h]?.active)
-              throw error(422, "INVALID_HOUSEHOLD");
+            const row = typeof h === "string" ? rows.get(h) : null;
+            if (!row || !seatable(s, row)) throw error(422, "INVALID_HOUSEHOLD");
             if (
               Object.values(s.tables).some(
                 (t) => t.id !== id && t.households.includes(h),
               )
             )
               throw error(409, "ALREADY_SEATED");
-            count += responseCount(
-              s.responses[s.invitations[h].latestSubmissionId],
-            );
+            count += dinnerSeats(attendanceOf(s, row));
           }
           if (count > capacity) throw error(422, "TABLE_OVER_CAPACITY");
           s.tables[id] = { id, name, capacity, households };
           audit(s, session.actor, "seating", id, now());
           return s.tables[id];
         });
+      }
       // FLOW-12: remove a table; its households become unseated.
       if (path === "/api/admin/seating/delete" && method === "POST")
         return ledger.transaction((s) => {

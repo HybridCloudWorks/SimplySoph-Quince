@@ -218,23 +218,38 @@ export function createPlanning({ ledger, documents, notion, now }) {
         }
       });
     } catch (e) {
+      // Notion refused the write itself (say, a value its column rejects): it
+      // will be refused the same way every time, so it is marked failed, left
+      // out of the scheduled retries, and reported once. Editing the record
+      // or Retry Sync tries again (re-audit N3).
+      const refused = /^NOTION_4\d\d$/.test(e.code || "") && !["NOTION_409", "NOTION_429"].includes(e.code);
       await ledger.transaction((s) => {
         const row = s.planning[kind][id];
-        if (row.sync.lock === lock)
-          row.sync = {
-            ...row.sync,
-            status: "pending",
-            lock: null,
-            lockUntil: 0,
-            error: [
-              "NOTION_CREATE_UNCERTAIN",
-              "NOTION_RECORD_UNAVAILABLE",
-              "PLANNING_SCHEMA_CONFLICT",
-              "NOTION_DUPLICATE_RECORD",
-            ].includes(e.code)
+        if (row.sync.lock !== lock) return;
+        if (refused && row.sync.error !== e.code) {
+          const note = randomUUID();
+          s.notifications ??= {};
+          s.notifications[note] = {
+            id: note,
+            kind: "sync",
+            title: `${row.item || row.name || "A planning record"}: Notion refused the change`,
+            text: `Notion refused it (${e.code}). Check the record's values against the ${kind === "costs" ? "Budget" : "Godparents"} database in Notion, then edit the record or press Retry Sync.`,
+            at: now(),
+            read: false,
+            emailState: "none",
+          };
+        }
+        row.sync = {
+          ...row.sync,
+          status: refused ? "failed" : "pending",
+          lock: null,
+          lockUntil: 0,
+          error: refused
+            ? e.code
+            : needsPerson.has(e.code)
               ? e.code
               : "NOTION_SYNC_PENDING",
-          };
+        };
       });
     }
     return { row: (await ledger.read()).planning[kind][id] };
@@ -260,7 +275,7 @@ export function createPlanning({ ledger, documents, notion, now }) {
           .filter(
             (r) =>
               r.sync &&
-              r.sync.status !== "synced" &&
+              !["synced", "failed"].includes(r.sync.status) &&
               !(r.sync.lockUntil > now()) &&
               !needsPerson.has(r.sync.error),
           )
@@ -306,11 +321,16 @@ export function createPlanning({ ledger, documents, notion, now }) {
         if (previous && previous.version !== body.version)
           throw error(409, "SETTINGS_CHANGED");
         if (previous?.deleted) throw error(409, "PLANNING_RECORD_DELETED");
-        if (previous?.sync && previous.sync.status !== "synced")
+        // A change Notion refused can be corrected by editing the record; the
+        // new write carries the refused fields too.
+        const refused =
+          previous?.sync?.status === "failed" && !previous.sync.operation ? previous.sync : null;
+        if (previous?.sync && previous.sync.status !== "synced" && !refused)
           throw error(409, "PLANNING_SYNC_PENDING");
         const changed = planningFields[kind].filter(
           (k) =>
             !previous ||
+            refused?.fields?.includes(k) ||
             JSON.stringify(previous[k] ?? "") !==
               JSON.stringify(fields[k] ?? ""),
         );
@@ -322,7 +342,13 @@ export function createPlanning({ ledger, documents, notion, now }) {
           updatedAt: now(),
           updatedBy: session.email,
           locallyEdited: true,
-          sync: { status: "pending", fields: changed },
+          sync: {
+            status: "pending",
+            fields: changed,
+            // A create that was refused may still be looked up before retrying,
+            // and the same refusal again is not reported twice.
+            ...(refused && { createAttempted: refused.createAttempted, error: refused.error }),
+          },
         };
         s.planning[kind][id] = row;
         return { row };

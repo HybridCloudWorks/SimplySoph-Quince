@@ -2051,11 +2051,14 @@ test("a Notion RSVP that differs from the website is reported once, and the admi
   f.row.notionCounts.dinner.kids += 1;
   await drain(f);
   assert.equal((await driftAlerts(f)).length, 2, "a new, different change is reported");
-  // Write the website's answer: the RSVP is written to Notion again.
+  await assert.rejects(() => f.admin("drift", { id: household, keep: "maybe" }), (e) => e.code === "INVALID_CHOICE");
+  // Write the website's answer: the RSVP is written to Notion again, and the
+  // difference is settled at once (re-audit N8).
   const r = await f.admin("drift", { id: household, keep: "website" });
   assert.equal(r.kept, "website");
   assert.equal(projected, before + 1);
-  await assert.rejects(() => f.admin("drift", { id: household, keep: "maybe" }), (e) => e.code === "INVALID_CHOICE");
+  assert.equal((await f.admin("dashboard")).notionDrift, 0);
+  await assert.rejects(() => f.admin("drift", { id: household, keep: "notion" }), (e) => e.status === 404);
   // Once Notion matches again, the entry clears.
   f.row.notionCounts.dinner.adultsTeens -= 1;
   f.row.notionCounts.dinner.kids -= 1;
