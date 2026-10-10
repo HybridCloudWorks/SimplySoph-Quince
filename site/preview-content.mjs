@@ -11,7 +11,7 @@ export const exampleFamily = {
   },
   portrait: null,
   moments: [
-    { age: 0, text: { en: "Born in Fort Worth, January 2012", es: "Nació en Fort Worth, enero de 2012" } },
+    { age: 0, text: { en: "Born in Fort Worth", es: "Nació en Fort Worth" } },
     { age: 1, text: { en: "Baptized at Our Lady of Guadalupe", es: "Bautizada en Nuestra Señora de Guadalupe" } },
     { age: 5, text: { en: "First day of school, pink backpack and all", es: "Primer día de escuela, con mochila rosa y todo" } },
     { age: 8, text: { en: "First Communion", es: "Primera Comunión" } },
@@ -92,5 +92,15 @@ export const exampleFamily = {
 };
 // The pages that show family content; each one gets a preview.
 export const previewRoutes = ["sophia", "court", "padrinos", "travel", "faq", "gallery", "thank-you"];
-// Text that must never appear on the public site (checked by scripts/check.mjs).
-export const exampleMarkers = ["Example High School", "The Example Family", "Example Hotel North", "Andrés G."];
+// Made-up details that must never appear on the public site (checked by
+// scripts/check.mjs). Generic wording the family may adopt is deliberately not here.
+export const exampleMarkers = [
+  "Example High School",
+  "Andrés G.",
+  "The Example Family",
+  "Example Hotel North",
+  "Example Inn Azle Ave",
+  "example.com",
+  "first trip to the beach",
+  "First Communion, May 2020",
+];

@@ -1303,7 +1303,7 @@ td .table-actions a {
 .photo-placeholder b { font: 500 3rem/1 var(--serif); color: var(--wine); letter-spacing: 0; }
 .chapter-photos figcaption { padding: .6rem 0; font-size: .9rem; overflow-wrap: break-word; }
 /* Admin-only preview of the approved pages (dist-preview/, never published). */
-.preview-banner { border: 2px dashed var(--gold); background: #efe3ce; padding: 1rem 1.2rem; margin: 1rem auto; max-width: 1100px; font-size: .92rem; }
+.preview-banner { border: 2px dashed var(--gold); background: #efe3ce; padding: 1rem 1.2rem; margin: 1rem auto; width: min(1100px, calc(100% - 32px)); box-sizing: border-box; font-size: .92rem; }
 .preview-banner p { margin: .2rem 0; }
 @media (prefers-color-scheme: dark) {
   .preview-banner { background: var(--night-tint); }

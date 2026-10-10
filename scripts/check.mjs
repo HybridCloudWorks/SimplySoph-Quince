@@ -103,6 +103,13 @@ for (const lang of ["en", "es"])
     if (html.includes(`data-route="${route}"`) === false)
       throw new Error(`Preview page has the wrong route: ${lang}/${route}`);
   }
+// The admin links (site/admin-experience.js) must name exactly the built previews.
+const adminSource = await readFile(path.join(root, "admin-experience.js"), "utf8");
+const linked = [
+  ...(adminSource.match(/const previewPages = \[([\s\S]*?)\n\];/)?.[1] || "").matchAll(/\["([a-z-]+)",/g),
+].map((m) => m[1]);
+if (linked.join() !== previewRoutes.join())
+  throw new Error(`Admin preview links (${linked}) differ from the built previews (${previewRoutes})`);
 for (const [route, marker] of [
   ["sophia", "Example High School"],
   ["padrinos", "The Example Family"],
