@@ -1148,6 +1148,48 @@
         "misxv-alert-email-channel"
       ],
       "status": "active"
+    },
+    {
+      "id": "misxv-project-budget",
+      "type": "budget-alert",
+      "projectId": "simplysoph-66c78",
+      "ownership": "event-change-to-existing",
+      "resource": "billingAccounts/01C581-187C4A-A4B565/budgets/9aeb50e2-bce5-4867-8dc4-1aedb1d10533 (Firebase Project simplysoph-66c78)",
+      "baseline": {
+        "verifiedAt": "2026-10-09T21:45:00.000Z",
+        "scope": "Budgets on billing account 01C581-187C4A-A4B565",
+        "allowedTypes": [
+          "budget-alert"
+        ],
+        "evidence": "Budget API listed one pre-existing budget, Firebase Project simplysoph-66c78: 25 USD monthly, project 424903425639 only, all credits included, alerts at 50/90/100% of current spend to billing admins (default notifications)."
+      },
+      "creationEvidence": "2026-10-09: the owner chose 20 USD; only the amount was changed from 25 to 20 USD and read back. The Budget API was enabled for this one change and disabled again afterwards; enabled services listed no budget API.",
+      "verifyBeforeCleanup": "Confirm the event is over and that the owner still wants a budget on this shared project.",
+      "cleanupSteps": "Set this budget amount back to 25 USD in Billing > Budgets & alerts (or keep 20 USD if the owner prefers); do not delete the budget.",
+      "verifyAfterCleanup": "Read the budget back and confirm the amount, project filter and thresholds.",
+      "dependsOn": [],
+      "status": "active"
+    },
+    {
+      "id": "misxv-sign-in-app",
+      "type": "entra-application",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "Microsoft Entra tenant 83d9aa10-e1de-455e-a9b8-1cc73e99685a / application \"Mis XV sign-in\" object 21930e5f-d8c6-4d86-8f2e-7f75aaab33f5, appId 7a448a2b-1b47-4423-a92d-2d840d8b0df0, service principal bb5ed66b-f610-4119-b54c-c2da3b50f05a",
+      "baseline": {
+        "verifiedAt": "2026-10-10T00:05:00.000Z",
+        "scope": "App registrations named Mis XV sign-in in tenant 83d9aa10-e1de-455e-a9b8-1cc73e99685a",
+        "allowedTypes": [
+          "entra-application"
+        ],
+        "evidence": "Microsoft Graph listed no application with that display name before creation; the CLI was confirmed on tenant 83d9aa10 as administrator@simplysoph.com."
+      },
+      "creationEvidence": "Created 2026-10-10T00:07Z (Oct 9 7:07 PM Central) via Microsoft Graph at the owner’s request. Read back: signInAudience AzureADandPersonalMicrosoftAccount, requestedAccessTokenVersion 2, SPA redirect URIs /admin/login/, /account/, /es/account/ on misxv.simplysoph.com, implicit grant off, ID-token optional claims email, acct, xms_edov, amr, Graph delegated openid/profile/email only, 0 secrets, 0 certificates; service principal created.",
+      "verifyBeforeCleanup": "Confirm sign-in is closed for the event and MICROSOFT_CLIENT_ID has been removed from the API revision.",
+      "cleanupSteps": "Delete only application object 21930e5f-d8c6-4d86-8f2e-7f75aaab33f5, which also removes its service principal. Do not touch the Exchange mail application (M365_CLIENT_ID) or any other app.",
+      "verifyAfterCleanup": "Graph returns 404 for the application and its service principal; the mail application still exists.",
+      "dependsOn": [],
+      "status": "active"
     }
   ],
   "retirementReview": {
