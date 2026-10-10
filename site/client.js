@@ -127,8 +127,8 @@ const messages = {
     "Solo el propietario del sitio puede hacer esto.",
   ],
   SSO_NO_ACCOUNT: [
-    "No registered invitation uses this email. Open your invitation link and register your email first, or sign in with the email you registered.",
-    "Ninguna invitación registrada usa este correo. Abre tu enlace de invitación y registra tu correo primero, o entra con el correo que registraste.",
+    "This email isn't on the guest list. Use the email the family has for your household, or contact the family to add it.",
+    "Este correo no está en la lista de invitados. Usa el correo que la familia tiene de tu hogar o pide a la familia que lo agregue.",
   ],
   SSO_ACCOUNT_CHANGED: [
     "This email is linked to a different Microsoft or Google account. Use the emailed sign-in link instead, or contact the family.",

@@ -444,6 +444,11 @@ input[type="checkbox"] {
   overflow: auto;
   margin: 20px 0;
 }
+/* Cards break long words anywhere; in a table that splits headers and emails
+   mid-word, so tables wrap at spaces and the wrapper scrolls instead. */
+.table-wrap table {
+  overflow-wrap: break-word;
+}
 table {
   border-collapse: collapse;
   width: 100%;

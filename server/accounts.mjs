@@ -9,52 +9,44 @@ import {
   pruneSessions,
 } from "./auth.mjs";
 
-export const pagePermissions = ["gifts", "padrinos", "costs", "admin"];
 const normalizeEmail = (value) => {
   if (
     typeof value !== "string" ||
     value.length > 254 ||
-    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
   )
     throw error(422, "INVALID_EMAIL");
   return value.trim().toLowerCase();
 };
 export function accountActive(s, account) {
   return !!(
-    account?.active &&
+    account &&
+    account.active !== false &&
     !account.deletedAt &&
     s.invitations[account.householdId]?.active
   );
 }
-export function allowedPages(s, session) {
-  const a = s.accounts?.[session?.accountId];
-  return accountActive(s, a) ? a.permissions : [];
+// The Notion row whose Email (or Additional Emails) is this address. An email on
+// two rows is ambiguous and signs in to neither.
+export function rosterMatch(rows, address) {
+  const found = rows.filter(
+    (r) =>
+      !r.archived &&
+      (r.email === address || (r.additionalEmails || []).includes(address)),
+  );
+  return found.length === 1 ? found[0] : null;
 }
 
-// One verified contact account per household invitation. An invitation code bootstraps
-// registration; once claimed it cannot bypass email verification or page permissions.
-export function createAccounts({
-  ledger,
-  mailer,
-  notion,
-  key,
-  origin,
-  now,
-  syncOne,
-}) {
+// Guests sign in with the email on their household's Notion row: an emailed
+// link, Google or Microsoft. There is no separate registration. An "account" is
+// only the record of a verified sign-in, created on first use; it holds no
+// permissions. Invitation links stay RSVP-only (application.mjs).
+export function createAccounts({ ledger, mailer, notion, key, origin, now }) {
   const emailKey = (value) =>
     createHmac("sha256", key)
       .update("email:" + value)
       .digest("hex");
-  const accountFor = (s, householdId) =>
-    Object.values(s.accounts || {}).find((a) => a.householdId === householdId);
-  async function issue({
-    address,
-    householdId,
-    generation,
-    registration,
-    name,
-  }) {
+  async function issue({ address, householdId, generation }) {
     const raw = token(),
       id = randomUUID();
     const locale = await ledger.transaction((s) => {
@@ -70,8 +62,6 @@ export function createAccounts({
         emailKey: emailKey(address),
         householdId,
         generation,
-        registration,
-        name,
         expiresAt: now() + 900000,
       };
       return invite.locale || "en";
@@ -99,9 +89,53 @@ export function createAccounts({
       });
     }
   }
+  // Record the verified sign-in and open a full guest session, inside one save.
+  function signIn(s, row, address, csrf, value) {
+    const invite = s.invitations[row.id];
+    if (!invite?.active) throw error(403, "INVITATION_INACTIVE");
+    s.accounts ??= {};
+    const k = emailKey(address);
+    let a = Object.values(s.accounts).find((v) => v.emailKey === k);
+    if (!a) {
+      a = {
+        id: randomUUID(),
+        householdId: row.id,
+        name: row.name,
+        email: address,
+        emailKey: k,
+        active: true,
+        version: 1,
+        verifiedAt: now(),
+      };
+      s.accounts[a.id] = a;
+    }
+    // Notion decides the household; an email moved to another row follows it.
+    if (a.householdId !== row.id) a.householdId = row.id;
+    a.name = row.name;
+    a.lastSignInAt = now();
+    s.profiles ??= {};
+    s.profiles[row.id] ??= {
+      id: row.id,
+      name: row.name,
+      contact: { email: row.email, phone: row.phone, address: null },
+      version: 1,
+      createdAt: now(),
+      updatedAt: now(),
+    };
+    pruneSessions(s, now());
+    s.sessions[hash(value)] = {
+      kind: "guest",
+      accountId: a.id,
+      householdId: row.id,
+      generation: invite.generation,
+      email: address,
+      csrf,
+      expiresAt: now() + 1800000,
+    };
+  }
   return {
-    accountFor,
-    async request(body, session) {
+    emailKey,
+    async request(body) {
       if (!mailer.configured) throw error(503, "EMAIL_SIGN_IN_UNAVAILABLE");
       const address = normalizeEmail(body.email);
       await rateLimit(
@@ -111,61 +145,20 @@ export function createAccounts({
         900000,
         now(),
       );
-      const s = await ledger.read();
-      if (body.register === true) {
-        if (session?.kind !== "guest" || session.accountId)
-          throw error(401, "SIGN_IN_REQUIRED");
-        const invitation = s.invitations[session.householdId];
-        if (!invitation?.latestSubmissionId) throw error(409, "RSVP_FIRST");
-        if (accountFor(s, session.householdId))
-          throw error(409, "EMAIL_SIGN_IN_REQUIRED");
-        if (
-          typeof body.name !== "string" ||
-          !body.name.trim() ||
-          body.name.length > 120 ||
-          /[\x00-\x1f\x7f]/.test(body.name)
-        )
-          throw error(422, "INVALID_TEXT");
-        await rateLimit(
-          ledger,
-          "register:" + session.householdId,
-          3,
-          900000,
-          now(),
-        );
-        // The shared budget bounds outgoing mail only. When spent, the send is
-        // skipped silently so the response never reveals which addresses exist.
-        if (
-          !Object.values(s.accounts || {}).some(
-            (a) => a.emailKey === emailKey(address),
-          ) &&
-          (await withinLimit(ledger, "email-login-sends", 120, 3600000, now()))
-        ) {
-          await issue({
-            address,
-            householdId: session.householdId,
-            generation: invitation.generation,
-            registration: true,
-            name: body.name.trim(),
-          });
-        }
-      } else {
-        const account = Object.values(s.accounts || {}).find(
-          (a) => a.emailKey === emailKey(address),
-        );
-        if (
-          accountActive(s, account) &&
-          (await withinLimit(ledger, "email-login-sends", 120, 3600000, now()))
-        ) {
-          const invite = s.invitations[account.householdId];
-          await issue({
-            address,
-            householdId: account.householdId,
-            generation: invite.generation,
-            registration: false,
-          });
-        }
-      }
+      const row = rosterMatch(await notion.list(), address),
+        invite = row && (await ledger.read()).invitations[row.id];
+      // The shared budget bounds outgoing mail only. When spent, or when the
+      // address is not on the guest list, nothing is sent and the response is
+      // the same, so it never reveals which addresses exist.
+      if (
+        invite?.active &&
+        (await withinLimit(ledger, "email-login-sends", 120, 3600000, now()))
+      )
+        await issue({
+          address,
+          householdId: row.id,
+          generation: invite.generation,
+        });
       return { requested: true };
     },
     async consume(raw) {
@@ -178,11 +171,13 @@ export function createAccounts({
         await rateLimit(ledger, "email-verify-failures", 300, 900000, now());
         throw error(401, "EMAIL_LINK_INVALID");
       }
-      const fresh = await notion.read(pending.householdId, { fresh: true });
-      if (fresh.archived) throw error(401, "EMAIL_LINK_INVALID");
+      // The email must still be on that household's Notion row.
+      const row = await notion.read(pending.householdId, { fresh: true });
+      if (rosterMatch([row], pending.email)?.id !== row.id)
+        throw error(401, "EMAIL_LINK_INVALID");
       const value = token(),
         csrf = token();
-      const result = await ledger.transaction((s) => {
+      await ledger.transaction((s) => {
         const link = s.emailLinks?.[hash(raw)],
           invite = s.invitations[pending.householdId];
         if (
@@ -192,110 +187,22 @@ export function createAccounts({
           invite.generation !== link.generation
         )
           throw error(401, "EMAIL_LINK_INVALID");
-        s.accounts ??= {};
-        let a = accountFor(s, link.householdId);
-        if (link.registration) {
-          if (
-            a ||
-            Object.values(s.accounts).some((v) => v.emailKey === link.emailKey)
-          )
-            throw error(401, "EMAIL_LINK_INVALID");
-          a = {
-            id: randomUUID(),
-            householdId: link.householdId,
-            name: link.name,
-            email: link.email,
-            emailKey: link.emailKey,
-            active: true,
-            permissions: [],
-            version: 1,
-            verifiedAt: now(),
-          };
-          s.accounts[a.id] = a;
-          const profile = s.profiles?.[a.householdId];
-          if (profile) {
-            profile.contact.email = a.email;
-            profile.version++;
-            profile.updatedAt = now();
-          }
-          invite.syncState = "pending";
-          // Invalidate every unverified code session once the invitation is claimed.
-          for (const [id, other] of Object.entries(s.sessions))
-            if (other.householdId === a.householdId && !other.accountId)
-              delete s.sessions[id];
-        }
-        if (!accountActive(s, a) || a.emailKey !== link.emailKey)
-          throw error(401, "EMAIL_LINK_INVALID");
         delete s.emailLinks[hash(raw)];
-        // Older accounts can lack a profile; the account page needs one.
-        s.profiles ??= {};
-        s.profiles[a.householdId] ??= {
-          id: a.householdId,
-          name: fresh.name,
-          contact: { email: fresh.email, phone: fresh.phone, address: null },
-          version: 1,
-          createdAt: now(),
-          updatedAt: now(),
-        };
-        pruneSessions(s, now());
-        s.sessions[hash(value)] = {
-          kind: "guest",
-          accountId: a.id,
-          householdId: a.householdId,
-          generation: invite.generation,
-          csrf,
-          expiresAt: now() + 1800000,
-        };
-        return { householdId: a.householdId, registration: link.registration };
+        signIn(s, row, link.email, csrf, value);
       });
-      if (result.registration) {
-        try {
-          await syncOne(result.householdId);
-        } catch {
-          /* The account/session is already durable; its pending Notion projection can be retried. */
-        }
-      }
       return { csrf, setCookie: cookie(value) };
     },
-    // A Microsoft or Google identity already verified by the caller signs in to
-    // the registered guest account with that email. It never creates an account
-    // (registration still starts from the household's invitation) and never an
-    // admin session. `inside` runs in the same transaction (nonce, binding).
+    // A Microsoft or Google identity already verified by the caller. Always a
+    // guest session, whatever the person's admin status: administration goes
+    // through /admin/login/. `inside` runs in the same save (nonce, binding).
     async ssoSession(address, inside) {
-      const k = emailKey(address),
-        known = Object.values((await ledger.read()).accounts || {}).find(
-          (a) => a.emailKey === k,
-        );
-      if (!known) throw error(404, "SSO_NO_ACCOUNT");
-      const fresh = await notion.read(known.householdId, { fresh: true });
-      if (fresh.archived) throw error(403, "INVITATION_INACTIVE");
+      const row = rosterMatch(await notion.list({ fresh: true }), address);
+      if (!row) throw error(404, "SSO_NO_ACCOUNT");
       const value = token(),
         csrf = token();
       await ledger.transaction((s) => {
-        const a = Object.values(s.accounts || {}).find((v) => v.emailKey === k),
-          invite = a && s.invitations[a.householdId];
-        if (!accountActive(s, a) || !invite?.active)
-          throw error(403, "INVITATION_INACTIVE");
         inside(s);
-        // Same starting profile the invitation link creates, for older accounts.
-        s.profiles ??= {};
-        s.profiles[a.householdId] ??= {
-          id: a.householdId,
-          name: fresh.name,
-          contact: { email: fresh.email, phone: fresh.phone, address: null },
-          version: 1,
-          createdAt: now(),
-          updatedAt: now(),
-        };
-        pruneSessions(s, now());
-        s.sessions[hash(value)] = {
-          kind: "guest",
-          accountId: a.id,
-          householdId: a.householdId,
-          generation: invite.generation,
-          csrf,
-          expiresAt: now() + 1800000,
-        };
+        signIn(s, row, address, csrf, value);
       });
       return { csrf, setCookie: cookie(value) };
     },

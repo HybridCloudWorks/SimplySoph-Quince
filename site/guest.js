@@ -23,8 +23,26 @@ const eventNames = {
 };
 const statusError = (message) =>
   `<p class="notice" role="alert">${esc(message)}</p><a href="${route("contact")}">${tr("Contact the family", "Contacta a la familia")}</a>`;
+// Two ways in, matching the owner's model: the private invitation link or code
+// opens the RSVP; signing in with the household's email (emailed link, Microsoft
+// or Google) opens everything else. There is no registration step.
+const emailSignInHtml = () =>
+  `<h2>${tr("Sign in with your email", "Entra con tu correo")}</h2><form id="email-login">${field(tr("Email", "Correo electrónico"), "email", { type: "email", required: true })}<p>${tr("Use the email the family has for your household. We’ll send you a one-time sign-in link; no password needed.", "Usa el correo que la familia tiene de tu hogar. Te enviaremos un enlace de acceso de un solo uso; no necesitas contraseña.")}</p><p role="alert" class="error"></p><button type="submit" class="button burgundy">${tr("Email my sign-in link", "Enviar enlace de acceso")}</button></form>`;
+function wireEmailSignIn() {
+  submit(document.querySelector("#email-login"), async (data) => {
+    await api("auth/email/request", { email: data.get("email") });
+    portal.innerHTML = `<p class="notice">${tr("If this email is on the guest list, a sign-in link is on its way. Check your inbox and spam folder; the link expires in 15 minutes.", "Si este correo está en la lista de invitados, te enviamos un enlace de acceso. Revisa tu bandeja de entrada y el correo no deseado; el enlace vence en 15 minutos.")}</p><a href="${route("account")}">${tr("Back to sign-in", "Volver al acceso")}</a>`;
+  });
+  // Microsoft returns only to My invitation, so the buttons live there.
+  if (document.body.dataset.route === "account") ssoChoices();
+  else
+    portal.insertAdjacentHTML(
+      "beforeend",
+      `<p><a href="${route("account")}">${tr("Sign in with Microsoft or Google instead", "O entra con Microsoft o Google")}</a></p>`,
+    );
+}
 function accessForm(value = "", reason = "") {
-  portal.innerHTML = `${reason ? `<p class="notice" role="alert">${esc(reason)}</p>` : ""}<h2>${tr("Open your invitation", "Abre tu invitación")}</h2><p>${tr("Use your household’s private invitation link or paste the invitation code below.", "Usa el enlace privado de tu familia o pega el código de invitación.")}</p><form id="access">${field(tr("Invitation code", "Código de invitación"), "token", { value, required: true, max: 1000 })}<p class="error" role="alert"></p><button type="submit" class="button burgundy">${tr("Continue", "Continuar")}</button></form>`;
+  portal.innerHTML = `${reason ? `<p class="notice" role="alert">${esc(reason)}</p>` : ""}<h2>${tr("Open your invitation", "Abre tu invitación")}</h2><p>${tr("Use your household’s private invitation link or paste the invitation code below to RSVP.", "Usa el enlace privado de tu familia o pega el código de invitación para responder.")}</p><form id="access">${field(tr("Invitation code", "Código de invitación"), "token", { value, required: true, max: 1000 })}<p class="error" role="alert"></p><button type="submit" class="button burgundy">${tr("Continue", "Continuar")}</button></form><hr>${emailSignInHtml()}`;
   submit(document.querySelector("#access"), async (data) => {
     let token = data.get("token").trim();
     if (token.startsWith("https://")) {
@@ -38,19 +56,13 @@ function accessForm(value = "", reason = "") {
     await api("invitation-session", { token });
     await showPortal();
   });
-  portal.insertAdjacentHTML(
-    "beforeend",
-    `<hr><h2>${tr("Already registered?", "¿Ya te registraste?")}</h2><form id="email-login">${field(tr("Email", "Correo electrónico"), "email", { type: "email", required: true })}<p>${tr("We’ll email you a one-time sign-in link. No password needed.", "Te enviaremos un enlace de acceso de un solo uso. No necesitas contraseña.")}</p><p role="alert" class="error"></p><button type="submit" class="button burgundy">${tr("Email my sign-in link", "Enviar enlace de acceso")}</button></form>`,
-  );
-  submit(document.querySelector("#email-login"), async (data) => {
-    await api("auth/email/request", { email: data.get("email") });
-    portal.innerHTML = `<p class="notice">${tr("If this email belongs to an active registered invitation, a sign-in link has been requested. Check your inbox and spam folder. The link expires after 15 minutes.", "Si este correo pertenece a una invitación registrada activa, se solicitó un enlace de acceso. Revisa tu bandeja de entrada y correo no deseado. El enlace vence en 15 minutos.")}</p><a href="${route("account")}">${tr("Back to sign-in", "Volver al acceso")}</a>`;
-  });
-  if (document.body.dataset.route === "account") ssoChoices();
+  wireEmailSignIn();
 }
-// Registered guests may sign in with the Microsoft or Google account that uses
-// their registered email. Only My account offers it: it is the page Microsoft
-// returns to. These sessions are always guest sessions.
+// An invitation link opens only the RSVP; anything else asks for the email sign-in.
+function signInOnly() {
+  portal.innerHTML = `<p class="notice">${tr("Your invitation link opens your RSVP. To share photos, send messages or update your details, sign in with your email.", "Tu enlace de invitación abre tu respuesta. Para compartir fotos, enviar mensajes o actualizar tus datos, entra con tu correo.")}</p>${emailSignInHtml()}`;
+  wireEmailSignIn();
+}
 async function ssoChoices() {
   let cfg;
   try {
@@ -67,8 +79,8 @@ async function ssoChoices() {
         tr("Sign in with Microsoft", "Iniciar sesión con Microsoft"),
       google: !!cfg.clientId,
       note: tr(
-        "Use the Microsoft or Google account with the email you registered. No code or password needed.",
-        "Usa la cuenta de Microsoft o Google con el correo que registraste. No necesitas código ni contraseña.",
+        "Use the Microsoft or Google account with the email the family has for your household. No code or password needed.",
+        "Usa la cuenta de Microsoft o Google con el correo que la familia tiene de tu hogar. No necesitas código ni contraseña.",
       ),
     })}</div>`,
   );
@@ -87,7 +99,6 @@ async function ssoChoices() {
         try {
           await api("auth/sso/guest", { provider: "google", credential, ticket });
           await showPortal();
-          await permissionNavigation();
         } catch (e) {
           notify(e.message);
         }
@@ -95,32 +106,10 @@ async function ssoChoices() {
       notify,
     );
 }
-const permissionNames = {
-  gifts: tr("Registry / gifts", "Registro / regalos"),
-  padrinos: tr("Godparents / sponsors", "Padrinos"),
-  costs: tr("Celebration costs", "Gastos de la celebración"),
-  admin: tr("Family administration", "Administración familiar"),
-};
 async function accountPage(inv, session) {
   const data = await api("account");
-  if (!data.account) {
-    if (!inv.response) {
-      portal.innerHTML = `<p>${tr("Save your RSVP first, then register your email for future visits.", "Primero guarda tu respuesta y después registra tu correo para próximas visitas.")}</p><a class="button burgundy" href="${route("rsvp")}">RSVP</a>`;
-      return;
-    }
-    portal.innerHTML = `<h2>${tr("Create your guest account", "Crea tu cuenta de invitado")}</h2><p>${tr("One contact account manages this household invitation. Page access is granted by the family after you verify your email.", "Una cuenta de contacto administra esta invitación familiar. La familia te dará acceso a las páginas después de verificar tu correo.")}</p><form id="register">${field(tr("Your name", "Tu nombre"), "name", { required: true, max: 120 })}${field(tr("Email", "Correo electrónico"), "email", { required: true, type: "email", value: inv.contact.email })}<p class="error" role="alert"></p><button type="submit" class="button burgundy">${tr("Verify my email", "Verificar mi correo")}</button></form>`;
-    submit(document.querySelector("#register"), async (f) => {
-      await api("auth/email/request", {
-        register: true,
-        name: f.get("name"),
-        email: f.get("email"),
-      });
-      portal.innerHTML = `<p class="notice">${tr("If this email can be registered, you’ll receive a verification link. Open it within 15 minutes. An email already assigned to another invitation cannot be registered again; contact the family for help.", "Si este correo puede registrarse, recibirás un enlace de verificación. Ábrelo en 15 minutos. Un correo asignado a otra invitación no puede registrarse otra vez; contacta a la familia.")}</p>`;
-    });
-    return;
-  }
   const { profile } = await api("profile");
-  portal.innerHTML = `<h2>${esc(data.account.name)}</h2><p>${esc(data.account.email)}</p><div class="row-actions"><a class="button burgundy" href="${route("rsvp")}">${tr("Update RSVP", "Actualizar respuesta")}</a><a href="${route("reception")}">${tr("Directions", "Cómo llegar")}</a>${session.permissions.map((p) => `<a href="${p === "admin" ? "/admin/login/" : route(p)}">${permissionNames[p]}</a>`).join("")}<button id="guest-logout" class="plain-button">${tr("Sign out", "Cerrar sesión")}</button></div>${!session.permissions.length ? `<p>${tr("Additional pages will appear here when the family grants access.", "Las páginas adicionales aparecerán aquí cuando la familia te dé acceso.")}</p>` : ""}<form id="profile-form"><h3>${tr("Contact details", "Datos de contacto")}</h3>${field(tr("Contact email (does not change your sign-in email)", "Correo de contacto (no cambia tu correo de acceso)"), "email", { type: "email", value: profile.contact.email })}${field(tr("Phone", "Teléfono"), "phone", { value: profile.contact.phone, max: 40 })}${field(tr("Mailing address", "Dirección postal"), "address", { value: profile.contact.address || "", max: 500 })}<p role="alert" class="error"></p><button type="submit" class="button burgundy">${tr("Save contact details", "Guardar datos")}</button></form><section id="whatsapp-preferences" class="card"></section><div id="family-chat"></div>`;
+  portal.innerHTML = `<h2>${esc(data.account.name)}</h2><p>${esc(data.account.email)}</p><div class="row-actions"><a class="button burgundy" href="${route("rsvp")}">${tr("Update RSVP", "Actualizar respuesta")}</a><a href="${route("reception")}">${tr("Directions", "Cómo llegar")}</a><button id="guest-logout" class="plain-button">${tr("Sign out", "Cerrar sesión")}</button></div><form id="profile-form"><h3>${tr("Contact details", "Datos de contacto")}</h3>${field(tr("Contact email (does not change your sign-in email)", "Correo de contacto (no cambia tu correo de acceso)"), "email", { type: "email", value: profile.contact.email })}${field(tr("Phone", "Teléfono"), "phone", { value: profile.contact.phone, max: 40 })}${field(tr("Mailing address", "Dirección postal"), "address", { value: profile.contact.address || "", max: 500 })}<p role="alert" class="error"></p><button type="submit" class="button burgundy">${tr("Save contact details", "Guardar datos")}</button></form><section id="whatsapp-preferences" class="card"></section><div id="family-chat"></div>`;
   document.querySelector("#guest-logout").onclick = async () => {
     await api("logout", {});
     location.reload();
@@ -252,13 +241,13 @@ function confirmation(inv, session) {
     ? `<p>${tr(`You can change your answer until ${until}.`, `Puedes cambiar tu respuesta hasta el ${until}.`)}</p><p><a class="button burgundy" href="${route("rsvp")}">${tr("Edit response", "Editar respuesta")}</a></p>`
     : `<p>${tr("The RSVP deadline has passed. To change your answer, please contact the family.", "La fecha límite ya pasó. Para cambiar tu respuesta, contacta a la familia.")}</p><p><a href="${route("contact")}">${tr("Contact the family", "Contacta a la familia")}</a></p>`;
   const sync = `<p class="hint">${inv.syncState === "synced" ? tr("The family’s guest list has been updated.", "La lista de invitados de la familia se actualizó.") : tr("Your response is safely saved. The family’s guest list will update shortly.", "Tu respuesta está guardada. La lista de invitados de la familia se actualizará en breve.")}</p>`;
-  // WhatsApp needs the household's own session; a link-only session after
-  // registration signs in from My Account instead.
+  // WhatsApp opt-in changes data, so it needs the email sign-in; an
+  // invitation-link session is pointed to My account instead.
   const whatsapp =
     session.scope === "rsvp"
       ? ""
       : `<details class="card"><summary>${tr("Optional: get event updates on WhatsApp", "Opcional: recibe novedades del evento por WhatsApp")}</summary><section id="whatsapp-preferences"></section></details>`;
-  const account = `<p><a class="button burgundy" href="${route("account")}">${session.verified ? tr("Open my guest account", "Abrir mi cuenta") : session.scope === "rsvp" ? tr("Sign in to my guest account", "Iniciar sesión en mi cuenta") : tr("Register my email for future visits", "Registrar mi correo para próximas visitas")}</a></p>`;
+  const account = `<p><a class="button burgundy" href="${route("account")}">${session.verified ? tr("Open my invitation page", "Abrir mi invitación") : tr("Sign in with your email for photos and messages", "Entra con tu correo para fotos y mensajes")}</a></p>`;
   if (!attending.length)
     return `<div class="notice success"><h2>${tr("Thank you for letting us know.", "Gracias por avisarnos.")}</h2><p>${tr(`We’ll miss you, ${esc(inv.name)}. You’re always in our hearts.`, `Te extrañaremos, ${esc(inv.name)}. Siempre estarás en nuestro corazón.`)}</p>${saved}</div><p>${tr("Would you like to leave Sophia a note?", "¿Quieres dejarle un mensaje a Sophia?")}</p><p><a class="button burgundy" href="${route("guestbook")}">${tr("Write in the guestbook", "Escribir en el libro de visitas")}</a></p>${edit}${sync}${account}`;
   const calendars = attending
@@ -280,61 +269,16 @@ function confirmation(inv, session) {
 async function showPortal() {
   if (!portal) return;
   const session = await api("session");
-  if (
-    ["gifts", "registry", "padrinos", "costs"].includes(portal.dataset.view) &&
-    (session.kind === "admin" || session.verified)
-  ) {
-    const data = await api(
-        "pages/" +
-          (portal.dataset.view === "registry" ? "gifts" : portal.dataset.view),
-      ),
-      c = data.content;
-    portal.innerHTML = `<div class="private-copy">${esc((es ? c.es : c.en) || c.en || tr("The family will add these details soon.", "La familia agregará los detalles pronto.")).replaceAll("\n", "<br>")}</div><div class="row-actions">${c.links.map((l) => `<a href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">${esc(l.label)} ↗</a>`).join("")}</div>`;
-    if (data.planning?.length) {
-      const costs = portal.dataset.view === "costs";
-      const money = (n) =>
-        n == null
-          ? "—"
-          : new Intl.NumberFormat(es ? "es-US" : "en-US", {
-              style: "currency",
-              currency: "USD",
-            }).format(n);
-      const heads = costs
-        ? [
-            tr("Item", "Concepto"),
-            tr("Vendor", "Proveedor"),
-            tr("Final Cost", "Costo Final"),
-            tr("Paid", "Pagado"),
-            tr("Due Date", "Fecha Límite"),
-          ]
-        : [
-            tr("Name", "Nombre"),
-            tr("Gift", "Regalo"),
-            tr("Contacted", "Contactado"),
-            tr("Status", "Estado"),
-          ];
-      portal.insertAdjacentHTML(
-        "beforeend",
-        `<div class="table-wrap"><table><thead><tr>${heads.map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${data.planning.map((r) => `<tr>${(costs ? [r.item, r.vendor, money(r.finalCost), money((r.deposit || 0) + (r.additionalPaid || 0)), r.dueDate] : [r.name, r.gift, r.contacted ? tr("Yes", "Sí") : tr("No", "No"), r.status]).map((v) => `<td>${esc(v)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`,
-      );
-    }
-    if (data.registries)
-      portal.insertAdjacentHTML(
-        "beforeend",
-        registryCards(data.registries, es ? "es" : "en"),
-      );
-    return;
-  }
   if (session.kind !== "guest") {
     accessForm();
     return;
   }
-  const inv = await api("invitation"),
-    view = portal.dataset.view;
-  if (["gifts", "registry", "padrinos", "costs"].includes(view)) {
-    portal.innerHTML = `<p>${tr("Verify your email and ask the family for access to this page.", "Verifica tu correo y solicita acceso a esta página a la familia.")}</p><a href="${route("account")}">${tr("My account", "Mi cuenta")}</a>`;
+  const view = portal.dataset.view;
+  if (session.scope === "rsvp" && !["rsvp", "rsvp/confirmed"].includes(view)) {
+    signInOnly();
     return;
   }
+  const inv = await api("invitation");
   if (view === "account") {
     await accountPage(inv, session);
     return;
@@ -403,6 +347,9 @@ async function publicContent() {
   }
 }
 await experienceReady;
+// An emailed link opened in a tab already on this page only changes the hash;
+// reload so the link is read like a fresh visit.
+addEventListener("hashchange", () => location.reload());
 let fragment = location.hash.slice(1);
 const microsoft =
   portal && document.body.dataset.route === "account" ? microsoftReturn() : null;
@@ -416,7 +363,6 @@ if (microsoft) {
     });
     fragment = "";
     await showPortal();
-    await permissionNavigation();
   } catch (e) {
     accessForm("", e.message);
   }
@@ -427,7 +373,6 @@ if (microsoft) {
     await api("auth/email/verify", { token: fragment });
     fragment = "";
     await showPortal();
-    await permissionNavigation();
   });
 } else if (portal && fragment && document.body.dataset.route === "rsvp") {
   history.replaceState(null, "", location.pathname);
@@ -457,19 +402,6 @@ if (microsoft) {
     portal.innerHTML = statusError(e.message);
   }
 }
-async function permissionNavigation() {
-  try {
-    const session = await api("session");
-    for (const a of document.querySelectorAll("[data-permission]"))
-      a.hidden = !(
-        session.kind === "admin" ||
-        session.permissions.includes(a.dataset.permission)
-      );
-  } catch {
-    /* Private navigation stays hidden when the API is unavailable. */
-  }
-}
-await permissionNavigation();
 await publicContent();
 
 async function gallery() {

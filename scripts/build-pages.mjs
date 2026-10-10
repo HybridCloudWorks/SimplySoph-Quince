@@ -55,9 +55,9 @@ function contents(route, lang) {
       )
       .join("")}</div><div data-announcements></div></section>`;
   const heading = `<div class="page-heading"><p class="eyebrow">SOPHIA · MIS XV</p><h1>${routes.find((r) => r[0] === route)?.[es ? 2 : 1] || "Sophia"}</h1></div>`;
-  if (["gifts", "registry"].includes(route))
+  if (route === "registry")
     return `<section class="page section">${heading}<p class="lead">${say("Your presence is the greatest gift. If you would like to celebrate with a gift, here are Sophia’s wishes.", "Tu presencia es el mejor regalo. Si deseas celebrar con un regalo, aquí están los deseos de Sophia.")}</p><div data-public-registries>${registryCards(registryDefaults, lang)}</div></section>`;
-  if (["padrinos", "costs", "account"].includes(route))
+  if (route === "account")
     return `<section class="page section">${heading}<div class="portal" id="portal" data-view="${route}"><p role="status">${t.loading}</p></div>${route === "account" ? `<p class="account-admin-link">${say("Helping run the celebration?", "¿Ayudas a organizar la celebración?")} <a href="/admin/login/">${say("Administrator sign-in", "Acceso de administradores")}</a></p>` : ""}</section>`;
   let body = "";
   if (textContent[route]) {
@@ -122,8 +122,6 @@ function contents(route, lang) {
       )
       .join("")}${single.map((p) => `<div class="pair">${person(p)}</div>`).join("")}</div>`;
   }
-  if (route === "gifts" && family.registry.length)
-    body = `<div class="cards">${family.registry.map((item) => `<a class="card" href="${safeLink(item.url)}" target="_blank" rel="noopener noreferrer">${esc(localized(item.label))} ↗</a>`).join("")}</div>`;
   // The day at a glance: church, then dinner, from the confirmed schedule.
   if (route === "travel")
     body =
@@ -180,7 +178,7 @@ function contents(route, lang) {
       '</p><div data-videos class="media-grid"></div></section>' +
       link("share", say("Share photos & videos", "Comparte fotos y videos"));
   if (route === "share")
-    body = `<div class="share-intro"><p class="lead">${say("Share the celebration through your eyes.", "Comparte la celebración desde tu mirada.")}</p><p>${say("Choose your favorite photos and videos. The family reviews every upload before sharing it in the guest gallery.", "Elige tus fotos y videos favoritos. La familia revisa cada archivo antes de compartirlo en la galería de invitados.")}</p></div><div id="media-upload" tabindex="-1"></div><div class="portal share-portal" id="portal" data-view="share"></div><aside class="media-reminder"><strong>${say("A Little Reminder", "Un Pequeño Recordatorio")}</strong><p>${say("Only share media you have permission to upload, including permission from a parent or guardian for children. Approved uploads are visible to registered guests.", "Comparte solo archivos que tengas permiso de subir, incluido el permiso de un padre o tutor para los menores. Los archivos aprobados son visibles para los invitados registrados.")} <a href="${href("terms", lang)}">${say("Read the Media Policy", "Lee la Política de Medios")}</a></p></aside>`;
+    body = `<div class="share-intro"><p class="lead">${say("Share the celebration through your eyes.", "Comparte la celebración desde tu mirada.")}</p><p>${say("Choose your favorite photos and videos. The family reviews every upload before sharing it in the guest gallery.", "Elige tus fotos y videos favoritos. La familia revisa cada archivo antes de compartirlo en la galería de invitados.")}</p></div><div id="media-upload" tabindex="-1"></div><div class="portal share-portal" id="portal" data-view="share"></div><aside class="media-reminder"><strong>${say("A little reminder", "Un pequeño recordatorio")}</strong><p>${say("Only share media you have permission to upload, including permission from a parent or guardian for children. Approved uploads are visible to signed-in guests.", "Comparte solo archivos que tengas permiso de subir, incluido el permiso de un padre o tutor para los menores. Los archivos aprobados son visibles para los invitados que inician sesión.")} <a href="${href("terms", lang)}">${say("Read the Media Policy", "Lee la Política de Medios")}</a></p></aside>`;
   if (route === "guestbook" || route === "contact")
     body = `<p class="lead">${route === "guestbook" ? say("Leave Sophia a wish for the years ahead.", "Deja a Sophia un deseo para los años que vienen.") : say("We’re here to help with your invitation.", "Estamos aquí para ayudarte con tu invitación.")}</p>${route === "contact" ? `<p><a href="mailto:${event.sender}">${event.sender}</a></p>` : ""}<div class="portal" id="portal" data-view="${route}"></div>${route === "guestbook" ? '<div data-guestbook class="cards"></div>' : ""}`;
   if (route === "faq")
@@ -225,8 +223,8 @@ function contents(route, lang) {
         [
           say("Can I change my response?", "¿Puedo cambiar mi respuesta?"),
           say(
-            "Registered guests can request a one-time email sign-in link from My account and edit before the deadline. Your most recent saved response is the one counted.",
-            "Los invitados registrados pueden solicitar un enlace de acceso por correo desde Mi cuenta y editar antes de la fecha límite. Se contará la última respuesta guardada.",
+            "Open your invitation link again, or sign in with your email from My account, and edit before the deadline. Your most recent saved response is the one counted.",
+            "Abre de nuevo tu enlace de invitación, o inicia sesión con tu correo desde Mi cuenta, y edita antes de la fecha límite. Se contará la última respuesta guardada.",
           ),
         ],
         [
@@ -236,15 +234,15 @@ function contents(route, lang) {
         [
           say("Are gifts required?", "¿Se requieren regalos?"),
           say(
-            "The family will share gift preferences on the Gifts page.",
-            "La familia compartirá sus preferencias en la página de regalos.",
+            "Your presence is the greatest gift. If you would like to bring one, Sophia’s wishes are on the Registry page.",
+            "Tu presencia es el mejor regalo. Si deseas traer uno, los deseos de Sophia están en la página de registro de regalos.",
           ),
         ],
         [
           say("Can I share photos?", "¿Puedo compartir fotos?"),
           say(
-            "Use Share photos and agree to the photo terms. Only approved photos and videos appear to registered guests.",
-            "Usa Comparte tus fotos y acepta las condiciones. Solo los invitados registrados pueden ver archivos aprobados.",
+            "Use Share photos and agree to the photo terms. Only approved photos and videos appear to signed-in guests.",
+            "Usa Comparte tus fotos y acepta las condiciones. Solo los invitados que inician sesión pueden ver archivos aprobados.",
           ),
         ],
       ]
@@ -302,7 +300,7 @@ function contents(route, lang) {
       "</h2><p>" +
       say(
         "Downloads made available to signed-in guests are permitted for personal event keepsakes. Other uses require written permission. Get permission from recognizable people and a parent or guardian for children before uploading. Contact the family to request removal.",
-        "Las descargas disponibles para invitados registrados se permiten como recuerdos personales del evento. Otros usos requieren permiso por escrito. Antes de subir contenido, pide permiso a las personas reconocibles y a un padre o tutor para menores. Contacta a la familia para solicitar su retirada.",
+        "Las descargas disponibles para invitados que inician sesión se permiten como recuerdos personales del evento. Otros usos requieren permiso por escrito. Antes de subir contenido, pide permiso a las personas reconocibles y a un padre o tutor para menores. Contacta a la familia para solicitar su retirada.",
       ) +
       '</p><a href="' +
       href("contact", lang) +
@@ -336,7 +334,7 @@ function navigation(lang, current) {
   ]
     .map(
       ([name, items]) =>
-        `<details class="nav-group"><summary>${name}</summary><div>${items.map((r) => `<a href="${href(r, lang)}"${["padrinos"].includes(r) ? ` data-permission="${r === "registry" ? "gifts" : r}" hidden` : ""}${r === current ? ' aria-current="page"' : ""}>${label(r)}</a>`).join("")}</div></details>`,
+        `<details class="nav-group"><summary>${name}</summary><div>${items.map((r) => `<a href="${href(r, lang)}"${r === current ? ' aria-current="page"' : ""}>${label(r)}</a>`).join("")}</div></details>`,
     )
     .join(
       "",
