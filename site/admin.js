@@ -10,7 +10,7 @@ import {
   startMicrosoft,
   microsoftReturn,
   finishMicrosoft,
-  microsoftButton,
+  ssoRow,
   googleButton,
 } from "./sso.js";
 const root = document.querySelector("#admin-app"),
@@ -93,18 +93,23 @@ async function login() {
   const microsoft = microsoftReturn();
   if (microsoft) {
     root.innerHTML =
-      '<p>Finishing Microsoft sign-in…</p><p><a href="/admin/login/">Start over</a></p><div id="mfa"></div>';
-    await run(async () => {
+      '<p id="sso-progress" role="status">Finishing Microsoft sign-in…</p><p><a href="/admin/login/">Start over</a></p><div id="mfa"></div>';
+    const progress = root.querySelector("#sso-progress");
+    try {
       const cfg = await api("config"),
         data = await api(
           "auth/microsoft",
           await finishMicrosoft(cfg.microsoftClientId, "admin", microsoft),
         );
       if (data.signedIn) return location.assign("/admin/");
-      root.querySelector("p").textContent =
-        "Microsoft did not confirm a second sign-in step for this account. Enter your authenticator code.";
+      progress.textContent = "Microsoft confirmed your account.";
       showMfa(data);
-    });
+    } catch (e) {
+      // Say why on the page itself, next to "Start over".
+      progress.className = "notice";
+      progress.setAttribute("role", "alert");
+      progress.textContent = e.message;
+    }
     return;
   }
   const fragment = location.hash.slice(1);
@@ -122,7 +127,15 @@ async function login() {
     return;
   }
   const cfg = await api("config");
-  root.innerHTML = `<form id="admin-email-login" class="card"><h2>Sign In By Email</h2><p>Enter your approved email. Follow the one-time link, then enter your authenticator code.</p>${field("Email", "email", { type: "email", required: true, max: 254 })}<p id="admin-email-result" role="status"></p>${formEnd("Email My Sign-In Link")}${cfg.microsoftClientId ? `<p>Or use your Microsoft account. If Microsoft confirms your second sign-in step, you won’t need the authenticator code.</p>${microsoftButton("Sign in with Microsoft")}` : ""}${cfg.clientId ? '<p>Or use your authorized Google account, followed by your authenticator.</p><div id="google-signin"></div>' : ""}<div id="mfa"></div>`;
+  root.innerHTML = `<form id="admin-email-login" class="card"><h2>Sign In By Email</h2><p>Enter your approved email. Follow the one-time link, then enter your authenticator code.</p>${field("Email", "email", { type: "email", required: true, max: 254 })}<p id="admin-email-result" role="status"></p>${formEnd("Email My Sign-In Link")}${
+    cfg.microsoftClientId || cfg.clientId
+      ? `<section class="sso-choices"><h2>Or sign in with</h2>${ssoRow({
+          microsoft: cfg.microsoftClientId && "Sign in with Microsoft",
+          google: !!cfg.clientId,
+          note: "Then enter your authenticator code. Google sign-in is for the site owner. After you sign in once with Microsoft and the code, Microsoft can skip the code when it confirms your two-step sign-in.",
+        })}</section>`
+      : ""
+  }<div id="mfa"></div>`;
   submit(document.querySelector("#admin-email-login"), async (f) => {
     await api("auth/admin-email/request", { email: f.get("email") });
     document.querySelector("#admin-email-result").textContent =
@@ -134,7 +147,7 @@ async function login() {
       run(() => startMicrosoft(cfg.microsoftClientId, "admin"));
   if (!cfg.clientId) return;
   googleButton(
-    document.querySelector("#google-signin"),
+    root.querySelector('[data-sso="google"]'),
     cfg.clientId,
     "admin",
     (credential, ticket) =>
@@ -142,9 +155,13 @@ async function login() {
     notify,
   );
 }
+// The last step of every admin sign-in. It is brought into view and focused:
+// after Google or Microsoft it appears below the buttons and was easy to miss.
 function showMfa(data) {
-  document.querySelector("#mfa").innerHTML =
-    `<form id="mfa-form">${data.enrollmentSecret ? `<p class="notice">Add a time-based SimplySoph account in your authenticator using this private setup key:</p><code class="break">${esc(data.enrollmentSecret)}</code>` : ""}${field("Authenticator code", "code", { required: true, max: 6 })}${formEnd("Verify and sign in")}`;
+  const box = document.querySelector("#mfa");
+  box.innerHTML = `<form id="mfa-form" class="card"><h2>Enter your authenticator code</h2><p>${data.enrollmentSecret ? "First time: add a time-based SimplySoph account in your authenticator app with this private setup key, then enter the 6-digit code it shows." : "Open your authenticator app and enter the 6-digit SimplySoph code to finish signing in."}</p>${data.enrollmentSecret ? `<code class="break">${esc(data.enrollmentSecret)}</code>` : ""}${field("Authenticator code", "code", { required: true, max: 6, autocomplete: "one-time-code" })}${formEnd("Verify and sign in")}`;
+  box.scrollIntoView({ behavior: "smooth", block: "center" });
+  box.querySelector('[name="code"]').focus({ preventScroll: true });
   submit(document.querySelector("#mfa-form"), async (f) => {
     await api("auth/mfa", { challenge: data.challenge, code: f.get("code") });
     location.assign("/admin/");

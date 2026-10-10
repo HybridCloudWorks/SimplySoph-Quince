@@ -12,7 +12,7 @@ import {
   startMicrosoft,
   microsoftReturn,
   finishMicrosoft,
-  microsoftButton,
+  ssoRow,
   googleButton,
 } from "./sso.js";
 const portal = document.querySelector("#portal");
@@ -61,7 +61,16 @@ async function ssoChoices() {
   if (!cfg.microsoftClientId && !cfg.clientId) return;
   portal.insertAdjacentHTML(
     "beforeend",
-    `<div class="sso-choices"><p>${tr("Or sign in with the Microsoft or Google account that uses your registered email:", "O entra con la cuenta de Microsoft o Google que usa tu correo registrado:")}</p>${cfg.microsoftClientId ? microsoftButton(tr("Sign in with Microsoft", "Entrar con Microsoft")) : ""}${cfg.clientId ? '<div id="google-guest"></div>' : ""}</div>`,
+    `<div class="sso-choices"><h2>${tr("Or sign in with", "O entra con")}</h2>${ssoRow({
+      microsoft:
+        cfg.microsoftClientId &&
+        tr("Sign in with Microsoft", "Iniciar sesión con Microsoft"),
+      google: !!cfg.clientId,
+      note: tr(
+        "Use the Microsoft or Google account with the email you registered. No code or password needed.",
+        "Usa la cuenta de Microsoft o Google con el correo que registraste. No necesitas código ni contraseña.",
+      ),
+    })}</div>`,
   );
   const ms = portal.querySelector('[data-sso="microsoft"]');
   if (ms)
@@ -71,7 +80,7 @@ async function ssoChoices() {
       );
   if (cfg.clientId)
     googleButton(
-      portal.querySelector("#google-guest"),
+      portal.querySelector('[data-sso="google"]'),
       cfg.clientId,
       "guest",
       async (credential, ticket) => {

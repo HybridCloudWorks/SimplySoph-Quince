@@ -100,16 +100,24 @@ export async function finishMicrosoft(clientId, purpose, params) {
   if (!data.id_token) throw again();
   return { credential: data.id_token, ticket: saved.ticket };
 }
+// Both buttons share one width so they line up side by side.
+const WIDTH = 260;
 export function microsoftButton(label) {
-  return `<button type="button" class="button sso-button" data-sso="microsoft"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 21 21"><path fill="#f25022" d="M1 1h9v9H1z"/><path fill="#7fba00" d="M11 1h9v9h-9z"/><path fill="#00a4ef" d="M1 11h9v9H1z"/><path fill="#ffb900" d="M11 11h9v9h-9z"/></svg>${label}</button>`;
+  return `<button type="button" class="button sso-button" data-sso="microsoft"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 21 21"><path fill="#f25022" d="M1 1h9v9H1z"/><path fill="#7fba00" d="M11 1h9v9h-9z"/><path fill="#00a4ef" d="M1 11h9v9H1z"/><path fill="#ffb900" d="M11 11h9v9h-9z"/></svg><span class="sso-label">${label}</span></button>`;
+}
+// Microsoft and Google on one line, with one note under both.
+export function ssoRow({ microsoft, google, note }) {
+  return `<div class="sso-row">${microsoft ? microsoftButton(microsoft) : ""}${google ? '<div class="sso-google" data-sso="google"></div>' : ""}</div>${note ? `<p class="sso-note">${note}</p>` : ""}`;
 }
 // Google's own button. Like Microsoft, it carries the nonce of a one-time,
 // purpose-bound ticket, so the ID token only works once and only here. The
-// callback receives the ID token and that ticket.
+// button re-arms with a fresh ticket after every use and before the 10-minute
+// ticket expires, so a second click (or a slow one) still works. The callback
+// receives the ID token and the ticket it was issued under.
 export function googleButton(target, clientId, purpose, onCredential, onError) {
-  const script = document.createElement("script");
-  script.src = "https://accounts.google.com/gsi/client";
-  script.onload = async () => {
+  let timer = null;
+  async function arm() {
+    clearTimeout(timer);
     let issued;
     try {
       issued = await api("auth/sso/start", { purpose });
@@ -119,14 +127,24 @@ export function googleButton(target, clientId, purpose, onCredential, onError) {
     google.accounts.id.initialize({
       client_id: clientId,
       nonce: issued.nonce,
-      callback: (result) => onCredential(result.credential, issued.ticket),
+      callback: (result) => {
+        arm();
+        onCredential(result.credential, issued.ticket);
+      },
     });
     google.accounts.id.renderButton(target, {
       theme: "outline",
       size: "large",
+      text: "signin_with",
+      shape: "rectangular",
+      width: WIDTH,
       locale: es ? "es" : "en",
     });
-  };
+    timer = setTimeout(arm, 8 * 60000);
+  }
+  const script = document.createElement("script");
+  script.src = "https://accounts.google.com/gsi/client";
+  script.onload = arm;
   script.onerror = () =>
     onError(
       tr(
