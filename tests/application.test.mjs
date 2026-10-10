@@ -1863,3 +1863,37 @@ test("the event log records the invitation lifecycle in order without contact de
   const text = JSON.stringify(log);
   assert.ok(!text.includes("test@example.com"), "no email addresses in events");
 });
+
+test("the Notion invitation status follows the dashboard status and backs off after a failure", async () => {
+  const projected = [];
+  let notionDown = false;
+  const f = await fixture({
+    verifyScheduler: async () => true,
+    notion: {
+      async projectInvitation(id, p) {
+        if (notionDown) throw { code: "NOTION_UNAVAILABLE" };
+        projected.push([id, p.status, p.invited]);
+      },
+    },
+  });
+  const drain = () =>
+    f.app.dispatch({ path: "/api/internal/drain", method: "POST", headers: { authorization: "Bearer x" }, body: {} });
+  // Issuing projects at once, with a copy of the invited events.
+  await f.admin("invitation", { id: household, invited: { ceremony: true, dinner: true, dance: false } });
+  assert.deepEqual(projected.at(-1), [household, "Issued", { ceremony: true, dinner: true, dance: false }]);
+  // Opening the link and answering are caught up by the scheduled drain.
+  const { id } = await f.admin("mail/draft", { id: household, type: "invitation" });
+  await f.admin("mail/send", { id, confirm: true });
+  assert.deepEqual((await drain()).invitations, { attempted: 1, failed: 0 });
+  assert.equal(projected.at(-1)[1], "Emailed");
+  assert.deepEqual((await drain()).invitations, { attempted: 0, failed: 0 }, "nothing new, nothing written");
+  // A Notion failure is retried only after the backoff, never in a tight loop.
+  notionDown = true;
+  await f.admin("revoke", { id: household });
+  assert.equal(projected.at(-1)[1], "Emailed");
+  assert.deepEqual((await drain()).invitations, { attempted: 0, failed: 0 });
+  notionDown = false;
+  f.advance(60 * 60 * 1000 + 1);
+  assert.deepEqual((await drain()).invitations, { attempted: 1, failed: 0 });
+  assert.equal(projected.at(-1)[1], "Revoked");
+});

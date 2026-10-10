@@ -311,6 +311,82 @@ export function createApplication({
     );
     return { status: sent ? "sent" : "issued" };
   }
+  // What the read-only "Website invitation" and "Invited …" Notion columns
+  // should show for a household: the same derived status as the dashboard.
+  const notionStatusNames = {
+    issued: "Issued",
+    sent: "Emailed",
+    opened: "Opened",
+    attending: "Attending",
+    declined: "Declined",
+    revoked: "Revoked",
+  };
+  function invitationProjection(s, id) {
+    const st = householdStatus(s, id),
+      status = notionStatusNames[st.status];
+    if (!status) return null;
+    const invited = s.invitations[id].invited || {};
+    return {
+      status,
+      invited: {
+        ceremony: invited.ceremony === true,
+        dinner: invited.dinner === true,
+        dance: invited.dance === true,
+      },
+      at: st.respondedAt || (st.openedAt && new Date(st.openedAt).toISOString()) || null,
+    };
+  }
+  const projectionKey = (p) => JSON.stringify([p.status, p.invited]);
+  // A failed projection (Notion outage, column not created yet) waits an hour
+  // before the next attempt, so a missing column never becomes a retry storm.
+  const PROJECTION_BACKOFF_MS = 60 * 60 * 1000;
+  function invitationNeedsProjection(s, id) {
+    const want = invitationProjection(s, id),
+      last = s.invitations[id]?.notionInvitation;
+    if (!want || last?.key === projectionKey(want)) return false;
+    return !(last?.failedAt && now() - last.failedAt < PROJECTION_BACKOFF_MS);
+  }
+  async function projectInvitationStatus(id) {
+    const want = invitationProjection(await ledger.read(), id);
+    if (!want) return "skipped";
+    const key = projectionKey(want);
+    let failure = null;
+    try {
+      await notion.projectInvitation(id, want);
+    } catch (e) {
+      failure = e?.code || "NOTION_UNAVAILABLE";
+    }
+    await ledger.transaction((s) => {
+      const invite = s.invitations[id];
+      if (!invite) return;
+      if (failure)
+        invite.notionInvitation = {
+          ...invite.notionInvitation,
+          failedAt: now(),
+          error: failure,
+        };
+      // Only mark what was actually written; a newer change stays pending.
+      else invite.notionInvitation = { key, at: now() };
+    });
+    return failure ? "failed" : "projected";
+  }
+  async function projectPendingInvitations(limit = 25) {
+    const s = await ledger.read();
+    const ids = Object.keys(s.invitations)
+      .filter((id) => invitationNeedsProjection(s, id))
+      .slice(0, limit);
+    let failed = 0;
+    for (const id of ids)
+      if ((await projectInvitationStatus(id)) === "failed") failed++;
+    return { attempted: ids.length, failed };
+  }
+  // Admin actions update Notion right away when they can; on failure the
+  // scheduled drain (or the admin sync button) catches up later.
+  async function projectInvitationSoon(id) {
+    try {
+      await projectInvitationStatus(id);
+    } catch {}
+  }
   async function context(req) {
     const raw = (req.headers?.cookie || "")
       .split(";")
@@ -587,6 +663,7 @@ export function createApplication({
   async function drainPending() {
     const steps = {
       rsvp: retryPendingRsvps,
+      invitations: () => projectPendingInvitations(),
       sms: () => sms.retrySync(),
       whatsapp: () => whatsapp.retrySync(),
     };
@@ -1814,7 +1891,7 @@ export function createApplication({
           throw error(422, "EVENTS_REQUIRED");
         const value = token(),
           code = invitationCode();
-        return ledger.transaction((s) => {
+        const issued = await ledger.transaction((s) => {
           const previous = s.invitations[row.id];
           s.invitations[row.id] = {
             ...previous,
@@ -1838,9 +1915,11 @@ export function createApplication({
           });
           return { link, code: code.match(/.{4}/g).join("-"), id: row.id };
         });
+        await projectInvitationSoon(row.id);
+        return issued;
       }
       if (path === "/api/admin/revoke" && method === "POST") {
-        return ledger.transaction((s) => {
+        const revoked = await ledger.transaction((s) => {
           if (!s.invitations[body.id]) throw error(404, "NOT_FOUND");
           s.invitations[body.id].active = false;
           audit(s, session.actor, "invitation-revoked", body.id, now());
@@ -1850,6 +1929,8 @@ export function createApplication({
           });
           return { revoked: true };
         });
+        await projectInvitationSoon(body.id);
+        return revoked;
       }
       if (path === "/api/admin/import" && method === "POST") {
         // Creates Notion rows in bulk: owners only.
@@ -1906,7 +1987,10 @@ export function createApplication({
         return { added: await notion.prepareSchema() };
       }
       if (path === "/api/admin/sync" && method === "POST")
-        return retryPendingRsvps();
+        return {
+          ...(await retryPendingRsvps()),
+          invitations: await projectPendingInvitations(10),
+        };
       if (path === "/api/admin/moderation" && method === "GET")
         return {
           messages: Object.values(ctx.state.messages),

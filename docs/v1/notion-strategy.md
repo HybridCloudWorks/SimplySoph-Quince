@@ -43,8 +43,8 @@ Rule: **`Website …` columns are written only by the app.** A drift report flag
 | 2 | 30–60 s roster cache for `list()`/`read()`; always fresh on RSVP submit and invitation exchange | `server/notion.mjs` | P0 |
 | 3 | Startup and dashboard schema assertion: source columns exist with the right types; read by property ID with name fallback | `server/notion.mjs`, `notion-schema.mjs` | P1 |
 | 4 | Cloud Scheduler (OIDC) → internal route every 10 min to drain pending projections in bounded batches | new route, `application.mjs` | P1 |
-| 5 | Move invited events to Notion checkboxes (one-time copy, then read from Notion) | `application.mjs`, `notion.mjs` | P1 |
-| 6 | `Website invitation` status column written on issue, send and revoke | `notion.mjs` | P1 |
+| 5 | Move invited events to Notion checkboxes (one-time copy, then read from Notion) | `application.mjs`, `notion.mjs` | P1: **copy done** (the website writes `Invited …` on every status change). Reading them back as the source of truth needs a family decision: an accidental untick would change what a household may RSVP for, so it should come with a guard (never remove an event a household already answered) |
+| 6 | `Website invitation` status column written on issue, send and revoke | `notion.mjs` | **Done:** projects the dashboard status (Issued / Emailed / Opened / Attending / Declined / Revoked) with its date |
 | 7 | Drift report: compare Notion `Website response ID`/version with the ledger and re-project | new admin view | P2 |
 | 8 | Planning read from Notion; remove the website write-back | `planning*.mjs` | P2 |
 | 9 | Remove guest CSV import (Notion has its own) or add a stable import ID | `application.mjs` | P2 |

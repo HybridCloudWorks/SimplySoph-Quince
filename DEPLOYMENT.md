@@ -177,6 +177,10 @@ Record date, tester and evidence for each item in the inventory. Status as of th
   - Approved media is only visible to registered guests. Rejection removes access immediately.
 - **Documents.** Stored under `private/documents/`, admin only, 8 MB limit. Delete marks them as trash; it does not purge.
 
+## Notion invitation status
+
+The website writes four read-only columns on each invitation row: `Website invitation` (Issued, Emailed, Opened, Attending, Declined or Revoked; the same status the admin dashboard shows), `Website invitation at`, and `Invited Ceremony`/`Invited Dinner`/`Invited Dance` (a copy of the events chosen when the link was issued). After deploying, an owner presses **Prepare RSVP columns in Notion** once to add them. Issue and revoke update Notion immediately; emails, link opens and RSVPs are caught up by the scheduled drain or **Retry pending Notion updates**. A failed write waits an hour before it is retried. Editing these columns in Notion has no effect on the website.
+
 ## Notion planning sync
 
 Budget and Godparents edits made on the website are saved to the ledger as `pending`, then patched into the linked Notion row (changed fields only). New rows use a stable `Website Record ID`, and an ambiguous create is looked up, never repeated. A five-minute durable lock serializes writes to each row. Direct Notion edits do **not** flow back to the website. The recommended v1.0 ownership model is in [docs/v1/notion-strategy.md](docs/v1/notion-strategy.md).

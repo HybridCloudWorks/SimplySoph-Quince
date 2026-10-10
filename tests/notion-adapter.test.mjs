@@ -225,3 +225,33 @@ test("429 is retried for any request; 5xx is never retried for page creates", as
   );
   assert.equal(paused.calls.length, 1);
 });
+test("invitation projection writes only the website-owned status and invited-event columns", async () => {
+  const requests = [];
+  const client = notionClient({
+    token: "fixture-secret",
+    sourceId: "source",
+    fetchImpl: async (url, options) => {
+      requests.push({ url, options });
+      return new Response(
+        JSON.stringify(options.method === "GET" ? { ...page("1"), parent: { data_source_id: "source" } } : {}),
+        { status: 200 },
+      );
+    },
+  });
+  await client.projectInvitation(page("1").id, {
+    status: "Opened",
+    at: "2026-10-10T12:00:00.000Z",
+    invited: { ceremony: true, dinner: true, dance: false },
+  });
+  const patch = requests.at(-1);
+  assert.equal(patch.options.method, "PATCH");
+  assert.deepEqual(JSON.parse(patch.options.body).properties, {
+    "Website invitation": { select: { name: "Opened" } },
+    "Website invitation at": { date: { start: "2026-10-10T12:00:00.000Z" } },
+    "Invited Ceremony": { checkbox: true },
+    "Invited Dinner": { checkbox: true },
+    "Invited Dance": { checkbox: false },
+  });
+  await client.projectInvitation(page("1").id, { status: "Issued", at: null, invited: {} });
+  assert.equal(JSON.parse(requests.at(-1).options.body).properties["Website invitation at"].date, null);
+});

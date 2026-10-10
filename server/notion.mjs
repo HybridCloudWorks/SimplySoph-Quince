@@ -84,6 +84,25 @@ export const projectionSchema = {
   "Website address": { rich_text: {} },
   "Website requests": { rich_text: {} },
   "Website account": { rich_text: {} },
+  // Written only by the website (plan item 17). The invited events are a copy
+  // of what the organizer chose when issuing the link; the ledger stays the
+  // authority until the family decides to edit them in Notion instead.
+  "Invited Ceremony": { checkbox: {} },
+  "Invited Dinner": { checkbox: {} },
+  "Invited Dance": { checkbox: {} },
+  "Website invitation": {
+    select: {
+      options: [
+        { name: "Issued", color: "gray" },
+        { name: "Emailed", color: "blue" },
+        { name: "Opened", color: "yellow" },
+        { name: "Attending", color: "green" },
+        { name: "Declined", color: "red" },
+        { name: "Revoked", color: "brown" },
+      ],
+    },
+  },
+  "Website invitation at": { date: {} },
 };
 // 429 means Notion did nothing, so every request may retry it. Other transient
 // failures retry only for reads, queries and idempotent PATCHes: a retried page
@@ -386,6 +405,18 @@ export function notionClient({
               ? [{ text: { content: contact.address } }]
               : [],
           },
+        },
+      });
+    },
+    async projectInvitation(id, { status, at, invited }) {
+      await this.read(id);
+      await call("pages/" + id, "PATCH", {
+        properties: {
+          "Website invitation": { select: { name: status } },
+          "Website invitation at": { date: at ? { start: at } : null },
+          "Invited Ceremony": { checkbox: invited?.ceremony === true },
+          "Invited Dinner": { checkbox: invited?.dinner === true },
+          "Invited Dance": { checkbox: invited?.dance === true },
         },
       });
     },

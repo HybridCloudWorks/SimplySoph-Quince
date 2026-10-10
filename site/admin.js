@@ -633,7 +633,7 @@ root.addEventListener("click", (e) => {
     }
     if (action === "schema") {
       await api("admin/schema", {});
-      notify("Website RSVP columns are ready. Existing fields were preserved.");
+      notify("Website columns are ready: RSVP, invitation status and invited events. Existing fields were preserved.");
     }
     if (action === "approve" || action === "reject") {
       await api("admin/moderation", {
