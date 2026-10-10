@@ -1,4 +1,5 @@
 import { Storage } from "@google-cloud/storage";
+import { eventsSince } from "./event-log.mjs";
 export const initialState = () => ({
   version: 1,
   invitations: {},
@@ -41,6 +42,8 @@ export class Ledger {
       timeoutMs = 5000,
       // Concurrency 4 keeps the queue short; a deep queue means storage is stuck.
       maxQueue = 32,
+      // Receives the event-log entries a transaction committed (never on retry).
+      onEvents = null,
     } = {},
   ) {
     this.adapter = adapter;
@@ -48,6 +51,7 @@ export class Ledger {
     this.random = random;
     this.timeoutMs = timeoutMs;
     this.maxQueue = maxQueue;
+    this.onEvents = onEvents;
     this.queue = Promise.resolve();
     this.depth = 0;
   }
@@ -87,6 +91,7 @@ export class Ledger {
         throw e;
       }
       const { state, generation } = loaded;
+      const startSeq = state.eventSeq || 0;
       const result = await fn(state);
       try {
         // A timed-out save is NOT retried: it may still land, and re-running the
@@ -96,6 +101,12 @@ export class Ledger {
           this.timeoutMs,
           "Ledger save",
         );
+        if (this.onEvents && (state.eventSeq || 0) > startSeq)
+          try {
+            this.onEvents(eventsSince(state, startSeq));
+          } catch {
+            // Logging must never turn a committed write into a reported failure.
+          }
         return result;
       } catch (e) {
         if (!(e instanceof Conflict)) throw e;

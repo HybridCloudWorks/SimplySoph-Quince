@@ -1,3 +1,4 @@
+import { logEvent } from "./event-log.mjs";
 import { parsePhoneNumberFromString } from "libphonenumber-js/max";
 import { randomUUID } from "node:crypto";
 import { error, hash, seal, unseal, token } from "./auth.mjs";
@@ -215,6 +216,11 @@ export function createWhatsapp({
           syncState: "pending",
         };
         s.whatsappSuppression[hash(phone)] = { phone };
+        logEvent(s, now(), "consent.revoked", {
+          actor: "guest",
+          householdId: id,
+          data: { channel: "whatsapp", phoneHash: hash(phone), via: "website" },
+        });
       }
     });
     if (!input.consent) await sync(phone);
@@ -372,6 +378,12 @@ export function createWhatsapp({
       d.state = "sending";
       d.actor = actor;
       d.attemptedAt = now();
+      logEvent(s, now(), "delivery.claimed", {
+        actor,
+        householdId: d.householdId,
+        deliveryId: id,
+        data: { channel: "whatsapp" },
+      });
       return structuredClone(d);
     });
     try {
@@ -380,9 +392,14 @@ export function createWhatsapp({
         contentSid: job.contentSid,
         variables: JSON.parse(unseal(job.variables, key)),
       });
-      await ledger.transaction((s) =>
-        Object.assign(s.whatsappDrafts[id], result, { acceptedAt: now() }),
-      );
+      await ledger.transaction((s) => {
+        Object.assign(s.whatsappDrafts[id], result, { acceptedAt: now() });
+        logEvent(s, now(), "delivery.accepted", {
+          householdId: s.whatsappDrafts[id].householdId,
+          deliveryId: id,
+          data: { channel: "whatsapp" },
+        });
+      });
       return result;
     } catch (e) {
       const code =
@@ -393,6 +410,11 @@ export function createWhatsapp({
         s.whatsappDrafts[id].state =
           code === "WHATSAPP_REJECTED" ? "rejected" : "unknown";
         s.whatsappDrafts[id].error = code;
+        logEvent(s, now(), "delivery." + s.whatsappDrafts[id].state, {
+          householdId: s.whatsappDrafts[id].householdId,
+          deliveryId: id,
+          data: { channel: "whatsapp", error: code },
+        });
       });
       throw error(503, code);
     }
@@ -441,6 +463,10 @@ export function createWhatsapp({
           syncState: "pending",
         };
         s.whatsappSuppression[h] = { phone };
+        logEvent(s, at, stop ? "consent.revoked" : "consent.granted", {
+          actor: "guest",
+          data: { channel: "whatsapp", phoneHash: h, via: "keyword" },
+        });
       });
       if (stop || start) await sync(phone);
       if (stop)
@@ -490,6 +516,11 @@ export function createWhatsapp({
         status: params.MessageStatus,
         at: now(),
       };
+      logEvent(s, now(), "delivery." + params.MessageStatus, {
+        householdId: d?.householdId,
+        deliveryId: d?.id,
+        data: { channel: "whatsapp", providerId: params.MessageSid },
+      });
     });
     return xml();
   }

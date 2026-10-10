@@ -6,6 +6,7 @@ import { createPlanning } from "./planning.mjs";
 import { createAdminEmail } from "./admin-email.mjs";
 import { createNotifications } from "./notifications.mjs";
 import { createMailBatches } from "./mail-batches.mjs";
+import { logEvent } from "./event-log.mjs";
 import { normalizeVideo, mediaResponse } from "./video.mjs";
 import { calendar, contactTopics, escapeHtml } from "../site/celebration.mjs";
 import { siteSettings, validateSettings } from "./site-settings.mjs";
@@ -148,6 +149,7 @@ export function createApplication({
   function roleEvent(s, actor, target, change) {
     s.roleEvents ??= [];
     s.roleEvents.push({ actor, target, change, at: new Date(now()).toISOString() });
+    logEvent(s, now(), "role." + change, { actor, data: { target } });
   }
   // A current code from the signed-in owner's own authenticator, for changes
   // that hand out administrator access.
@@ -339,6 +341,14 @@ export function createApplication({
       row.syncState = "synced";
       row.syncError = null;
     }
+    logEvent(
+      s,
+      now(),
+      row.syncState === "synced" ? "notion.synced" : "notion.sync_pending",
+      failure
+        ? { householdId, data: { error: failure.code || String(failure) } }
+        : { householdId },
+    );
     return row.syncState;
   }
   async function syncOne(householdId) {
@@ -380,6 +390,11 @@ export function createApplication({
       throw error(409, "MAIL_DRAFT_STALE");
     j.state = "sending";
     j.attemptAt = now();
+    logEvent(s, now(), "delivery.claimed", {
+      householdId: j.householdId,
+      deliveryId: id,
+      data: { channel: "email", type: j.type },
+    });
     return structuredClone(j);
   }
   async function sendMail(job) {
@@ -402,6 +417,13 @@ export function createApplication({
     s.outbox[id].error = outcome.code;
     s.outbox[id].provider = outcome.provider;
     s.outbox[id].finishedAt = now();
+    logEvent(s, now(), "delivery." + outcome.state, {
+      householdId: s.outbox[id].householdId,
+      deliveryId: id,
+      data: outcome.code
+        ? { channel: "email", error: outcome.code }
+        : { channel: "email" },
+    });
   }
   async function dispatchMail(id) {
     if (!mailer.configured) throw error(503, "MAIL_NOT_CONFIGURED");
@@ -730,7 +752,13 @@ export function createApplication({
           throw error(401, "INVALID_INVITATION");
         const registered = !!accounts.accountFor(s, row.id);
         if (registered && viaCode) throw error(409, "EMAIL_SIGN_IN_REQUIRED");
-        r.openedAt ??= now();
+        if (!r.openedAt) {
+          r.openedAt = now();
+          logEvent(s, now(), "invitation.opened", {
+            householdId: row.id,
+            data: { via: viaCode ? "code" : "link" },
+          });
+        }
         s.profiles ??= {};
         s.profiles[row.id] ??= {
           id: row.id,
@@ -1088,6 +1116,12 @@ export function createApplication({
           read: false,
           emailState: "none",
         };
+        logEvent(
+          s,
+          now(),
+          response.previousSubmissionId ? "rsvp.updated" : "rsvp.submitted",
+          { actor: "guest", householdId: row.id, data: { responseId: id, people } },
+        );
         return claim(s, response);
       });
       // Provider calls run outside the ledger transaction; a crash here leaves
@@ -1624,6 +1658,11 @@ export function createApplication({
           const link =
             origin + (body.locale === "es" ? "/es" : "") + "/rsvp/#" + value;
           audit(s, session.actor, "invitation-issued", row.id, now());
+          logEvent(s, now(), "invitation.issued", {
+            actor: session.actor,
+            householdId: row.id,
+            data: { generation: s.invitations[row.id].generation },
+          });
           return { link, code: code.match(/.{4}/g).join("-"), id: row.id };
         });
       }
@@ -1632,6 +1671,10 @@ export function createApplication({
           if (!s.invitations[body.id]) throw error(404, "NOT_FOUND");
           s.invitations[body.id].active = false;
           audit(s, session.actor, "invitation-revoked", body.id, now());
+          logEvent(s, now(), "invitation.revoked", {
+            actor: session.actor,
+            householdId: body.id,
+          });
           return { revoked: true };
         });
       }
