@@ -1,4 +1,27 @@
 import { api, esc, field, submit, notify } from "./client.js";
+// The approved pages with the idea-book example text, served only to signed-in
+// administrators by /api/admin/preview. Guests keep seeing the current pages.
+const previewPages = [
+  ["sophia", "Meet Sophia", "Conoce a Sophia"],
+  ["court", "Court of honor", "Corte de honor"],
+  ["padrinos", "Padrinos", "Padrinos"],
+  ["travel", "Travel & stay", "Viaje y hospedaje"],
+  ["faq", "Good to know", "Lo que debes saber"],
+  ["gallery", "The moments", "Los momentos"],
+  ["thank-you", "Thank you", "Gracias"],
+];
+const previewCard = () =>
+  `<section class="card preview-links"><h2>Preview the approved pages</h2><p>These open the approved layouts filled with the example text from the idea book. Only administrators can open them. Guests keep seeing each page’s current text until the family sends the real details.</p>${["en", "es"]
+    .map(
+      (lang) =>
+        `<p><strong>${lang === "en" ? "English" : "Español"}:</strong> ${previewPages
+          .map(
+            ([page, en, es]) =>
+              `<a href="/api/admin/preview?page=${page}&amp;lang=${lang}" target="_blank" rel="noopener">${esc(lang === "en" ? en : es)}</a>`,
+          )
+          .join(" · ")}</p>`,
+    )
+    .join("")}</section>`;
 export async function websiteEditor(root) {
   const { site } = await api("admin/site");
   function render() {
@@ -12,7 +35,7 @@ export async function websiteEditor(root) {
       field("End · leave blank until confirmed", key + ".end", {
         value: value.end || "",
       });
-    root.innerHTML = `<p>Changes appear on the website and update its calendar downloads together. Use ISO times with an explicit offset, for example <code>2027-01-15T16:00:00-06:00</code> (Central Standard Time). Save before leaving this page.</p><form id="site-settings" class="settings-form"><fieldset><legend>Homepage</legend>${field("Signed name", "name", { value: site.name, required: true, max: 100 })}${bilingual("Message", "quote", site.quote)}${field("Countdown date/time", "countdownAt", { value: site.countdownAt, required: true })}</fieldset>${["ceremony", "reception"].map((k) => `<fieldset><legend>${k === "ceremony" ? "Ceremony" : "Dinner & reception venue"}</legend>${field("Venue name", k + ".name", { value: site[k].name, required: true, max: 200 })}${field("Full address", k + ".address", { value: site[k].address, required: true, max: 400 })}${times(k, site[k])}${bilingual("Guest notes", k + ".notes", site[k].notes)}</fieldset>`).join("")}<fieldset><legend>Dinner</legend>${times("dinner", site.dinner)}</fieldset><fieldset><legend>Gallery albums</legend><p>Album IDs stay unchanged so uploaded media keeps its album.</p>${site.albums.map((a, i) => `<div class="card">${field("Album ID", "albums." + i + ".id", { value: a.id, required: true, max: 40 })}${field("English name", "albums." + i + ".en", { value: a.en, required: true, max: 100 })}${field("Spanish name", "albums." + i + ".es", { value: a.es, required: true, max: 100 })}<button type="button" data-remove-album="${i}" class="plain-button">Remove empty album</button></div>`).join("")}<button type="button" id="add-album" class="plain-button">Add album</button></fieldset><fieldset><legend>Registries · public, no sign-in required</legend>${site.registries.map((r, i) => `<div class="card">${field("Store ID", "registries." + i + ".id", { value: r.id, required: true, max: 40 })}${field("Store name", "registries." + i + ".name", { value: r.name, required: true, max: 100 })}${bilingual("Description", "registries." + i + ".description", r.description)}${field("Registry HTTPS URL · blank hides the visit button", "registries." + i + ".url", { value: r.url, type: "url", max: 2000 })}<button type="button" data-remove-registry="${i}" class="plain-button">Remove registry</button></div>`).join("")}<button type="button" id="add-registry" class="plain-button">Add store</button></fieldset><p class="error" role="alert"></p><button class="button burgundy" type="submit">Save website & calendars</button></form>`;
+    root.innerHTML = `${previewCard()}<p>Changes appear on the website and update its calendar downloads together. Use ISO times with an explicit offset, for example <code>2027-01-15T16:00:00-06:00</code> (Central Standard Time). Save before leaving this page.</p><form id="site-settings" class="settings-form"><fieldset><legend>Homepage</legend>${field("Signed name", "name", { value: site.name, required: true, max: 100 })}${bilingual("Message", "quote", site.quote)}${field("Countdown date/time", "countdownAt", { value: site.countdownAt, required: true })}</fieldset>${["ceremony", "reception"].map((k) => `<fieldset><legend>${k === "ceremony" ? "Ceremony" : "Dinner & reception venue"}</legend>${field("Venue name", k + ".name", { value: site[k].name, required: true, max: 200 })}${field("Full address", k + ".address", { value: site[k].address, required: true, max: 400 })}${times(k, site[k])}${bilingual("Guest notes", k + ".notes", site[k].notes)}</fieldset>`).join("")}<fieldset><legend>Dinner</legend>${times("dinner", site.dinner)}</fieldset><fieldset><legend>Gallery albums</legend><p>Album IDs stay unchanged so uploaded media keeps its album.</p>${site.albums.map((a, i) => `<div class="card">${field("Album ID", "albums." + i + ".id", { value: a.id, required: true, max: 40 })}${field("English name", "albums." + i + ".en", { value: a.en, required: true, max: 100 })}${field("Spanish name", "albums." + i + ".es", { value: a.es, required: true, max: 100 })}<button type="button" data-remove-album="${i}" class="plain-button">Remove empty album</button></div>`).join("")}<button type="button" id="add-album" class="plain-button">Add album</button></fieldset><fieldset><legend>Registries · public, no sign-in required</legend>${site.registries.map((r, i) => `<div class="card">${field("Store ID", "registries." + i + ".id", { value: r.id, required: true, max: 40 })}${field("Store name", "registries." + i + ".name", { value: r.name, required: true, max: 100 })}${bilingual("Description", "registries." + i + ".description", r.description)}${field("Registry HTTPS URL · blank hides the visit button", "registries." + i + ".url", { value: r.url, type: "url", max: 2000 })}<button type="button" data-remove-registry="${i}" class="plain-button">Remove registry</button></div>`).join("")}<button type="button" id="add-registry" class="plain-button">Add store</button></fieldset><p class="error" role="alert"></p><button class="button burgundy" type="submit">Save website & calendars</button></form>`;
     const capture = () => {
       for (const [key, value] of new FormData(root.querySelector("form"))) {
         const parts = key.split(".");

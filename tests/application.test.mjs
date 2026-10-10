@@ -7,6 +7,9 @@ import { createHmac } from "node:crypto";
 // The fixture owner's authenticator, for actions that need a fresh code.
 const OWNER_TOTP = base32(Buffer.alloc(20, 9));
 import sharp from "sharp";
+import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 const origin = "https://misxv.simplysoph.com",
   at = Date.parse("2026-10-01T18:00:00Z");
 const household = "12345678-1234-1234-1234-123456789012";
@@ -1640,5 +1643,27 @@ test("private pages, page permissions, registration and step-up are gone", async
     (await f.app.dispatch({ path: "/api/site" })).site.registries[0].url,
     "https://www.target.com/gift-registry/gift/quincenera",
     "the registry stays public",
+  );
+});
+
+test("the approved-page preview is for administrators only and serves just the known pages", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "misxv-preview-"));
+  await mkdir(join(dir, "en"));
+  await writeFile(join(dir, "en", "sophia.html"), "<p>Example preview</p>");
+  const f = await fixture({ previewRoot: dir });
+  const page = await f.admin("preview", undefined, { page: "sophia", lang: "en" });
+  assert.equal(page.contentType, "text/html; charset=utf-8");
+  assert.equal(String(page.binary), "<p>Example preview</p>");
+  for (const query of [{ page: "../en/sophia" }, { page: "sophia", lang: "fr" }, { page: "rsvp" }, {}])
+    await assert.rejects(() => f.admin("preview", undefined, query), (e) => e.code === "NOT_FOUND", JSON.stringify(query));
+  await assert.rejects(() => f.admin("preview", undefined, { page: "court" }), (e) => e.code === "PREVIEW_NOT_BUILT");
+  // Guests and signed-out visitors never see the example text.
+  await assert.rejects(
+    () => f.app.dispatch({ path: "/api/admin/preview", query: { page: "sophia" }, method: "GET", headers: { origin, cookie: "__session=" + f.guestToken } }),
+    (e) => e.status === 401 || e.status === 403,
+  );
+  await assert.rejects(
+    () => f.app.dispatch({ path: "/api/admin/preview", query: { page: "sophia" }, method: "GET", headers: { origin } }),
+    (e) => e.status === 401,
   );
 });
