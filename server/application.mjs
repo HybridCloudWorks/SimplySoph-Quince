@@ -629,15 +629,27 @@ export function createApplication({
     return result;
   }
   // Signed-in guests stay signed in while they use the site (AUTHN-7). A
-  // request in the last 15 minutes of a guest session extends it to 30 minutes
-  // from now, never past 12 hours after sign-in, and re-sends the cookie. Admin
-  // sessions keep their fixed 30 minutes: the admin page polls in the
-  // background, which would keep an unattended tab signed in.
+  // request in the last 15 minutes of an email sign-in session extends it to 30
+  // minutes from now, never past 12 hours after sign-in. The extension is saved
+  // only once the request has succeeded, together with the re-sent cookie (photo
+  // responses included), so the ledger and the browser always agree. Admin
+  // sessions keep their fixed 30 minutes (the admin page polls in the
+  // background, which would keep an unattended tab signed in), and
+  // invitation-link sessions, which only open the RSVP, are not extended.
   async function dispatch(req) {
     const refresh = {};
     const result = await route(req, refresh);
-    if (refresh.cookie && result && typeof result === "object" && !result.setCookie && !result.binary)
-      result.setCookie = refresh.cookie;
+    const r = refresh.renew;
+    if (r && result && typeof result === "object" && !result.setCookie) {
+      await ledger.transaction((s) => {
+        const row = s.sessions[r.sessionHash];
+        if (row) {
+          row.startedAt ??= r.startedAt;
+          row.expiresAt = Math.max(row.expiresAt, r.until);
+        }
+      });
+      result.setCookie = cookie(r.raw);
+    }
     return result;
   }
   async function route(req, refresh) {
@@ -879,6 +891,15 @@ export function createApplication({
           c.pendingSecret = seal(fresh, key);
           c.replacing = true;
           c.attempts = 0;
+          c.expiresAt = now() + 300000; // a full five minutes to scan the new code
+          // Cut off the lost phone at once, as an authenticator reset does: its
+          // admin sessions, its other sign-ins in progress and the linked
+          // Microsoft account whose two-step sign-in could stand in for the code.
+          for (const [k, v] of Object.entries(s.sessions))
+            if (v.kind === "admin" && v.email === c.email) delete s.sessions[k];
+          for (const [k, v] of Object.entries(s.challenges))
+            if (v !== c && v.email === c.email) delete s.challenges[k];
+          delete s.ssoBindings?.[hash("admin-microsoft:" + c.email)];
           roleEvent(s, c.id, c.email, "recovery-code-used");
           securityNote(
             s,
@@ -1022,6 +1043,8 @@ export function createApplication({
     const { session } = ctx;
     if (
       session?.kind === "guest" &&
+      session.accountId &&
+      session.email &&
       ctx.raw &&
       path !== "/api/logout" &&
       path !== "/api/logout-all" &&
@@ -1031,23 +1054,19 @@ export function createApplication({
         until = Math.min(now() + 1800000, startedAt + 43200000);
       // Renew only while the sign-in email is still on that household's Notion
       // row, so removing it still ends access within about 15 minutes. A Notion
-      // error skips the renewal; it never fails the request.
+      // error, or no answer within 2 seconds, skips the renewal; it never fails
+      // or noticeably delays the request.
       const stillListed =
-        !session.email ||
-        (await notion.list().then(
-          (rows) => rosterMatch(rows, session.email)?.id === session.householdId,
-          () => false,
-        ));
-      if (until > session.expiresAt && stillListed) {
-        await ledger.transaction((s) => {
-          const row = s.sessions[ctx.sessionHash];
-          if (row) {
-            row.startedAt ??= startedAt;
-            row.expiresAt = Math.max(row.expiresAt, until);
-          }
-        });
-        refresh.cookie = cookie(ctx.raw);
-      }
+        until > session.expiresAt &&
+        (await Promise.race([
+          notion.list().then(
+            (rows) => rosterMatch(rows, session.email)?.id === session.householdId,
+            () => false,
+          ),
+          new Promise((resolve) => setTimeout(() => resolve(false), 2000).unref?.()),
+        ]));
+      if (stillListed)
+        refresh.renew = { sessionHash: ctx.sessionHash, startedAt, until, raw: ctx.raw };
     }
     if (session && method !== "GET")
       await rateLimit(

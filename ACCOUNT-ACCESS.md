@@ -31,10 +31,10 @@ The model, in one table. The decision record is [docs/v1/access-model.md](docs/v
   - A guest sign-in never creates an admin session; admins sign in at `/admin/login/`.
   - Microsoft can stand in for the admin authenticator code only after a linked sign-in that passed the code, and only when Microsoft confirms two-step sign-in.
   - Work accounts must be members of the simplysoph.com tenant with a verified email domain.
-  - Google guest sign-in accepts any verified email, including a Google account registered with a Hotmail or Outlook address.
+  - Google sign-in accepts Gmail and Google Workspace addresses only. Google does not vouch for who owns other addresses in a Google account, so a recycled address could be taken over. Hotmail and Outlook addresses use the Microsoft button; any address can use the emailed link.
   - The first guest sign-in binds that Microsoft or Google account to the email. A different provider account for the same email is refused; the emailed link still works.
 - **Sessions:**
-  - Guests stay signed in while they use the site: 30 minutes after their last visit, at most 12 hours after signing in.
+  - Guests signed in with their email stay signed in while they use the site: 30 minutes after their last visit, at most 12 hours after signing in, and only while that email is still on their Notion row. Invitation-link sessions (RSVP only) last 30 minutes.
   - Administrator sessions last 30 minutes.
   - **Sign out on all devices** (My account) and **Sign out everywhere** (admin menu) end every session of that person.
   - The cookie is HttpOnly, Secure, SameSite=Strict and scoped to `/api`.
