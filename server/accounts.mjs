@@ -42,7 +42,17 @@ export function rosterMatch(rows, address) {
 // link, Google or Microsoft. There is no separate registration. An "account" is
 // only the record of a verified sign-in, created on first use; it holds no
 // permissions. Invitation links stay RSVP-only (application.mjs).
-export function createAccounts({ ledger, mailer, notion, key, origin, now, signInFloorMs = 0 }) {
+export function createAccounts({
+  ledger,
+  mailer,
+  notion,
+  key,
+  origin,
+  now,
+  signInFloorMs = 0,
+  // Shared with admin sign-in links; see createApplication.
+  signInGate = (task) => task(),
+}) {
   const emailKey = (value) =>
     createHmac("sha256", key)
       .update("email:" + value)
@@ -139,7 +149,7 @@ export function createAccounts({ ledger, mailer, notion, key, origin, now, signI
     async request(body) {
       if (!mailer.configured) throw error(503, "EMAIL_SIGN_IN_UNAVAILABLE");
       const address = normalizeEmail(body.email);
-      return atLeast(signInFloorMs, async () => {
+      return signInGate(() => atLeast(signInFloorMs, async () => {
         const row = rosterMatch(await notion.list(), address),
           invite = row && (await ledger.read()).invitations[row.id];
         // Only sends are counted: 3 links per address per 15 minutes, plus a
@@ -152,13 +162,18 @@ export function createAccounts({ ledger, mailer, notion, key, origin, now, signI
           (await withinLimit(ledger, "email-to:" + emailKey(address), 3, 900000, now())) &&
           (await withinLimit(ledger, "email-login-sends", 120, 3600000, now()))
         )
-          await issue({
-            address,
-            householdId: row.id,
-            generation: invite.generation,
-          });
+          try {
+            await issue({
+              address,
+              householdId: row.id,
+              generation: invite.generation,
+            });
+          } catch {
+            // Only listed addresses reach this step, so a save error here must
+            // not change the answer; the guest can simply ask again.
+          }
         return { requested: true };
-      });
+      }));
     },
     async consume(raw) {
       const pending =

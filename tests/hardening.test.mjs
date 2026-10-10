@@ -75,28 +75,87 @@ test("image work runs two at a time, queues a few and refuses the rest (SEC-13)"
   assert.equal(await run(async () => "free again"), "free again");
 });
 
-test("during a Notion outage, cached reads serve the last good answer; fresh reads fail (NOTION-6)", async () => {
+test("during a Notion outage only read-only views that opt in get the last good answer (NOTION-6)", async () => {
   let clock = 0,
-    down = false;
+    status = 200;
+  const pageId = "12345678-1234-1234-1234-123456789012";
   const client = notionClient({
     token: "t",
     sourceId: "source",
     sleep: async () => {},
     clock: () => clock,
     minIntervalMs: 0,
-    fetchImpl: async () =>
-      down
-        ? new Response("{}", { status: 503 })
-        : new Response(JSON.stringify({ results: [], has_more: false }), { status: 200 }),
+    fetchImpl: async (url) =>
+      status !== 200
+        ? new Response("{}", { status })
+        : new Response(
+            JSON.stringify(
+              url.includes("/query")
+                ? { results: [], has_more: false }
+                : { id: pageId, parent: { data_source_id: "source" }, properties: {} },
+            ),
+            { status: 200 },
+          ),
   });
   assert.deepEqual(await client.list(), []);
-  down = true;
+  assert.equal((await client.read(pageId)).id, pageId);
+  status = 503;
   clock += 60000; // past the 30-second cache
-  assert.deepEqual(await client.list(), [], "guest pages keep working");
-  await assert.rejects(() => client.list({ fresh: true }), (e) => notionOutage(e));
-  clock += 3600001; // past the one-hour fallback
+  assert.deepEqual(await client.list({ allowStale: true }), [], "page views keep working");
+  assert.equal((await client.read(pageId, { allowStale: true })).id, pageId);
+  // Without opting in (guest writes) the outage is reported, and the stale
+  // answer handed out above was never cached for them.
   await assert.rejects(() => client.list(), (e) => notionOutage(e));
-  assert.equal(notionOutage({ code: "NOTION_400" }), false, "a refusal is an answer, not an outage");
+  await assert.rejects(() => client.read(pageId), (e) => notionOutage(e));
+  await assert.rejects(() => client.list({ fresh: true }), (e) => notionOutage(e));
+  // A refusal is an answer, not an outage: never covered by old data.
+  status = 400;
+  await assert.rejects(() => client.list({ allowStale: true }), (e) => e.code === "NOTION_400");
+  status = 503;
+  clock += 3600001; // past the one-hour fallback
+  await assert.rejects(() => client.list({ allowStale: true }), (e) => notionOutage(e));
+});
+
+test("the Cloud Logging mirror writes one redacted line per event (SEC-12)", async () => {
+  const { eventMirror } = await import("../server/event-log.mjs");
+  const lines = [];
+  eventMirror((line) => lines.push(line), Buffer.alloc(32, 3))([
+    { type: "role.authenticator-reset", actor: "owner:me@example.com", data: { target: "a@b.co" } },
+    { type: "rsvp.submitted", householdId: "h1" },
+  ]);
+  assert.equal(lines.length, 2);
+  assert.equal(lines[0].message, "event role.authenticator-reset");
+  assert.ok(!JSON.stringify(lines).includes("@"));
+  assert.equal(lines[1].event.householdId, "h1");
+});
+
+test("the ledger is downloaded again only when its generation changes (SEC-13)", async () => {
+  const { cloudAdapter } = await import("../server/store.mjs");
+  let generation = 1,
+    downloads = 0;
+  const text = () => JSON.stringify({ version: 1, generation });
+  const storage = {
+    bucket: () => ({
+      file: () => ({
+        name: "private/event-ledger.json",
+        getMetadata: async () => [{ generation }],
+        download: async () => {
+          downloads++;
+          return [Buffer.from(text())];
+        },
+      }),
+    }),
+  };
+  const adapter = cloudAdapter("misxv-test", { storage });
+  const a = await adapter.load(),
+    b = await adapter.load();
+  assert.equal(downloads, 1);
+  a.state.mutated = true;
+  assert.equal(b.state.mutated, undefined, "every load is its own copy");
+  assert.equal((await adapter.load()).state.mutated, undefined);
+  generation = 2;
+  assert.equal((await adapter.load()).state.generation, 2);
+  assert.equal(downloads, 2);
 });
 
 test("an admin Notion confirmed recently keeps working through an outage, briefly (NOTION-6)", async () => {

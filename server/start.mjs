@@ -13,7 +13,7 @@ import { createHttpServer } from "./http.mjs";
 import { whatsappTransport as createWhatsappTransport } from "./whatsapp-transport.mjs";
 import { twilioTransport } from "./twilio.mjs";
 import { schedulerVerifier } from "./scheduler.mjs";
-import { redactForLog } from "./event-log.mjs";
+import { eventMirror } from "./event-log.mjs";
 const env = process.env,
   origin = env.PUBLIC_ORIGIN || "https://misxv.simplysoph.com";
 let app = null;
@@ -99,14 +99,9 @@ if (env.EVENT_BUCKET) {
     notificationEmails: (env.NOTIFICATION_EMAILS || env.ADMIN_EMAILS)
       .split(",")
       .map((s) => s.trim().toLowerCase()),
-    // Committed event-log entries are mirrored as one log line each, so a copy
-    // exists outside the ledger. Filter: jsonPayload.event.type="rsvp.submitted".
-    ledger: new Ledger(adapter, {
-      onEvents: (entries) => {
-        for (const event of entries)
-          log({ severity: "INFO", message: "event " + event.type, event: redactForLog(event, key) });
-      },
-    }),
+    // Committed event-log entries are mirrored as one redacted log line each, so
+    // a copy exists outside the ledger. Filter: jsonPayload.event.type="rsvp.submitted".
+    ledger: new Ledger(adapter, { onEvents: eventMirror(log, key) }),
     smsTransport,
     smsWebhook: {
       accountSid: env.TWILIO_ACCOUNT_SID,

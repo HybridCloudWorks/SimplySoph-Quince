@@ -1823,3 +1823,61 @@ test("a guest whose email leaves the Notion row is not renewed, so access ends s
   f.advance(11 * 60000);
   assert.equal((await get()).kind, null, "the original 30 minutes ran out");
 });
+
+test("sign-in requests take the full floor and only a few run at once (SEC-8)", async () => {
+  const f = await fixture({ signInFloorMs: 150 });
+  for (const [path, email] of [
+    ["auth/email/request", "nobody@example.com"],
+    ["auth/email/request", "test@example.com"],
+    ["auth/admin-email/request", "nobody@example.com"],
+    ["auth/admin-email/request", "test@example.com"],
+  ]) {
+    const started = Date.now();
+    assert.deepEqual(await f.publicPost(path, { email }), { requested: true });
+    assert.ok(Date.now() - started >= 145, `${path} for ${email} answered early`);
+  }
+  // One runs and one waits per instance; a third at the same moment is told to retry.
+  const outcomes = await Promise.allSettled(
+    [1, 2, 3].map(() => f.publicPost("auth/email/request", { email: "nobody@example.com" })),
+  );
+  assert.equal(outcomes.filter((o) => o.status === "fulfilled").length, 2);
+  assert.equal(outcomes.find((o) => o.status === "rejected").reason.code, "SIGN_IN_BUSY");
+});
+
+test("a busy photo gate answers PHOTO_BUSY, not an invalid photo (SEC-13)", async () => {
+  const f = await fixture({
+    photoGate: async () => {
+      throw Object.assign(new Error(), { status: 503, code: "PHOTO_BUSY" });
+    },
+  });
+  const base64 = (
+    await sharp({ create: { width: 4, height: 4, channels: 3, background: "#fff" } }).jpeg().toBuffer()
+  ).toString("base64");
+  await assert.rejects(
+    () => f.guest("photos", { base64, consent: true, caption: "" }),
+    (e) => e.code === "PHOTO_BUSY",
+  );
+});
+
+test("a newer RSVP saved while an older sync fails stays pending, not failed (NOTION-7)", async () => {
+  let f,
+    first = true;
+  f = await fixture({
+    notion: {
+      async project() {
+        if (!first) return;
+        first = false;
+        // The guest changes their answer while this projection is in flight.
+        const update = f.input();
+        update.previousSubmissionId = "55555555-5555-4555-8555-555555555555";
+        await f.guest("rsvp", update, { "idempotency-key": "66666666-6666-4666-8666-666666666666" });
+        throw { code: "NOTION_400" };
+      },
+    },
+  });
+  await f.guest("rsvp", f.input(), { "idempotency-key": "55555555-5555-4555-8555-555555555555" });
+  const s = await f.ledger.read();
+  assert.equal(s.invitations[household].latestSubmissionId, "66666666-6666-4666-8666-666666666666");
+  assert.equal(s.invitations[household].syncState, "pending", "the drain will still try the new answer");
+  assert.equal(Object.values(s.notifications).filter((n) => n.kind === "sync").length, 0);
+});

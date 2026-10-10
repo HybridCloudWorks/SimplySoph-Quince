@@ -14,7 +14,7 @@ import { calendar, contactTopics, escapeHtml } from "../site/celebration.mjs";
 import { siteSettings, validateSettings } from "./site-settings.mjs";
 import { randomUUID, randomBytes, createHmac, timingSafeEqual } from "node:crypto";
 import sharp from "sharp";
-import { imageGate } from "./gate.mjs";
+import { imageGate, createGate } from "./gate.mjs";
 import {
   token,
   hash,
@@ -126,6 +126,8 @@ export function createApplication({
   mailSleep,
   // The admin-only page preview built by scripts/build-pages.mjs (never published).
   previewRoot = fileURLToPath(new URL("../dist-preview/", import.meta.url)),
+  // Bounds sharp decodes for guest photos; tests can pass their own gate.
+  photoGate = imageGate,
   // Sign-in link requests answer no sooner than this (SEC-8); 0 in tests.
   signInFloorMs = 0,
 }) {
@@ -314,9 +316,11 @@ export function createApplication({
       raw,
     };
   }
-  // Page views may use the short Notion cache; RSVP submission reads fresh.
-  async function guestInvitation(session, { fresh = false } = {}) {
-    const row = await notion.read(session.householdId, { fresh }),
+  // Page views may use the short Notion cache, and read-only views opt in to
+  // the last good answer during a Notion outage (allowStale). Guest writes use
+  // the cache but never stale data; RSVP submission reads fresh.
+  async function guestInvitation(session, { fresh = false, allowStale = false } = {}) {
+    const row = await notion.read(session.householdId, { fresh, allowStale }),
       s = await ledger.read(),
       record = s.invitations[row.id];
     if (
@@ -348,6 +352,7 @@ export function createApplication({
     )
       return null;
     row.syncLease = { owner, until: now() + 90000 };
+    row.syncTriedAt = now();
     const response = s.responses[row.latestSubmissionId];
     return structuredClone({ response, profile });
   }
@@ -371,8 +376,13 @@ export function createApplication({
     // drain. Any other refusal (a missing column, a deleted row) will fail the
     // same way every time: mark it failed, stop retrying it automatically, and
     // tell the family once (NOTION-7). Retry on Invitations tries it again.
+    // A newer response or profile saved meanwhile was never tried, so it stays
+    // pending whatever happened to the older one.
+    const stale =
+      (row.latestSubmissionId || null) !== (task.response?.id || null) ||
+      s.profiles?.[householdId]?.version !== task.profile?.version;
     const permanent =
-      failure && !notionOutage({ code: failure }) && failure !== "NOTION_409";
+      failure && !stale && !notionOutage({ code: failure }) && failure !== "NOTION_409";
     if (permanent) {
       if (row.syncState !== "failed") {
         const note = randomUUID();
@@ -390,12 +400,7 @@ export function createApplication({
       }
       row.syncState = "failed";
       row.syncError = failure;
-    } else if (
-      // Always leave a newer response pending after an old projection finishes.
-      failure ||
-      (row.latestSubmissionId || null) !== (task.response?.id || null) ||
-      s.profiles?.[householdId]?.version !== task.profile?.version
-    ) {
+    } else if (failure || stale) {
       row.syncState = "pending";
       row.syncError = failure;
     } else {
@@ -547,6 +552,11 @@ export function createApplication({
     };
     return id;
   }
+  // Sign-in link requests hold their slot for the timing floor, so at most one
+  // runs per instance with one waiting; the rest get a retryable SIGN_IN_BUSY.
+  // Cloud Run serves 4 requests per instance, so sign-in can never hold more
+  // than 2 of them, whatever a stranger sends (review of SEC-8).
+  const signInGate = createGate({ max: 1, queue: 1, code: "SIGN_IN_BUSY" });
   const accounts = createAccounts({
     ledger,
     mailer,
@@ -556,6 +566,7 @@ export function createApplication({
     now,
     syncOne,
     signInFloorMs,
+    signInGate,
   });
   const records = createAdminRecords({ ledger, key, now });
   const planning = createPlanning({ ledger, documents, notion, now });
@@ -577,6 +588,7 @@ export function createApplication({
     origin,
     now,
     signInFloorMs,
+    signInGate,
   });
   // Up to 10 households whose RSVP is still waiting to reach Notion. The
   // scheduled drain retries only "pending"; an admin's Retry also re-tries
@@ -585,6 +597,13 @@ export function createApplication({
     const s = await ledger.read();
     const ids = Object.values(s.invitations)
       .filter((r) => r.syncState === "pending" || (includeFailed && r.syncState === "failed"))
+      // Pending before failed, then longest since last tried, so rows that keep
+      // failing can never crowd out the rest.
+      .sort(
+        (a, b) =>
+          (a.syncState === "failed") - (b.syncState === "failed") ||
+          (a.syncTriedAt || 0) - (b.syncTriedAt || 0),
+      )
       .slice(0, 10)
       .map((r) => r.id);
     for (const id of ids) await syncOne(id);
@@ -1116,7 +1135,7 @@ export function createApplication({
     }
     if (path === "/api/invitation" && method === "GET") {
       requireAuth("guest");
-      const row = await guestInvitation(session),
+      const row = await guestInvitation(session, { allowStale: true }),
         s = await ledger.read();
       return {
         name: row.name,
@@ -1151,7 +1170,7 @@ export function createApplication({
     }
     if (path === "/api/profile" && method === "GET") {
       requireAuth("guest");
-      const invitation = await guestInvitation(session),
+      const invitation = await guestInvitation(session, { allowStale: true }),
         state = await ledger.read();
       return {
         profile: state.profiles?.[session.householdId],
@@ -1205,7 +1224,7 @@ export function createApplication({
     }
     if (path === "/api/messages" && method === "GET") {
       requireAuth("guest");
-      await guestInvitation(session);
+      await guestInvitation(session, { allowStale: true });
       return {
         messages: Object.values((await ledger.read()).messages)
           .filter(
@@ -1442,7 +1461,7 @@ export function createApplication({
       try {
         image = isVideo
           ? await videoProcessor(bytes)
-          : await imageGate(() =>
+          : await photoGate(() =>
               sharp(bytes, {
                 limitInputPixels: 25000000,
                 animated: false,
@@ -1674,7 +1693,7 @@ export function createApplication({
         return { events: (ctx.state.roleEvents || []).slice(-50).reverse() };
       }
       if (path === "/api/admin/guests" && method === "GET") {
-        const rows = await notion.list(),
+        const rows = await notion.list({ allowStale: true }),
           s = await ledger.read();
         return {
           guests: rows.map((row) => ({
@@ -1696,7 +1715,7 @@ export function createApplication({
       }
       if (path === "/api/admin/dashboard" && method === "GET") {
         const s = await ledger.read(),
-          rows = await notion.list(),
+          rows = await notion.list({ allowStale: true }),
           responses = Object.values(s.invitations)
             .filter((r) => r.active && r.latestSubmissionId)
             .map((r) => s.responses[r.latestSubmissionId]);
@@ -1949,7 +1968,7 @@ export function createApplication({
         });
       }
       if (path === "/api/admin/audience" && method === "GET") {
-        const rows = (await notion.list()).filter(
+        const rows = (await notion.list({ allowStale: true })).filter(
           (r) => !r.archived && ctx.state.invitations[r.id]?.active !== false,
         );
         return {

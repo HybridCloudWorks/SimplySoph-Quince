@@ -29,8 +29,10 @@ export function createAdminAccess({ notion, adminEmails, now }) {
       rows = await notion.list({ fresh: true });
     } catch (e) {
       // During a Notion outage, an admin Notion confirmed in the last 15 minutes
-      // keeps working (NOTION-6). No one can untick a box Notion can't serve, and
-      // the first answer after the outage applies any change.
+      // keeps working (NOTION-6). The first answer after the outage applies any
+      // change. When only this site is throttled (NOTION_429), the box can still
+      // be unticked in Notion, so a removed admin keeps access for at most 15
+      // minutes after their last confirmation: the accepted cost of the fallback.
       if (notionOutage(e) && lastConfirmed.get(k) > now() - 900000) return true;
       throw e;
     }

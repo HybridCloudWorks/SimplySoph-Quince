@@ -103,8 +103,9 @@ export function notionClient({
   clock = Date.now,
   minIntervalMs = 400,
   cacheMs = 30000,
-  // During a Notion outage, cached reads fall back to the last good answer this
-  // long (NOTION-6). Fresh reads, which decide access, never do.
+  // During a Notion outage, reads that opt in with `allowStale` (read-only page
+  // views) fall back to the last good answer this long (NOTION-6). Fresh reads
+  // and guest writes never do.
   staleMs = 3600000,
 }) {
   // Notion allows ~3 requests/s per connection. Requests from this instance are
@@ -120,20 +121,22 @@ export function notionClient({
   const cache = new Map(),
     lastGood = new Map();
   const remember = (key, value) => lastGood.set(key, { value, at: clock() });
-  function cached(key, load) {
+  // The shared cache only ever holds real answers; a stale fallback is handed
+  // to the caller that asked for it and never cached for anyone else.
+  function cached(key, load, allowStale = false) {
     const hit = cache.get(key);
-    if (hit && hit.until > clock()) return hit.value;
-    const value = load().then(
-      (v) => (remember(key, v), v),
-      (e) => {
-        const good = lastGood.get(key);
-        if (notionOutage(e) && good && clock() - good.at < staleMs) return good.value;
-        throw e;
-      },
-    );
-    cache.set(key, { value, until: clock() + cacheMs });
-    value.catch(() => cache.delete(key));
-    return value;
+    let value = hit && hit.until > clock() ? hit.value : null;
+    if (!value) {
+      value = load().then((v) => (remember(key, v), v));
+      cache.set(key, { value, until: clock() + cacheMs });
+      value.catch(() => cache.delete(key));
+    }
+    if (!allowStale) return value;
+    return value.catch((e) => {
+      const good = lastGood.get(key);
+      if (notionOutage(e) && good && clock() - good.at < staleMs) return good.value;
+      throw e;
+    });
   }
   async function call(path, method = "GET", body) {
     if (!token || !sourceId) throw error(503, "NOTION_NOT_CONFIGURED");
@@ -296,8 +299,8 @@ export function notionClient({
       } while (cursor);
       return rows;
     },
-    async list({ fresh = false } = {}) {
-      if (!fresh) return structuredClone(await cached("list", () => this.listFresh()));
+    async list({ fresh = false, allowStale = false } = {}) {
+      if (!fresh) return structuredClone(await cached("list", () => this.listFresh(), allowStale));
       const rows = await this.listFresh();
       remember("list", rows);
       return structuredClone(rows);
@@ -318,7 +321,7 @@ export function notionClient({
     },
     // Pass { fresh: true } where a decision must reflect the latest Notion edit:
     // RSVP submit, invitation exchange, sign-in and every outbound send.
-    async read(id, { fresh = false } = {}) {
+    async read(id, { fresh = false, allowStale = false } = {}) {
       if (!/^[a-f0-9-]{36}$/.test(id)) throw error(404, "INVITATION_NOT_FOUND");
       const load = async () => {
         const p = await call("pages/" + id);
@@ -326,7 +329,7 @@ export function notionClient({
           throw error(403, "WRONG_DATA_SOURCE");
         return normalizeInvitation(p);
       };
-      const row = await (fresh ? load() : cached("page:" + id, load));
+      const row = await (fresh ? load() : cached("page:" + id, load, allowStale));
       return structuredClone(row);
     },
     async schema() {
