@@ -63,6 +63,14 @@ while (pending.length) {
   ))
     pending.push(path.resolve(path.dirname(file), spec));
 }
+// A merge that kept conflict markers still builds and tests green, so look for them.
+const published = [
+  ...scripts,
+  ...["styles.css", "pages.css"].map((f) => path.join(root, f)),
+];
+for (const file of published)
+  if (/^(<{7}|={7}|>{7})( |\r?$)/m.test(await readFile(file, "utf8")))
+    throw new Error(`Merge conflict markers in ${path.relative(root, file)}`);
 console.log(
   `All ${pages.length} documents, ${scripts.size} scripts and local links/assets passed.`,
 );

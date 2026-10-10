@@ -12,6 +12,7 @@ import { createApplication } from "./application.mjs";
 import { createHttpServer } from "./http.mjs";
 import { whatsappTransport as createWhatsappTransport } from "./whatsapp-transport.mjs";
 import { twilioTransport } from "./twilio.mjs";
+import { schedulerVerifier } from "./scheduler.mjs";
 const env = process.env,
   origin = env.PUBLIC_ORIGIN || "https://misxv.simplysoph.com";
 let app = null;
@@ -76,6 +77,11 @@ if (env.EVENT_BUCKET) {
     throw new Error(
       "WhatsApp activation requires configured credentials and completed review",
     );
+  // Both or neither: a half-configured scheduler would silently never drain.
+  if (!env.SCHEDULER_AUDIENCE !== !env.SCHEDULER_SERVICE_ACCOUNT)
+    throw new Error(
+      "Set both SCHEDULER_AUDIENCE and SCHEDULER_SERVICE_ACCOUNT, or neither",
+    );
   app = createApplication({
     adminDelegateEmails: (env.ADMIN_DELEGATE_EMAILS || "")
       .split(",")
@@ -92,7 +98,14 @@ if (env.EVENT_BUCKET) {
     notificationEmails: (env.NOTIFICATION_EMAILS || env.ADMIN_EMAILS)
       .split(",")
       .map((s) => s.trim().toLowerCase()),
-    ledger: new Ledger(adapter),
+    // Committed event-log entries are mirrored as one log line each, so a copy
+    // exists outside the ledger. Filter: jsonPayload.event.type="rsvp.submitted".
+    ledger: new Ledger(adapter, {
+      onEvents: (entries) => {
+        for (const event of entries)
+          log({ severity: "INFO", message: "event " + event.type, event });
+      },
+    }),
     smsTransport,
     smsWebhook: {
       accountSid: env.TWILIO_ACCOUNT_SID,
@@ -126,6 +139,10 @@ if (env.EVENT_BUCKET) {
     }),
     verifyGoogleIdentity: googleIdentityVerifier(env.ADMIN_GOOGLE_CLIENT_ID),
     microsoftClientId: env.MICROSOFT_CLIENT_ID || "",
+    verifyScheduler: schedulerVerifier(
+      env.SCHEDULER_AUDIENCE,
+      env.SCHEDULER_SERVICE_ACCOUNT,
+    ),
     documents: {
       async put(id, bytes) {
         await adapter.bucket.file("private/documents/" + id).save(bytes, {
@@ -181,10 +198,12 @@ const root = path.resolve(
 if (!Number.isInteger(port) || port < 0 || port > 65535)
   throw new Error("Invalid port");
 // Cloud Logging parses one JSON object per stdout line (severity, httpRequest).
-const log = (entry) =>
+// A function declaration, so the ledger created above can mirror events to it.
+function log(entry) {
   process.stdout.write(
     JSON.stringify({ time: new Date().toISOString(), ...entry }) + "\n",
   );
+}
 const server = createHttpServer({ app, root, origin, log });
 server.requestTimeout = 120000;
 server.headersTimeout = 15000;

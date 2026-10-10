@@ -6,6 +6,7 @@ import { createPlanning } from "./planning.mjs";
 import { createAdminEmail, adminIdentity } from "./admin-email.mjs";
 import { createNotifications } from "./notifications.mjs";
 import { createMailBatches } from "./mail-batches.mjs";
+import { logEvent } from "./event-log.mjs";
 import { normalizeVideo, mediaResponse } from "./video.mjs";
 import { calendar, contactTopics, escapeHtml } from "../site/celebration.mjs";
 import { siteSettings, validateSettings } from "./site-settings.mjs";
@@ -27,7 +28,13 @@ import {
   invitationCredential,
 } from "./auth.mjs";
 import { validateHouseholdRsvp } from "./rsvp-validation.mjs";
-import { renderEmail } from "../emails/templates.mjs";
+import {
+  renderEmail,
+  emailSchedule,
+  firstSentence,
+  longDate,
+} from "../emails/templates.mjs";
+import { event as eventInfo } from "../site/content.mjs";
 import {
   createAccounts,
   accountActive,
@@ -56,13 +63,17 @@ const audit = (s, actor, action, id, now) => {
   s.audit = s.audit.slice(-5000);
 };
 // A minted link matches the household's current generation and, when it was
-// minted for an email draft, opens only once that email was actually sent.
+// minted for an email or SMS draft, opens only once that message was actually sent.
 const linkOpens = (s, fingerprint, r) => {
   const link = s.invitationLinks?.[fingerprint];
   if (link?.householdId !== r.id || link.generation !== r.generation) return false;
   if (!link.draftId) return true;
-  return ["accepted", "unknown", "sending"].includes(s.outbox[link.draftId]?.state);
+  const draft =
+    link.channel === "sms" ? s.smsDrafts?.[link.draftId] : s.outbox[link.draftId];
+  return ["accepted", "unknown", "sending"].includes(draft?.state);
 };
+// Group messages may contain {link}; each household's draft gets its own link.
+const LINK_PLACEHOLDER = "{link}";
 // Constant-time comparison for secrets such as CSRF tokens.
 const sameSecret = (given, expected) => {
   if (typeof given !== "string" || typeof expected !== "string") return false;
@@ -91,6 +102,8 @@ export function createApplication({
     throw error(503, "SSO_NOT_CONFIGURED");
   },
   microsoftClientId = "",
+  // Async (authorizationHeader) => boolean from server/scheduler.mjs; null disables the drain.
+  verifyScheduler = null,
   media,
   documents,
   smsTransport,
@@ -102,7 +115,7 @@ export function createApplication({
   key,
   origin,
   clientId = "",
-  deadline = "2026-10-31T23:59:00-05:00",
+  deadline = eventInfo.deadline,
   adminEmails = [],
   adminDelegateEmails = [],
   notificationEmails = adminEmails,
@@ -117,6 +130,8 @@ export function createApplication({
     transport: smsTransport,
     webhook: smsWebhook,
     now,
+    render: (d) =>
+      d.link ? d.text.replaceAll(LINK_PLACEHOLDER, unseal(d.link, key)) : d.text,
   });
   const whatsapp = createWhatsapp({
     ledger,
@@ -190,6 +205,7 @@ export function createApplication({
   function roleEvent(s, actor, target, change) {
     s.roleEvents ??= [];
     s.roleEvents.push({ actor, target, change, at: new Date(now()).toISOString() });
+    logEvent(s, now(), "role." + change, { actor, data: { target } });
   }
   // A current code from the signed-in owner's own authenticator, for changes
   // that hand out administrator access.
@@ -381,6 +397,14 @@ export function createApplication({
       row.syncState = "synced";
       row.syncError = null;
     }
+    logEvent(
+      s,
+      now(),
+      row.syncState === "synced" ? "notion.synced" : "notion.sync_pending",
+      failure
+        ? { householdId, data: { error: failure.code || String(failure) } }
+        : { householdId },
+    );
     return row.syncState;
   }
   async function syncOne(householdId) {
@@ -403,6 +427,8 @@ export function createApplication({
     if (j.type === "custom") {
       if (
         invite?.active === false ||
+        // A {link} draft dies with its link: reissuing revokes it.
+        (j.generation !== undefined && invite?.generation !== j.generation) ||
         (!j.directlySelected &&
           !currentGuest.distributionGroups?.some((g) => j.groups.includes(g)))
       )
@@ -420,6 +446,11 @@ export function createApplication({
       throw error(409, "MAIL_DRAFT_STALE");
     j.state = "sending";
     j.attemptAt = now();
+    logEvent(s, now(), "delivery.claimed", {
+      householdId: j.householdId,
+      deliveryId: id,
+      data: { channel: "email", type: j.type },
+    });
     return structuredClone(j);
   }
   async function sendMail(job) {
@@ -442,6 +473,13 @@ export function createApplication({
     s.outbox[id].error = outcome.code;
     s.outbox[id].provider = outcome.provider;
     s.outbox[id].finishedAt = now();
+    logEvent(s, now(), "delivery." + outcome.state, {
+      householdId: s.outbox[id].householdId,
+      deliveryId: id,
+      data: outcome.code
+        ? { channel: "email", error: outcome.code }
+        : { channel: "email" },
+    });
   }
   async function dispatchMail(id) {
     if (!mailer.configured) throw error(503, "MAIL_NOT_CONFIGURED");
@@ -466,7 +504,8 @@ export function createApplication({
       responseId = null,
     },
   ) {
-    const id = randomUUID(),
+    const site = siteSettings(s),
+      id = randomUUID(),
       rendered = renderEmail({
         type,
         locale,
@@ -476,10 +515,13 @@ export function createApplication({
           locale === "es"
             ? "Viernes, 15 de enero de 2027"
             : "Friday, January 15, 2027",
-        rsvpDeadline:
-          locale === "es"
-            ? "31 de octubre de 2026, 11:59 p. m. (hora central)"
-            : "October 31, 2026, 11:59 PM Central",
+        rsvpDeadline: longDate(deadline, locale),
+        schedule: emailSchedule(
+          site,
+          s.invitations[household.id]?.invited,
+          locale,
+        ),
+        note: firstSentence(site.quote?.[locale]),
         dateConfirmed: true,
         receiptCommitted: !!responseId,
         preview: false,
@@ -528,8 +570,44 @@ export function createApplication({
     origin,
     now,
   });
+  // Up to 10 households whose RSVP is still waiting to reach Notion.
+  async function retryPendingRsvps() {
+    const s = await ledger.read();
+    const ids = Object.values(s.invitations)
+      .filter((r) => r.syncState === "pending")
+      .slice(0, 10)
+      .map((r) => r.id);
+    for (const id of ids) await syncOne(id);
+    return { attempted: ids.length };
+  }
+  // Scheduled catch-up for projections that failed earlier (Notion outage,
+  // rate limit). Each step is bounded and independent: one failing step never
+  // blocks the others, and nothing here sends a message to a guest.
+  async function drainPending() {
+    const steps = {
+      rsvp: retryPendingRsvps,
+      sms: () => sms.retrySync(),
+      whatsapp: () => whatsapp.retrySync(),
+    };
+    const result = {};
+    for (const [name, step] of Object.entries(steps)) {
+      try {
+        result[name] = await step();
+      } catch (e) {
+        result[name] = { error: e.code || "FAILED" };
+      }
+    }
+    return result;
+  }
   async function dispatch(req) {
     const { path, method = "GET", body = {}, headers = {} } = req;
+    if (path === "/api/internal/drain") {
+      if (method !== "POST") throw error(405, "METHOD_NOT_ALLOWED");
+      if (!verifyScheduler) throw error(404, "NOT_FOUND");
+      if (!(await verifyScheduler(headers.authorization)))
+        throw error(401, "UNAUTHORIZED");
+      return drainPending();
+    }
     if (["/api/whatsapp/status", "/api/whatsapp/inbound"].includes(path)) {
       if (method !== "POST") throw error(405, "METHOD_NOT_ALLOWED");
       return whatsapp.callback(
@@ -839,7 +917,13 @@ export function createApplication({
           throw error(401, "INVALID_INVITATION");
         const registered = !!accounts.accountFor(s, row.id);
         if (registered && viaCode) throw error(409, "EMAIL_SIGN_IN_REQUIRED");
-        r.openedAt ??= now();
+        if (!r.openedAt) {
+          r.openedAt = now();
+          logEvent(s, now(), "invitation.opened", {
+            householdId: row.id,
+            data: { via: viaCode ? "code" : "link" },
+          });
+        }
         s.profiles ??= {};
         s.profiles[row.id] ??= {
           id: row.id,
@@ -1197,6 +1281,12 @@ export function createApplication({
           read: false,
           emailState: "none",
         };
+        logEvent(
+          s,
+          now(),
+          response.previousSubmissionId ? "rsvp.updated" : "rsvp.submitted",
+          { actor: "guest", householdId: row.id, data: { responseId: id, people } },
+        );
         return claim(s, response);
       });
       // Provider calls run outside the ledger transaction; a crash here leaves
@@ -1735,6 +1825,11 @@ export function createApplication({
           const link =
             origin + (body.locale === "es" ? "/es" : "") + "/rsvp/#" + value;
           audit(s, session.actor, "invitation-issued", row.id, now());
+          logEvent(s, now(), "invitation.issued", {
+            actor: session.actor,
+            householdId: row.id,
+            data: { generation: s.invitations[row.id].generation },
+          });
           return { link, code: code.match(/.{4}/g).join("-"), id: row.id };
         });
       }
@@ -1743,6 +1838,10 @@ export function createApplication({
           if (!s.invitations[body.id]) throw error(404, "NOT_FOUND");
           s.invitations[body.id].active = false;
           audit(s, session.actor, "invitation-revoked", body.id, now());
+          logEvent(s, now(), "invitation.revoked", {
+            actor: session.actor,
+            householdId: body.id,
+          });
           return { revoked: true };
         });
       }
@@ -1800,15 +1899,8 @@ export function createApplication({
         if (!ownerSession(session)) throw error(403, "OWNER_REQUIRED");
         return { added: await notion.prepareSchema() };
       }
-      if (path === "/api/admin/sync" && method === "POST") {
-        const s = await ledger.read();
-        const ids = Object.values(s.invitations)
-          .filter((r) => r.syncState === "pending")
-          .slice(0, 10)
-          .map((r) => r.id);
-        for (const id of ids) await syncOne(id);
-        return { attempted: ids.length };
-      }
+      if (path === "/api/admin/sync" && method === "POST")
+        return retryPendingRsvps();
       if (path === "/api/admin/moderation" && method === "GET")
         return {
           messages: Object.values(ctx.state.messages),
@@ -1965,6 +2057,7 @@ export function createApplication({
           channel,
         );
         if (!recipients.length) throw error(422, "NO_ELIGIBLE_RECIPIENTS");
+        const personal = text.includes(LINK_PLACEHOLDER);
         const fingerprint = hash(
           JSON.stringify({
             groups: body.groups,
@@ -1981,10 +2074,35 @@ export function createApplication({
               throw error(409, "SETTINGS_CHANGED");
             return s.campaigns[body.requestId].result;
           }
-          const ids = [];
+          const ids = [],
+            skipped = [];
           s.smsDrafts ??= {};
           for (const row of recipients) {
             const id = randomUUID();
+            // {link}: mint a private link per household, bound to this draft so
+            // it opens only after the message is sent. Households without an
+            // active invitation are skipped and reported, never sent a dead link.
+            let url = null,
+              invite = null;
+            if (personal) {
+              invite = s.invitations[row.id];
+              if (!invite?.active) {
+                skipped.push(row.displayName);
+                continue;
+              }
+              const minted = token();
+              url =
+                origin + (invite.locale === "es" ? "/es" : "") + "/rsvp/#" + minted;
+              if (channel === "sms")
+                smsPreview(text.replaceAll(LINK_PLACEHOLDER, url));
+              s.invitationLinks ??= {};
+              s.invitationLinks[hash(minted)] = {
+                householdId: row.id,
+                generation: invite.generation,
+                channel,
+                draftId: id,
+              };
+            }
             ids.push(id);
             if (channel === "sms")
               s.smsDrafts[id] = {
@@ -1996,6 +2114,7 @@ export function createApplication({
                 to: row.destination,
                 name: row.displayName,
                 text,
+                ...(url && { link: seal(url, key), generation: invite.generation }),
                 state: "draft",
                 at: now(),
               };
@@ -2007,16 +2126,23 @@ export function createApplication({
                 to: row.destination,
                 subject,
                 content: seal(
-                  `<p>${escapeHtml(text).replaceAll("\n", "<br>")}</p>`,
+                  `<p>${escapeHtml(text)
+                    .replaceAll("\n", "<br>")
+                    .replaceAll(
+                      LINK_PLACEHOLDER,
+                      url ? `<a href="${url}">${url}</a>` : LINK_PLACEHOLDER,
+                    )}</p>`,
                   key,
                 ),
                 state: "draft",
                 createdAt: now(),
                 groups: body.groups,
                 directlySelected: body.ids.includes(row.id),
+                ...(url && { generation: invite.generation }),
               };
           }
-          const result = { ids, count: ids.length, channel };
+          if (!ids.length && skipped.length) throw error(422, "LINKS_NOT_READY");
+          const result = { ids, count: ids.length, channel, skipped };
           s.campaigns[body.requestId] = { fingerprint, result };
           return result;
         });
@@ -2035,7 +2161,7 @@ export function createApplication({
         return whatsapp.retrySync();
       if (path === "/api/admin/sms/drafts" && method === "GET")
         return {
-          drafts: Object.values(ctx.state.smsDrafts || {}).map((d) => ({
+          drafts: Object.values(ctx.state.smsDrafts || {}).map(({ link, ...d }) => ({
             ...d,
             delivery: ctx.state.smsDelivery?.[d.providerId]?.status || null,
           })),

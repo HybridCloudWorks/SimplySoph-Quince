@@ -75,16 +75,64 @@ function contents(route, lang) {
       throw new Error("Content links must use HTTPS");
     return esc(url.href);
   };
-  if (route === "sophia" && (family.bio || family.parentsMessage))
-    body = `<article class="editorial">${family.bio ? `<h2>${say("Meet Sophia", "Conoce a Sophia")}</h2><p class="lead">${esc(localized(family.bio))}</p>` : ""}${family.parentsMessage ? `<h2>${say("With love from her family", "Con cariño de su familia")}</h2><p>${esc(localized(family.parentsMessage))}</p>` : ""}</article>`;
-  if (["court", "padrinos"].includes(route) && family[route].length)
-    body = `<div class="cards">${family[route].map((person) => `<article class="card">${person.photo ? `<img loading="lazy" src="${safeLink(person.photo)}" alt="${esc(person.name)}">` : ""}<h2>${esc(person.name)}</h2><p>${esc(localized(person.role))}</p></article>`).join("")}</div>`;
+  // Initials stand in for photos so pages can go live before portraits arrive.
+  const monogram = (person) =>
+    person.photo
+      ? `<img class="monogram" loading="lazy" src="${safeLink(person.photo)}" alt="">`
+      : `<span class="monogram" aria-hidden="true">${esc(person.name.trim()[0] || "")}</span>`;
+  const courtRole = {
+    escort: say("Chambelán de honor", "Chambelán de honor"),
+    dama: "Dama",
+    chambelan: "Chambelán",
+  };
+  const person = (p) =>
+    `<div class="person">${monogram(p)}<div><p class="person-role">${esc(courtRole[p.role] || localized(p.role))}</p><h3>${esc(p.name)}</h3>${p.line ? `<p>${esc(localized(p.line))}</p>` : ""}</div></div>`;
+  if (
+    route === "sophia" &&
+    (family.bio || family.parentsMessage || family.moments.length)
+  )
+    body = `<article class="sophia-page">${
+      family.bio
+        ? `<div class="bio-split${family.portrait ? "" : " no-portrait"}">${family.portrait ? `<img class="bio-portrait" src="${safeLink(family.portrait)}" alt="Sophia">` : ""}<p class="lead">${esc(localized(family.bio))}</p></div>`
+        : ""
+    }${
+      family.moments.length
+        ? `<ol class="moments" aria-label="${say("Fifteen years in moments", "Quince años en momentos")}">${family.moments.map((m) => `<li><span>${say("Age", "Edad")}</span><b>${esc(m.age)}</b><p>${esc(localized(m.text))}</p></li>`).join("")}</ol>`
+        : ""
+    }${
+      family.parentsMessage
+        ? `<div class="letter"><p class="eyebrow">${say("A letter from her parents", "Una carta de sus papás")}</p><p>${esc(localized(family.parentsMessage))}</p></div>`
+        : ""
+    }</article>`;
+  if (route === "court" && family.court.length) {
+    const escorts = family.court.filter((p) => p.role === "escort"),
+      paired = new Map();
+    for (const p of family.court.filter((p) => p.role !== "escort" && p.pair))
+      paired.set(p.pair, [...(paired.get(p.pair) || []), p]);
+    const single = family.court.filter((p) => p.role !== "escort" && !p.pair);
+    body = `${escorts.map((p) => `<div class="court-escort">${person(p)}</div>`).join("")}<div class="court-pairs">${[
+      ...paired.values(),
+    ]
+      .map(
+        (pair) =>
+          `<div class="pair">${pair
+            .sort((a, b) => (a.role === "dama" ? -1 : b.role === "dama" ? 1 : 0))
+            .map(person)
+            .join(`<span class="amp" aria-hidden="true">&amp;</span>`)}</div>`,
+      )
+      .join("")}${single.map((p) => `<div class="pair">${person(p)}</div>`).join("")}</div>`;
+  }
   if (route === "gifts" && family.registry.length)
     body = `<div class="cards">${family.registry.map((item) => `<a class="card" href="${safeLink(item.url)}" target="_blank" rel="noopener noreferrer">${esc(localized(item.label))} ↗</a>`).join("")}</div>`;
-  if (route === "travel" && family.hotels.length)
-    body += `<div class="cards">${family.hotels.map((item) => `<article class="card"><h2>${esc(item.name)}</h2><p>${esc(localized(item.notes))}</p><a href="${safeLink(item.url)}" target="_blank" rel="noopener noreferrer">${say("Hotel information", "Información del hotel")} ↗</a></article>`).join("")}</div>`;
-  if (route === "thank-you" && family.highlightVideo)
-    body += `<p><a class="button burgundy" href="${safeLink(family.highlightVideo)}" target="_blank" rel="noopener noreferrer">${say("Watch the highlights", "Ver los mejores momentos")}</a></p>`;
+  // The day at a glance: church, then dinner, from the confirmed schedule.
+  if (route === "travel")
+    body =
+      `<div class="route-strip"><div><b>${timeRange({ start: celebration.ceremony.start }, lang)} · ${say("Ceremony", "Ceremonia")}</b><span>${esc(celebration.ceremony.name)}<br>${esc(celebration.ceremony.address)}</span></div><div><b>${timeRange({ start: celebration.dinner.start }, lang)} · ${say("Dinner", "Cena")}</b><span>${esc(celebration.reception.name)}<br>${esc(celebration.reception.address)}</span></div></div>` +
+      (family.hotels.length
+        ? `<div class="cards">${family.hotels.map((item) => `<article class="card">${item.where ? `<p class="person-role">${esc(localized(item.where))}</p>` : ""}<h2>${esc(item.name)}</h2><p>${esc(localized(item.notes))}</p><a class="button burgundy" href="${safeLink(item.url)}" target="_blank" rel="noopener noreferrer">${say("Hotel information", "Información del hotel")} ↗</a></article>`).join("")}</div>`
+        : body);
+  if (route === "thank-you" && (family.thanksNote || family.highlightVideo))
+    body = `<div class="thanks-note"><p class="thanks-script">Gracias</p>${family.thanksNote ? `<p>${esc(localized(family.thanksNote))}</p>` : ""}<p class="actions">${family.highlightVideo ? `<a class="button burgundy" href="${safeLink(family.highlightVideo)}" target="_blank" rel="noopener noreferrer">${say("Watch the highlights", "Ver los mejores momentos")}</a>` : ""}<a href="${href("share", lang)}">${say("Share your photos", "Comparte tus fotos")} ↗</a></p></div>`;
   if (route === "details")
     body = `<p class="lead" data-event-date>${t.date}</p><p>${t.time}</p><div class="cards">${[
       ["ceremony", "4:00 PM", say("Religious ceremony", "Ceremonia religiosa")],
@@ -150,6 +198,28 @@ function contents(route, lang) {
           say(
             "Your invitation specifies the adult/teen and child spaces allocated to your household. Contact the family if the information needs correcting.",
             "Tu invitación indica los lugares para adultos/jóvenes y niños asignados a tu familia. Contacta a la familia si hay un error.",
+          ),
+        ],
+        [
+          say(
+            "What happens between the ceremony and dinner?",
+            "¿Qué pasa entre la ceremonia y la cena?",
+          ),
+          esc(
+            say(
+              `The ceremony ends around ${timeRange({ start: celebration.ceremony.end }, lang)} and dinner starts at ${timeRange({ start: celebration.dinner.start }, lang)} at ${celebration.reception.name}.`,
+              `La ceremonia termina alrededor de las ${timeRange({ start: celebration.ceremony.end }, lang)} y la cena comienza a las ${timeRange({ start: celebration.dinner.start }, lang)} en ${celebration.reception.name}.`,
+            ),
+          ),
+        ],
+        [
+          say(
+            "Can I take photos during the ceremony?",
+            "¿Puedo tomar fotos durante la ceremonia?",
+          ),
+          say(
+            "Please keep phones away during the ceremony. You can share your photos from the reception on the Share photos page.",
+            "Por favor, guarda tu teléfono durante la ceremonia. Puedes compartir tus fotos de la recepción en la página Comparte fotos y videos.",
           ),
         ],
         [
@@ -274,7 +344,7 @@ function navigation(lang, current) {
 }
 function document({ route, title, lang = "en", admin = false }) {
   const t = copy[lang];
-  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer"><meta name="description" content="${esc(t.tagline)}"><title>${esc(title)} · Sophia</title><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/pages.css"><script type="module" src="/${admin ? "admin" : "guest"}.js"></script></head><body data-route="${route}"><a class="skip" href="#main">${lang === "es" ? "Ir al contenido" : "Skip to content"}</a>${navigation(lang, admin ? "" : route)}<main id="main">${
+  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer"><meta name="description" content="${esc(t.tagline)}"><title>${esc(title)} · Sophia</title><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/pages.css"><script type="module" src="/${admin ? "admin" : "guest"}.js"></script></head><body data-route="${route}"><a class="skip" href="#main">${lang === "es" ? "Ir al contenido" : "Skip to content"}</a>${navigation(lang, admin ? "" : route)}<main id="main">${
     admin
       ? `<section class="section admin-shell"><aside aria-label="Family administration">${adminRoutes
           .filter(

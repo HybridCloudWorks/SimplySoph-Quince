@@ -74,8 +74,11 @@ export function createHttpServer({ app = null, root, origin, log = null }) {
           "/api/whatsapp/status",
           "/api/whatsapp/inbound",
         ].includes(url.pathname);
+        // Cloud Scheduler sends no browser Origin; the app authenticates it
+        // with a Google-signed OIDC token instead (server/scheduler.mjs).
+        const internal = url.pathname === "/api/internal/drain";
         if (req.method === "POST") {
-          if (!webhook && req.headers.origin !== origin)
+          if (!webhook && !internal && req.headers.origin !== origin)
             throw Object.assign(new Error(), {
               status: 403,
               code: "ORIGIN_REJECTED",

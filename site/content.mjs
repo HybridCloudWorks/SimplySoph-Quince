@@ -2,13 +2,21 @@ export const event = {
   name: "Sophia",
   date: "2027-01-15",
   startsAt: "2027-01-15T16:00:00-06:00",
-  deadline: "2026-10-31T23:59:00-05:00",
+  deadline: "2026-11-15T23:59:00-06:00",
   timezone: "America/Chicago",
   sender: "misxv@simplysoph.com",
 };
 // Null/empty content awaits the family; never invent names, endorsements or payment links.
+// Text values are { en, es } or a plain string. Layouts follow the family-approved idea book:
+//   portrait: "/assets/…" photo beside the bio
+//   moments: [{ age: 0, text: { en, es } }] — "fifteen years in six moments", oldest first
+//   court: [{ name, role: "escort" | "dama" | "chambelan", pair: 1, line: { en, es }, photo }]
+//   hotels: [{ name, where: { en, es }, notes: { en, es }, url }]
+//   thanksNote: { en, es } — the thank-you page message, after the event
 export const family = {
   bio: null,
+  portrait: null,
+  moments: [],
   parentsMessage: null,
   court: [],
   padrinos: [],
@@ -20,6 +28,7 @@ export const family = {
   churchNotes: null,
   dressCode: null,
   highlightVideo: null,
+  thanksNote: null,
 };
 export const routes = [
   ["", "Home", "Inicio"],
@@ -67,7 +76,7 @@ export const adminRoutes = [
 export const copy = {
   en: {
     date: "Friday, January 15, 2027",
-    deadline: "October 31, 2026 · 11:59 PM Central",
+    deadline: "November 15, 2026 · 11:59 PM Central",
     tagline: "A celebration of grace and golden dreams.",
     intro: "Today begins a new chapter… join me to celebrate it.",
     rsvp: "Respond to your invitation",
@@ -88,7 +97,7 @@ export const copy = {
   },
   es: {
     date: "Viernes, 15 de enero de 2027",
-    deadline: "31 de octubre de 2026 · 11:59 p. m. (hora central)",
+    deadline: "15 de noviembre de 2026 · 11:59 p. m. (hora central)",
     tagline: "Una celebración de gracia y sueños dorados.",
     intro: "Hoy comienza un nuevo capítulo… acompáñame a celebrarlo.",
     rsvp: "Responde a tu invitación",
