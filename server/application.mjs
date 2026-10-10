@@ -4,6 +4,7 @@ import { createWhatsapp } from "./whatsapp.mjs";
 import { createSms, smsCompliantText, smsPreview } from "./sms.mjs";
 import { createPlanning } from "./planning.mjs";
 import { createAdminEmail, adminIdentity } from "./admin-email.mjs";
+import { enrollment } from "./mfa-enrollment.mjs";
 import { createNotifications } from "./notifications.mjs";
 import { createMailBatches } from "./mail-batches.mjs";
 import { logEvent } from "./event-log.mjs";
@@ -771,16 +772,17 @@ export function createApplication({
           attempts: 0,
           pendingSecret: admin ? null : seal(secret, key),
         };
-        return admin
-          ? {}
-          : {
-              enrollmentSecret: secret,
-              provisioningUri: `otpauth://totp/SimplySoph:${encodeURIComponent(identity.email)}?secret=${secret}&issuer=SimplySoph`,
-            };
+        return admin ? {} : { enrollmentSecret: secret };
       });
       if (result.signedIn)
         return { signedIn: true, csrf, setCookie: cookie(sessionToken) };
-      return { challenge, ...result };
+      // The QR is drawn after the transaction: ledger mutators stay synchronous.
+      return {
+        challenge,
+        ...(result.enrollmentSecret
+          ? await enrollment(result.enrollmentSecret, identity.email)
+          : {}),
+      };
     }
     // Guest SSO signs in to the guest account registered with the same email.
     // It only ever creates a guest session: administration always goes through
@@ -1008,7 +1010,7 @@ export function createApplication({
         throw error(403, "ADMIN_NOT_ALLOWED");
       const challenge = token(),
         secret = newMfaSecret();
-      return ledger.transaction((s) => {
+      const result = await ledger.transaction((s) => {
         const a = s.accounts?.[session.accountId];
         if (!accountActive(s, a) || !a.permissions.includes("admin"))
           throw error(403, "ADMIN_NOT_ALLOWED");
@@ -1024,8 +1026,12 @@ export function createApplication({
           attempts: 0,
           pendingSecret: admin ? null : seal(secret, key),
         };
-        return { challenge, ...(admin ? {} : { enrollmentSecret: secret }) };
+        return admin ? null : a.email;
       });
+      return {
+        challenge,
+        ...(result ? await enrollment(secret, result) : {}),
+      };
     }
     if (path === "/api/account" && method === "GET") {
       requireAuth("guest");

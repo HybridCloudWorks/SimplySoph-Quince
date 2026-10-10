@@ -516,6 +516,36 @@ button:disabled {
   font-size: 0.85rem;
   color: var(--muted);
 }
+/* Authenticator setup: the QR stays black on white in both themes so phones scan it. */
+.mfa-setup {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+.mfa-setup ol {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: grid;
+  gap: 0.5rem;
+}
+.mfa-qr {
+  display: block;
+  width: 240px;
+  max-width: 100%;
+  height: auto;
+  background: #fff;
+  border-radius: 6px;
+}
+.mfa-fallback {
+  margin-bottom: 1rem;
+}
+@media (max-width: 600px) {
+  .mfa-setup {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 dialog {
   border: 1px solid var(--line);
   max-width: 600px;

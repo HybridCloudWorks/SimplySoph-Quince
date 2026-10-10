@@ -214,6 +214,12 @@ test("Microsoft MFA skips the code only after a sign-in that passed the code lin
   const t = await f.start("admin");
   const first = await f.post("auth/microsoft", { ticket: t.ticket, credential: f.ms(t, "owner@outlook.com", { mfa: true }) });
   assert.ok(first.challenge && !first.setCookie, "the first Microsoft sign-in still needs the authenticator");
+  // First-time setup comes as a standard QR code (Google and Microsoft Authenticator).
+  assert.match(first.provisioningQr, /^data:image\/png;base64,[A-Za-z0-9+/=]{200,}$/);
+  assert.equal(
+    first.provisioningUri,
+    `otpauth://totp/SimplySoph:owner%40outlook.com?secret=${first.enrollmentSecret}&issuer=SimplySoph&algorithm=SHA1&digits=6&period=30`,
+  );
   assert.equal((await f.ledger.read()).ssoBindings?.[hash("microsoft:owner@outlook.com")], undefined, "not linked before the code passes");
   f.secret = first.enrollmentSecret;
   f.advance(30000);
