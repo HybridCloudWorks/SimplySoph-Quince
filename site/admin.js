@@ -77,6 +77,34 @@ function parseCsv(text) {
     Object.fromEntries(keys.map((k, i) => [k, r[i] ?? ""])),
   );
 }
+// When sign-in itself worked but the person has no administrator access (or it
+// is not switched on yet), explain it in plain words instead of an error code.
+// Most people who land here are guests looking for their invitation.
+const noAccess = new Set([
+  "ADMIN_NOT_ALLOWED",
+  "ADMIN_NOT_ELIGIBLE",
+  "MFA_SETUP_NOT_ALLOWED",
+]);
+function accessNote(method, e) {
+  if (!noAccess.has(e.code)) return false;
+  const how = {
+      microsoft: "your Microsoft account",
+      google: "your Google account",
+      email: "the link we emailed you",
+      account: "your guest account",
+    }[method],
+    pending = e.code === "MFA_SETUP_NOT_ALLOWED";
+  root.innerHTML = `<section class="card access-note" role="alert"><h2>${pending ? "Your access isn’t turned on yet" : "This account isn’t an administrator"}</h2><p>You signed in with ${how}, and that part worked.</p><p>${pending ? "Your administrator access hasn’t been switched on yet. Please ask Saul or Diana to turn it on, then come back and sign in again within a day to finish setting up." : "The administrator pages are only for the few people helping to run Sophia’s celebration. If you’re expecting access, please contact Saul or Diana."}</p><p>Looking for your invitation? Your RSVP, the event details and photos are under <a href="/account/">My invitation</a>.</p><p><a href="/admin/login/">Try a different account</a></p></section>`;
+  root.scrollIntoView({ block: "start" });
+  return true;
+}
+async function attempt(method, fn) {
+  try {
+    await fn();
+  } catch (e) {
+    if (!accessNote(method, e)) notify(e.message);
+  }
+}
 async function login() {
   const session = await api("session");
   if (session.kind === "admin") {
@@ -85,9 +113,9 @@ async function login() {
   }
   if (session.verified && session.permissions.includes("admin")) {
     root.innerHTML =
-      '<p>Verify your authenticator to enter family administration.</p><button id="step-up" class="button burgundy">Continue with verified email</button><div id="mfa"></div>';
+      '<p>Verify your authenticator to open the administrator pages.</p><button id="step-up" class="button burgundy">Continue with verified email</button><div id="mfa"></div>';
     document.querySelector("#step-up").onclick = () =>
-      run(async () => showMfa(await api("auth/step-up", {})));
+      attempt("account", async () => showMfa(await api("auth/step-up", {})));
     return;
   }
   const microsoft = microsoftReturn();
@@ -105,6 +133,7 @@ async function login() {
       progress.textContent = "Microsoft confirmed your account.";
       showMfa(data);
     } catch (e) {
+      if (accessNote("microsoft", e)) return;
       // Say why on the page itself, next to "Start over".
       progress.className = "notice";
       progress.setAttribute("role", "alert");
@@ -118,7 +147,7 @@ async function login() {
     root.innerHTML =
       '<p>Verify Your Email To Continue To MFA.</p><button id="verify-admin-email" class="button burgundy">Verify Email</button><div id="mfa"></div>';
     document.querySelector("#verify-admin-email").onclick = () =>
-      run(async () => {
+      attempt("email", async () => {
         showMfa(await api("auth/admin-email/verify", { token: fragment }));
         document.querySelector("#verify-admin-email").remove();
         root.querySelector("p").textContent =
@@ -151,7 +180,9 @@ async function login() {
     cfg.clientId,
     "admin",
     (credential, ticket) =>
-      run(async () => showMfa(await api("auth/google", { credential, ticket }))),
+      attempt("google", async () =>
+        showMfa(await api("auth/google", { credential, ticket })),
+      ),
     notify,
   );
 }
