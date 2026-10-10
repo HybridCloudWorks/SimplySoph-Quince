@@ -81,7 +81,8 @@ export function totp(secret, step) {
     .padStart(6, "0");
 }
 export function verifyTotp(secret, code, now, lastStep = -1) {
-  if (!/^\d{6}$/.test(code || "")) return null;
+  // A non-string code (e.g. a JSON number) is just a wrong code, not a 5xx (SEC-14).
+  if (typeof code !== "string" || !/^\d{6}$/.test(code)) return null;
   const current = Math.floor(now / 30000);
   for (const step of [current, current - 1, current + 1])
     if (
@@ -269,18 +270,21 @@ const counters = new WeakMap(),
 export async function rateLimit(ledger, key, max, windowMs, now) {
   let map = counters.get(ledger);
   if (!map) counters.set(ledger, (map = { rows: new Map(), prunedAt: 0 }));
-  // Prune expired rows at most once a minute, and bound memory by evicting the
-  // oldest counters (Map keeps insertion order) when unique keys flood in.
-  if (now - map.prunedAt > 60000) {
+  // Prune expired rows at most once a minute. A counter whose window is still
+  // open is never evicted: flooding the table with junk keys used to push out
+  // live counters and reset every budget (SEC-6). Every key is now bounded (a
+  // global budget, a guest-list address, a verified identity or a signed-in
+  // household), so a full table means abuse, and new keys are refused instead.
+  if (now - map.prunedAt > 60000 || map.rows.size >= maxCounters) {
     map.prunedAt = now;
     for (const [k, v] of map.rows) if (v.until <= now) map.rows.delete(k);
   }
-  while (map.rows.size >= maxCounters)
-    map.rows.delete(map.rows.keys().next().value);
   map = map.rows;
   let row = map.get(key);
-  if (!row || row.until <= now)
+  if (!row || row.until <= now) {
+    if (!row && map.size >= maxCounters) throw error(429, "TOO_MANY_REQUESTS");
     map.set(key, (row = { count: 0, until: now + windowMs }));
+  }
   if (row.count >= max) throw error(429, "TOO_MANY_REQUESTS");
   row.count++;
 }
@@ -293,6 +297,19 @@ export async function withinLimit(ledger, key, max, windowMs, now) {
   } catch (e) {
     if (e.status === 429) return false;
     throw e;
+  }
+}
+// Answers no sooner than `ms` after the work started, so the time it takes to
+// send an email cannot reveal whether an address is on the list (SEC-8). The
+// email is still sent before replying: on Cloud Run, work after the response
+// may be starved of CPU.
+export async function atLeast(ms, work) {
+  const started = Date.now();
+  try {
+    return await work();
+  } finally {
+    const left = ms - (Date.now() - started);
+    if (left > 0) await new Promise((resolve) => setTimeout(resolve, left));
   }
 }
 // Shared budgets count only rejected credentials, so anonymous junk can never

@@ -2,6 +2,7 @@ import { planningSources } from "./planning-notion.mjs";
 import { randomUUID } from "node:crypto";
 import sharp from "sharp";
 import { error } from "./auth.mjs";
+import { imageGate } from "./gate.mjs";
 
 export const planningFields = {
   costs: [
@@ -140,17 +141,20 @@ export async function validateDocument(body) {
     savedName = name;
   if (["jpg", "jpeg", "png", "webp"].includes(ext)) {
     try {
-      const meta = await sharp(bytes, {
-        limitInputPixels: 40000000,
-      }).metadata();
-      if (!["jpeg", "png", "webp"].includes(meta.format)) throw Error();
-      bytes = await sharp(bytes, { limitInputPixels: 40000000 })
-        .rotate()
-        .png()
-        .toBuffer();
+      bytes = await imageGate(async () => {
+        const meta = await sharp(bytes, {
+          limitInputPixels: 40000000,
+        }).metadata();
+        if (!["jpeg", "png", "webp"].includes(meta.format)) throw Error();
+        return sharp(bytes, { limitInputPixels: 40000000 })
+          .rotate()
+          .png()
+          .toBuffer();
+      });
       savedName = name.replace(/\.[^.]+$/, ".png");
       type = "image/png";
-    } catch {
+    } catch (e) {
+      if (e.code === "PHOTO_BUSY") throw e;
       throw error(422, "INVALID_DOCUMENT");
     }
   } else if (ext === "pdf" && bytes.subarray(0, 5).toString() === "%PDF-")

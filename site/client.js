@@ -94,6 +94,10 @@ const messages = {
     "Another video is being prepared. Please try again shortly.",
     "Se está preparando otro video. Inténtalo de nuevo en un momento.",
   ],
+  PHOTO_BUSY: [
+    "Several photos are being prepared right now. Please try this one again in a minute.",
+    "Se están preparando varias fotos. Intenta con esta de nuevo en un minuto.",
+  ],
   VIDEO_UNAVAILABLE: [
     "Video processing is not available yet. Contact the family.",
     "El procesamiento de videos aún no está disponible. Contacta a la familia.",

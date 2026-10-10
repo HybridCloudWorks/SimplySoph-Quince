@@ -137,16 +137,23 @@ export function cloudAdapter(bucketName) {
     throw new Error("Dedicated event bucket required");
   const bucket = new Storage().bucket(bucketName),
     file = bucket.file("private/event-ledger.json");
+  // The last downloaded generation. Every request still checks the current
+  // generation (a small metadata call), but the full ledger is downloaded only
+  // when it has changed (SEC-13). Generations are immutable, so this is exact.
+  let cached = null;
   return {
     bucket,
     async load() {
       try {
         const [metadata] = await file.getMetadata();
-        const [bytes] = await bucket
-          .file(file.name, { generation: metadata.generation })
-          .download();
+        if (cached?.generation !== metadata.generation) {
+          const [bytes] = await bucket
+            .file(file.name, { generation: metadata.generation })
+            .download();
+          cached = { generation: metadata.generation, text: bytes.toString() };
+        }
         return {
-          state: JSON.parse(bytes.toString()),
+          state: JSON.parse(cached.text),
           generation: metadata.generation,
         };
       } catch (e) {

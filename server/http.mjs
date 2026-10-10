@@ -36,6 +36,10 @@ function apiLog(log, req, res, started, error) {
     entry.stack_trace = String(error.stack || error).slice(0, 4000);
   log(entry);
 }
+// The site never asks for these device features; deny them to every frame.
+// Kept identical to the Hosting header in firebase.json.
+export const permissionsPolicy =
+  "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=(), browsing-topics=()";
 export function createHttpServer({ app = null, root, origin, log = null }) {
   return http.createServer(async (req, res) => {
     const started = performance.now();
@@ -49,6 +53,8 @@ export function createHttpServer({ app = null, root, origin, log = null }) {
     res.setHeader("Referrer-Policy", "no-referrer");
     res.setHeader("X-Frame-Options", "DENY");
     res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
+    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+    res.setHeader("Permissions-Policy", permissionsPolicy);
     res.setHeader(
       "Content-Security-Policy",
       "default-src 'self'; script-src 'self' https://accounts.google.com/gsi/; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://accounts.google.com https://oauth2.googleapis.com https://login.microsoftonline.com; frame-src 'self' https://accounts.google.com; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
@@ -173,8 +179,14 @@ export function createHttpServer({ app = null, root, origin, log = null }) {
         );
         return;
       }
-      const pathname = decodeURIComponent(url.pathname),
-        targetPath = path.resolve(root, "." + pathname);
+      let pathname;
+      try {
+        pathname = decodeURIComponent(url.pathname);
+      } catch {
+        // A malformed %-escape is a bad request, not a server fault (SEC-14).
+        throw Object.assign(new Error(), { status: 400, code: "BAD_PATH" });
+      }
+      const targetPath = path.resolve(root, "." + pathname);
       if (targetPath !== root && !targetPath.startsWith(root + path.sep))
         throw Object.assign(new Error(), { status: 403, code: "FORBIDDEN" });
       let target = targetPath,

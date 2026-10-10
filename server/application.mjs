@@ -14,6 +14,7 @@ import { calendar, contactTopics, escapeHtml } from "../site/celebration.mjs";
 import { siteSettings, validateSettings } from "./site-settings.mjs";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import sharp from "sharp";
+import { imageGate } from "./gate.mjs";
 import {
   token,
   hash,
@@ -38,6 +39,7 @@ import {
 } from "../emails/templates.mjs";
 import { event as eventInfo } from "../site/content.mjs";
 import { previewRoutes } from "../site/preview-content.mjs";
+import { notionOutage } from "./notion.mjs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -123,6 +125,8 @@ export function createApplication({
   mailSleep,
   // The admin-only page preview built by scripts/build-pages.mjs (never published).
   previewRoot = fileURLToPath(new URL("../dist-preview/", import.meta.url)),
+  // Sign-in link requests answer no sooner than this (SEC-8); 0 in tests.
+  signInFloorMs = 0,
 }) {
   if (!Buffer.isBuffer(key) || key.length !== 32)
     throw new Error("32-byte application key required");
@@ -347,8 +351,31 @@ export function createApplication({
   function finishSync(s, householdId, owner, task, failure) {
     const row = s.invitations[householdId];
     if (row.syncLease?.owner === owner) delete row.syncLease;
-    // Always leave a newer response pending after an old projection finishes.
-    if (
+    // A Notion outage, rate limit or edit conflict is retried by the scheduled
+    // drain. Any other refusal (a missing column, a deleted row) will fail the
+    // same way every time: mark it failed, stop retrying it automatically, and
+    // tell the family once (NOTION-7). Retry on Invitations tries it again.
+    const permanent =
+      failure && !notionOutage({ code: failure }) && failure !== "NOTION_409";
+    if (permanent) {
+      if (row.syncState !== "failed") {
+        const note = randomUUID();
+        s.notifications ??= {};
+        s.notifications[note] = {
+          id: note,
+          kind: "sync",
+          householdId,
+          title: `${row.name}: the RSVP could not be saved to Notion`,
+          text: `Notion refused it (${failure}). Check that household's row in Notion, then press Retry on Invitations.`,
+          at: now(),
+          read: false,
+          emailState: "none",
+        };
+      }
+      row.syncState = "failed";
+      row.syncError = failure;
+    } else if (
+      // Always leave a newer response pending after an old projection finishes.
       failure ||
       (row.latestSubmissionId || null) !== (task.response?.id || null) ||
       s.profiles?.[householdId]?.version !== task.profile?.version
@@ -362,7 +389,8 @@ export function createApplication({
     logEvent(
       s,
       now(),
-      row.syncState === "synced" ? "notion.synced" : "notion.sync_pending",
+      { synced: "notion.synced", failed: "notion.sync_failed" }[row.syncState] ||
+        "notion.sync_pending",
       failure
         ? { householdId, data: { error: failure.code || String(failure) } }
         : { householdId },
@@ -511,6 +539,7 @@ export function createApplication({
     origin,
     now,
     syncOne,
+    signInFloorMs,
   });
   const records = createAdminRecords({ ledger, key, now });
   const planning = createPlanning({ ledger, documents, notion, now });
@@ -531,12 +560,15 @@ export function createApplication({
     admins,
     origin,
     now,
+    signInFloorMs,
   });
-  // Up to 10 households whose RSVP is still waiting to reach Notion.
-  async function retryPendingRsvps() {
+  // Up to 10 households whose RSVP is still waiting to reach Notion. The
+  // scheduled drain retries only "pending"; an admin's Retry also re-tries
+  // "failed" rows after they fix the cause in Notion.
+  async function retryPendingRsvps({ includeFailed = false } = {}) {
     const s = await ledger.read();
     const ids = Object.values(s.invitations)
-      .filter((r) => r.syncState === "pending")
+      .filter((r) => r.syncState === "pending" || (includeFailed && r.syncState === "failed"))
       .slice(0, 10)
       .map((r) => r.id);
     for (const id of ids) await syncOne(id);
@@ -1295,21 +1327,23 @@ export function createApplication({
       try {
         image = isVideo
           ? await videoProcessor(bytes)
-          : await sharp(bytes, {
-              limitInputPixels: 25000000,
-              animated: false,
-            })
-              .rotate()
-              .resize({
-                width: 2000,
-                height: 2000,
-                fit: "inside",
-                withoutEnlargement: true,
+          : await imageGate(() =>
+              sharp(bytes, {
+                limitInputPixels: 25000000,
+                animated: false,
               })
-              .jpeg({ quality: 85 })
-              .toBuffer();
+                .rotate()
+                .resize({
+                  width: 2000,
+                  height: 2000,
+                  fit: "inside",
+                  withoutEnlargement: true,
+                })
+                .jpeg({ quality: 85 })
+                .toBuffer(),
+            );
       } catch (e) {
-        if (isVideo) throw e;
+        if (isVideo || e.code === "PHOTO_BUSY") throw e;
         throw error(422, "INVALID_PHOTO");
       }
       const id = randomUUID();
@@ -1667,7 +1701,7 @@ export function createApplication({
         return { added: await notion.prepareSchema() };
       }
       if (path === "/api/admin/sync" && method === "POST")
-        return retryPendingRsvps();
+        return retryPendingRsvps({ includeFailed: true });
       if (path === "/api/admin/moderation" && method === "GET")
         return {
           messages: Object.values(ctx.state.messages),

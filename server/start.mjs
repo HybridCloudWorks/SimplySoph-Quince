@@ -13,6 +13,7 @@ import { createHttpServer } from "./http.mjs";
 import { whatsappTransport as createWhatsappTransport } from "./whatsapp-transport.mjs";
 import { twilioTransport } from "./twilio.mjs";
 import { schedulerVerifier } from "./scheduler.mjs";
+import { redactForLog } from "./event-log.mjs";
 const env = process.env,
   origin = env.PUBLIC_ORIGIN || "https://misxv.simplysoph.com";
 let app = null;
@@ -83,6 +84,10 @@ if (env.EVENT_BUCKET) {
       "Set both SCHEDULER_AUDIENCE and SCHEDULER_SERVICE_ACCOUNT, or neither",
     );
   app = createApplication({
+    // Sign-in link requests take at least this long, whether or not an email
+    // goes out, so response time does not reveal the guest list (SEC-8). A send
+    // measured about 0.25 s.
+    signInFloorMs: 900,
     whatsappTransport,
     whatsappTemplates: JSON.parse(env.WHATSAPP_TEMPLATES_JSON || "[]"),
     whatsappWebhook: {
@@ -99,7 +104,7 @@ if (env.EVENT_BUCKET) {
     ledger: new Ledger(adapter, {
       onEvents: (entries) => {
         for (const event of entries)
-          log({ severity: "INFO", message: "event " + event.type, event });
+          log({ severity: "INFO", message: "event " + event.type, event: redactForLog(event, key) });
       },
     }),
     smsTransport,

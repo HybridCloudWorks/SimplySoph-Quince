@@ -85,6 +85,10 @@ export const projectionSchema = {
 // 429 means Notion did nothing, so every request may retry it. Other transient
 // failures retry only for reads, queries and idempotent PATCHes: a retried page
 // create could duplicate a row.
+// Notion could not answer (network, rate limit or a server error), as opposed
+// to answering with something the caller must respect.
+export const notionOutage = (e) =>
+  /^NOTION_(UNAVAILABLE|429|5\d\d)$/.test(e?.code || "");
 export function notionRetryable(method, path, status) {
   if (status === 429) return true;
   const idempotent =
@@ -99,6 +103,9 @@ export function notionClient({
   clock = Date.now,
   minIntervalMs = 400,
   cacheMs = 30000,
+  // During a Notion outage, cached reads fall back to the last good answer this
+  // long (NOTION-6). Fresh reads, which decide access, never do.
+  staleMs = 3600000,
 }) {
   // Notion allows ~3 requests/s per connection. Requests from this instance are
   // paced below that, and roster reads are cached briefly so a burst of guest
@@ -110,11 +117,20 @@ export function notionClient({
     nextSlot = Math.max(at, nextSlot) + minIntervalMs;
     if (wait > 0) await sleep(wait);
   }
-  const cache = new Map();
+  const cache = new Map(),
+    lastGood = new Map();
+  const remember = (key, value) => lastGood.set(key, { value, at: clock() });
   function cached(key, load) {
     const hit = cache.get(key);
     if (hit && hit.until > clock()) return hit.value;
-    const value = load();
+    const value = load().then(
+      (v) => (remember(key, v), v),
+      (e) => {
+        const good = lastGood.get(key);
+        if (notionOutage(e) && good && clock() - good.at < staleMs) return good.value;
+        throw e;
+      },
+    );
     cache.set(key, { value, until: clock() + cacheMs });
     value.catch(() => cache.delete(key));
     return value;
@@ -281,9 +297,10 @@ export function notionClient({
       return rows;
     },
     async list({ fresh = false } = {}) {
-      return structuredClone(
-        await (fresh ? this.listFresh() : cached("list", () => this.listFresh())),
-      );
+      if (!fresh) return structuredClone(await cached("list", () => this.listFresh()));
+      const rows = await this.listFresh();
+      remember("list", rows);
+      return structuredClone(rows);
     },
     async listFresh() {
       let cursor,

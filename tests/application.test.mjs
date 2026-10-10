@@ -1667,3 +1667,56 @@ test("the approved-page preview is for administrators only and serves just the k
     (e) => e.status === 401,
   );
 });
+
+test("sign-in link requests count only sends, so strangers cannot lock anyone out (AUTHN-5)", async () => {
+  const f = await fixture();
+  for (let i = 0; i < 20; i++)
+    assert.deepEqual(await f.publicPost("auth/email/request", { email: "nobody@example.com" }), { requested: true });
+  // An address on the list gets at most 3 links per 15 minutes, and the person receives them.
+  const before = f.sent.length;
+  for (let i = 0; i < 5; i++)
+    assert.deepEqual(await f.publicPost("auth/email/request", { email: "test@example.com" }), { requested: true });
+  assert.equal(f.sent.length - before, 3);
+  f.advance(900001);
+  await f.publicPost("auth/email/request", { email: "test@example.com" });
+  assert.equal(f.sent.length - before, 4);
+  // Administrator links work the same way.
+  const adminBefore = f.sent.length;
+  for (let i = 0; i < 5; i++) await f.publicPost("auth/admin-email/request", { email: "test@example.com" });
+  assert.equal(f.sent.length - adminBefore, 3);
+});
+
+test("a permanent Notion refusal is marked failed once, alerts the family and waits for Retry (NOTION-7)", async () => {
+  let refusal = "NOTION_400";
+  const f = await fixture({
+    verifyScheduler: async () => true,
+    notion: {
+      async project() {
+        if (refusal) throw { code: refusal };
+      },
+    },
+  });
+  await f.guest("rsvp", f.input(), { "idempotency-key": "33333333-3333-4333-8333-333333333333" });
+  let s = await f.ledger.read();
+  assert.equal(s.invitations[household].syncState, "failed");
+  assert.equal(s.invitations[household].syncError, "NOTION_400");
+  const alerts = () => Object.values(s.notifications).filter((n) => n.kind === "sync");
+  assert.equal(alerts().length, 1);
+  // The scheduled drain leaves failed rows alone instead of retrying them every 10 minutes.
+  const drained = await f.app.dispatch({ path: "/api/internal/drain", method: "POST", headers: { authorization: "Bearer x" } });
+  assert.equal(drained.rsvp.attempted, 0);
+  // An admin's Retry tries again; a repeat failure does not alert twice.
+  await f.admin("sync", {});
+  s = await f.ledger.read();
+  assert.equal(alerts().length, 1);
+  refusal = null;
+  await f.admin("sync", {});
+  s = await f.ledger.read();
+  assert.equal(s.invitations[household].syncState, "synced");
+  // An outage is not permanent: it stays pending for the scheduled drain.
+  refusal = "NOTION_UNAVAILABLE";
+  const update = f.input();
+  update.previousSubmissionId = "33333333-3333-4333-8333-333333333333";
+  await f.guest("rsvp", update, { "idempotency-key": "44444444-4444-4444-8444-444444444444" });
+  assert.equal((await f.ledger.read()).invitations[household].syncState, "pending");
+});

@@ -6,6 +6,7 @@ import {
   cookie,
   rateLimit,
   withinLimit,
+  atLeast,
   pruneSessions,
 } from "./auth.mjs";
 
@@ -41,7 +42,7 @@ export function rosterMatch(rows, address) {
 // link, Google or Microsoft. There is no separate registration. An "account" is
 // only the record of a verified sign-in, created on first use; it holds no
 // permissions. Invitation links stay RSVP-only (application.mjs).
-export function createAccounts({ ledger, mailer, notion, key, origin, now }) {
+export function createAccounts({ ledger, mailer, notion, key, origin, now, signInFloorMs = 0 }) {
   const emailKey = (value) =>
     createHmac("sha256", key)
       .update("email:" + value)
@@ -138,28 +139,26 @@ export function createAccounts({ ledger, mailer, notion, key, origin, now }) {
     async request(body) {
       if (!mailer.configured) throw error(503, "EMAIL_SIGN_IN_UNAVAILABLE");
       const address = normalizeEmail(body.email);
-      await rateLimit(
-        ledger,
-        "email-login:" + emailKey(address),
-        3,
-        900000,
-        now(),
-      );
-      const row = rosterMatch(await notion.list(), address),
-        invite = row && (await ledger.read()).invitations[row.id];
-      // The shared budget bounds outgoing mail only. When spent, or when the
-      // address is not on the guest list, nothing is sent and the response is
-      // the same, so it never reveals which addresses exist.
-      if (
-        invite?.active &&
-        (await withinLimit(ledger, "email-login-sends", 120, 3600000, now()))
-      )
-        await issue({
-          address,
-          householdId: row.id,
-          generation: invite.generation,
-        });
-      return { requested: true };
+      return atLeast(signInFloorMs, async () => {
+        const row = rosterMatch(await notion.list(), address),
+          invite = row && (await ledger.read()).invitations[row.id];
+        // Only sends are counted: 3 links per address per 15 minutes, plus a
+        // shared hourly budget. Requests that send nothing count for nothing,
+        // so a stranger cannot lock anyone out (AUTHN-5); the person still gets
+        // every link that was sent. When a limit is reached, or the address is
+        // not on the guest list, the response is the same.
+        if (
+          invite?.active &&
+          (await withinLimit(ledger, "email-to:" + emailKey(address), 3, 900000, now())) &&
+          (await withinLimit(ledger, "email-login-sends", 120, 3600000, now()))
+        )
+          await issue({
+            address,
+            householdId: row.id,
+            generation: invite.generation,
+          });
+        return { requested: true };
+      });
     },
     async consume(raw) {
       const pending =
