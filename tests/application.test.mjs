@@ -1721,6 +1721,109 @@ test("a permanent Notion refusal is marked failed once, alerts the family and wa
   assert.equal((await f.ledger.read()).invitations[household].syncState, "pending");
 });
 
+test("signed-in guests stay signed in while they use the site, up to 12 hours (AUTHN-7)", async () => {
+  const f = await fixture();
+  await f.publicPost("auth/email/request", { email: "test@example.com" });
+  const signed = await f.publicPost("auth/email/verify", { token: linkOf(f.sent.at(-1)) });
+  const cookie = signed.setCookie.split(";")[0];
+  const get = () => f.app.dispatch({ path: "/api/session", headers: { cookie } });
+  f.advance(20 * 60000); // 10 minutes left: this request renews it
+  const renewed = await get();
+  assert.equal(renewed.verified, true);
+  assert.match(renewed.setCookie, /^__session=/, "the cookie is re-sent");
+  f.advance(25 * 60000); // 45 minutes after sign-in, still signed in
+  assert.equal((await get()).verified, true);
+  // Keep using it: it never passes 12 hours after sign-in.
+  for (let t = 0; t < 12 * 60; t += 20) {
+    f.advance(20 * 60000);
+    await get();
+  }
+  assert.equal((await get()).kind, null, "signed out 12 hours after sign-in");
+  // An idle session still ends after 30 minutes.
+  await f.publicPost("auth/email/request", { email: "test@example.com" });
+  const idle = await f.publicPost("auth/email/verify", { token: linkOf(f.sent.at(-1)) });
+  f.advance(31 * 60000);
+  assert.equal((await f.app.dispatch({ path: "/api/session", headers: { cookie: idle.setCookie.split(";")[0] } })).kind, null);
+});
+
+test("sign out everywhere ends only your own sessions (AUTHN-10)", async () => {
+  const f = await fixture();
+  const signIn = async () => {
+    await f.publicPost("auth/email/request", { email: "test@example.com" });
+    f.advance(1000);
+    const s = await f.publicPost("auth/email/verify", { token: linkOf(f.sent.at(-1)) });
+    return { cookie: s.setCookie.split(";")[0], csrf: s.csrf };
+  };
+  const phone = await signIn(),
+    laptop = await signIn();
+  const kind = (c) => f.app.dispatch({ path: "/api/session", headers: { cookie: c } }).then((r) => r.kind);
+  const out = await f.app.dispatch({
+    path: "/api/logout-all",
+    method: "POST",
+    body: {},
+    headers: { origin, cookie: phone.cookie, "x-csrf-token": phone.csrf },
+  });
+  // The two new sign-ins plus the fixture's existing session for the same account.
+  assert.equal(out.signedOut, 3);
+  await assert.rejects(() => f.guest("account"), (e) => e.code === "SIGN_IN_REQUIRED");
+  assert.equal(await kind(phone.cookie), null);
+  assert.equal(await kind(laptop.cookie), null);
+  assert.ok(await f.admin("guests"), "other people's sessions are untouched");
+  // An invitation-link session is RSVP-only and cannot sign anyone out.
+  await assert.rejects(() => f.linkGuest("logout-all", {}), (e) => e.code === "SIGN_IN_REQUIRED");
+});
+
+test("the owner's recovery code replaces a lost authenticator, once (SEC-10)", async () => {
+  const f = await fixture();
+  const { codes } = await f.admin("recovery-codes", { code: await f.ownerCode() });
+  assert.equal(codes.length, 10);
+  assert.match(codes[0], /^[A-Z2-7]{4}-[A-Z2-7]{4}-[A-Z2-7]{4}$/);
+  assert.equal((await f.admin("accounts")).recoveryCodesLeft, 10);
+  const stored = JSON.stringify((await f.ledger.read()).admins);
+  assert.ok(!stored.includes(codes[0].replaceAll("-", "")), "only hashes are stored");
+  // Sign in with the emailed link, then a recovery code instead of the authenticator.
+  const challenge = async () => {
+    await f.publicPost("auth/admin-email/request", { email: "organizer@gmail.com" });
+    return (await f.publicPost("auth/admin-email/verify", { token: linkOf(f.sent.at(-1)) })).challenge;
+  };
+  const c1 = await challenge();
+  const recovered = await f.publicPost("auth/mfa", { challenge: c1, code: codes[0].toLowerCase() });
+  assert.equal(recovered.recovered, true);
+  assert.ok(recovered.enrollmentSecret && !recovered.setCookie, "it opens a new setup, not a session");
+  f.advance(30000);
+  const signed = await f.publicPost("auth/mfa", {
+    challenge: c1,
+    code: totp(recovered.enrollmentSecret, Math.floor(f.now() / 30000)),
+  });
+  assert.match(signed.setCookie, /^__session=/);
+  const notes = Object.values((await f.ledger.read()).notifications).map((n) => n.title);
+  assert.ok(notes.some((t) => /recovery code was used.*9 left/.test(t)));
+  // The code works once.
+  const c2 = await challenge();
+  await assert.rejects(() => f.publicPost("auth/mfa", { challenge: c2, code: codes[0] }), (e) => e.code === "INVALID_MFA");
+});
+
+test("recovery codes are for the site owner only (SEC-10)", async () => {
+  const f = await fixture();
+  const { as } = await adminSignIn(f, "test@example.com");
+  await assert.rejects(() => as("admin/recovery-codes", { code: "000000" }), (e) => e.code === "OWNER_REQUIRED");
+  assert.equal((await as("admin/accounts")).recoveryCodesLeft, undefined);
+});
+
+test("a guest whose email leaves the Notion row is not renewed, so access ends soon (AUTHN-7)", async () => {
+  const f = await fixture();
+  await f.publicPost("auth/email/request", { email: "test@example.com" });
+  const signed = await f.publicPost("auth/email/verify", { token: linkOf(f.sent.at(-1)) });
+  const cookie = signed.setCookie.split(";")[0];
+  const get = () => f.app.dispatch({ path: "/api/session", headers: { cookie } });
+  f.row.email = "someone-else@example.com";
+  f.advance(20 * 60000);
+  const r = await get();
+  assert.equal(r.setCookie, undefined, "not renewed");
+  f.advance(11 * 60000);
+  assert.equal((await get()).kind, null, "the original 30 minutes ran out");
+});
+
 test("sign-in requests take the full floor and only a few run at once (SEC-8)", async () => {
   const f = await fixture({ signInFloorMs: 150 });
   for (const [path, email] of [
@@ -1777,4 +1880,108 @@ test("a newer RSVP saved while an older sync fails stays pending, not failed (NO
   assert.equal(s.invitations[household].latestSubmissionId, "66666666-6666-4666-8666-666666666666");
   assert.equal(s.invitations[household].syncState, "pending", "the drain will still try the new answer");
   assert.equal(Object.values(s.notifications).filter((n) => n.kind === "sync").length, 0);
+});
+
+test("a renewal is saved only with a response that carries the cookie, photos included (AUTHN-7)", async () => {
+  const f = await fixture();
+  const pid = "77777777-7777-4777-8777-777777777777";
+  await f.ledger.transaction((s) => {
+    s.photos[pid] = { id: pid, state: "approved", kind: "photo" };
+  });
+  await f.publicPost("auth/email/request", { email: "test@example.com" });
+  const signed = await f.publicPost("auth/email/verify", { token: linkOf(f.sent.at(-1)) });
+  const cookie = signed.setCookie.split(";")[0];
+  const expiresAt = async () => (await f.ledger.read()).sessions[hash(cookie.slice(10))].expiresAt;
+  const before = await expiresAt();
+  f.advance(20 * 60000);
+  await assert.rejects(() => f.app.dispatch({ path: "/api/nothing-here", headers: { cookie } }), (e) => e.status === 404);
+  assert.equal(await expiresAt(), before, "a failed request renews nothing");
+  const photo = await f.app.dispatch({ path: "/api/photo/" + pid, headers: { cookie } });
+  assert.ok(photo.binary);
+  assert.match(photo.setCookie, /^__session=/, "the photo response carries the renewed cookie");
+  assert.ok((await expiresAt()) > before);
+});
+
+test("only email sign-in sessions renew; link, admin and Notion-outage cases do not (AUTHN-7)", async () => {
+  let down = false,
+    f;
+  f = await fixture({
+    notion: {
+      async list() {
+        if (down) throw Object.assign(new Error(), { status: 503, code: "NOTION_UNAVAILABLE" });
+        return [structuredClone(f.row)];
+      },
+    },
+  });
+  // The seeded link and admin sessions are both in their last 15 minutes.
+  assert.equal((await f.linkGuest("session")).setCookie, undefined, "invitation links are RSVP-only");
+  assert.equal((await f.admin("dashboard")).setCookie, undefined, "admin sessions keep 30 minutes");
+  await f.publicPost("auth/email/request", { email: "test@example.com" });
+  const signed = await f.publicPost("auth/email/verify", { token: linkOf(f.sent.at(-1)) });
+  down = true;
+  f.advance(20 * 60000);
+  const r = await f.app.dispatch({ path: "/api/session", headers: { cookie: signed.setCookie.split(";")[0] } });
+  assert.equal(r.verified, true, "a Notion outage never fails the request");
+  assert.equal(r.setCookie, undefined, "but it skips the renewal");
+});
+
+test("an administrator's sign out everywhere leaves other administrators alone (AUTHN-10)", async () => {
+  const f = await fixture();
+  const first = await adminSignIn(f, "test@example.com");
+  // A second device: the same admin signs in again with the same authenticator.
+  f.advance(31000);
+  await f.publicPost("auth/admin-email/request", { email: "test@example.com" });
+  const c = await f.publicPost("auth/admin-email/verify", { token: linkOf(f.sent.at(-1)) });
+  const second = await f.publicPost("auth/mfa", {
+    challenge: c.challenge,
+    code: totp(first.c.enrollmentSecret, Math.floor(f.now() / 30000)),
+  });
+  const secondCookie = second.setCookie.split(";")[0];
+  // Writes need the CSRF token, like every other change.
+  await assert.rejects(
+    () => f.app.dispatch({ path: "/api/logout-all", method: "POST", body: {}, headers: { origin, cookie: secondCookie } }),
+    (e) => e.code === "CSRF_REJECTED",
+  );
+  assert.equal((await first.as("logout-all", {})).signedOut, 2);
+  assert.equal((await f.app.dispatch({ path: "/api/session", headers: { cookie: secondCookie } })).kind, null);
+  assert.ok(await f.admin("guests"), "the owner is still signed in");
+});
+
+test("a recovery code cuts off the lost phone, restarts the setup window and retires the old authenticator (SEC-10)", async () => {
+  const f = await fixture();
+  const { codes } = await f.admin("recovery-codes", { code: await f.ownerCode() });
+  await f.ledger.transaction((s) => {
+    s.ssoBindings = { [hash("admin-microsoft:organizer@gmail.com")]: "old-phone" };
+  });
+  const challenge = async () => {
+    await f.publicPost("auth/admin-email/request", { email: "organizer@gmail.com" });
+    return (await f.publicPost("auth/admin-email/verify", { token: linkOf(f.sent.at(-1)) })).challenge;
+  };
+  const c = await challenge();
+  f.advance(4 * 60000);
+  const recovered = await f.publicPost("auth/mfa", { challenge: c, code: codes[1] });
+  const s = await f.ledger.read();
+  assert.equal(s.ssoBindings[hash("admin-microsoft:organizer@gmail.com")], undefined, "Microsoft link removed");
+  await assert.rejects(() => f.admin("guests"), (e) => e.code === "SIGN_IN_REQUIRED", "the old session ended");
+  f.advance(2 * 60000); // six minutes after the challenge began
+  const signed = await f.publicPost("auth/mfa", {
+    challenge: c,
+    code: totp(recovered.enrollmentSecret, Math.floor(f.now() / 30000)),
+  });
+  assert.match(signed.setCookie, /^__session=/, "the setup window restarted with the recovery code");
+  // The old authenticator no longer works.
+  const again = await challenge();
+  f.advance(30000);
+  await assert.rejects(
+    () => f.publicPost("auth/mfa", { challenge: again, code: totp(OWNER_TOTP, Math.floor(f.now() / 30000)) }),
+    (e) => e.code === "INVALID_MFA",
+  );
+});
+
+test("a recovery-shaped code from an administrator who is not the owner is just a wrong code (SEC-10)", async () => {
+  const f = await fixture();
+  await adminSignIn(f, "test@example.com");
+  await f.publicPost("auth/admin-email/request", { email: "test@example.com" });
+  const c = (await f.publicPost("auth/admin-email/verify", { token: linkOf(f.sent.at(-1)) })).challenge;
+  await assert.rejects(() => f.publicPost("auth/mfa", { challenge: c, code: "ABCD-EFGH-JKLM" }), (e) => e.code === "INVALID_MFA");
 });

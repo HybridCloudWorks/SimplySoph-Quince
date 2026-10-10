@@ -186,3 +186,33 @@ test("an admin Notion confirmed recently keeps working through an outage, briefl
   down = true;
   await assert.rejects(() => admins.stillAdmin(session), (e) => e.code === "NOTION_UNAVAILABLE");
 });
+
+test("Google guest sign-in vouches only for Gmail and Workspace addresses (AUTHN-11 review)", async () => {
+  const { OAuth2Client } = await import("google-auth-library");
+  const { googleIdentityVerifier } = await import("../server/auth.mjs");
+  const original = OAuth2Client.prototype.verifyIdToken;
+  let payload;
+  OAuth2Client.prototype.verifyIdToken = async () => ({ getPayload: () => payload });
+  try {
+    const verify = googleIdentityVerifier("client-id");
+    payload = { sub: "g-1", email: "Aunt@Gmail.com", email_verified: true, nonce: "n-1" };
+    assert.deepEqual(await verify("token", "n-1"), {
+      provider: "google",
+      subject: "g-1",
+      email: "aunt@gmail.com",
+      mfa: false,
+    });
+    payload = { ...payload, email: "aunt@family.example", hd: "family.example" };
+    assert.equal((await verify("token", "n-1")).email, "aunt@family.example", "Workspace domain");
+    // A Google account registered with someone else's mail provider: Google
+    // checked the address once and does not vouch for who owns it now.
+    payload = { sub: "g-2", email: "aunt@hotmail.com", email_verified: true, nonce: "n-1" };
+    await assert.rejects(() => verify("token", "n-1"), (e) => e.code === "SSO_EMAIL_NOT_VERIFIED");
+    payload = { ...payload, email: "aunt@gmail.com", email_verified: false };
+    await assert.rejects(() => verify("token", "n-1"), (e) => e.code === "SSO_EMAIL_NOT_VERIFIED");
+    payload = { ...payload, email_verified: true, nonce: "other" };
+    await assert.rejects(() => verify("token", "n-1"), (e) => e.code === "SIGN_IN_FAILED");
+  } finally {
+    OAuth2Client.prototype.verifyIdToken = original;
+  }
+});

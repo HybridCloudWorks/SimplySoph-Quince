@@ -408,7 +408,7 @@ function document({ route, title, lang = "en", admin = false }) {
           )
           .join(
             "",
-          )}<button class="plain-button" id="logout">Sign out</button></aside><div><p class="eyebrow">SOPHIA · MIS XV</p><h1 class="page-title">${title}</h1><div id="admin-app" data-view="${route}"><p role="status">Loading secure workspace…</p></div></div></section>`
+          )}<button class="plain-button" id="logout">Sign out</button><button class="plain-button" id="logout-all">Sign out everywhere</button></aside><div><p class="eyebrow">SOPHIA · MIS XV</p><h1 class="page-title">${title}</h1><div id="admin-app" data-view="${route}"><p role="status">Loading secure workspace…</p></div></div></section>`
       : contents(route, lang)
   }</main><footer><p class="copyright">© 2026 Simply Soph Media (SimplySoph). All Rights Reserved.</p><div><a href="${href("privacy", lang)}">${lang === "es" ? "Política de privacidad" : "Privacy policy"}</a> · <a href="${href("terms", lang)}">${lang === "es" ? "Política de medios" : "Media policy"}</a> · <a href="${href("whatsapp", lang)}">WhatsApp</a> · <a href="${href("sms", lang)}">${lang === "es" ? "Mensajes SMS" : "SMS Updates"}</a> · <a href="${href("contact", lang)}">${lang === "es" ? "Contáctanos" : "Contact us"}</a></div></footer><div id="status" role="status" aria-live="polite"></div></body></html>`;
 }

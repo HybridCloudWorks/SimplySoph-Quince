@@ -139,8 +139,8 @@ const messages = {
     "Usa una cuenta personal de Microsoft (Outlook, Hotmail, Live) o una cuenta de trabajo de Simply Soph.",
   ],
   SSO_EMAIL_NOT_VERIFIED: [
-    "Your provider did not share a verified email address. Use the emailed sign-in link instead.",
-    "Tu proveedor no compartió un correo verificado. Usa el enlace de acceso por correo.",
+    "That account can’t confirm this email address. Gmail addresses work with Google, and Hotmail or Outlook addresses with Microsoft. Any address works with the emailed sign-in link.",
+    "Esa cuenta no puede confirmar este correo. Las direcciones de Gmail funcionan con Google, y las de Hotmail u Outlook con Microsoft. Cualquier dirección funciona con el enlace de acceso por correo.",
   ],
   SSO_NOT_CONFIGURED: [
     "This sign-in option is not available yet. Use the emailed sign-in link.",

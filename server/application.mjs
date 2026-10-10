@@ -12,7 +12,7 @@ import { logEvent } from "./event-log.mjs";
 import { normalizeVideo, mediaResponse } from "./video.mjs";
 import { calendar, contactTopics, escapeHtml } from "../site/celebration.mjs";
 import { siteSettings, validateSettings } from "./site-settings.mjs";
-import { randomUUID, timingSafeEqual } from "node:crypto";
+import { randomUUID, randomBytes, createHmac, timingSafeEqual } from "node:crypto";
 import sharp from "sharp";
 import { imageGate, createGate } from "./gate.mjs";
 import {
@@ -27,6 +27,7 @@ import {
   pruneSessions,
   newMfaSecret,
   verifyTotp,
+  base32,
   invitationCode,
   invitationCredential,
 } from "./auth.mjs";
@@ -43,7 +44,7 @@ import { notionOutage } from "./notion.mjs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createAccounts, accountActive } from "./accounts.mjs";
+import { createAccounts, accountActive, rosterMatch } from "./accounts.mjs";
 const events = ["ceremony", "dinner", "dance"];
 const safeText = (s, max = 1000) => {
   if (
@@ -221,6 +222,20 @@ export function createApplication({
     if (step === null) throw error(401, "INVALID_MFA");
     me.lastStep = step;
   }
+  // Owner recovery codes (SEC-10): ten one-time codes that stand in for the
+  // owner's authenticator after a lost phone. Only keyed hashes are stored. A
+  // code does not sign in by itself: it opens a new authenticator setup, so the
+  // lost phone is replaced in the same step.
+  const recoveryHash = (code) =>
+    createHmac("sha256", key).update("recovery:" + code).digest("hex");
+  const recoveryInput = (value) => {
+    const v = typeof value === "string" ? value.toUpperCase().replace(/[^A-Z0-9]/g, "") : "";
+    return /^[A-Z2-7]{12}$/.test(v) ? v : null;
+  };
+  const newRecoveryCodes = () =>
+    Array.from({ length: 10 }, () => base32(randomBytes(8)).slice(0, 12)).map(
+      (c) => `${c.slice(0, 4)}-${c.slice(4, 8)}-${c.slice(8)}`,
+    );
   function securityNote(s, title) {
     const id = randomUUID();
     s.notifications ??= {};
@@ -298,6 +313,7 @@ export function createApplication({
       state: s,
       session: sessionValid(s, session) ? session : null,
       sessionHash: raw ? hash(raw) : null,
+      raw,
     };
   }
   // Page views may use the short Notion cache, and read-only views opt in to
@@ -612,7 +628,31 @@ export function createApplication({
     }
     return result;
   }
+  // Signed-in guests stay signed in while they use the site (AUTHN-7). A
+  // request in the last 15 minutes of an email sign-in session extends it to 30
+  // minutes from now, never past 12 hours after sign-in. The extension is saved
+  // only once the request has succeeded, together with the re-sent cookie (photo
+  // responses included), so the ledger and the browser always agree. Admin
+  // sessions keep their fixed 30 minutes (the admin page polls in the
+  // background, which would keep an unattended tab signed in), and
+  // invitation-link sessions, which only open the RSVP, are not extended.
   async function dispatch(req) {
+    const refresh = {};
+    const result = await route(req, refresh);
+    const r = refresh.renew;
+    if (r && result && typeof result === "object" && !result.setCookie) {
+      await ledger.transaction((s) => {
+        const row = s.sessions[r.sessionHash];
+        if (row) {
+          row.startedAt ??= r.startedAt;
+          row.expiresAt = Math.max(row.expiresAt, r.until);
+        }
+      });
+      result.setCookie = cookie(r.raw);
+    }
+    return result;
+  }
+  async function route(req, refresh) {
     const { path, method = "GET", body = {}, headers = {} } = req;
     if (path === "/api/internal/drain") {
       if (method !== "POST") throw error(405, "METHOD_NOT_ALLOWED");
@@ -840,21 +880,57 @@ export function createApplication({
           throw error(401, "SIGN_IN_AGAIN");
         c.attempts++;
         const existing = s.admins[c.id];
-        const secret = unseal(existing?.secret || c.pendingSecret, key),
-          step = verifyTotp(secret, body.code, now(), existing?.lastStep ?? -1);
+        // The owner's recovery code: spend it and start a new authenticator setup
+        // on this same challenge; the sign-in finishes with the new app's code.
+        const recovery = recoveryInput(body.code);
+        if (recovery && adminEmails.includes(c.email) && existing?.recovery?.length) {
+          const i = existing.recovery.indexOf(recoveryHash(recovery));
+          if (i < 0) return { failed: true };
+          existing.recovery.splice(i, 1);
+          const fresh = newMfaSecret();
+          c.pendingSecret = seal(fresh, key);
+          c.replacing = true;
+          c.attempts = 0;
+          c.expiresAt = now() + 300000; // a full five minutes to scan the new code
+          // Cut off the lost phone at once, as an authenticator reset does: its
+          // admin sessions, its other sign-ins in progress and the linked
+          // Microsoft account whose two-step sign-in could stand in for the code.
+          for (const [k, v] of Object.entries(s.sessions))
+            if (v.kind === "admin" && v.email === c.email) delete s.sessions[k];
+          for (const [k, v] of Object.entries(s.challenges))
+            if (v !== c && v.email === c.email) delete s.challenges[k];
+          delete s.ssoBindings?.[hash("admin-microsoft:" + c.email)];
+          roleEvent(s, c.id, c.email, "recovery-code-used");
+          securityNote(
+            s,
+            `A recovery code was used for ${c.email}; ${existing.recovery.length} left. A new authenticator is being set up.`,
+          );
+          return { reenroll: fresh };
+        }
+        const secret = unseal(
+            c.replacing ? c.pendingSecret : existing?.secret || c.pendingSecret,
+            key,
+          ),
+          step = verifyTotp(
+            secret,
+            body.code,
+            now(),
+            c.replacing ? -1 : (existing?.lastStep ?? -1),
+          );
         if (step === null) return { failed: true };
-        if (!existing) {
-          roleEvent(s, c.id, c.email, "authenticator-set-up");
-          securityNote(s, `Authenticator set up for ${c.email}`);
+        if (!existing || c.replacing) {
+          roleEvent(s, c.id, c.email, existing ? "authenticator-replaced" : "authenticator-set-up");
+          securityNote(s, `Authenticator ${existing ? "replaced" : "set up"} for ${c.email}`);
         }
         s.admins[c.id] = {
+          ...existing,
           secret: seal(secret, key),
           lastStep: step,
           email: c.email,
         };
         // The code passed: link the Microsoft account that started this sign-in,
         // replacing any earlier one, so its MFA can stand in for the code later.
-        if (c.sso) {
+        if (c.sso && !c.replacing) {
           s.ssoBindings ??= {};
           s.ssoBindings[c.sso.binding] = c.sso.subject;
         }
@@ -872,6 +948,12 @@ export function createApplication({
         return { failed: false };
       });
       if (outcome.failed) throw error(401, "INVALID_MFA");
+      if (outcome.reenroll)
+        return {
+          challenge: safeText(body.challenge, 100),
+          recovered: true,
+          ...(await enrollment(outcome.reenroll, pendingChallenge.email)),
+        };
       return { csrf, setCookie: cookie(sessionToken) };
     }
     if (path === "/api/invitation-session" && method === "POST") {
@@ -959,6 +1041,33 @@ export function createApplication({
     )
       ctx.session = null;
     const { session } = ctx;
+    if (
+      session?.kind === "guest" &&
+      session.accountId &&
+      session.email &&
+      ctx.raw &&
+      path !== "/api/logout" &&
+      path !== "/api/logout-all" &&
+      session.expiresAt - now() < 900000
+    ) {
+      const startedAt = session.startedAt ?? session.expiresAt - 1800000,
+        until = Math.min(now() + 1800000, startedAt + 43200000);
+      // Renew only while the sign-in email is still on that household's Notion
+      // row, so removing it still ends access within about 15 minutes. A Notion
+      // error, or no answer within 2 seconds, skips the renewal; it never fails
+      // or noticeably delays the request.
+      const stillListed =
+        until > session.expiresAt &&
+        (await Promise.race([
+          notion.list().then(
+            (rows) => rosterMatch(rows, session.email)?.id === session.householdId,
+            () => false,
+          ),
+          new Promise((resolve) => setTimeout(() => resolve(false), 2000).unref?.()),
+        ]));
+      if (stillListed)
+        refresh.renew = { sessionHash: ctx.sessionHash, startedAt, until, raw: ctx.raw };
+    }
     if (session && method !== "GET")
       await rateLimit(
         ledger,
@@ -1014,6 +1123,31 @@ export function createApplication({
         delete s.sessions[ctx.sessionHash];
       });
       return {
+        setCookie:
+          "__session=; Path=/api; Secure; HttpOnly; SameSite=Strict; Max-Age=0",
+      };
+    }
+    // Sign out on every device (AUTHN-10): every session of this signed-in
+    // guest account, or of this administrator. Invitation-link sessions can't
+    // use it (they are RSVP-only), so one household member can't sign out others.
+    if (path === "/api/logout-all" && method === "POST") {
+      requireAuth();
+      const signedOut = await ledger.transaction((s) => {
+        let n = 0;
+        for (const [k, v] of Object.entries(s.sessions))
+          if (
+            session.kind === "admin"
+              ? v.kind === "admin" && v.email === session.email
+              : !!session.accountId && v.accountId === session.accountId
+          ) {
+            delete s.sessions[k];
+            n++;
+          }
+        audit(s, session.actor || session.accountId, "sign-out-everywhere", session.kind, now());
+        return n;
+      });
+      return {
+        signedOut,
         setCookie:
           "__session=; Path=/api; Secure; HttpOnly; SameSite=Strict; Max-Age=0",
       };
@@ -1530,7 +1664,25 @@ export function createApplication({
               lastSignInAt,
             })),
           owner: ownerSession(session),
+          ...(ownerSession(session)
+            ? { recoveryCodesLeft: ctx.state.admins?.[session.actor]?.recovery?.length ?? 0 }
+            : {}),
         };
+      }
+      // Owner only: a new set of ten recovery codes (SEC-10), shown once. Making
+      // a new set cancels the old one. Needs the owner's current code.
+      if (path === "/api/admin/recovery-codes" && method === "POST") {
+        if (!ownerSession(session)) throw error(403, "OWNER_REQUIRED");
+        const codes = newRecoveryCodes();
+        await ledger.transaction((s) => {
+          requireFreshCode(s, session, body.code);
+          s.admins[session.actor].recovery = codes.map((c) =>
+            recoveryHash(c.replaceAll("-", "")),
+          );
+          roleEvent(s, session.actor, session.email, "recovery-codes-created");
+          securityNote(s, `New recovery codes were created for ${session.email}`);
+        });
+        return { codes };
       }
       // Owner only: forget a lost authenticator, so that administrator sets up a
       // new one (QR code) at their next sign-in. Needs the owner's current code.
