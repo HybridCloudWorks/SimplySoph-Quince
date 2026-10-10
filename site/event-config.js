@@ -4,6 +4,6 @@ window.EVENT_CONFIG = Object.freeze({
   date: '2027-01-15', // Confirmed by the family: Friday, January 15, 2027.
   dateConfirmed: true,
   timezone: 'America/Chicago',
-  rsvpDeadline: '2026-10-31T23:59:00-05:00', // 11:59 PM Central (CDT).
+  rsvpDeadline: '2026-11-15T23:59:00-06:00', // 11:59 PM Central (CST).
   mode: 'demo'
 });
