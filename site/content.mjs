@@ -49,9 +49,9 @@ export const routes = [
   ["travel", "Travel & stay", "Viaje y hospedaje"],
   ["faq", "Good to know", "Lo que debes saber"],
   ["guestbook", "A note for Sophia", "Un mensaje para Sophia"],
-  ["contact", "Contact Us", "Contáctanos"],
+  ["contact", "Contact us", "Contáctanos"],
   ["privacy", "Guest privacy", "Privacidad"],
-  ["terms", "Media Policy", "Política de medios"],
+  ["terms", "Media policy", "Política de medios"],
   ["whatsapp", "WhatsApp Updates", "Mensajes WhatsApp"],
   ["sms", "SMS Updates", "Mensajes SMS"],
   ["sms-terms", "SMS Terms", "Términos SMS"],
@@ -59,11 +59,11 @@ export const routes = [
   ["404", "Page not found", "Página no encontrada"],
 ];
 export const adminRoutes = [
-  ["admin/login", "Administrator Login"],
+  ["admin/login", "Administrator login"],
   ["admin", "Overview"],
   ["admin/guests", "Invitations"],
   ["admin/access", "Guest access"],
-  ["admin/content", "Accounting & Godparents"],
+  ["admin/content", "Accounting & godparents"],
   ["admin/documents", "Documents"],
   ["admin/site", "Website & event"],
   ["admin/notifications", "Notifications"],
@@ -71,7 +71,7 @@ export const adminRoutes = [
   ["admin/photos", "Photo & video review"],
   ["admin/guestbook", "Messages"],
   ["admin/updates", "Communications"],
-  ["admin/history", "Record History"],
+  ["admin/history", "Record history"],
 ];
 export const copy = {
   en: {

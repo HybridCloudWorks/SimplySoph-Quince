@@ -230,7 +230,7 @@ function summary(response) {
   return `<ul class="summary-list">${Object.entries(response.attendance)
     .map(
       ([e, v]) =>
-        `<li><strong>${eventNames[e]}:</strong> ${v.adultsTeens} ${tr("adults/teens", "adultos/jóvenes")}, ${v.kids} ${tr("children", "niños")}</li>`,
+        `<li><strong>${eventNames[e]}:</strong> ${v.adultsTeens} ${v.adultsTeens === 1 ? tr("adult/teen", "adulto/joven") : tr("adults/teens", "adultos/jóvenes")}, ${v.kids} ${v.kids === 1 ? tr("child", "niño") : tr("children", "niños")}</li>`,
     )
     .join("")}</ul>`;
 }
@@ -249,7 +249,7 @@ function confirmation(inv, session) {
     });
   const saved = `<p>${tr("Saved", "Guardada")}: ${esc(new Date(r.submittedAt).toLocaleString(es ? "es-US" : "en-US", { dateStyle: "medium", timeStyle: "short" }))}</p>`;
   const edit = open
-    ? `<p>${tr(`You can change your answer until ${until}.`, `Puedes cambiar tu respuesta hasta el ${until}.`)}</p><p><a class="button" href="${route("rsvp")}">${tr("Edit response", "Editar respuesta")}</a></p>`
+    ? `<p>${tr(`You can change your answer until ${until}.`, `Puedes cambiar tu respuesta hasta el ${until}.`)}</p><p><a class="button burgundy" href="${route("rsvp")}">${tr("Edit response", "Editar respuesta")}</a></p>`
     : `<p>${tr("The RSVP deadline has passed. To change your answer, please contact the family.", "La fecha límite ya pasó. Para cambiar tu respuesta, contacta a la familia.")}</p><p><a href="${route("contact")}">${tr("Contact the family", "Contacta a la familia")}</a></p>`;
   const sync = `<p class="hint">${inv.syncState === "synced" ? tr("The family’s guest list has been updated.", "La lista de invitados de la familia se actualizó.") : tr("Your response is safely saved. The family’s guest list will update shortly.", "Tu respuesta está guardada. La lista de invitados de la familia se actualizará en breve.")}</p>`;
   // WhatsApp needs the household's own session; a link-only session after
@@ -444,8 +444,8 @@ if (microsoft) {
       "",
       e.code === "INVALID_INVITATION"
         ? tr(
-            "This invitation link is no longer active. It may have been replaced by a newer link; check your most recent invitation email or contact the family.",
-            "Este enlace de invitación ya no está activo. Puede que haya sido reemplazado por uno más reciente; revisa tu correo de invitación más reciente o contacta a la familia.",
+            "This invitation link isn't working. It may be incomplete or replaced by a newer link; open your most recent invitation email or contact the family.",
+            "Este enlace de invitación no funciona. Puede estar incompleto o haber sido reemplazado por uno más reciente; abre tu correo de invitación más reciente o contacta a la familia.",
           )
         : e.message,
     );

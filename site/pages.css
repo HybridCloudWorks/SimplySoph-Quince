@@ -329,9 +329,26 @@ nav {
   font-size: 0.75rem !important;
   text-decoration: underline !important;
 }
+/* 4.5:1 or better on cream; the dark header and menus use the light gold. */
 a[aria-current="page"] {
-  color: #a47728;
+  color: #7a5410;
   font-weight: 700;
+}
+header a[aria-current="page"],
+.nav-group a[aria-current="page"] {
+  color: var(--gold);
+}
+/* A focus ring that shows in both themes (--wine becomes gold in dark mode),
+   and gold on the dark header, hero and RSVP band. */
+:focus-visible {
+  outline: 2px solid var(--wine);
+  outline-offset: 3px;
+}
+header :focus-visible,
+.hero :focus-visible,
+.rsvp :focus-visible,
+.route-strip :focus-visible {
+  outline-color: var(--gold);
 }
 .invitation figcaption {
   font-size: 0.73rem;
@@ -415,6 +432,13 @@ input[type="checkbox"] {
 }
 .admin-shell aside {
   align-self: start;
+}
+/* The menu appears only once an administrator is signed in (admin.js). */
+.admin-shell aside[hidden] {
+  display: none !important;
+}
+.admin-shell:has(> aside[hidden]) {
+  grid-template-columns: minmax(0, 1fr);
 }
 .table-wrap {
   overflow: auto;
@@ -997,15 +1021,6 @@ td .table-actions a {
 .admin-entry h2 {
   margin-top: 0;
 }
-h1:not(.hero h1),
-h2,
-h3,
-legend,
-th,
-.admin-shell aside a,
-.nav-group summary {
-  text-transform: capitalize;
-}
 .planning-table {
   min-width: 1100px;
 }
@@ -1228,6 +1243,8 @@ th,
   .album-overlay { background: #070c15ed; }
   .media-grid img, .media-grid video { background: #0a111d; }
   .invitation img { box-shadow: 0 24px 55px #000a; }
+}
+
 /* Family content layouts (approved idea book). They render only once the family's
    content is filled in site/content.mjs; colors come from tokens so dark mode follows. */
 .sophia-page { display: grid; gap: 2.5rem; max-width: 980px; }

@@ -162,6 +162,22 @@ const messages = {
     "This account isn't an administrator. If you're expecting access, please contact Saul or Diana.",
     "Esta cuenta no es de administrador. Si esperas tener acceso, comunícate con Saul o Diana.",
   ],
+  INVITATION_INACTIVE: [
+    "This invitation isn't active right now. Please contact the family.",
+    "Esta invitación no está activa en este momento. Comunícate con la familia.",
+  ],
+  SIGN_IN_FAILED: [
+    "We couldn't confirm that sign-in. Please try again.",
+    "No pudimos confirmar ese acceso. Inténtalo de nuevo.",
+  ],
+  CSRF_REJECTED: [
+    "Your page was open too long. Please refresh it and try again.",
+    "La página estuvo abierta demasiado tiempo. Actualízala e inténtalo de nuevo.",
+  ],
+  INVALID_EMAIL: [
+    "Please check the email address and try again.",
+    "Revisa la dirección de correo e inténtalo de nuevo.",
+  ],
   SIGN_IN_AGAIN: [
     "That sign-in expired or was already used. Choose your sign-in option again.",
     "Ese acceso venció o ya se usó. Vuelve a elegir tu forma de acceso.",

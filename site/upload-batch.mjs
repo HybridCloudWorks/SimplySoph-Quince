@@ -33,8 +33,12 @@ export async function sendUploadBatch(entries, upload, changed = () => {}) {
       entry.receipt = await upload(entry.file);
       entry.state = "received";
     } catch (err) {
+      // Video errors are raised before anything is stored, so the file is not uploaded.
       entry.state =
-        err.status >= 400 && err.status < 500 ? "rejected" : "unknown";
+        (err.status >= 400 && err.status < 500) ||
+        ["VIDEO_BUSY", "VIDEO_UNAVAILABLE"].includes(err.code)
+          ? "rejected"
+          : "unknown";
       entry.message = err.message;
     }
     changed();
