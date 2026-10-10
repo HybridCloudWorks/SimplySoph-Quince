@@ -1498,6 +1498,8 @@ export function createApplication({
           topic,
           id,
           householdId: session.householdId,
+          // The verified sign-in behind this message, for reply emails (FLOW-8).
+          accountId: session.accountId || null,
           name,
           text,
           kind: body.kind,
@@ -1951,7 +1953,7 @@ export function createApplication({
       if (path === "/api/admin/message-reply" && method === "POST") {
         const text = safeText(body.text, 2000);
         if (!text) throw error(422, "MESSAGE_REQUIRED");
-        return ledger.transaction((s) => {
+        const message = await ledger.transaction((s) => {
           const message = s.messages[body.id];
           if (!message || message.kind !== "contact")
             throw error(404, "NOT_FOUND");
@@ -1959,8 +1961,33 @@ export function createApplication({
           if (message.replies.length >= 100) throw error(422, "THREAD_LIMIT");
           message.replies.push({ text, at: now() });
           audit(s, session.actor, "message-reply", body.id, now());
-          return { saved: true };
+          return structuredClone(message);
         });
+        // FLOW-8: only when the admin ticks the box (a person confirms every
+        // message), email the guest that the family replied. The email holds
+        // no message text, and it goes only to a verified address: the email
+        // the guest signed in with, or else the household's Notion email,
+        // never an address typed into the form.
+        if (body.notify !== true) return { saved: true, emailed: false };
+        const s = await ledger.read();
+        const to =
+          s.accounts?.[message.accountId]?.email ||
+          (await notion.read(message.householdId, { fresh: true }).catch(() => null))?.email;
+        if (!to || !mailer.configured) return { saved: true, emailed: false };
+        try {
+          await mailer.send({
+            id: token(),
+            to,
+            subject: "Sophia · The family replied / La familia respondió",
+            html: `<p>The family replied to your message on Sophia’s website.</p><p>La familia respondió tu mensaje en el sitio de Sophia.</p><p><a href="${origin}/account/">Read it in My account / Léelo en Mi cuenta</a></p>`,
+          });
+        } catch {
+          return { saved: true, emailed: false };
+        }
+        await ledger.transaction((s) =>
+          audit(s, session.actor, "message-reply-email", body.id, now()),
+        );
+        return { saved: true, emailed: true, to };
       }
       if (path === "/api/admin/moderation" && method === "POST") {
         if (
@@ -2027,6 +2054,14 @@ export function createApplication({
           s.tables[id] = { id, name, capacity, households };
           audit(s, session.actor, "seating", id, now());
           return s.tables[id];
+        });
+      // FLOW-12: remove a table; its households become unseated.
+      if (path === "/api/admin/seating/delete" && method === "POST")
+        return ledger.transaction((s) => {
+          if (!s.tables[body.id]) throw error(404, "NOT_FOUND");
+          delete s.tables[body.id];
+          audit(s, session.actor, "seating-delete", body.id, now());
+          return { deleted: true };
         });
       if (path === "/api/admin/updates" && method === "GET")
         return {

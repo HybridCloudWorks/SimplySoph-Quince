@@ -58,6 +58,22 @@ function accessForm(value = "", reason = "") {
   });
   wireEmailSignIn();
 }
+// Signed out on a page for messages or uploads: the email sign-in, and on the
+// contact page a reminder that plain email works too.
+function signedOut(view) {
+  portal.innerHTML = `<p class="notice">${
+    view === "contact"
+      ? tr(
+          "You can email the family at the address above. To send a message here, sign in with the email the family has for your household.",
+          "Puedes escribirle a la familia al correo de arriba. Para enviar un mensaje aquí, entra con el correo que la familia tiene para tu hogar.",
+        )
+      : tr(
+          "Sign in with the email the family has for your household to continue.",
+          "Entra con el correo que la familia tiene para tu hogar para continuar.",
+        )
+  }</p>${emailSignInHtml()}`;
+  wireEmailSignIn();
+}
 // An invitation link opens only the RSVP; anything else asks for the email sign-in.
 function signInOnly() {
   portal.innerHTML = `<p class="notice">${tr("Your invitation link opens your RSVP. To share photos, send messages or update your details, sign in with your email.", "Tu enlace de invitación abre tu respuesta. Para compartir fotos, enviar mensajes o actualizar tus datos, entra con tu correo.")}</p>${emailSignInHtml()}`;
@@ -130,9 +146,15 @@ async function accountPage(inv, session) {
     document.querySelector("#whatsapp-preferences"),
     profile.contact.phone,
   );
-  const thread = await api("messages"),
-    box = document.querySelector("#family-chat");
-  box.innerHTML = `<h3>${tr("Messages with the family", "Mensajes con la familia")}</h3>${thread.messages.map((m) => `<article class="card"><p>${esc(m.text)}</p>${m.replies.map((r) => `<blockquote><strong>${tr("Family", "Familia")}:</strong> ${esc(r.text)}</blockquote>`).join("")}</article>`).join("")}<p>${tr("Refresh this page to check for replies.", "Actualiza esta página para ver las respuestas.")}</p><form id="family-message"><label>${tr("Your message", "Tu mensaje")}<textarea name="text" required maxlength="2000"></textarea></label><p role="alert" class="error"></p><button type="submit" class="button burgundy">${tr("Send to the family", "Enviar a la familia")}</button></form>`;
+  const box = document.querySelector("#family-chat");
+  const messagesHtml = (thread) =>
+    thread.messages
+      .map(
+        (m) =>
+          `<article class="card"><p>${esc(m.text)}</p>${m.replies.map((r) => `<blockquote><strong>${tr("Family", "Familia")}:</strong> ${esc(r.text)}</blockquote>`).join("")}</article>`,
+      )
+      .join("");
+  box.innerHTML = `<h3>${tr("Messages with the family", "Mensajes con la familia")}</h3><div id="thread" aria-live="polite">${messagesHtml(await api("messages"))}</div><p class="hint">${tr("New replies appear here while this page is open.", "Las respuestas nuevas aparecen aquí mientras esta página esté abierta.")}</p><form id="family-message"><label>${tr("Your message", "Tu mensaje")}<textarea name="text" required maxlength="2000"></textarea></label><p role="alert" class="error"></p><button type="submit" class="button burgundy">${tr("Send to the family", "Enviar a la familia")}</button></form>`;
   submit(document.querySelector("#family-message"), async (f) => {
     await api("messages", {
       kind: "contact",
@@ -141,7 +163,22 @@ async function accountPage(inv, session) {
     });
     await showPortal();
   });
+  // FLOW-8: check for replies once a minute while the page is visible. Only
+  // the thread is redrawn, so a message being typed is never lost.
+  clearInterval(threadTimer);
+  threadTimer = setInterval(async () => {
+    const thread = document.querySelector("#thread");
+    if (!thread) return clearInterval(threadTimer);
+    if (document.visibilityState !== "visible") return;
+    try {
+      const html = messagesHtml(await api("messages"));
+      if (html !== thread.innerHTML) thread.innerHTML = html;
+    } catch {
+      clearInterval(threadTimer); // signed out or offline: stop quietly
+    }
+  }, 60000);
 }
+let threadTimer;
 function countField(event, key, max, value) {
   return `<label>${tr(key === "kids" ? "Children" : "Adults / teens", key === "kids" ? "Niños" : "Adultos / jóvenes")}<select name="${event}.${key}" required><option value="">${tr("Choose a count", "Elige una cantidad")}</option>${Array.from({ length: max + 1 }, (_, n) => `<option value="${n}"${n === value ? " selected" : ""}>${n}</option>`).join("")}</select></label>`;
 }
@@ -273,11 +310,14 @@ function confirmation(inv, session) {
 async function showPortal() {
   if (!portal) return;
   const session = await api("session");
+  const view = portal.dataset.view;
   if (session.kind !== "guest") {
-    accessForm();
+    // The invitation code only opens the RSVP, so pages for messages and
+    // uploads offer the email sign-in alone (UI-11).
+    if (["rsvp", "rsvp/confirmed", "account"].includes(view)) accessForm();
+    else signedOut(view);
     return;
   }
-  const view = portal.dataset.view;
   if (session.scope === "rsvp" && !["rsvp", "rsvp/confirmed"].includes(view)) {
     signInOnly();
     return;

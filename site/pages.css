@@ -1245,6 +1245,8 @@ td .table-actions a {
   dialog::backdrop { background: #03060caa; }
   .album-art { background: radial-gradient(ellipse at center, #2c3b54, transparent 65%), linear-gradient(135deg, #1c2940, #2c3b54); }
   .album-2 .album-art { background: radial-gradient(ellipse at center, #22324f, #101a2a); }
+  /* Tiles 1 and 4 use a more specific burgundy rule above; give them the night palette too (UI-9). */
+  .album-1 .album-art { background: radial-gradient(ellipse at center, #2c3b54, #121c2e); color: var(--gold); }
   .album-overlay { background: #070c15ed; }
   .media-grid img, .media-grid video { background: #0a111d; }
   .invitation img { box-shadow: 0 24px 55px #000a; }
@@ -1318,4 +1320,17 @@ td .table-actions a {
   .pair, .route-strip { grid-template-columns: minmax(0, 1fr); }
   .pair .person:last-child:not(:first-child) { flex-direction: row; text-align: left; }
   .amp { text-align: center; }
+}
+/* UI-12 spacing: a block that follows cards lines up with them; the divider
+   in sign-in forms and the FAQ's contact button get room to breathe. */
+.cards + .editorial {
+  margin-left: 0;
+}
+.portal hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 1.6rem 0;
+}
+details + p {
+  margin-top: 1.6rem;
 }

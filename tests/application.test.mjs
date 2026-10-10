@@ -2035,3 +2035,34 @@ test("the drift check reports a Notion RSVP that differs from the website once, 
   assert.equal((await drain()).drift.differing, 0);
   assert.equal((await f.admin("dashboard")).notionDrift, 0);
 });
+
+test("seating tables can be deleted, and their households become unseated (FLOW-12)", async () => {
+  const f = await fixture();
+  const table = await f.admin("seating", { name: "Table 1", capacity: 10, households: [household] });
+  await assert.rejects(
+    () => f.admin("seating", { name: "Table 2", capacity: 10, households: [household] }),
+    (e) => e.code === "ALREADY_SEATED",
+  );
+  assert.deepEqual(await f.admin("seating/delete", { id: table.id }), { deleted: true });
+  assert.equal((await f.admin("seating")).tables.length, 0);
+  assert.ok(await f.admin("seating", { name: "Table 2", capacity: 10, households: [household] }), "the household can be seated again");
+  await assert.rejects(() => f.admin("seating/delete", { id: table.id }), (e) => e.status === 404);
+});
+
+test("a reply email goes out only when the admin asks, to the verified address, without the reply text (FLOW-8)", async () => {
+  const f = await fixture();
+  const { id } = await f.guest("messages", { kind: "contact", name: "Test", text: "Where do we park?", email: "typed@other.example" });
+  const before = f.sent.length;
+  assert.deepEqual(await f.admin("message-reply", { id, text: "Behind the hall." }), { saved: true, emailed: false });
+  assert.equal(f.sent.length, before, "no email unless the admin ticks the box");
+  const r = await f.admin("message-reply", { id, text: "See you there!", notify: true });
+  assert.equal(r.emailed, true);
+  const mail = f.sent.at(-1);
+  assert.notEqual(mail.to, "typed@other.example", "never the address typed into the form");
+  assert.equal(mail.to, r.to);
+  assert.ok(!mail.html.includes("See you there"), "the reply itself stays on the site");
+  assert.match(mail.html, /\/account\//);
+  // The guest sees both replies in their thread.
+  const thread = await f.guest("messages");
+  assert.deepEqual(thread.messages.at(-1).replies.map((x) => x.text), ["Behind the hall.", "See you there!"]);
+});

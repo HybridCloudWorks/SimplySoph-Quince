@@ -218,9 +218,17 @@ const messages = {
     "A selected household is already assigned to another table. Remove that assignment first.",
     "Una familia ya está asignada a otra mesa. Retira esa asignación primero.",
   ],
+  TABLE_OVER_CAPACITY: [
+    "Those households have more guests attending dinner than this table seats. Raise the capacity or choose fewer households.",
+    "Esas familias tienen más invitados en la cena de los que caben en esta mesa. Aumenta la capacidad o elige menos familias.",
+  ],
+  INVALID_TABLE: [
+    "Give the table a name and a capacity from 1 to 50.",
+    "Ponle un nombre a la mesa y una capacidad de 1 a 50.",
+  ],
   SIGN_IN_REQUIRED: [
-    "Open your private invitation to sign in again.",
-    "Abre tu invitación privada para iniciar sesión de nuevo.",
+    "Please sign in again: open your invitation link to RSVP, or sign in with your email on My account.",
+    "Inicia sesión de nuevo: abre tu enlace de invitación para confirmar, o inicia sesión con tu correo en Mi cuenta.",
   ],
   INVALID_INVITATION: [
     "That invitation could not be opened. Check the link or contact the family.",
@@ -302,9 +310,16 @@ export async function api(path, body, options = {}) {
   if (data.csrf) setCsrf(data.csrf);
   return data;
 }
-export function notify(text) {
+// An optional { href, label } adds a link after the message (built as DOM, not HTML).
+export function notify(text, link) {
   const box = document.querySelector("#status");
   box.textContent = text;
+  if (link) {
+    const a = document.createElement("a");
+    a.href = link.href;
+    a.textContent = link.label;
+    box.append(" ", a);
+  }
   clearTimeout(notify.timer);
   notify.timer = setTimeout(() => (box.textContent = ""), 12000);
 }
