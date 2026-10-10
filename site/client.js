@@ -123,8 +123,20 @@ const messages = {
     "La familia no le ha dado acceso a esta página a tu cuenta.",
   ],
   OWNER_REQUIRED: [
-    "Only the site owner can change administrator access.",
-    "Solo el propietario puede cambiar el acceso de administradores.",
+    "Only the site owner can do this.",
+    "Solo el propietario del sitio puede hacer esto.",
+  ],
+  MFA_SETUP_NOT_ALLOWED: [
+    "Ask the site owner to allow authenticator setup for your email, then sign in again within 24 hours.",
+    "Pide al propietario del sitio que habilite la configuración del autenticador para tu correo y vuelve a iniciar sesión en 24 horas.",
+  ],
+  MFA_REQUIRED: [
+    "Set up your own authenticator first by signing out and signing in again.",
+    "Primero configura tu autenticador cerrando sesión e iniciando sesión de nuevo.",
+  ],
+  NOT_AN_ADMINISTRATOR: [
+    "That email is not a family administrator. Grant administration first, or check the email.",
+    "Ese correo no es de un administrador. Otorga la administración primero o revisa el correo.",
   ],
   MAIL_DRAFT_STALE: [
     "This invitation or recipient changed. Create and review a new email draft.",

@@ -2,7 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Ledger, memoryAdapter } from "../server/store.mjs";
 import { createApplication } from "../server/application.mjs";
-import { hash, token, totp, base32 } from "../server/auth.mjs";
+import { hash, token, totp, base32, seal } from "../server/auth.mjs";
+// The fixture owner's authenticator, for actions that need a fresh code.
+const OWNER_TOTP = base32(Buffer.alloc(20, 9));
 import sharp from "sharp";
 const origin = "https://misxv.simplysoph.com",
   at = Date.parse("2026-10-01T18:00:00Z");
@@ -142,6 +144,18 @@ async function fixture(options = {}) {
     sent,
     advance: (ms) => {
       clock += ms;
+    },
+    // The owner's current code. Replay protection is reset so tests can make
+    // several owner changes within one 30-second step.
+    ownerCode: async () => {
+      await ledger.transaction((s) => {
+        s.admins.organizer = {
+          secret: seal(OWNER_TOTP, options.key || Buffer.alloc(32, 4)),
+          lastStep: -1,
+          email: "organizer@gmail.com",
+        };
+      });
+      return totp(OWNER_TOTP, Math.floor(clock / 30000));
     },
   };
 }
@@ -286,7 +300,9 @@ test("guest administration requires owner grant and MFA; revoking grant rejects 
     version: 1,
     active: true,
     permissions: ["admin"],
+    code: await f.ownerCode(),
   });
+  await f.admin("mfa-setup", { email: f.account.email, code: await f.ownerCode() });
   const c = await f.verified("auth/step-up", {});
   await assert.rejects(
     () => f.verified("admin/accounts"),
@@ -1164,7 +1180,9 @@ test("Notion administrator eligibility is required for owner grants and fresh ad
     version: 1,
     active: true,
     permissions: ["admin"],
+    code: await f.ownerCode(),
   });
+  await f.admin("mfa-setup", { email: f.account.email, code: await f.ownerCode() });
   const c = await f.verified("auth/step-up", {});
   const login = await f.publicPost("auth/mfa", {
     challenge: c.challenge,
@@ -1187,6 +1205,7 @@ test("delete is reversible, revokes sessions and outstanding links, never restor
     version: 1,
     active: true,
     permissions: ["costs", "admin"],
+    code: await f.ownerCode(),
   });
   await f.publicPost("auth/email/request", { email: f.account.email });
   const raw = f.sent.at(-1).html.match(/account\/#([A-Za-z0-9_-]{43})/)[1];
@@ -1230,6 +1249,7 @@ test("invited delegate signs in by email plus MFA without owner authority", asyn
       headers: { origin },
       body,
     });
+  await f.admin("mfa-setup", { email: "diana@example.com", code: await f.ownerCode() });
   await post("auth/admin-email/request", { email: "diana@example.com" });
   const raw = f.sent.at(-1).html.match(/login\/#([A-Za-z0-9_-]{43})/)[1];
   const c = await post("auth/admin-email/verify", { token: raw });
@@ -1708,4 +1728,77 @@ test("group SMS {link} stays sealed in the draft and is filled only when sent", 
   const minted = texts[0].match(/\/rsvp\/#([A-Za-z0-9_-]{43}) /)[1];
   assert.ok(!texts[0].includes("{link}"));
   assert.ok((await openLink(f, minted)).setCookie);
+});
+
+test("a delegate can set up an authenticator only inside an owner-opened window, once", async () => {
+  const f = await fixture({ adminDelegateEmails: ["diana@example.com"] });
+  f.row.email = "diana@example.com";
+  const post = (path, body) =>
+    f.app.dispatch({ path: "/api/" + path, method: "POST", headers: { origin }, body });
+  const emailChallenge = async () => {
+    await post("auth/admin-email/request", { email: "diana@example.com" });
+    const raw = f.sent.at(-1).html.match(/login\/#([A-Za-z0-9_-]{43})/)[1];
+    return post("auth/admin-email/verify", { token: raw });
+  };
+  // Whoever completes Diana's sign-in first can no longer claim her admin account.
+  await assert.rejects(emailChallenge, (e) => e.code === "MFA_SETUP_NOT_ALLOWED");
+  const opened = await f.admin("mfa-setup", { email: "diana@example.com", code: await f.ownerCode() });
+  assert.ok(opened.allowedUntil);
+  const c = await emailChallenge();
+  assert.ok(c.enrollmentSecret);
+  await post("auth/mfa", { challenge: c.challenge, code: totp(c.enrollmentSecret, Math.floor(at / 30000)) });
+  const s = await f.ledger.read();
+  assert.equal(Object.keys(s.mfaSetup || {}).length, 0, "the window is used up");
+  assert.deepEqual(s.roleEvents.map((e) => e.change), ["authenticator-setup-allowed", "authenticator-set-up"]);
+  const note = (await f.admin("notifications")).notifications.find((n) => n.kind === "security");
+  assert.equal(note.title, "Authenticator set up for diana@example.com");
+  assert.equal(note.emailState, "none");
+  // An owner reset removes the authenticator and requires a new window.
+  await f.admin("mfa-setup", { email: "diana@example.com", code: await f.ownerCode(), reset: true });
+  const again = await emailChallenge();
+  assert.ok(again.enrollmentSecret, "a reset requires setting up again");
+  assert.equal((await f.admin("role-events")).events[0].change, "authenticator-reset");
+});
+
+test("granting administration needs a fresh owner code; removing it does not and drops the authenticator", async () => {
+  const f = await registeredFixture();
+  const grant = (version, code) =>
+    f.admin("accounts", { id: f.account.id, version, active: true, permissions: ["admin"], ...(code ? { code } : {}) });
+  // An owner without an authenticator on record cannot grant at all.
+  await assert.rejects(() => grant(1, "123456"), (e) => e.code === "MFA_REQUIRED");
+  const code = await f.ownerCode();
+  await assert.rejects(() => grant(1), (e) => e.code === "INVALID_MFA");
+  await assert.rejects(() => grant(1, "000000"), (e) => e.code === "INVALID_MFA");
+  await grant(1, code);
+  // The same code cannot be replayed for another grant.
+  await f.admin("accounts", { id: f.account.id, version: 2, active: true, permissions: [] });
+  await assert.rejects(() => grant(3, code), (e) => e.code === "INVALID_MFA");
+  await f.ledger.transaction((s) => {
+    s.admins["account:" + f.account.id] = { secret: "x", lastStep: 0, email: f.account.email };
+  });
+  await grant(3, await f.ownerCode());
+  await f.admin("accounts", { id: f.account.id, version: 4, active: true, permissions: [] });
+  const s = await f.ledger.read();
+  assert.equal(s.admins["account:" + f.account.id], undefined, "removal drops the authenticator");
+  assert.deepEqual(
+    s.roleEvents.map((e) => e.change),
+    ["admin-granted", "admin-removed", "admin-granted", "admin-removed"],
+  );
+});
+
+test("Notion schema changes, imports and authenticator windows are owner-only", async () => {
+  const f = await fixture({ adminDelegateEmails: ["diana@example.com"] });
+  f.row.email = "diana@example.com";
+  const delegate = token();
+  await f.ledger.transaction((s) => {
+    s.sessions[hash(delegate)] = { kind: "admin", actor: "owner:diana@example.com", email: "diana@example.com", csrf: "d", expiresAt: at + 100000 };
+  });
+  const asDelegate = (path, body) =>
+    f.app.dispatch({ path: "/api/admin/" + path, method: "POST", body, headers: { origin, cookie: "__session=" + delegate, "x-csrf-token": "d" } });
+  for (const [path, body] of [["schema", {}], ["import", { rows: [] }], ["mfa-setup", { email: "x@example.com", code: "000000" }]])
+    await assert.rejects(() => asDelegate(path, body), (e) => e.code === "OWNER_REQUIRED", path);
+  await assert.rejects(
+    () => f.app.dispatch({ path: "/api/admin/schema", method: "POST", body: {}, headers: { origin, cookie: "__session=" + delegate, "x-csrf-token": "dd" } }),
+    (e) => e.code === "CSRF_REJECTED",
+  );
 });
