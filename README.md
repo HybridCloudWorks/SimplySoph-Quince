@@ -1,6 +1,6 @@
 # SimplySoph · Sophia’s Mis XV
 
-Multi-page English/Spanish guest website and private family administration for **Friday, January 15, 2027**, Fort Worth. RSVP deadline: **October 31, 2026, 11:59 PM Central**.
+Multi-page English/Spanish guest website and private family administration for **Friday, January 15, 2027**, Fort Worth. RSVP deadline: **November 15, 2026, 11:59 PM Central**.
 
 The multi-page site is live at **https://misxv.simplysoph.com**. `npm run check` builds 65 routes plus `404.html` and validates all 66 documents. Only pushes to `main` publish, after the Node 24 checks and dependency audit pass; other branches and pull requests only run checks. The API is deployed separately to Cloud Run. Invitations must not go out until the acceptance gate in `DEPLOYMENT.md` passes. The v1.0 design set and plan are in [`docs/v1/`](docs/v1/README.md).
 
