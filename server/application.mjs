@@ -588,10 +588,10 @@ export function createApplication({
         locale,
         household: household.name,
         url: url || origin + (locale === "es" ? "/es" : "") + "/rsvp/",
-        eventDate:
-          locale === "es"
-            ? "Viernes, 15 de enero de 2027"
-            : "Friday, January 15, 2027",
+        // From the admin's event settings, so a schedule change reaches new emails.
+        eventDate: ((d) => d[0].toUpperCase() + d.slice(1))(
+          longDate(site.ceremony.start, locale),
+        ),
         rsvpDeadline: longDate(deadline, locale),
         schedule: emailSchedule(
           site,
@@ -730,9 +730,17 @@ export function createApplication({
     if (path === "/api/public" && method === "GET") {
       const s = await ledger.read();
       return {
-        announcements: Object.values(s.announcements).filter(
-          (r) => r.published && !r.archived,
-        ),
+        // Only what the public page shows; admin notes and audit fields stay private.
+        announcements: Object.values(s.announcements)
+          .filter((r) => r.published && !r.archived)
+          .map(({ id, title, text, titleEs, textEs, at }) => ({
+            id,
+            title,
+            text,
+            titleEs,
+            textEs,
+            at,
+          })),
         messages: Object.values(s.messages)
           .filter((r) => r.kind === "guestbook" && r.state === "approved")
           .map((r) => ({ id: r.id, name: r.name, text: r.text })),
@@ -1136,9 +1144,26 @@ export function createApplication({
           : {}),
         ...(["costs", "padrinos"].includes(page)
           ? {
-              planning: Object.values(ctx.state.planning?.[page] || {}).filter(
-                (r) => !r.deleted,
-              ),
+              // Only the columns the page displays: no contact details, pledges or notes.
+              planning: Object.values(ctx.state.planning?.[page] || {})
+                .filter((r) => !r.deleted)
+                .map((r) =>
+                  page === "costs"
+                    ? {
+                        item: r.item,
+                        vendor: r.vendor,
+                        finalCost: r.finalCost,
+                        deposit: r.deposit,
+                        additionalPaid: r.additionalPaid,
+                        dueDate: r.dueDate,
+                      }
+                    : {
+                        name: r.name,
+                        gift: r.gift,
+                        contacted: r.contacted,
+                        status: r.status,
+                      },
+                ),
             }
           : {}),
         content: ctx.state.privatePages?.[page] || {

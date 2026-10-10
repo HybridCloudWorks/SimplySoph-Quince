@@ -227,6 +227,16 @@ export function createAccounts({
         if (!accountActive(s, a) || a.emailKey !== link.emailKey)
           throw error(401, "EMAIL_LINK_INVALID");
         delete s.emailLinks[hash(raw)];
+        // Older accounts can lack a profile; the account page needs one.
+        s.profiles ??= {};
+        s.profiles[a.householdId] ??= {
+          id: a.householdId,
+          name: fresh.name,
+          contact: { email: fresh.email, phone: fresh.phone, address: null },
+          version: 1,
+          createdAt: now(),
+          updatedAt: now(),
+        };
         pruneSessions(s, now());
         s.sessions[hash(value)] = {
           kind: "guest",
