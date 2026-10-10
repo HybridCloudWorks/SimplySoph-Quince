@@ -3,7 +3,16 @@ import { token, hash, error, withinLimit, atLeast } from "./auth.mjs";
 // Emailed sign-in links for administrators. Who qualifies is decided by
 // admin-access.mjs (the owner, or a ticked Notion "Administrator Eligible" row);
 // the authenticator code is still required after the link.
-export function createAdminEmail({ ledger, mailer, admins, origin, now, signInFloorMs = 0 }) {
+export function createAdminEmail({
+  ledger,
+  mailer,
+  admins,
+  origin,
+  now,
+  signInFloorMs = 0,
+  // Shared with guest sign-in links; see createApplication.
+  signInGate = (task) => task(),
+}) {
   async function send(address) {
     // Only sends are counted (3 per address per 15 minutes, plus a shared hourly
     // budget), so a stranger cannot lock an admin out (AUTHN-5). Unknown
@@ -45,7 +54,11 @@ export function createAdminEmail({ ledger, mailer, admins, origin, now, signInFl
       if (address.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address))
         throw error(422, "INVALID_EMAIL");
       if (!mailer.configured) throw error(503, "EMAIL_SIGN_IN_UNAVAILABLE");
-      return atLeast(signInFloorMs, () => send(address));
+      // Any failure inside (a Notion outage, a busy ledger) gets the same answer
+      // as success: otherwise the owner, who never needs Notion, would stand out.
+      return signInGate(() =>
+        atLeast(signInFloorMs, () => send(address).catch(() => ({ requested: true }))),
+      );
     },
     async consume(raw) {
       if (typeof raw !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(raw))

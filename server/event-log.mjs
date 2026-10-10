@@ -51,6 +51,12 @@ export function redactForLog(entry, key) {
   return walk(entry);
 }
 
+// The Ledger's onEvents handler: one redacted Cloud Logging line per entry.
+export const eventMirror = (log, key) => (entries) => {
+  for (const event of entries)
+    log({ severity: "INFO", message: "event " + event.type, event: redactForLog(event, key) });
+};
+
 // Entries appended after sequence number `seq`, oldest first.
 export function eventsSince(s, seq) {
   const log = s.eventLog || [];

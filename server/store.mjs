@@ -132,10 +132,10 @@ export function memoryAdapter(seed = initialState()) {
     },
   };
 }
-export function cloudAdapter(bucketName) {
+export function cloudAdapter(bucketName, { storage = null } = {}) {
   if (!/^misxv-[a-z0-9-]+$/.test(bucketName || ""))
     throw new Error("Dedicated event bucket required");
-  const bucket = new Storage().bucket(bucketName),
+  const bucket = (storage || new Storage()).bucket(bucketName),
     file = bucket.file("private/event-ledger.json");
   // The last downloaded generation. Every request still checks the current
   // generation (a small metadata call), but the full ledger is downloaded only
