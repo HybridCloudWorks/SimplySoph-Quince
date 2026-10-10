@@ -9,6 +9,16 @@ import sharp from "sharp";
 const origin = "https://misxv.simplysoph.com",
   at = Date.parse("2026-10-01T18:00:00Z");
 const household = "12345678-1234-1234-1234-123456789012";
+// Provider sign-ins need a one-time admin ticket from /api/auth/sso/start.
+const adminTicket = async (app) =>
+  (
+    await app.dispatch({
+      path: "/api/auth/sso/start",
+      method: "POST",
+      headers: { origin },
+      body: { purpose: "admin" },
+    })
+  ).ticket;
 async function fixture(options = {}) {
   const ledger = new Ledger(memoryAdapter()),
     adminToken = token(),
@@ -484,12 +494,12 @@ test("origin and csrf checks reject writes; changed fresh Notion capacity reject
 });
 test("MFA is required; invalid attempts persist and valid code cannot be reused", async () => {
   const f = await fixture();
-  const request = (body) =>
+  const request = async (body) =>
     f.app.dispatch({
       path: "/api/auth/google",
       method: "POST",
       headers: { origin },
-      body,
+      body: { ...body, ticket: await adminTicket(f.app) },
       ip: "new-admin",
     });
   const login = await request({ credential: "verified-by-fixture" });
@@ -861,7 +871,10 @@ test("administrator email links conceal eligibility, require MFA, expire and can
     code: totp(c.enrollmentSecret, Math.floor(at / 30000)),
   });
   assert.ok(signed.setCookie);
-  const google = await post("auth/google", { credential: "fixture" });
+  const google = await post("auth/google", {
+    credential: "fixture",
+    ticket: await adminTicket(f.app),
+  });
   assert.equal(
     google.enrollmentSecret,
     undefined,
@@ -1314,10 +1327,10 @@ test("anonymous junk sign-ins and invitation codes cannot lock out valid credent
     f.app.dispatch({ path: "/api/" + path, method: "POST", headers: { origin }, body, ip: "attacker" });
   const codes = [];
   for (let i = 0; i < 70; i++)
-    await post("auth/google", { credential: "junk" }).catch((e) => codes.push(e.code));
+    await post("auth/google", { credential: "junk", ticket: await adminTicket(f.app) }).catch((e) => codes.push(e.code));
   assert.equal(codes.filter((c) => c === "SIGN_IN_FAILED").length, 60);
   assert.equal(codes.filter((c) => c === "TOO_MANY_REQUESTS").length, 10);
-  assert.ok((await post("auth/google", { credential: "valid" })).challenge);
+  assert.ok((await post("auth/google", { credential: "valid", ticket: await adminTicket(f.app) })).challenge);
   for (let i = 0; i < 610; i++)
     await post("invitation-session", { token: "x".repeat(43) }).catch(() => {});
   assert.ok((await post("invitation-session", { token: f.guestToken })).setCookie);

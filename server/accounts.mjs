@@ -247,5 +247,47 @@ export function createAccounts({
       }
       return { csrf, setCookie: cookie(value) };
     },
+    // A Microsoft or Google identity already verified by the caller signs in to
+    // the registered guest account with that email. It never creates an account
+    // (registration still starts from the household's invitation) and never an
+    // admin session. `inside` runs in the same transaction (nonce, binding).
+    async ssoSession(address, inside) {
+      const k = emailKey(address),
+        known = Object.values((await ledger.read()).accounts || {}).find(
+          (a) => a.emailKey === k,
+        );
+      if (!known) throw error(404, "SSO_NO_ACCOUNT");
+      const fresh = await notion.read(known.householdId, { fresh: true });
+      if (fresh.archived) throw error(403, "INVITATION_INACTIVE");
+      const value = token(),
+        csrf = token();
+      await ledger.transaction((s) => {
+        const a = Object.values(s.accounts || {}).find((v) => v.emailKey === k),
+          invite = a && s.invitations[a.householdId];
+        if (!accountActive(s, a) || !invite?.active)
+          throw error(403, "INVITATION_INACTIVE");
+        inside(s);
+        // Same starting profile the invitation link creates, for older accounts.
+        s.profiles ??= {};
+        s.profiles[a.householdId] ??= {
+          id: a.householdId,
+          name: fresh.name,
+          contact: { email: fresh.email, phone: fresh.phone, address: null },
+          version: 1,
+          createdAt: now(),
+          updatedAt: now(),
+        };
+        pruneSessions(s, now());
+        s.sessions[hash(value)] = {
+          kind: "guest",
+          accountId: a.id,
+          householdId: a.householdId,
+          generation: invite.generation,
+          csrf,
+          expiresAt: now() + 1800000,
+        };
+      });
+      return { csrf, setCookie: cookie(value) };
+    },
   };
 }

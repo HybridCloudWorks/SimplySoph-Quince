@@ -126,6 +126,30 @@ const messages = {
     "Only the site owner can do this.",
     "Solo el propietario del sitio puede hacer esto.",
   ],
+  SSO_NO_ACCOUNT: [
+    "No registered invitation uses this email. Open your invitation link and register your email first, or sign in with the email you registered.",
+    "Ninguna invitación registrada usa este correo. Abre tu enlace de invitación y registra tu correo primero, o entra con el correo que registraste.",
+  ],
+  SSO_ACCOUNT_CHANGED: [
+    "This email is linked to a different Microsoft or Google account. Use the emailed sign-in link instead, or contact the family.",
+    "Este correo está vinculado a otra cuenta de Microsoft o Google. Usa el enlace de acceso por correo o contacta a la familia.",
+  ],
+  SSO_TENANT_NOT_ALLOWED: [
+    "Use a personal Microsoft account (Outlook, Hotmail, Live) or a Simply Soph work account.",
+    "Usa una cuenta personal de Microsoft (Outlook, Hotmail, Live) o una cuenta de trabajo de Simply Soph.",
+  ],
+  SSO_EMAIL_NOT_VERIFIED: [
+    "Your provider did not share a verified email address. Use the emailed sign-in link instead.",
+    "Tu proveedor no compartió un correo verificado. Usa el enlace de acceso por correo.",
+  ],
+  SSO_NOT_CONFIGURED: [
+    "This sign-in option is not available yet. Use the emailed sign-in link.",
+    "Esta opción de acceso aún no está disponible. Usa el enlace de acceso por correo.",
+  ],
+  SSO_KEYS_UNAVAILABLE: [
+    "Microsoft sign-in is temporarily unavailable. Please retry in a minute.",
+    "El acceso con Microsoft no está disponible por ahora. Inténtalo de nuevo en un minuto.",
+  ],
   MFA_SETUP_NOT_ALLOWED: [
     "Ask the site owner to allow authenticator setup for your email, then sign in again within 24 hours.",
     "Pide al propietario del sitio que habilite la configuración del autenticador para tu correo y vuelve a iniciar sesión en 24 horas.",

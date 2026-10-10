@@ -11,8 +11,25 @@ The current invitation database is household-based, so one verified contact acco
 - Only an owner (`ADMIN_EMAILS`) can grant or remove administration. **Granting needs a current code from the owner's own authenticator**; removing does not, and it also deletes that person's authenticator.
 - **Authenticator setup is owner-gated.** Owners set up their own. Everyone else (delegates in `ADMIN_DELEGATE_EMAILS`, and guests granted administration) can set one up only within **24 hours after an owner allows it** in **Admin → Guest Access → Authenticator setup**. The window works once. **Reset** deletes a lost authenticator and ends that person's admin sessions. This stops whoever first completes someone's sign-in from claiming their admin account.
 - Each authenticator setup appears in the in-app Notifications inbox (no email). Role and authenticator changes are kept in an append-only history shown on the same page.
-- Changing the Notion schema and importing rows are owner-only. A page checkbox alone never creates an admin session. Owners keep using Google or an email link, plus MFA.
+- Changing the Notion schema and importing rows are owner-only. A page checkbox alone never creates an admin session. Owners keep using Google, Microsoft or an email link, plus MFA (see below).
 - `/account/` (and `/es/account/`): contact edits, RSVP edits, directions, allowed-page links and a private household/family message thread. Replies are saved in the site and appear when the guest refreshes. They do not automatically send notification emails.
+
+## Microsoft and Google sign-in
+
+Optional alternatives to the emailed link. Administrators and guests stay separate: each has its own entry point, its own server route, and a sealed one-time ticket naming its purpose, so a guest sign-in can never be replayed as an admin sign-in.
+
+| | Guests (`/account/`) | Administrators (`/admin/login/`) |
+|---|---|---|
+| Accounts accepted | Microsoft personal accounts, simplysoph.com work accounts, Google | Microsoft personal accounts, simplysoph.com work accounts; Google for owners (unchanged) |
+| Who gets in | The registered account whose verified email matches. SSO never creates an account; registration still starts from the invitation | Owners, delegates and guests holding Family administration: the same people the emailed admin link admits |
+| Session | Always a guest session, even for an account that holds the admin permission | Admin session |
+| Authenticator code | Not used | **Always asked the first time.** Later it is skipped only when Microsoft proves MFA (`amr` contains `mfa`) **and** that same Microsoft account was linked by an earlier sign-in that passed the code. Google always needs the code; the owner-gated first setup still applies |
+
+- **Microsoft:** the browser uses the authorization-code flow with PKCE; no client secret exists. The server checks the token signature against Microsoft's keys, the audience, the tenant (personal accounts or simplysoph.com only), the issuer, the expiry and the single-use nonce.
+- **Why the first admin sign-in asks for the code:** someone who took over an admin's mailbox could create a new Microsoft account for that address and turn on its MFA. Linking only after the authenticator passes means that account never qualifies. A different Microsoft account for the same admin email simply gets the code, and passing it relinks.
+- **Guest binding:** the first guest SSO sign-in binds that Microsoft or Google account to the email. A different provider account presenting the same email later is refused (`SSO_ACCOUNT_CHANGED`); the emailed link still works. An owner's **Reset** of an administrator's authenticator also clears that person's Microsoft link.
+- **Work accounts** must be members of the simplysoph.com tenant (not B2B guests) with a verified email domain; Google and Microsoft tokens carry a one-time, purpose-bound nonce on both routes.
+- **Setup:** see DEPLOYMENT.md, Provisioning 7. Until `MICROSOFT_CLIENT_ID` is set, the Microsoft buttons do not appear.
 
 ## Data and security
 

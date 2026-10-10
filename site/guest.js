@@ -8,6 +8,13 @@ import {
   calendarLink,
 } from "./celebration.mjs";
 import { api, esc, es, tr, route, field, submit, notify } from "./client.js";
+import {
+  startMicrosoft,
+  microsoftReturn,
+  finishMicrosoft,
+  microsoftButton,
+  googleButton,
+} from "./sso.js";
 const portal = document.querySelector("#portal");
 const eventNames = {
   ceremony: tr("Ceremony", "Ceremonia"),
@@ -39,6 +46,45 @@ function accessForm(value = "", reason = "") {
     await api("auth/email/request", { email: data.get("email") });
     portal.innerHTML = `<p class="notice">${tr("If this email belongs to an active registered invitation, a sign-in link has been requested. Check your inbox and spam folder. The link expires after 15 minutes.", "Si este correo pertenece a una invitación registrada activa, se solicitó un enlace de acceso. Revisa tu bandeja de entrada y correo no deseado. El enlace vence en 15 minutos.")}</p><a href="${route("account")}">${tr("Back to sign-in", "Volver al acceso")}</a>`;
   });
+  if (document.body.dataset.route === "account") ssoChoices();
+}
+// Registered guests may sign in with the Microsoft or Google account that uses
+// their registered email. Only My account offers it: it is the page Microsoft
+// returns to. These sessions are always guest sessions.
+async function ssoChoices() {
+  let cfg;
+  try {
+    cfg = await api("config");
+  } catch {
+    return;
+  }
+  if (!cfg.microsoftClientId && !cfg.clientId) return;
+  portal.insertAdjacentHTML(
+    "beforeend",
+    `<div class="sso-choices"><p>${tr("Or sign in with the Microsoft or Google account that uses your registered email:", "O entra con la cuenta de Microsoft o Google que usa tu correo registrado:")}</p>${cfg.microsoftClientId ? microsoftButton(tr("Sign in with Microsoft", "Entrar con Microsoft")) : ""}${cfg.clientId ? '<div id="google-guest"></div>' : ""}</div>`,
+  );
+  const ms = portal.querySelector('[data-sso="microsoft"]');
+  if (ms)
+    ms.onclick = () =>
+      startMicrosoft(cfg.microsoftClientId, "guest").catch((e) =>
+        notify(e.message),
+      );
+  if (cfg.clientId)
+    googleButton(
+      portal.querySelector("#google-guest"),
+      cfg.clientId,
+      "guest",
+      async (credential, ticket) => {
+        try {
+          await api("auth/sso/guest", { provider: "google", credential, ticket });
+          await showPortal();
+          await permissionNavigation();
+        } catch (e) {
+          notify(e.message);
+        }
+      },
+      notify,
+    );
 }
 const permissionNames = {
   gifts: tr("Registry / gifts", "Registro / regalos"),
@@ -349,7 +395,23 @@ async function publicContent() {
 }
 await experienceReady;
 let fragment = location.hash.slice(1);
-if (portal && fragment && document.body.dataset.route === "account") {
+const microsoft =
+  portal && document.body.dataset.route === "account" ? microsoftReturn() : null;
+if (microsoft) {
+  portal.innerHTML = `<p role="status">${tr("Finishing Microsoft sign-in…", "Terminando el acceso con Microsoft…")}</p>`;
+  try {
+    const cfg = await api("config");
+    await api("auth/sso/guest", {
+      provider: "microsoft",
+      ...(await finishMicrosoft(cfg.microsoftClientId, "guest", microsoft)),
+    });
+    fragment = "";
+    await showPortal();
+    await permissionNavigation();
+  } catch (e) {
+    accessForm("", e.message);
+  }
+} else if (portal && fragment && document.body.dataset.route === "account") {
   history.replaceState(null, "", location.pathname);
   portal.innerHTML = `<h2>${tr("Confirm sign-in", "Confirmar acceso")}</h2><p>${tr("Continue only if you requested this email link.", "Continúa solo si solicitaste este enlace por correo.")}</p><form id="email-verify"><p class="error" role="alert"></p><button type="submit" class="button burgundy">${tr("Continue to my invitation", "Continuar a mi invitación")}</button></form>`;
   submit(document.querySelector("#email-verify"), async () => {
