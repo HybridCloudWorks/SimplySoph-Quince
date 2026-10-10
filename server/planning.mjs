@@ -183,6 +183,7 @@ export function createPlanning({ ledger, documents, notion, now }) {
         status: "syncing",
         lock,
         lockUntil: now() + 300000,
+        triedAt: now(),
       };
       return structuredClone(row);
     });
@@ -239,17 +240,33 @@ export function createPlanning({ ledger, documents, notion, now }) {
     return { row: (await ledger.read()).planning[kind][id] };
   }
   // Scheduled catch-up (NOTION-8): up to 10 Budget or Godparents rows still
-  // waiting to reach Notion, so a failed write no longer blocks the next edit
-  // until someone retries. Safe to repeat: an ambiguous create is looked up,
-  // never repeated, and a row another write holds is skipped.
+  // waiting to reach Notion after an outage, longest since last tried first,
+  // so a failed write no longer blocks the next edit until someone retries.
+  // Safe to repeat: an ambiguous create is looked up, never repeated, and a row
+  // another write holds is skipped. Errors that will not fix themselves (a
+  // schema conflict, a duplicate or missing record, an uncertain create) are
+  // left for the admin's Retry Sync after they look at Notion.
+  const needsPerson = new Set([
+    "NOTION_CREATE_UNCERTAIN",
+    "NOTION_RECORD_UNAVAILABLE",
+    "PLANNING_SCHEMA_CONFLICT",
+    "NOTION_DUPLICATE_RECORD",
+  ]);
   handle.retryPending = async () => {
     const s = await ledger.read();
     const due = Object.entries(s.planning || {})
       .flatMap(([kind, rows]) =>
         Object.values(rows)
-          .filter((r) => r.sync && r.sync.status !== "synced" && !(r.sync.lockUntil > now()))
-          .map((r) => [kind, r.id]),
+          .filter(
+            (r) =>
+              r.sync &&
+              r.sync.status !== "synced" &&
+              !(r.sync.lockUntil > now()) &&
+              !needsPerson.has(r.sync.error),
+          )
+          .map((r) => [kind, r.id, r.sync.triedAt || 0]),
       )
+      .sort((a, b) => a[2] - b[2])
       .slice(0, 10);
     for (const [kind, id] of due) await sync(kind, id).catch(() => {});
     return { attempted: due.length };

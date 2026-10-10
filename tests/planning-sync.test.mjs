@@ -376,3 +376,26 @@ test("the scheduled drain retries planning rows still waiting to reach Notion (N
   assert.deepEqual(await handle.retryPending(), { attempted: 0 }, "nothing left to do");
   assert.equal(writes, 2);
 });
+
+test("the drain leaves planning errors that need a person to the admin's Retry Sync (NOTION-8)", async () => {
+  const ledger = new Ledger(memoryAdapter());
+  let writes = 0;
+  const handle = createPlanning({
+    ledger,
+    now: Date.now,
+    notion: {
+      writePlanning: async () => {
+        writes++;
+        throw Object.assign(new Error(), { code: "PLANNING_SCHEMA_CONFLICT" });
+      },
+    },
+  });
+  await handle(
+    req("", { createId: "44444444-4444-4444-8444-444444444444", row: { item: "Cake", estimated: 200 } }),
+    actor,
+  );
+  const row = (await ledger.read()).planning.costs["44444444-4444-4444-8444-444444444444"];
+  assert.equal(row.sync.error, "PLANNING_SCHEMA_CONFLICT");
+  assert.deepEqual(await handle.retryPending(), { attempted: 0 }, "not retried every 10 minutes");
+  assert.equal(writes, 1);
+});
