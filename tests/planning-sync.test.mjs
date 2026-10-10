@@ -348,3 +348,54 @@ test("Notion archive and restore update only archive state of the exact scoped p
   );
   assert.equal(writes.length, 2);
 });
+
+test("the scheduled drain retries planning rows still waiting to reach Notion (NOTION-8)", async () => {
+  const ledger = new Ledger(memoryAdapter());
+  let down = true,
+    writes = 0;
+  const handle = createPlanning({
+    ledger,
+    now: Date.now,
+    notion: {
+      writePlanning: async () => {
+        writes++;
+        if (down) throw Object.assign(new Error(), { code: "NOTION_UNAVAILABLE" });
+        return "notion-page";
+      },
+    },
+  });
+  const saved = await handle(
+    req("", { createId: "33333333-3333-4333-8333-333333333333", row: { item: "Flowers", estimated: 300 } }),
+    actor,
+  );
+  assert.equal(saved.row.sync.status, "pending");
+  down = false;
+  assert.deepEqual(await handle.retryPending(), { attempted: 1 });
+  const row = (await ledger.read()).planning.costs["33333333-3333-4333-8333-333333333333"];
+  assert.equal(row.sync.status, "synced");
+  assert.deepEqual(await handle.retryPending(), { attempted: 0 }, "nothing left to do");
+  assert.equal(writes, 2);
+});
+
+test("the drain leaves planning errors that need a person to the admin's Retry Sync (NOTION-8)", async () => {
+  const ledger = new Ledger(memoryAdapter());
+  let writes = 0;
+  const handle = createPlanning({
+    ledger,
+    now: Date.now,
+    notion: {
+      writePlanning: async () => {
+        writes++;
+        throw Object.assign(new Error(), { code: "PLANNING_SCHEMA_CONFLICT" });
+      },
+    },
+  });
+  await handle(
+    req("", { createId: "44444444-4444-4444-8444-444444444444", row: { item: "Cake", estimated: 200 } }),
+    actor,
+  );
+  const row = (await ledger.read()).planning.costs["44444444-4444-4444-8444-444444444444"];
+  assert.equal(row.sync.error, "PLANNING_SCHEMA_CONFLICT");
+  assert.deepEqual(await handle.retryPending(), { attempted: 0 }, "not retried every 10 minutes");
+  assert.equal(writes, 1);
+});

@@ -46,6 +46,19 @@ export function normalizeInvitation(page) {
     whatsappConsentVersion: text(p["WhatsApp Consent Version"]),
     whatsappOptOut: p["WhatsApp Opt Out"]?.checkbox === true,
     invitationStatus: p.RSVP?.select?.name ?? "",
+    // The head counts Notion currently shows, for the drift check (NOTION-8).
+    notionCounts: Object.fromEntries(
+      ["ceremony", "dinner", "dance"].map((event) => {
+        const name = event[0].toUpperCase() + event.slice(1);
+        return [
+          event,
+          {
+            adultsTeens: p[name + " adults"]?.number ?? null,
+            kids: p[name + " kids"]?.number ?? null,
+          },
+        ];
+      }),
+    ),
     archived: page.archived || page.in_trash || false,
     validCapacity: valid,
     lastEdited: page.last_edited_time,

@@ -1985,3 +1985,143 @@ test("a recovery-shaped code from an administrator who is not the owner is just 
   const c = (await f.publicPost("auth/admin-email/verify", { token: linkOf(f.sent.at(-1)) })).challenge;
   await assert.rejects(() => f.publicPost("auth/mfa", { challenge: c, code: "ABCD-EFGH-JKLM" }), (e) => e.code === "INVALID_MFA");
 });
+
+test("the guest page shows the household name Notion has now (NOTION-5)", async () => {
+  const f = await fixture();
+  f.row.name = "The Renamed Family";
+  assert.equal((await f.guest("invitation")).name, "The Renamed Family");
+});
+
+// Answers the household's RSVP, then makes the fake Notion row show exactly
+// what the website wrote, and waits out the 2-minute grace after the write.
+async function answeredAndMatching(f, key = "88888888-8888-4888-8888-888888888888") {
+  await f.guest("rsvp", f.input(), { "idempotency-key": key });
+  const response = (await f.ledger.read()).responses[key];
+  const attending = Object.values(response.attendance).some((v) => v.adultsTeens + v.kids > 0);
+  f.row.invitationStatus = attending ? "Yes" : "No";
+  f.row.notionCounts = structuredClone(response.attendance);
+  await f.ledger.transaction((st) => {
+    st.invitations[household].syncTriedAt = 0; // the last write was long ago
+  });
+  return response;
+}
+const drain = (f) =>
+  f.app.dispatch({ path: "/api/internal/drain", method: "POST", headers: { authorization: "Bearer x" } });
+const driftAlerts = async (f) =>
+  Object.values((await f.ledger.read()).notifications).filter((n) => n.kind === "drift");
+
+test("a Notion RSVP that differs from the website is reported once, and the admin decides it (NOTION-8)", async () => {
+  let projected = 0;
+  const f = await fixture({
+    verifyScheduler: async () => true,
+    notion: {
+      async project() {
+        projected++;
+      },
+    },
+  });
+  await answeredAndMatching(f);
+  assert.equal((await drain(f)).drift.differing, 0);
+  // The family changes the dinner count in Notion after a phone call.
+  f.row.notionCounts.dinner.adultsTeens += 1;
+  assert.equal((await drain(f)).drift.differing, 1);
+  assert.equal((await driftAlerts(f)).length, 1);
+  assert.match((await driftAlerts(f))[0].text, /dinner: .* in Notion, .* on the website/);
+  assert.equal((await f.admin("dashboard")).notionDrift, 1);
+  const guestRow = (await f.admin("guests")).guests.find((g) => g.id === household);
+  assert.match(guestRow.notionDiffers, /dinner/);
+  await drain(f);
+  assert.equal((await driftAlerts(f)).length, 1, "the same difference is reported once");
+  // The bulk Retry never touches it.
+  const before = projected;
+  await f.admin("sync", {});
+  assert.equal(projected, before, "Retry does not undo the family's edit");
+  // Keep Notion's version: no longer counted or reported, until it changes again.
+  assert.deepEqual(await f.admin("drift", { id: household, keep: "notion" }), { kept: "notion" });
+  assert.equal((await f.admin("dashboard")).notionDrift, 0);
+  await drain(f);
+  assert.equal((await driftAlerts(f)).length, 1);
+  f.row.notionCounts.dinner.kids += 1;
+  await drain(f);
+  assert.equal((await driftAlerts(f)).length, 2, "a new, different change is reported");
+  // Write the website's answer: the RSVP is written to Notion again.
+  const r = await f.admin("drift", { id: household, keep: "website" });
+  assert.equal(r.kept, "website");
+  assert.equal(projected, before + 1);
+  await assert.rejects(() => f.admin("drift", { id: household, keep: "maybe" }), (e) => e.code === "INVALID_CHOICE");
+  // Once Notion matches again, the entry clears.
+  f.row.notionCounts.dinner.adultsTeens -= 1;
+  f.row.notionCounts.dinner.kids -= 1;
+  await f.ledger.transaction((st) => {
+    st.invitations[household].syncTriedAt = 0; // the last write was long ago
+  });
+  assert.equal((await drain(f)).drift.differing, 0);
+  await assert.rejects(() => f.admin("drift", { id: household, keep: "notion" }), (e) => e.status === 404);
+});
+
+test("the drift check skips rows just written, treats an empty cell as 0, and writes nothing when nothing changed (NOTION-8)", async () => {
+  const f = await fixture({ verifyScheduler: async () => true });
+  const response = await answeredAndMatching(f);
+  // A row written moments ago is not compared yet (Notion may lag behind).
+  f.row.notionCounts.dinner.adultsTeens += 5;
+  await f.ledger.transaction((s) => {
+    s.invitations[household].syncTriedAt = f.now() - 60000;
+  });
+  assert.equal((await drain(f)).drift.differing, 0);
+  f.row.notionCounts.dinner.adultsTeens -= 5;
+  await f.ledger.transaction((st) => {
+    st.invitations[household].syncTriedAt = 0; // the last write was long ago
+  });
+  // An empty Notion cell for a zero count is not a difference.
+  for (const event of ["ceremony", "dinner", "dance"])
+    if (response.attendance[event].kids === 0) f.row.notionCounts[event].kids = null;
+  // Nothing changed, so the drain never writes the ledger.
+  let writes = 0;
+  const transaction = f.ledger.transaction.bind(f.ledger);
+  f.ledger.transaction = (fn) => (writes++, transaction(fn));
+  assert.equal((await drain(f)).drift.differing, 0);
+  assert.equal(writes, 0);
+});
+
+test("many households differing at once send one combined alert (NOTION-8)", async () => {
+  const f = await fixture({ verifyScheduler: async () => true });
+  await answeredAndMatching(f);
+  // Twelve answered households whose Notion RSVP column was renamed away.
+  const ids = Array.from({ length: 12 }, (_, i) => `aaaaaaaa-0000-4000-8000-${String(i).padStart(12, "0")}`);
+  const base = (await f.ledger.read()).responses["88888888-8888-4888-8888-888888888888"];
+  await f.ledger.transaction((s) => {
+    for (const id of ids) {
+      s.invitations[id] = { ...s.invitations[household], id, latestSubmissionId: "r-" + id, syncTriedAt: 0 };
+      s.responses["r-" + id] = { ...base, id: "r-" + id, householdId: id };
+    }
+  });
+  for (const id of ids) f.extraRows.push({ ...f.row, id, name: "Family " + id.slice(-2), invitationStatus: "" });
+  assert.equal((await drain(f)).drift.differing, 12);
+  const alerts = await driftAlerts(f);
+  assert.equal(alerts.length, 1);
+  assert.match(alerts[0].title, /12 households differ/);
+});
+
+test("a contact-details change writes only the contact columns, never the RSVP counts (NOTION-8)", async () => {
+  const calls = [];
+  const f = await fixture({
+    notion: {
+      async project() {
+        calls.push("rsvp");
+      },
+      async projectContact() {
+        calls.push("contact");
+      },
+    },
+  });
+  await f.guest("rsvp", f.input(), { "idempotency-key": "12121212-1212-4212-8212-121212121212" });
+  assert.deepEqual(calls, ["rsvp"]);
+  const profile = await f.guest("profile");
+  await f.guest("profile", {
+    email: "new-contact@example.com",
+    phone: "",
+    address: "",
+    version: profile.profile.version,
+  });
+  assert.deepEqual(calls, ["rsvp", "contact"], "a phone or email change never rewrites the head counts");
+});

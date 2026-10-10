@@ -87,6 +87,17 @@ export async function websiteEditor(root) {
   }
   render();
 }
+// Where each kind of notification is acted on.
+const noticeLinks = {
+  rsvp: ["/admin/guests/", "Open invitations"],
+  drift: ["/admin/guests/", "Open invitations"],
+  sync: ["/admin/", "Open overview to retry"],
+  security: ["/admin/access/", "Open guest access"],
+  photo: ["/admin/photos/", "Open review queue"],
+  video: ["/admin/photos/", "Open review queue"],
+  contact: ["/admin/guestbook/", "Open review queue"],
+  guestbook: ["/admin/guestbook/", "Open review queue"],
+};
 export async function notificationInbox(root) {
   const { notifications } = await api("admin/notifications");
   root.innerHTML = `<p>New RSVPs, uploads and contact messages appear here for family review. RSVP alerts are shown here only; they are never emailed. Showing The Latest Five Active Notifications.</p><p><a href="/admin/history/?kind=notifications">View Full Notification History</a></p>${
@@ -96,7 +107,7 @@ export async function notificationInbox(root) {
       .slice(0, 5)
       .map(
         (n) =>
-          `<article class="notification-row"><div class="notification-summary"><h3>${esc(n.title || { photo: "Photo awaiting review", video: "Video awaiting review", contact: "New contact message", guestbook: "Guestbook message awaiting review" }[n.kind] || n.kind)}</h3>${n.text ? `<p class="notification-text">${esc(n.text)}</p>` : ""}<small>${esc(new Date(n.at).toLocaleString())} · ${n.read ? "Read" : "Unread"} · ${n.emailState === "none" ? "In-app only" : "Email: " + esc(n.emailState || "pending / not configured")}</small></div><div class="row-actions"><a href="${n.kind === "rsvp" || n.kind === "sync" ? "/admin/guests/" : n.kind === "photo" || n.kind === "video" ? "/admin/photos/" : "/admin/guestbook/"}">${n.kind === "rsvp" || n.kind === "sync" ? "Open invitations" : "Open review queue"}</a>${!n.read ? `<button class="plain-button" data-read="${esc(n.id)}">Mark Read</button>` : ""}</div></article>`,
+          `<article class="notification-row"><div class="notification-summary"><h3>${esc(n.title || { photo: "Photo awaiting review", video: "Video awaiting review", contact: "New contact message", guestbook: "Guestbook message awaiting review" }[n.kind] || n.kind)}</h3>${n.text ? `<p class="notification-text">${esc(n.text)}</p>` : ""}<small>${esc(new Date(n.at).toLocaleString())} · ${n.read ? "Read" : "Unread"} · ${n.emailState === "none" ? "In-app only" : "Email: " + esc(n.emailState || "pending / not configured")}</small></div><div class="row-actions"><a href="${(noticeLinks[n.kind] || noticeLinks.contact)[0]}">${(noticeLinks[n.kind] || noticeLinks.contact)[1]}</a>${!n.read ? `<button class="plain-button" data-read="${esc(n.id)}">Mark Read</button>` : ""}</div></article>`,
       )
       .join("") || "<p>No notifications yet.</p>"
   }`;

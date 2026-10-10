@@ -87,7 +87,7 @@ gcloud run deploy misxv-api \
 
 ## Scheduled drain
 
-`POST /api/internal/drain` retries work that failed earlier: up to 10 RSVPs still waiting to reach Notion, and up to 25 pending SMS and 25 pending WhatsApp opt-in/opt-out projections. It never sends a message to a guest. Each step runs on its own, so one failing step never blocks the others. The route returns 404 until both scheduler variables are set. It accepts only a Google-signed OIDC token whose audience is exactly `SCHEDULER_AUDIENCE` and whose verified email is exactly `SCHEDULER_SERVICE_ACCOUNT`.
+`POST /api/internal/drain` retries work that failed earlier: up to 10 RSVPs still waiting to reach Notion, up to 10 Budget or Godparents rows, and up to 25 pending SMS and 25 pending WhatsApp opt-in/opt-out projections. It also checks that Notion still shows each answered household's website RSVP (the RSVP column and head counts). A difference is reported once in Notifications and counted on the dashboard (many at once become one alert), and Notion is never overwritten automatically, because the family may have changed it on purpose. On Invitations the admin chooses, per household, **Keep Notion's version** (not reported again unless it changes) or **Write the website's answer**. Rows written in the last 2 minutes are skipped, and a check that finds nothing new writes nothing. A guest's contact-details change writes only the contact columns, never the RSVP or head counts. It never sends a message to a guest. Each step runs on its own, so one failing step never blocks the others. The route returns 404 until both scheduler variables are set. It accepts only a Google-signed OIDC token whose audience is exactly `SCHEDULER_AUDIENCE` and whose verified email is exactly `SCHEDULER_SERVICE_ACCOUNT`.
 
 One-time setup (owner, `gcloud config configurations activate misxv`):
 
@@ -179,7 +179,7 @@ Record date, tester and evidence for each item in the inventory. Status as of th
 
 ## Notion planning sync
 
-Budget and Godparents edits made on the website are saved to the ledger as `pending`, then patched into the linked Notion row (changed fields only). New rows use a stable `Website Record ID`, and an ambiguous create is looked up, never repeated. A five-minute durable lock serializes writes to each row. Direct Notion edits do **not** flow back to the website. The recommended v1.0 ownership model is in [docs/v1/notion-strategy.md](docs/v1/notion-strategy.md).
+Budget and Godparents edits made on the website are saved to the ledger as `pending`, then patched into the linked Notion row (changed fields only). New rows use a stable `Website Record ID`, and an ambiguous create is looked up, never repeated. A five-minute durable lock serializes writes to each row. Direct Notion edits do **not** flow back to the website. Rows still waiting to reach Notion after an outage are retried by the scheduled drain, oldest attempt first; errors that need a person (a schema conflict, a duplicate or missing record, an uncertain create) wait for Retry Sync. The recommended v1.0 ownership model is in [docs/v1/notion-strategy.md](docs/v1/notion-strategy.md).
 
 ## Release and rollback
 

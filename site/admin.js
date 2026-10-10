@@ -288,6 +288,9 @@ async function dashboard() {
     ["Active invitations", d.active],
     ["Responses", d.responded],
     ["Pending Notion sync", d.pendingSync],
+    // Shown only when there is something to act on.
+    ...(d.failedSync ? [["Notion refused", d.failedSync]] : []),
+    ...(d.notionDrift ? [["Differs in Notion", d.notionDrift]] : []),
   ]
     .map(
       ([title, n]) =>
@@ -349,7 +352,7 @@ async function guestList() {
                 .map(([e, v]) => `${e}: ${v.adultsTeens + v.kids}`)
                 .join("<br>")
             : "No response"
-        }<br>${esc(r.syncState)}</td><td><a href="https://www.notion.so/${encodeURIComponent(r.id.replaceAll("-", ""))}" target="_blank" rel="noopener noreferrer">Edit household in Notion</a>${button("Review / create link", "invite-form", r.id)}${r.active ? button("Revoke link", "revoke", r.id) : ""}</td></tr>`,
+        }<br>${esc(r.syncState)}${r.notionDiffers ? `<p class="notice">Notion differs: ${esc(r.notionDiffers)}.</p>${button("Keep Notion's version", "drift-notion", r.id)}${button("Write the website's answer", "drift-website", r.id)}` : ""}</td><td><a href="https://www.notion.so/${encodeURIComponent(r.id.replaceAll("-", ""))}" target="_blank" rel="noopener noreferrer">Edit household in Notion</a>${button("Review / create link", "invite-form", r.id)}${r.active ? button("Revoke link", "revoke", r.id) : ""}</td></tr>`,
     ),
   )}</div><div id="recent-batches"></div>`;
   const text = root.querySelector("[name=filter]"),
@@ -605,6 +608,22 @@ root.addEventListener("click", (e) => {
       )
         return;
       await api("admin/revoke", { id });
+      await guestList();
+    }
+    // NOTION-8: the admin decides each difference between Notion and the site.
+    if (action === "drift-notion") {
+      await api("admin/drift", { id, keep: "notion" });
+      notify("Kept Notion's version. This difference won't be reported again.");
+      await guestList();
+    }
+    if (action === "drift-website") {
+      if (!confirm("Write the website's answer to Notion? It replaces the RSVP and head counts on that Notion row.")) return;
+      const r = await api("admin/drift", { id, keep: "website" });
+      notify(
+        r.syncState === "synced"
+          ? "The website's answer was written to Notion."
+          : "Notion didn't accept it yet; it will be retried automatically.",
+      );
       await guestList();
     }
     if (action === "draft-invitation") {
