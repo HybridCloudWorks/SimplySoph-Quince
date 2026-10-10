@@ -2,6 +2,7 @@ import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { routes, adminRoutes } from "../site/content.mjs";
+import { exampleMarkers, previewRoutes } from "../site/preview-content.mjs";
 const root = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../dist",
@@ -28,6 +29,12 @@ for (const page of pages) {
     throw new Error(`Missing accessibility/privacy structure in ${page}`);
   if (/SOPHIA-DEMO|RSVP demonstration only/.test(html))
     throw new Error(`Demo content leaked into ${page}`);
+  // The idea-book examples belong only to the admin preview (dist-preview/).
+  for (const marker of exampleMarkers)
+    if (html.includes(marker))
+      throw new Error(`Example text "${marker}" leaked into ${page}`);
+  if (html.includes("preview-banner"))
+    throw new Error(`Preview banner leaked into ${page}`);
   if (/^(es\/)?(registry|gifts)\/index\.html$/.test(page)) {
     if (
       !html.includes("data-public-registries") ||
@@ -85,6 +92,32 @@ for (const file of ["styles.css", "pages.css"]) {
   }
   if (depth !== 0) throw new Error(`Unbalanced braces in ${file}`);
 }
+// The admin preview exists for every approved page, says it is a preview, and
+// actually shows the examples (an empty preview would hide a broken layout).
+const previewDir = path.resolve(root, "../dist-preview");
+for (const lang of ["en", "es"])
+  for (const route of previewRoutes) {
+    const html = await readFile(path.join(previewDir, lang, route + ".html"), "utf8");
+    if (!html.includes('class="preview-banner"'))
+      throw new Error(`Preview banner missing in ${lang}/${route}`);
+    if (html.includes(`data-route="${route}"`) === false)
+      throw new Error(`Preview page has the wrong route: ${lang}/${route}`);
+  }
+// The admin links (site/admin-experience.js) must name exactly the built previews.
+const adminSource = await readFile(path.join(root, "admin-experience.js"), "utf8");
+const linked = [
+  ...(adminSource.match(/const previewPages = \[([\s\S]*?)\n\];/)?.[1] || "").matchAll(/\["([a-z-]+)",/g),
+].map((m) => m[1]);
+if (linked.join() !== previewRoutes.join())
+  throw new Error(`Admin preview links (${linked}) differ from the built previews (${previewRoutes})`);
+for (const [route, marker] of [
+  ["sophia", "Example High School"],
+  ["padrinos", "The Example Family"],
+  ["travel", "Example Hotel North"],
+  ["court", "Andrés G."],
+])
+  if (!(await readFile(path.join(previewDir, "en", route + ".html"), "utf8")).includes(marker))
+    throw new Error(`The ${route} preview does not show the example "${marker}"`);
 console.log(
-  `All ${pages.length} documents, ${scripts.size} scripts and local links/assets passed.`,
+  `All ${pages.length} documents, ${scripts.size} scripts and local links/assets passed, plus ${previewRoutes.length * 2} admin previews.`,
 );
