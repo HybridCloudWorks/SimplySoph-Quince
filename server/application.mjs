@@ -247,6 +247,8 @@ export function createApplication({
       return account.email;
     return notionEmail || null;
   }
+  const mfaPaused = (s, email) =>
+    s.mfaFailures?.[hash("mfa-fail:" + email)]?.pausedUntil > now();
   function securityNote(s, title) {
     const id = randomUUID();
     s.notifications ??= {};
@@ -341,21 +343,23 @@ export function createApplication({
   // Page views may use the short Notion cache, and read-only views opt in to
   // the last good answer during a Notion outage (allowStale). Guest writes use
   // the cache but never stale data; RSVP submission reads fresh.
+  // An email sign-in works only while that email is still on this household's
+  // row: removing or moving it in Notion ends access on the next request
+  // (re-audit), not when the session runs out. Pages that need no invitation
+  // details (gallery, photos, My account) check only this.
+  const listedOn = (row, email) =>
+    row.email === email || (row.additionalEmails || []).includes(email);
+  async function stillListed(session) {
+    const row = await notion.read(session.householdId, { allowStale: true });
+    if (row.archived || !listedOn(row, session.email)) throw error(401, "SIGN_IN_REQUIRED");
+  }
   async function guestInvitation(session, { fresh = false, allowStale = false } = {}) {
     const row = await notion.read(session.householdId, { fresh, allowStale }),
       s = await ledger.read(),
       record = s.invitations[row.id];
     if (row.archived || !invitationOpen(s, session))
       throw error(401, "INVITATION_INACTIVE");
-    // An email sign-in works only while that email is still on this household's
-    // row: removing or moving it in Notion ends access on the next request
-    // (re-audit), not when the session runs out.
-    if (
-      session.accountId &&
-      row.email !== session.email &&
-      !(row.additionalEmails || []).includes(session.email)
-    )
-      throw error(401, "SIGN_IN_REQUIRED");
+    if (session.accountId && !listedOn(row, session.email)) throw error(401, "SIGN_IN_REQUIRED");
     if (!row.validCapacity) throw error(409, "CAPACITY_NEEDS_REVIEW");
     return {
       ...row,
@@ -742,18 +746,42 @@ export function createApplication({
   // SEC-9: when someone is no longer an administrator in Notion (box unticked or
   // main Email changed), their authenticator and linked Microsoft account are
   // removed, so ticking them again later means a fresh QR setup, not the old
-  // phone. An empty or failed Notion answer removes nothing.
+  // phone. Their admin access already ends on their next click (stillAdmin);
+  // the removal waits until they have looked unticked for a day, and the
+  // family is told at once, so a mistaken edit (a duplicated row, a renamed
+  // column) can be put right before anything is lost. A Notion answer with no
+  // ticked row or no emails at all looks like a renamed column and removes
+  // nothing (re-audit).
   async function pruneAdmins() {
-    const rows = await notion.list({ fresh: true });
-    if (!rows.length) return { removed: 0 };
-    const stale = (s) =>
-      Object.entries(s.admins || {})
-        .filter(([, a]) => !adminEmails.includes(a.email) && !adminRow(rows, a.email))
-        .map(([id]) => id);
-    if (!stale(await ledger.read()).length) return { removed: 0 };
+    const rows = (await notion.list({ fresh: true })).filter((r) => !r.archived);
+    if (!rows.some((r) => r.administratorEligible) || !rows.some((r) => r.email))
+      return { removed: 0, skipped: rows.length ? "NOTION_ADMIN_COLUMNS_LOOK_EMPTY" : "NOTION_EMPTY" };
+    const day = 86400000;
+    const plan = (s) => {
+      const flag = [],
+        clear = [],
+        remove = [];
+      for (const [id, a] of Object.entries(s.admins || {})) {
+        const ok = adminEmails.includes(a.email) || !!adminRow(rows, a.email);
+        if (ok && a.staleSince) clear.push(id);
+        else if (!ok && !a.staleSince) flag.push(id);
+        else if (!ok && a.staleSince <= now() - day) remove.push(id);
+      }
+      return { flag, clear, remove };
+    };
+    const first = plan(await ledger.read());
+    if (!first.flag.length && !first.clear.length && !first.remove.length) return { removed: 0 };
     return ledger.transaction((s) => {
-      const ids = stale(s);
-      for (const id of ids) {
+      const { flag, clear, remove } = plan(s);
+      for (const id of clear) delete s.admins[id].staleSince;
+      for (const id of flag) {
+        s.admins[id].staleSince = now();
+        securityNote(
+          s,
+          `${s.admins[id].email} is no longer an administrator in Notion. Their authenticator will be removed in a day unless their row is ticked again.`,
+        );
+      }
+      for (const id of remove) {
         const email = s.admins[id].email;
         delete s.admins[id];
         delete s.ssoBindings?.[hash("admin-microsoft:" + email)];
@@ -761,7 +789,7 @@ export function createApplication({
           if (v.kind === "admin" && v.email === email) delete s.sessions[k];
         roleEvent(s, "notion", email, "authenticator-removed");
       }
-      return { removed: ids.length };
+      return { removed: remove.length, pending: flag.length };
     });
   }
   // Scheduled catch-up for projections that failed earlier (Notion outage,
@@ -964,9 +992,9 @@ export function createApplication({
           return { signedIn: true };
         }
         // Too many wrong authenticator codes for this admin across sign-ins:
-        // pause new ones for an hour (each sign-in already allows only 5 tries).
-        const failures = s.mfaFailures?.[hash("mfa-fail:" + who.email)];
-        if (failures?.count >= 10 && failures.since > now() - 3600000)
+        // sign-ins are paused for an hour (each sign-in already allows only 5
+        // tries). An owner may still start one, to use a recovery code.
+        if (mfaPaused(s, who.email) && !adminEmails.includes(who.email))
           throw error(429, "ADMIN_SIGN_IN_PAUSED");
         // A first authenticator is set up only after the emailed link: a Google
         // or Microsoft account can carry an address its holder no longer owns,
@@ -1047,28 +1075,38 @@ export function createApplication({
           throw error(401, "SIGN_IN_AGAIN");
         c.attempts++;
         const existing = s.admins[c.id];
-        // Wrong codes are also counted per admin across sign-ins: 10 within an
-        // hour pause new sign-ins for that admin (see the admin sign-in step) and
-        // tell the family once. A correct code clears the count.
+        // Wrong codes are also counted per admin across sign-ins: the 10th
+        // within an hour pauses that admin's sign-ins for an hour from then,
+        // including ones already open, and tells the family once. A correct
+        // code clears the count. During a pause only an owner's recovery code
+        // (and then the new authenticator's code) is accepted, so the
+        // break-glass path stays open (re-audit).
         const failKey = hash("mfa-fail:" + c.email);
+        const recovery = recoveryInput(body.code),
+          owner = adminEmails.includes(c.email);
+        if (mfaPaused(s, c.email) && !c.replacing && !(recovery && owner))
+          throw error(429, "ADMIN_SIGN_IN_PAUSED");
         const fail = () => {
           s.mfaFailures ??= {};
           const previous = s.mfaFailures[failKey];
           const f =
-            previous?.since > now() - 3600000 ? previous : { count: 0, since: now() };
+            previous?.since > now() - 3600000
+              ? previous
+              : { count: 0, since: now(), pausedUntil: previous?.pausedUntil };
           f.count++;
           s.mfaFailures[failKey] = f;
-          if (f.count === 10)
+          if (f.count === 10) {
+            f.pausedUntil = now() + 3600000;
             securityNote(
               s,
-              `10 wrong authenticator codes for ${c.email} within an hour. New sign-ins for this administrator are paused for an hour.`,
+              `10 wrong authenticator codes for ${c.email} within an hour. Sign-ins for this administrator are paused for an hour${owner ? "; recovery codes still work" : ""}.`,
             );
+          }
           return { failed: true };
         };
         // The owner's recovery code: spend it and start a new authenticator setup
         // on this same challenge; the sign-in finishes with the new app's code.
-        const recovery = recoveryInput(body.code);
-        if (recovery && adminEmails.includes(c.email) && existing?.recovery?.length) {
+        if (recovery && owner && existing?.recovery?.length) {
           const i = existing.recovery.indexOf(recoveryHash(recovery));
           if (i < 0) return fail();
           existing.recovery.splice(i, 1);
@@ -1282,6 +1320,7 @@ export function createApplication({
       requireAuth();
       if (session.kind !== "admin" && !session.accountId)
         throw error(403, "VERIFIED_ACCOUNT_REQUIRED");
+      if (session.kind !== "admin") await stillListed(session);
       return {
         media: Object.values(ctx.state.photos)
           .filter((r) => r.state === "approved")
@@ -1300,6 +1339,7 @@ export function createApplication({
       return accounts.consume(body.token);
     if (path === "/api/account" && method === "GET") {
       requireAuth("guest");
+      if (session.accountId) await stillListed(session);
       const a = ctx.state.accounts?.[session.accountId];
       return {
         account: a ? { name: a.name, email: a.email } : null,
@@ -1322,11 +1362,14 @@ export function createApplication({
       requireAuth();
       const signedOut = await ledger.transaction((s) => {
         let n = 0;
-        // Every session of this person: their admin and guest sign-ins alike.
+        // Every session of this person. From the admin menu that includes their
+        // guest sign-ins; from My account only guest sign-ins, so a guest
+        // sign-in alone cannot sign an administrator out (re-audit).
         for (const [k, v] of Object.entries(s.sessions))
           if (
-            (session.email && v.email === session.email) ||
-            (!!session.accountId && v.accountId === session.accountId)
+            (session.kind === "admin" || v.kind !== "admin") &&
+            ((session.email && v.email === session.email) ||
+              (!!session.accountId && v.accountId === session.accountId))
           ) {
             delete s.sessions[k];
             n++;
@@ -1426,8 +1469,8 @@ export function createApplication({
       return {
         profile,
         saved: true,
-        syncState: (await ledger.read()).invitations[session.householdId]
-          .syncState,
+        // No invitation issued yet: nothing to sync until there is.
+        syncState: (await ledger.read()).invitations[session.householdId]?.syncState ?? null,
       };
     }
     if (path === "/api/messages" && method === "GET") {
@@ -1722,6 +1765,7 @@ export function createApplication({
       requireAuth();
       if (session.kind !== "admin" && !session.accountId)
         throw error(403, "VERIFIED_ACCOUNT_REQUIRED");
+      if (session.kind !== "admin") await stillListed(session);
       const id = path.slice(11);
       if (!/^[a-f0-9-]{36}$/.test(id)) throw error(404, "NOT_FOUND");
       const row = ctx.state.photos[id];
@@ -2518,5 +2562,9 @@ export function createApplication({
     }
     throw error(404, "NOT_FOUND");
   }
-  return { dispatch, syncOne };
+  // For the HTTP layer: is this cookie a current session? Checked before an
+  // upload body is read (http.mjs); the route checks the session's rights.
+  const sessionKnown = async (cookieHeader) =>
+    !!(await context({ headers: { cookie: cookieHeader } })).session;
+  return { dispatch, syncOne, sessionKnown };
 }

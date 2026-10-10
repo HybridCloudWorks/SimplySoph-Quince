@@ -357,6 +357,6 @@ test("a personal Microsoft account must use a Microsoft address; others use the 
   const { verify } = verifier();
   for (const email of ["aunt@hotmail.co.uk", "uncle@live.com.mx", "cousin@msn.com"])
     assert.equal((await verify(idToken(claims({ email })), "n-1")).email, email);
-  for (const email of ["aunt@yahoo.com", "uncle@icloud.com", "cousin@gmail.com", "x@outlook.com.evil.io"])
+  for (const email of ["aunt@yahoo.com", "uncle@icloud.com", "cousin@gmail.com", "x@outlook.com.evil.io", "a@outlook.xyz", "b@live.net", "c@msn.biz", "d@passport.org", "e@hotmail.com.ai", "f@outlook.com.ng"])
     await assert.rejects(verify(idToken(claims({ email })), "n-1"), (e) => e.code === "SSO_EMAIL_NOT_VERIFIED", email);
 });

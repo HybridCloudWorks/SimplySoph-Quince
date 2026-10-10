@@ -41,9 +41,15 @@ function apiLog(log, req, res, started, error) {
 export const permissionsPolicy =
   "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=(), browsing-topics=()";
 export function createHttpServer({ app = null, root, origin, log = null }) {
+  // Upload bodies (up to 12 MB, held several times over while read and
+  // parsed) being handled at once on this instance; more get a retryable
+  // UPLOAD_BUSY, so parallel uploads cannot exhaust memory (re-audit).
+  let uploads = 0;
+  const maxUploads = 3;
   return http.createServer(async (req, res) => {
     const started = performance.now();
-    let failure;
+    let failure,
+      holdsUpload = false;
     if (log)
       res.on("finish", () => {
         if (req.logPath) apiLog(log, req, res, started, failure);
@@ -107,21 +113,36 @@ export function createHttpServer({ app = null, root, origin, log = null }) {
             "/api/videos",
             "/api/admin/documents/upload",
           ].includes(url.pathname);
-          // Uploads are only for signed-in visitors: without a session cookie the
-          // body is refused before it is read, so strangers cannot hold request
-          // slots with large or slow uploads (re-audit). The session itself is
-          // still checked by the app.
-          if (upload && !/(?:^|;\s*)__session=/.test(req.headers.cookie || ""))
+          // Uploads are only for signed-in visitors: without a current session
+          // the body is refused before it is read, so strangers cannot hold
+          // request slots or memory with large or slow uploads (re-audit).
+          if (
+            upload &&
+            !(
+              /(?:^|;\s*)__session=/.test(req.headers.cookie || "") &&
+              (await app.sessionKnown(req.headers.cookie))
+            )
+          )
             throw Object.assign(new Error(), {
               status: 401,
               code: "SIGN_IN_REQUIRED",
             });
+          if (upload) {
+            if (uploads >= maxUploads)
+              throw Object.assign(new Error(), { status: 503, code: "UPLOAD_BUSY" });
+            uploads++;
+            holdsUpload = true;
+          }
           const chunks = [];
           let size = 0;
-          // A body still arriving after 30 seconds is dropped.
-          const slow = setTimeout(() => req.destroy(), 30000);
+          // A body that stops arriving for 30 seconds is dropped. A slow but
+          // steady upload from a phone keeps going.
+          const idle = Object.assign(new Error(), { status: 408, code: "REQUEST_TIMEOUT" });
+          let timer = setTimeout(() => req.destroy(idle), 30000);
           try {
             for await (const chunk of req) {
+              clearTimeout(timer);
+              timer = setTimeout(() => req.destroy(idle), 30000);
               size += chunk.length;
               if (size > (upload ? 12_000_000 : 120_000))
                 throw Object.assign(new Error(), {
@@ -131,7 +152,7 @@ export function createHttpServer({ app = null, root, origin, log = null }) {
               chunks.push(chunk);
             }
           } finally {
-            clearTimeout(slow);
+            clearTimeout(timer);
           }
           try {
             const raw = Buffer.concat(chunks).toString();
@@ -226,6 +247,9 @@ export function createHttpServer({ app = null, root, origin, log = null }) {
       res.end(
         JSON.stringify({ error: expected(e) ? e.code : "SERVICE_UNAVAILABLE" }),
       );
+    } finally {
+      // Held until the upload has been handled, not only read.
+      if (holdsUpload) uploads--;
     }
   });
 }

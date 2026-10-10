@@ -241,3 +241,41 @@ test("an upload without a session cookie is refused before its body is read (re-
     server.close();
   }
 });
+
+test("a made-up session cookie is refused before an upload is read, and at most 3 uploads run at once (re-audit)", async () => {
+  const { createHttpServer } = await import("../server/http.mjs");
+  let dispatched = 0,
+    release;
+  const held = new Promise((r) => (release = r));
+  const server = createHttpServer({
+    app: {
+      sessionKnown: async (cookie) => cookie === "__session=good",
+      dispatch: async () => (dispatched++, await held, { ok: true }),
+    },
+    root: process.cwd(),
+    origin: "https://misxv.simplysoph.com",
+  });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  const upload = (cookie) =>
+    fetch("http://127.0.0.1:" + server.address().port + "/api/photos", {
+      method: "POST",
+      headers: { origin: "https://misxv.simplysoph.com", "content-type": "application/json", cookie },
+      body: JSON.stringify({ base64: "x".repeat(100_000) }),
+    });
+  try {
+    const forged = await upload("__session=made-up");
+    assert.equal(forged.status, 401);
+    assert.equal(dispatched, 0);
+    const running = [upload("__session=good"), upload("__session=good"), upload("__session=good")];
+    while (dispatched < 3) await new Promise((r) => setTimeout(r, 5));
+    const busy = await upload("__session=good");
+    assert.equal(busy.status, 503);
+    assert.equal((await busy.json()).error, "UPLOAD_BUSY");
+    release();
+    assert.deepEqual((await Promise.all(running)).map((r) => r.status), [200, 200, 200]);
+    assert.equal((await upload("__session=good")).status, 200, "slots are released after each upload");
+  } finally {
+    release();
+    server.close();
+  }
+});

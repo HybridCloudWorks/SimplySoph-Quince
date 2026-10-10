@@ -14,7 +14,7 @@ The model, in one table. The decision record is [docs/v1/access-model.md](docs/v
 
 - **Let a guest sign in:** put their email in the household's **Email** (or **Additional Emails**) in Notion. Nothing else is needed: no registration, no grant, and no invitation link yet. The RSVP opens once the household's invitation is issued.
 - **Make someone an administrator:** tick **Administrator Eligible** on their row, with their address in the row's main **Email**. Additional Emails never make someone an administrator. Their first sign-in uses the emailed link; they scan a QR code with Google Authenticator or Microsoft Authenticator, and you get a note in Notifications. After that, Google or Microsoft also work.
-- **Remove an administrator:** untick the box. Their session ends on their next click, and the scheduled drain (every 10 minutes) removes their authenticator, so ticking them again later means a fresh setup.
+- **Remove an administrator:** untick the box. Their session ends on their next click, and you get a note in Notifications. If the box is still unticked a day later, the scheduled drain removes their authenticator, so ticking them again after that means a fresh setup. Ticking it again within the day keeps everything. If Notion shows no ticked row at all (say the column was renamed), nobody is removed.
 - **A lost phone:** the owner opens **Admin → Guest access → Reset authenticator** with a current code from their own app. That person sets up a new authenticator at their next sign-in.
 - **The owner's own lost phone:** create recovery codes ahead of time on **Admin → Guest access → Your recovery codes** and keep them away from the phone. At sign-in, a recovery code goes in place of the authenticator code; it works once, ends the lost phone's admin sessions and Microsoft link, and leads straight into setting up a new authenticator. The old authenticator keeps working only until the new one is set up.
 - **Reissuing or revoking a link:** reissuing (say, after a link was forwarded) ends that link's sessions but keeps everyone who signed in with their email. Revoking the invitation ends every session for that household.
@@ -34,13 +34,13 @@ The model, in one table. The decision record is [docs/v1/access-model.md](docs/v
   - Work accounts must be members of the simplysoph.com tenant with a verified email domain.
   - Google accepts Gmail and Google Workspace addresses only, and Microsoft personal accounts only Microsoft's own addresses (Outlook, Hotmail, Live, MSN). Neither provider vouches for who owns other addresses registered in their accounts, so a recycled address could be taken over; those addresses use the emailed link.
   - The first guest sign-in binds that Microsoft or Google account to the email. A different provider account for the same email is refused; the emailed link still works.
-- **Authenticator codes:** 5 tries per sign-in. Ten wrong codes for one administrator within an hour pause that administrator's sign-ins for an hour, and you get a note in Notifications.
+- **Authenticator codes:** 5 tries per sign-in. Ten wrong codes for one administrator within an hour pause that administrator's sign-ins for an hour, including sign-ins already open, and you get a note in Notifications. During a pause the owner can still sign in with a recovery code.
 - **Sessions:**
   - Guests signed in with their email stay signed in while they use the site: 30 minutes after their last visit, at most 12 hours after signing in. Removing their email from the Notion row ends their access on their next request.
   - Invitation-link sessions (RSVP only) and administrator sessions last 30 minutes.
-  - **Sign out on all devices** (My account) and **Sign out everywhere** (admin menu) end every session of that person, admin and guest alike.
+  - **Sign out on all devices** (My account) ends every guest sign-in of that person. **Sign out everywhere** (admin menu) ends their admin and guest sign-ins alike.
   - The cookie is HttpOnly, Secure, SameSite=Strict and scoped to `/api`.
-  - Every write needs the CSRF header and the site's Origin. Uploads without a session are refused before they are read.
+  - Every write needs the CSRF header and the site's Origin. Uploads without a current session are refused before they are read, and each server handles at most 3 uploads at once.
 
 ## Data
 

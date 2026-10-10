@@ -2212,12 +2212,29 @@ test("ten wrong authenticator codes in an hour pause that admin's sign-ins and t
     return (await f.publicPost("auth/admin-email/verify", { token: linkOf(f.sent.at(-1)) })).challenge;
   };
   let wrong = 0;
-  while (wrong < 10) {
+  while (wrong < 9) {
     const ch = await challenge();
-    for (let i = 0; i < 5 && wrong < 10; i++, wrong++)
+    for (let i = 0; i < 5 && wrong < 9; i++, wrong++)
       await assert.rejects(() => f.publicPost("auth/mfa", { challenge: ch, code: "000000" }), (e) => e.code === "INVALID_MFA");
     f.advance(16 * 60000); // past the per-address link limit
   }
+  // A sign-in opened before the pause, kept for later; the 10th wrong code
+  // comes from another one.
+  const early = await challenge();
+  const last = await challenge();
+  await assert.rejects(() => f.publicPost("auth/mfa", { challenge: last, code: "000000" }), (e) => e.code === "INVALID_MFA");
+  await f.publicPost("auth/admin-email/request", { email: "test@example.com" });
+  await assert.rejects(
+    () => f.publicPost("auth/admin-email/verify", { token: linkOf(f.sent.at(-1)) }),
+    (e) => e.code === "ADMIN_SIGN_IN_PAUSED",
+  );
+  // The pause also covers sign-ins that were already open, even with the right code.
+  await assert.rejects(
+    () => f.publicPost("auth/mfa", { challenge: early, code: totp(c.enrollmentSecret, Math.floor(f.now() / 30000)) }),
+    (e) => e.code === "ADMIN_SIGN_IN_PAUSED",
+  );
+  // It lasts a full hour from the 10th wrong code.
+  f.advance(59 * 60000);
   await f.publicPost("auth/admin-email/request", { email: "test@example.com" });
   await assert.rejects(
     () => f.publicPost("auth/admin-email/verify", { token: linkOf(f.sent.at(-1)) }),
@@ -2234,6 +2251,38 @@ test("ten wrong authenticator codes in an hour pause that admin's sign-ins and t
   assert.equal((await f.ledger.read()).mfaFailures?.[hash("mfa-fail:test@example.com")], undefined);
 });
 
+test("while the owner's codes are paused, a recovery code still lets the owner in (re-audit)", async () => {
+  const f = await fixture();
+  const { codes } = await f.admin("recovery-codes", { code: await f.ownerCode() });
+  const challenge = async () => {
+    await f.publicPost("auth/admin-email/request", { email: "organizer@gmail.com" });
+    return (await f.publicPost("auth/admin-email/verify", { token: linkOf(f.sent.at(-1)) })).challenge;
+  };
+  let wrong = 0;
+  while (wrong < 10) {
+    const ch = await challenge();
+    for (let i = 0; i < 5 && wrong < 10; i++, wrong++)
+      await assert.rejects(() => f.publicPost("auth/mfa", { challenge: ch, code: "000000" }), (e) => e.code === "INVALID_MFA");
+    f.advance(16 * 60000);
+  }
+  // The owner can still open a sign-in, but an authenticator code is refused...
+  const ch = await challenge();
+  await assert.rejects(
+    () => f.publicPost("auth/mfa", { challenge: ch, code: "123456" }),
+    (e) => e.code === "ADMIN_SIGN_IN_PAUSED",
+  );
+  // ...and a recovery code opens a new setup whose code finishes the sign-in.
+  const recovered = await f.publicPost("auth/mfa", { challenge: ch, code: codes[0] });
+  assert.equal(recovered.recovered, true);
+  f.advance(30000);
+  const signed = await f.publicPost("auth/mfa", {
+    challenge: ch,
+    code: totp(recovered.enrollmentSecret, Math.floor(f.now() / 30000)),
+  });
+  assert.match(signed.setCookie, /^__session=/);
+  assert.equal((await f.ledger.read()).mfaFailures?.[hash("mfa-fail:organizer@gmail.com")], undefined, "the pause is lifted");
+});
+
 test("only the main Email of a ticked row is an administrator, never an Additional Email (re-audit)", async () => {
   const f = await fixture();
   f.row.additionalEmails = ["teen@example.com"];
@@ -2248,19 +2297,36 @@ test("only the main Email of a ticked row is an administrator, never an Addition
   assert.equal(f.sent.length, before + 1);
 });
 
-test("the drain removes the authenticator of someone Notion no longer makes an admin (SEC-9)", async () => {
+test("the drain removes the authenticator of someone Notion no longer makes an admin, a day later (SEC-9)", async () => {
   const f = await fixture({ verifyScheduler: async () => true });
   await adminSignIn(f, "test@example.com");
-  const enrolled = () => Object.values(f.ledger ? [] : []).length; // placeholder for clarity
-  const has = async () => Object.values((await f.ledger.read()).admins).some((a) => a.email === "test@example.com");
-  assert.equal(await has(), true);
+  await f.ownerCode(); // the owner has an authenticator too
+  // Another administrator stays ticked, so Notion's admin column clearly works.
+  f.extraRows.push({ ...structuredClone(f.row), id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", name: "Other", email: "other@example.com" });
+  const has = async (email = "test@example.com") =>
+    Object.values((await f.ledger.read()).admins).some((a) => a.email === email);
   const drain = () =>
     f.app.dispatch({ path: "/api/internal/drain", method: "POST", headers: { authorization: "Bearer x" } });
   assert.equal((await drain()).admins.removed, 0, "still ticked: kept");
+  // Unticked: the family is told at once; the authenticator goes a day later.
   f.row.administratorEligible = false;
+  assert.deepEqual((await drain()).admins, { removed: 0, pending: 1 });
+  assert.equal(await has(), true);
+  const notes = Object.values((await f.ledger.read()).notifications).map((n) => n.title);
+  assert.ok(notes.some((t) => /test@example.com is no longer an administrator/.test(t)));
+  // Ticked again within the day: nothing is lost.
+  f.row.administratorEligible = true;
+  await drain();
+  f.advance(86400001);
+  assert.equal((await drain()).admins.removed, 0);
+  assert.equal(await has(), true);
+  // Unticked for a whole day: removed, the owner never.
+  f.row.administratorEligible = false;
+  await drain();
+  f.advance(86400001);
   assert.equal((await drain()).admins.removed, 1);
   assert.equal(await has(), false);
-  assert.ok(Object.values((await f.ledger.read()).admins).some((a) => a.email === "organizer@gmail.com") || true, "the owner is never removed");
+  assert.equal(await has("organizer@gmail.com"), true, "the owner is never removed");
   const events = (await f.ledger.read()).roleEvents.map((e) => e.change);
   assert.ok(events.includes("authenticator-removed"));
   // Ticked again later: a fresh QR setup, not the old phone.
@@ -2268,7 +2334,21 @@ test("the drain removes the authenticator of someone Notion no longer makes an a
   await f.publicPost("auth/admin-email/request", { email: "test@example.com" });
   const again = await f.publicPost("auth/admin-email/verify", { token: linkOf(f.sent.at(-1)) });
   assert.ok(again.enrollmentSecret);
-  void enrolled;
+});
+
+test("a Notion answer with no ticked administrator removes no one (renamed column, re-audit)", async () => {
+  const f = await fixture({ verifyScheduler: async () => true });
+  await adminSignIn(f, "test@example.com");
+  const drain = () =>
+    f.app.dispatch({ path: "/api/internal/drain", method: "POST", headers: { authorization: "Bearer x" } });
+  // "Administrator Eligible" renamed: every row reads as unticked.
+  f.row.administratorEligible = false;
+  f.advance(86400001);
+  assert.equal((await drain()).admins.skipped, "NOTION_ADMIN_COLUMNS_LOOK_EMPTY");
+  f.advance(86400001);
+  assert.equal((await drain()).admins.skipped, "NOTION_ADMIN_COLUMNS_LOOK_EMPTY");
+  const admin = Object.values((await f.ledger.read()).admins).find((a) => a.email === "test@example.com");
+  assert.ok(admin && !admin.staleSince, "nothing flagged, nothing removed");
 });
 
 test("a guest whose email leaves the Notion row loses data access on the next request (re-audit)", async () => {
@@ -2283,12 +2363,31 @@ test("a guest whose email leaves the Notion row loses data access on the next re
       headers: { origin, cookie: s.setCookie.split(";")[0], "x-csrf-token": s.csrf },
     });
   assert.ok(await as("messages"));
+  assert.ok(await as("gallery"));
   f.row.email = "someone-else@example.com";
   await assert.rejects(() => as("messages"), (e) => e.code === "SIGN_IN_REQUIRED");
   await assert.rejects(
     () => as("messages", { kind: "guestbook", name: "A", text: "Hi", consent: true }),
     (e) => e.code === "SIGN_IN_REQUIRED",
   );
+  // Pages that need no invitation details stop too.
+  for (const page of ["gallery", "account", "photo/12345678-1234-4234-8234-123456789012"])
+    await assert.rejects(() => as(page), (e) => e.code === "SIGN_IN_REQUIRED", page);
+});
+
+test("a guest's sign out everywhere ends guest sign-ins only, never that person's admin session (re-audit)", async () => {
+  const f = await fixture();
+  const admin = await adminSignIn(f, "test@example.com");
+  await f.publicPost("auth/email/request", { email: "test@example.com" });
+  const s = await f.publicPost("auth/email/verify", { token: linkOf(f.sent.at(-1)) });
+  const out = await f.app.dispatch({
+    path: "/api/logout-all",
+    method: "POST",
+    body: {},
+    headers: { origin, cookie: s.setCookie.split(";")[0], "x-csrf-token": s.csrf },
+  });
+  assert.equal(out.signedOut, 2, "this sign-in and the fixture's guest session");
+  assert.equal((await admin.as("session")).kind, "admin", "the admin session is untouched");
 });
 
 test("email sign-in needs only the Notion email: before a link is issued, and through a reissued link (re-audit D1)", async () => {
@@ -2312,6 +2411,11 @@ test("email sign-in needs only the Notion email: before a link is issued, and th
     () => as("rsvp", f.input(), { "idempotency-key": "13131313-1313-4313-8313-131313131313" }),
     (e) => e.code === "INVITATION_NOT_READY",
   );
+  // Contact details save too (nothing to sync to Notion until a link is issued).
+  const { profile } = await as("profile");
+  const saved = await as("profile", { version: profile.version, email: "test@example.com", phone: "555", address: null });
+  assert.equal(saved.saved, true);
+  assert.equal(saved.syncState, null);
   // The family issues the link, then reissues it (say it was forwarded):
   await f.ledger.transaction((st) => {
     st.invitations[household] = { id: household, name: "Test family", active: true, generation: 1, invited: { ceremony: true, dinner: true, dance: true } };

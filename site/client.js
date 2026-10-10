@@ -98,6 +98,10 @@ const messages = {
     "Several people are signing in right now. Please try again in a few seconds, or use Sign in with Microsoft or Google.",
     "Varias personas están iniciando sesión. Inténtalo de nuevo en unos segundos, o entra con Microsoft o Google.",
   ],
+  UPLOAD_BUSY: [
+    "Several uploads are arriving right now. Please try this one again in a minute.",
+    "Están llegando varias cargas. Intenta con esta de nuevo en un minuto.",
+  ],
   PHOTO_BUSY: [
     "Several photos are being prepared right now. Please try this one again in a minute.",
     "Se están preparando varias fotos. Intenta con esta de nuevo en un minuto.",
