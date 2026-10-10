@@ -100,14 +100,14 @@ const noticeLinks = {
 };
 export async function notificationInbox(root) {
   const { notifications } = await api("admin/notifications");
-  root.innerHTML = `<p>New RSVPs, uploads and contact messages appear here for family review. RSVP alerts are shown here only; they are never emailed. Showing The Latest Five Active Notifications.</p><p><a href="/admin/history/?kind=notifications">View Full Notification History</a></p>${
+  root.innerHTML = `<p>New RSVPs, uploads and contact messages appear here for family review. RSVP alerts are shown here only; they are never emailed. Showing the latest five active notifications.</p><p><a href="/admin/history/?kind=notifications">View full notification history</a></p>${
     notifications
       .filter((n) => !n.archived)
       .sort((a, b) => (b.at || 0) - (a.at || 0))
       .slice(0, 5)
       .map(
         (n) =>
-          `<article class="notification-row"><div class="notification-summary"><h3>${esc(n.title || { photo: "Photo awaiting review", video: "Video awaiting review", contact: "New contact message", guestbook: "Guestbook message awaiting review" }[n.kind] || n.kind)}</h3>${n.text ? `<p class="notification-text">${esc(n.text)}</p>` : ""}<small>${esc(new Date(n.at).toLocaleString())} · ${n.read ? "Read" : "Unread"} · ${n.emailState === "none" ? "In-app only" : "Email: " + esc(n.emailState || "pending / not configured")}</small></div><div class="row-actions"><a href="${(noticeLinks[n.kind] || noticeLinks.contact)[0]}">${(noticeLinks[n.kind] || noticeLinks.contact)[1]}</a>${!n.read ? `<button class="plain-button" data-read="${esc(n.id)}">Mark Read</button>` : ""}</div></article>`,
+          `<article class="notification-row"><div class="notification-summary"><h3>${esc(n.title || { photo: "Photo awaiting review", video: "Video awaiting review", contact: "New contact message", guestbook: "Guestbook message awaiting review" }[n.kind] || n.kind)}</h3>${n.text ? `<p class="notification-text">${esc(n.text)}</p>` : ""}<small>${esc(new Date(n.at).toLocaleString())} · ${n.read ? "Read" : "Unread"} · ${n.emailState === "none" ? "In-app only" : "Email: " + esc(n.emailState || "pending / not configured")}</small></div><div class="row-actions"><a href="${(noticeLinks[n.kind] || noticeLinks.contact)[0]}">${(noticeLinks[n.kind] || noticeLinks.contact)[1]}</a>${!n.read ? `<button class="plain-button" data-read="${esc(n.id)}">Mark read</button>` : ""}</div></article>`,
       )
       .join("") || "<p>No notifications yet.</p>"
   }`;

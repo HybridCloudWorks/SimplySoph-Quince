@@ -346,7 +346,7 @@ async function guestList() {
     ['<input type="checkbox" data-select-all aria-label="Select all shown households">', "Household", "Status", "Invited capacity", "Email", "Response / sync", "Actions"],
     guests.map(
       (r) =>
-        `<tr data-guest-row data-status="${esc(r.status)}"><td><input type="checkbox" data-select value="${esc(r.id)}" aria-label="Select ${esc(r.name)}"></td><td>${esc(r.name)}<br><span class="badge">${esc(r.role)}</span></td><td><span class="badge">${esc(statusLabels[r.status] || r.status)}</span>${r.respondedAt || r.openedAt ? `<br><small>${esc(when(r.respondedAt || r.openedAt))}</small>` : ""}</td><td>${r.capacity.adultsTeens ?? "?"} adults/teens · ${r.capacity.kids ?? "?"} children${r.validCapacity ? "" : "<br>Needs review"}</td><td>${esc(r.email)}</td><td>${
+        `<tr data-guest-row data-status="${esc(r.status)}"><td><input type="checkbox" data-select value="${esc(r.id)}" aria-label="Select ${esc(r.name)}"></td><td>${esc(r.name)}<br><span class="badge">${esc(r.role)}</span></td><td><span class="badge">${esc(statusLabels[r.status] || r.status)}</span>${r.respondedAt || r.openedAt ? `<br><small>${esc(when(r.respondedAt || r.openedAt))}</small>` : ""}</td><td>${r.capacity.adultsTeens ?? "?"} adults/teens · ${r.capacity.kids ?? "?"} ${r.capacity.kids === 1 ? "child" : "children"}${r.validCapacity ? "" : "<br>Needs review"}</td><td>${esc(r.email)}</td><td>${
           r.response
             ? Object.entries(r.response.attendance)
                 .map(([e, v]) => `${e}: ${v.adultsTeens + v.kids}`)
@@ -408,7 +408,7 @@ async function seating() {
         (n, id) => n + (d.households.find((h) => h.id === id)?.count || 0),
         0,
       );
-  root.innerHTML = `<p>Assign whole households using their confirmed dinner attendance. Responses can change; over-capacity tables are flagged below.</p><div class="cards">${d.tables.map((t) => `<article class="card"><h2>${esc(t.name)}</h2><p${count(t) > t.capacity ? ' class="error"' : ""}>${count(t)} / ${t.capacity} seats</p><p>${t.households.map((id) => esc(d.households.find((h) => h.id === id)?.name || id)).join(", ")}</p>${button("Edit table", "edit-table", t.id)}</article>`).join("")}</div><div id="table-editor"></div>`;
+  root.innerHTML = `<p>Assign whole households using their confirmed dinner attendance. Responses can change; over-capacity tables are flagged below.</p><div class="cards">${d.tables.map((t) => `<article class="card"><h2>${esc(t.name)}</h2><p${count(t) > t.capacity ? ' class="error"' : ""}>${count(t)} / ${t.capacity} seats</p><p>${t.households.map((id) => esc(d.households.find((h) => h.id === id)?.name || id)).join(", ")}</p>${button("Edit table", "edit-table", t.id)}${button("Delete table", "delete-table", t.id)}</article>`).join("")}</div><div id="table-editor"></div>`;
   function edit(t = {}) {
     const box = document.querySelector("#table-editor");
     box.innerHTML = `<form id="table-form" class="card"><h2>${t.id ? "Edit table" : "New table"}</h2>${field("Table name", "name", { value: t.name || "", required: true, max: 80 })}${field("Capacity", "capacity", { type: "number", value: t.capacity || 10, required: true })}<fieldset><legend>Households</legend>${d.households.map((h) => `<label class="check"><input name="household" type="checkbox" value="${esc(h.id)}"${t.households?.includes(h.id) ? " checked" : ""}>${esc(h.name)} · ${h.count} attending dinner</label>`).join("")}</fieldset>${formEnd("Save seating")}`;
@@ -429,6 +429,17 @@ async function seating() {
       (b) =>
         (b.onclick = () => edit(d.tables.find((t) => t.id === b.dataset.id))),
     );
+  // FLOW-12: delete a table after a confirmation; its households become unseated.
+  root.querySelectorAll("[data-action=delete-table]").forEach(
+    (b) =>
+      (b.onclick = () =>
+        run(async () => {
+          const t = d.tables.find((x) => x.id === b.dataset.id);
+          if (!confirm(`Delete ${t.name}? Its households become unseated.`)) return;
+          await api("admin/seating/delete", { id: t.id });
+          await seating();
+        })),
+  );
 }
 async function moderation() {
   const d = await api("admin/moderation"),
@@ -438,7 +449,7 @@ async function moderation() {
   if (photos)
     root.insertAdjacentHTML(
       "afterbegin",
-      `<details class="card table-qr"><summary>Media Uploads</summary><div class="table-qr-content"><img src="/assets/photo-upload-qr.svg" width="160" height="160" alt="QR code to Media Uploads"><div><p>Scan to open Media Uploads directly. Guests sign in with their invitation or registered email before choosing files.</p><a class="button burgundy" href="/assets/photo-upload-qr.svg" download>Download Printable QR</a></div></div></details>`,
+      `<details class="card table-qr"><summary>Media uploads</summary><div class="table-qr-content"><img src="/assets/photo-upload-qr.svg" width="160" height="160" alt="QR code to the photo upload page"><div><p>Scan to open the photo upload page directly. Guests sign in with the email the family has for their household before choosing files.</p><a class="button burgundy" href="/assets/photo-upload-qr.svg" download>Download printable QR</a></div></div></details>`,
     );
   if (!photos) {
     const cards = root.querySelectorAll(".cards > .card");
@@ -446,12 +457,29 @@ async function moderation() {
       if (r.kind !== "contact") return;
       cards[i].insertAdjacentHTML(
         "beforeend",
-        `${(r.replies || []).map((reply) => `<blockquote>${esc(reply.text)}</blockquote>`).join("")}<form class="reply-form"><label>Private reply<textarea name="text" required maxlength="2000"></textarea></label>${formEnd("Reply in guest account")}`,
+        `${(r.replies || []).map((reply) => `<blockquote>${esc(reply.text)}</blockquote>`).join("")}<form class="reply-form"><label>Private reply<textarea name="text" required maxlength="2000"></textarea></label>${
+          // FLOW-8: the admin sees the exact recipient before choosing to email.
+          r.replyTo && d.mailConfigured
+            ? `<label class="check"><input type="checkbox" name="notify"> Also email <strong>${esc(r.replyTo)}</strong> that the family replied. The email only says there is a reply and links to My account.</label>`
+            : `<p class="hint">${d.mailConfigured ? "No email will be sent: this household has no verified email (their sign-in email or the Email in Notion)." : "No email will be sent: email isn’t set up."}</p>`
+        }${formEnd("Reply in guest account")}`,
       );
       submit(cards[i].querySelector(".reply-form"), async (f) => {
-        await api("admin/message-reply", { id: r.id, text: f.get("text") });
+        const notifying = f.get("notify") === "on";
+        const result = await api("admin/message-reply", {
+          id: r.id,
+          text: f.get("text"),
+          notify: notifying,
+          ...(notifying ? { to: r.replyTo } : {}),
+        });
         await moderation();
-        notify("Reply saved in the guest account. No email sent.");
+        notify(
+          result.emailed
+            ? `Reply saved, and ${result.to} was emailed that the family replied.`
+            : notifying
+              ? "Reply saved in the guest account, but the email didn’t go through. You can tell them another way."
+              : "Reply saved in the guest account. No email sent.",
+        );
       });
     });
   }
@@ -628,9 +656,10 @@ root.addEventListener("click", (e) => {
     }
     if (action === "draft-invitation") {
       await api("admin/mail/draft", { id, type: "invitation" });
-      notify(
-        "Draft saved. Review it in Announcements & Emails before sending.",
-      );
+      notify("Draft saved. Review it on Communications before sending.", {
+        href: "/admin/updates/",
+        label: "Open Communications",
+      });
     }
     if (action === "sync") {
       await api("admin/sync", {});

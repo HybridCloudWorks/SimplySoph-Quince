@@ -2125,3 +2125,72 @@ test("a contact-details change writes only the contact columns, never the RSVP c
   });
   assert.deepEqual(calls, ["rsvp", "contact"], "a phone or email change never rewrites the head counts");
 });
+
+test("seating tables can be deleted, and their households become unseated (FLOW-12)", async () => {
+  const f = await fixture();
+  const table = await f.admin("seating", { name: "Table 1", capacity: 10, households: [household] });
+  await assert.rejects(
+    () => f.admin("seating", { name: "Table 2", capacity: 10, households: [household] }),
+    (e) => e.code === "ALREADY_SEATED",
+  );
+  assert.deepEqual(await f.admin("seating/delete", { id: table.id }), { deleted: true });
+  assert.equal((await f.admin("seating")).tables.length, 0);
+  assert.ok(await f.admin("seating", { name: "Table 2", capacity: 10, households: [household] }), "the household can be seated again");
+  await assert.rejects(() => f.admin("seating/delete", { id: table.id }), (e) => e.status === 404);
+});
+
+test("a reply email goes only where the admin was shown, only when they ask, without the reply text (FLOW-8)", async () => {
+  const f = await fixture();
+  const { id } = await f.guest("messages", { kind: "contact", name: "Test", text: "Where do we park?", email: "typed@other.example" });
+  const shown = (await f.admin("moderation")).messages.find((m) => m.id === id);
+  assert.equal(shown.email, "typed@other.example", "the typed address is shown as what the guest typed");
+  assert.ok(shown.replyTo && shown.replyTo !== "typed@other.example", "the reply email address is the verified one");
+  const before = f.sent.length;
+  assert.deepEqual(await f.admin("message-reply", { id, text: "Behind the hall." }), { saved: true, emailed: false });
+  assert.equal(f.sent.length, before, "no email unless the admin ticks the box");
+  // An address other than the one shown is refused before anything is saved.
+  await assert.rejects(
+    () => f.admin("message-reply", { id, text: "Wrong address", notify: true, to: "typed@other.example" }),
+    (e) => e.code === "RECIPIENT_CHANGED",
+  );
+  assert.equal((await f.ledger.read()).messages[id].replies.length, 1, "the refused reply was not saved");
+  const r = await f.admin("message-reply", { id, text: "See you there!", notify: true, to: shown.replyTo });
+  assert.deepEqual(r, { saved: true, emailed: true, to: shown.replyTo });
+  const mail = f.sent.at(-1);
+  assert.equal(mail.to, shown.replyTo);
+  assert.ok(!mail.html.includes("See you there"), "the reply itself stays on the site");
+  assert.match(mail.html, /\/account\//);
+  const thread = await f.guest("messages");
+  assert.deepEqual(thread.messages.at(-1).replies.map((x) => x.text), ["Behind the hall.", "See you there!"]);
+});
+
+test("a reply email skips a sign-in that left the household and uses the Notion email (FLOW-8)", async () => {
+  const f = await fixture();
+  const { id } = await f.guest("messages", { kind: "contact", name: "Test", text: "Hello" });
+  // That person's email moved to another household in Notion.
+  await f.ledger.transaction((s) => {
+    for (const a of Object.values(s.accounts)) a.householdId = "11111111-1111-4111-8111-111111111111";
+  });
+  f.row.email = "household@example.com";
+  const shown = (await f.admin("moderation")).messages.find((m) => m.id === id);
+  assert.equal(shown.replyTo, "household@example.com");
+  // No verified address at all: nothing to email.
+  f.row.email = "";
+  assert.equal((await f.admin("moderation")).messages.find((m) => m.id === id).replyTo, null);
+  await assert.rejects(
+    () => f.admin("message-reply", { id, text: "Hi", notify: true, to: "household@example.com" }),
+    (e) => e.code === "RECIPIENT_CHANGED",
+  );
+});
+
+test("checking for replies in the background does not keep a guest signed in (FLOW-8)", async () => {
+  const f = await fixture();
+  await f.publicPost("auth/email/request", { email: "test@example.com" });
+  const signed = await f.publicPost("auth/email/verify", { token: linkOf(f.sent.at(-1)) });
+  const cookie = signed.setCookie.split(";")[0];
+  f.advance(20 * 60000);
+  const poll = await f.app.dispatch({ path: "/api/messages", query: { poll: "1" }, headers: { cookie } });
+  assert.equal(poll.setCookie, undefined, "a background poll does not renew");
+  const visit = await f.app.dispatch({ path: "/api/messages", headers: { cookie } });
+  assert.match(visit.setCookie, /^__session=/, "a real visit still does");
+});

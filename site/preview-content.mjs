@@ -69,9 +69,6 @@ export const exampleFamily = {
     { album: "childhood", age: 5, caption: { en: "First day of kindergarten", es: "Primer día de kínder" } },
     { album: "faith", age: 8, caption: { en: "First Communion, May 2020", es: "Primera Comunión, mayo de 2020" } },
   ],
-  churchAddress: null,
-  churchName: null,
-  churchNotes: null,
   dressCode: {
     en: "Formal evening attire: suits and ties, long gowns or cocktail dresses. For the ceremony, please cover your shoulders or bring a wrap.",
     es: "Vestimenta formal de noche: traje y corbata, vestido largo o de cóctel. Para la ceremonia, por favor cubre tus hombros o lleva un chal.",
