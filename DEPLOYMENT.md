@@ -87,7 +87,7 @@ gcloud run deploy misxv-api \
 
 ## Scheduled drain
 
-`POST /api/internal/drain` retries work that failed earlier: up to 10 RSVPs still waiting to reach Notion, and up to 25 pending SMS and 25 pending WhatsApp opt-in/opt-out projections. It never sends a message to a guest. Each step runs on its own, so one failing step never blocks the others. The route returns 404 until both scheduler variables are set. It accepts only a Google-signed OIDC token whose audience is exactly `SCHEDULER_AUDIENCE` and whose verified email is exactly `SCHEDULER_SERVICE_ACCOUNT`.
+`POST /api/internal/drain` retries work that failed earlier: up to 10 RSVPs still waiting to reach Notion, up to 10 Budget or Godparents rows, and up to 25 pending SMS and 25 pending WhatsApp opt-in/opt-out projections. It also checks that Notion still shows each answered household's website RSVP (the RSVP column and head counts). A difference is reported once in Notifications and counted on the dashboard, and Notion is never overwritten (the family may have changed it on purpose); an admin's Retry writes the website's answer again. It never sends a message to a guest. Each step runs on its own, so one failing step never blocks the others. The route returns 404 until both scheduler variables are set. It accepts only a Google-signed OIDC token whose audience is exactly `SCHEDULER_AUDIENCE` and whose verified email is exactly `SCHEDULER_SERVICE_ACCOUNT`.
 
 One-time setup (owner, `gcloud config configurations activate misxv`):
 
@@ -179,7 +179,7 @@ Record date, tester and evidence for each item in the inventory. Status as of th
 
 ## Notion planning sync
 
-Budget and Godparents edits made on the website are saved to the ledger as `pending`, then patched into the linked Notion row (changed fields only). New rows use a stable `Website Record ID`, and an ambiguous create is looked up, never repeated. A five-minute durable lock serializes writes to each row. Direct Notion edits do **not** flow back to the website. The recommended v1.0 ownership model is in [docs/v1/notion-strategy.md](docs/v1/notion-strategy.md).
+Budget and Godparents edits made on the website are saved to the ledger as `pending`, then patched into the linked Notion row (changed fields only). New rows use a stable `Website Record ID`, and an ambiguous create is looked up, never repeated. A five-minute durable lock serializes writes to each row. Direct Notion edits do **not** flow back to the website. Rows still waiting to reach Notion are retried by the scheduled drain. The recommended v1.0 ownership model is in [docs/v1/notion-strategy.md](docs/v1/notion-strategy.md).
 
 ## Release and rollback
 

@@ -1985,3 +1985,53 @@ test("a recovery-shaped code from an administrator who is not the owner is just 
   const c = (await f.publicPost("auth/admin-email/verify", { token: linkOf(f.sent.at(-1)) })).challenge;
   await assert.rejects(() => f.publicPost("auth/mfa", { challenge: c, code: "ABCD-EFGH-JKLM" }), (e) => e.code === "INVALID_MFA");
 });
+
+test("the guest page shows the household name Notion has now (NOTION-5)", async () => {
+  const f = await fixture();
+  f.row.name = "The Renamed Family";
+  assert.equal((await f.guest("invitation")).name, "The Renamed Family");
+});
+
+test("the drift check reports a Notion RSVP that differs from the website once, and clears when they match (NOTION-8)", async () => {
+  const f = await fixture({ verifyScheduler: async () => true });
+  await f.guest("rsvp", f.input(), { "idempotency-key": "88888888-8888-4888-8888-888888888888" });
+  const response = (await f.ledger.read()).responses["88888888-8888-4888-8888-888888888888"];
+  const attending = Object.values(response.attendance).some((v) => v.adultsTeens + v.kids > 0);
+  // Notion shows exactly what the website wrote.
+  f.row.invitationStatus = attending ? "Yes" : "No";
+  f.row.notionCounts = structuredClone(response.attendance);
+  const drain = () =>
+    f.app.dispatch({ path: "/api/internal/drain", method: "POST", headers: { authorization: "Bearer x" } });
+  const alerts = async () =>
+    Object.values((await f.ledger.read()).notifications).filter((n) => n.kind === "drift");
+  assert.equal((await drain()).drift.differing, 0);
+  // The family changes the dinner count in Notion after a phone call.
+  f.row.notionCounts.dinner.adultsTeens += 1;
+  assert.equal((await drain()).drift.differing, 1);
+  assert.equal((await alerts()).length, 1);
+  assert.match((await alerts())[0].text, /dinner: .* in Notion, .* on the website/);
+  assert.equal((await f.admin("dashboard")).notionDrift, 1);
+  await drain();
+  assert.equal((await alerts()).length, 1, "the same difference is reported once");
+  // Notion is never overwritten by the drain; an admin's Retry re-sends it.
+  let projected = 0;
+  const g = await fixture({
+    verifyScheduler: async () => true,
+    notion: {
+      async project() {
+        projected++;
+      },
+    },
+  });
+  await g.ledger.transaction((s) => {
+    s.drift = { [household]: { signature: "x", at: 0 } };
+  });
+  await g.guest("rsvp", g.input(), { "idempotency-key": "99999999-9999-4999-8999-999999999999" });
+  const before = projected;
+  await g.admin("sync", {});
+  assert.equal(projected, before + 1, "Retry writes a differing household again");
+  // Once Notion matches, the entry clears.
+  f.row.notionCounts.dinner.adultsTeens -= 1;
+  assert.equal((await drain()).drift.differing, 0);
+  assert.equal((await f.admin("dashboard")).notionDrift, 0);
+});

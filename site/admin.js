@@ -288,6 +288,9 @@ async function dashboard() {
     ["Active invitations", d.active],
     ["Responses", d.responded],
     ["Pending Notion sync", d.pendingSync],
+    // Shown only when there is something to act on.
+    ...(d.failedSync ? [["Notion refused", d.failedSync]] : []),
+    ...(d.notionDrift ? [["Differs in Notion", d.notionDrift]] : []),
   ]
     .map(
       ([title, n]) =>

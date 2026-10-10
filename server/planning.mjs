@@ -238,7 +238,24 @@ export function createPlanning({ ledger, documents, notion, now }) {
     }
     return { row: (await ledger.read()).planning[kind][id] };
   }
-  return async function handle(req, session) {
+  // Scheduled catch-up (NOTION-8): up to 10 Budget or Godparents rows still
+  // waiting to reach Notion, so a failed write no longer blocks the next edit
+  // until someone retries. Safe to repeat: an ambiguous create is looked up,
+  // never repeated, and a row another write holds is skipped.
+  handle.retryPending = async () => {
+    const s = await ledger.read();
+    const due = Object.entries(s.planning || {})
+      .flatMap(([kind, rows]) =>
+        Object.values(rows)
+          .filter((r) => r.sync && r.sync.status !== "synced" && !(r.sync.lockUntil > now()))
+          .map((r) => [kind, r.id]),
+      )
+      .slice(0, 10);
+    for (const [kind, id] of due) await sync(kind, id).catch(() => {});
+    return { attempted: due.length };
+  };
+  return handle;
+  async function handle(req, session) {
     const { path, method = "GET", body = {}, query = {} } = req;
     const kind = body.kind || query.kind;
     if (!Object.hasOwn(planningFields, kind))

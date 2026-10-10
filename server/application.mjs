@@ -333,6 +333,9 @@ export function createApplication({
     return {
       ...row,
       ...record,
+      // Notion owns the household's name and capacity; the invitation record's
+      // copy of the name is from when the link was issued (NOTION-5).
+      name: row.name,
       capacity: row.capacity,
       deadline,
       latestSubmissionId: record.latestSubmissionId ?? null,
@@ -596,7 +599,11 @@ export function createApplication({
   async function retryPendingRsvps({ includeFailed = false } = {}) {
     const s = await ledger.read();
     const ids = Object.values(s.invitations)
-      .filter((r) => r.syncState === "pending" || (includeFailed && r.syncState === "failed"))
+      .filter(
+        (r) =>
+          r.syncState === "pending" ||
+          (includeFailed && (r.syncState === "failed" || s.drift?.[r.id])),
+      )
       // Pending before failed, then longest since last tried, so rows that keep
       // failing can never crowd out the rest.
       .sort(
@@ -609,6 +616,62 @@ export function createApplication({
     for (const id of ids) await syncOne(id);
     return { attempted: ids.length };
   }
+  // NOTION-8: does Notion still show each answered household's website RSVP?
+  // A difference is reported once (per distinct difference) in Notifications
+  // and counted on the dashboard. Notion is never overwritten here: the family
+  // may have changed it on purpose, say after a phone call. If the website is
+  // right, the admin's Retry writes it again; the entry clears once they match.
+  async function checkDrift() {
+    const rows = new Map((await notion.list({ fresh: true })).map((r) => [r.id, r]));
+    const both = (c) => `${c.adultsTeens ?? "–"} adults/teens, ${c.kids ?? "–"} kids`;
+    return ledger.transaction((s) => {
+      s.drift ??= {};
+      let differing = 0;
+      for (const invite of Object.values(s.invitations)) {
+        const response = s.responses[invite.latestSubmissionId],
+          row = rows.get(invite.id);
+        if (!response || !row || row.archived || invite.syncState !== "synced") {
+          delete s.drift[invite.id];
+          continue;
+        }
+        const attending = Object.values(response.attendance).some(
+          (v) => v.adultsTeens + v.kids > 0,
+        );
+        const differences = [];
+        if (row.invitationStatus !== (attending ? "Yes" : "No"))
+          differences.push(
+            `RSVP is "${row.invitationStatus || "empty"}" in Notion, "${attending ? "Yes" : "No"}" on the website`,
+          );
+        for (const event of ["ceremony", "dinner", "dance"]) {
+          const n = row.notionCounts?.[event] || {},
+            w = response.attendance[event];
+          if (n.adultsTeens !== w.adultsTeens || n.kids !== w.kids)
+            differences.push(`${event}: ${both(n)} in Notion, ${both(w)} on the website`);
+        }
+        if (!differences.length) {
+          delete s.drift[invite.id];
+          continue;
+        }
+        differing++;
+        const signature = differences.join("; ");
+        if (s.drift[invite.id]?.signature === signature) continue;
+        s.drift[invite.id] = { signature, at: now() };
+        const note = randomUUID();
+        s.notifications ??= {};
+        s.notifications[note] = {
+          id: note,
+          kind: "drift",
+          householdId: invite.id,
+          title: `${row.name}: Notion differs from the website's RSVP`,
+          text: `${signature}. If Notion is right (for example after a phone call), nothing needs doing. If the website is right, press Retry on Invitations to write it to Notion again.`,
+          at: now(),
+          read: false,
+          emailState: "none",
+        };
+      }
+      return { differing };
+    });
+  }
   // Scheduled catch-up for projections that failed earlier (Notion outage,
   // rate limit). Each step is bounded and independent: one failing step never
   // blocks the others, and nothing here sends a message to a guest.
@@ -617,6 +680,8 @@ export function createApplication({
       rsvp: retryPendingRsvps,
       sms: () => sms.retrySync(),
       whatsapp: () => whatsapp.retrySync(),
+      planning: () => planning.retryPending(),
+      drift: checkDrift,
     };
     const result = {};
     for (const [name, step] of Object.entries(steps)) {
@@ -1751,6 +1816,10 @@ export function createApplication({
           pendingSync: Object.values(s.invitations).filter(
             (r) => r.syncState === "pending",
           ).length,
+          failedSync: Object.values(s.invitations).filter(
+            (r) => r.syncState === "failed",
+          ).length,
+          notionDrift: Object.keys(s.drift || {}).length,
           counts: Object.fromEntries(
             events.map((e) => [
               e,
