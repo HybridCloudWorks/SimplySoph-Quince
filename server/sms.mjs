@@ -1,6 +1,7 @@
 import { smsProgram } from "../site/sms-program.mjs";
 import { error, hash } from "./auth.mjs";
 import { smsDestination, validTwilioWebhook } from "./twilio.mjs";
+import { logEvent } from "./event-log.mjs";
 
 // The registered campaign promises that the only opt-in is the guest texting a
 // program keyword. A Notion checkbox alone must never make a phone sendable:
@@ -52,6 +53,9 @@ export function createSms({
   transport,
   webhook = {},
   now = Date.now,
+  // Fills a sealed per-household {link} only when the text leaves the server;
+  // stored drafts and admin listings keep the placeholder.
+  render = (draft) => draft.text,
 }) {
   const enabled = transport?.enabled === true;
   const destination = (row) =>
@@ -77,6 +81,7 @@ export function createSms({
       destination(row) !== draft.to ||
       !smsKeywordConsent(state, row.id, draft.to) ||
       state.invitations[row.id]?.active === false ||
+      (draft.link && state.invitations[row.id]?.generation !== draft.generation) ||
       (!draft.directlySelected &&
         !row.distributionGroups?.some((g) => draft.groups.includes(g)))
     )
@@ -87,7 +92,7 @@ export function createSms({
       id,
       to: draft.to,
       text: draft.text,
-      ...smsPreview(draft.text),
+      ...smsPreview(render(draft)),
       reviewToken: hash(
         JSON.stringify([
           draft.id,
@@ -112,7 +117,8 @@ export function createSms({
       if (
         d.text !== preview.text ||
         d.to !== preview.to ||
-        s.invitations[d.householdId]?.active === false
+        s.invitations[d.householdId]?.active === false ||
+        (d.link && s.invitations[d.householdId]?.generation !== d.generation)
       )
         throw error(409, "SMS_DRAFT_STALE");
       if (s.smsSuppression?.[hash(d.to)]) throw error(409, "SMS_OPTED_OUT");
@@ -124,26 +130,42 @@ export function createSms({
       d.state = "sending";
       d.attemptedAt = now();
       d.actor = actor;
+      logEvent(s, now(), "delivery.claimed", {
+        actor,
+        householdId: d.householdId,
+        deliveryId: id,
+        data: { channel: "sms" },
+      });
       return structuredClone(d);
     });
     let result;
     try {
-      result = await transport.send({ to: job.to, text: job.text });
+      result = await transport.send({ to: job.to, text: render(job) });
     } catch (e) {
       await ledger.transaction((s) => {
         s.smsDrafts[id].state =
           e.code === "SMS_REJECTED" ? "rejected" : "unknown";
         s.smsDrafts[id].error =
           e.code === "SMS_REJECTED" ? "SMS_REJECTED" : "SMS_DELIVERY_UNKNOWN";
+        logEvent(s, now(), "delivery." + s.smsDrafts[id].state, {
+          householdId: s.smsDrafts[id].householdId,
+          deliveryId: id,
+          data: { channel: "sms", error: s.smsDrafts[id].error },
+        });
       });
       throw error(
         503,
         e.code === "SMS_REJECTED" ? "SMS_REJECTED" : "SMS_DELIVERY_UNKNOWN",
       );
     }
-    await ledger.transaction((s) =>
-      Object.assign(s.smsDrafts[id], result, { acceptedAt: now() }),
-    );
+    await ledger.transaction((s) => {
+      Object.assign(s.smsDrafts[id], result, { acceptedAt: now() });
+      logEvent(s, now(), "delivery.accepted", {
+        householdId: s.smsDrafts[id].householdId,
+        deliveryId: id,
+        data: { channel: "sms" },
+      });
+    });
     return result;
   }
   async function syncOptOut(phone, reconcile = true) {
@@ -255,6 +277,17 @@ export function createSms({
         };
         s.smsSuppression ??= {};
         s.smsSuppression[key] = { phone, at, syncState: "pending" };
+        logEvent(s, at, start ? "consent.granted" : "consent.revoked", {
+          actor: "guest",
+          // Only a recognised keyword is recorded, never free-form message text.
+          data: {
+            channel: "sms",
+            phoneHash: key,
+            keyword: [...smsProgram.keywords, ...smsProgram.stopKeywords].includes(body)
+              ? body
+              : null,
+          },
+        });
       });
       if (start || stop) await syncOptOut(phone);
     } else {
@@ -294,6 +327,11 @@ export function createSms({
           phoneHash: hash(phone),
           at: now(),
         };
+        logEvent(s, now(), "delivery." + params.MessageStatus, {
+          householdId: job?.householdId,
+          deliveryId: job?.id,
+          data: { channel: "sms", providerId: params.MessageSid },
+        });
       });
     }
     return {

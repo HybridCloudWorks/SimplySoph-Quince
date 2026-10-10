@@ -1,4 +1,5 @@
 import { Storage } from "@google-cloud/storage";
+import { eventsSince } from "./event-log.mjs";
 export const initialState = () => ({
   version: 1,
   invitations: {},
@@ -16,39 +17,96 @@ export const initialState = () => ({
   audit: [],
 });
 export class Conflict extends Error {}
+class Timeout extends Error {}
+// Rejects with Timeout if the operation does not settle in time. The operation
+// itself is not cancelled; callers must treat a timed-out write as uncertain.
+function within(promise, ms, what) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Timeout(what + " timed out")), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
 // One small event ledger; GCS generation preconditions serialize transactions across instances.
 // Mutators must have NO external side effects: a conflicting transaction is retried.
 export class Ledger {
   constructor(
     adapter,
-    { sleep = (ms) => new Promise((r) => setTimeout(r, ms)), random = Math.random } = {},
+    {
+      sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
+      random = Math.random,
+      // Storage normally answers in well under a second; a hung call must not
+      // hold the queue until the request deadline (or Twilio's 15 s webhook limit).
+      timeoutMs = 5000,
+      // Concurrency 4 keeps the queue short; a deep queue means storage is stuck.
+      maxQueue = 32,
+      // Receives the event-log entries a transaction committed (never on retry).
+      onEvents = null,
+    } = {},
   ) {
     this.adapter = adapter;
     this.sleep = sleep;
     this.random = random;
+    this.timeoutMs = timeoutMs;
+    this.maxQueue = maxQueue;
+    this.onEvents = onEvents;
     this.queue = Promise.resolve();
+    this.depth = 0;
   }
   async read() {
-    return (await this.adapter.load()).state;
+    return (await within(this.adapter.load(), this.timeoutMs, "Ledger load"))
+      .state;
   }
   // Transactions on one instance run one at a time, so they never conflict with
   // each other; generation conflicts then only come from the other instance and
   // are retried with jittered exponential backoff instead of immediately.
   transaction(fn) {
-    const run = this.queue.then(() => this.attempt(fn));
+    if (this.depth >= this.maxQueue)
+      return Promise.reject(
+        Object.assign(new Error("Please retry."), { status: 503, code: "BUSY" }),
+      );
+    this.depth++;
+    const run = this.queue
+      .then(() => this.attempt(fn))
+      .finally(() => this.depth--);
     this.queue = run.catch(() => {});
     return run;
   }
   async attempt(fn) {
+    let slowLoads = 0;
     for (let attempt = 0; attempt < 8; attempt++) {
       if (attempt)
         await this.sleep(
           Math.min(400, 25 * 2 ** (attempt - 1)) * (0.5 + this.random()),
         );
-      const { state, generation } = await this.adapter.load();
+      let loaded;
+      try {
+        loaded = await within(this.adapter.load(), this.timeoutMs, "Ledger load");
+      } catch (e) {
+        // Reads have no side effects, so one slow load is retried; a second
+        // means storage is unhealthy and the request should fail fast.
+        if (e instanceof Timeout && ++slowLoads < 2 && attempt < 7) continue;
+        throw e;
+      }
+      const { state, generation } = loaded;
+      const startSeq = state.eventSeq || 0;
       const result = await fn(state);
       try {
-        await this.adapter.save(state, generation);
+        // A timed-out save is NOT retried: it may still land, and re-running the
+        // mutator would apply it twice. It surfaces as an unexpected (ERROR) 503.
+        await within(
+          this.adapter.save(state, generation),
+          this.timeoutMs,
+          "Ledger save",
+        );
+        if (this.onEvents && (state.eventSeq || 0) > startSeq)
+          try {
+            this.onEvents(eventsSince(state, startSeq));
+          } catch {
+            // Logging must never turn a committed write into a reported failure.
+          }
         return result;
       } catch (e) {
         if (!(e instanceof Conflict)) throw e;

@@ -139,7 +139,7 @@ async function fixture(options = {}) {
     input,
     row,
     guestToken,
-    failSync: () => (failing = true),
+    failSync: (on = true) => (failing = on),
     sends: () => sendCount,
     sent,
     advance: (ms) => {
@@ -1651,6 +1651,85 @@ test("RSVPs reach the in-app inbox without emailing organizers, and the pulse re
   assert.equal(latest.text, "Not attending");
 });
 
+const openLink = (f, value) =>
+  f.app.dispatch({
+    path: "/api/invitation-session",
+    method: "POST",
+    headers: { origin },
+    body: { token: value },
+  });
+
+test("group email {link} mints one private link per household that opens only after send", async () => {
+  const f = await fixture();
+  const draft = (requestId, text = "Hi! RSVP here: {link}") =>
+    f.admin("mail/batch-draft", {
+      requestId,
+      groups: [],
+      ids: [household],
+      subject: "Please RSVP",
+      text,
+    });
+  const first = await draft("link-campaign-001");
+  assert.deepEqual([first.count, first.skipped], [1, []]);
+  const { html } = await f.admin("mail/preview", undefined, { id: first.ids[0] });
+  const minted = html.match(/<a href="[^"]+\/rsvp\/#([A-Za-z0-9_-]{43})">/)[1];
+  assert.ok(!html.includes("{link}"));
+  await assert.rejects(() => openLink(f, minted), (e) => e.code === "INVALID_INVITATION");
+  await f.admin("mail/send", { id: first.ids[0], confirm: true });
+  assert.ok((await openLink(f, minted)).setCookie);
+  // Reissuing the household's link revokes drafted links: the draft goes stale.
+  const second = await draft("link-campaign-002");
+  await f.admin("invitation", {
+    id: household,
+    invited: { ceremony: true, dinner: true, dance: false },
+  });
+  await assert.rejects(
+    () => f.admin("mail/send", { id: second.ids[0], confirm: true }),
+    (e) => e.code === "MAIL_DRAFT_STALE",
+  );
+  // A household without any private link is skipped, never sent a dead link.
+  await f.ledger.transaction((s) => delete s.invitations[household]);
+  await assert.rejects(
+    () => draft("link-campaign-003"),
+    (e) => e.code === "LINKS_NOT_READY",
+  );
+  assert.equal((await draft("link-campaign-004", "No link here")).count, 1);
+});
+
+test("group SMS {link} stays sealed in the draft and is filled only when sent", async () => {
+  const texts = [];
+  const f = await fixture({
+    smsTransport: {
+      enabled: true,
+      async send({ text }) {
+        texts.push(text);
+        return { state: "accepted", provider: "twilio", providerId: "SM" + "a".repeat(32) };
+      },
+    },
+  });
+  f.row.phone = "+18175550100";
+  f.row.smsConsent = true;
+  f.row.smsConsentAt = "2026-09-28";
+  await keywordOptIn(f, f.row.phone);
+  const text = "Simply Soph Media: RSVP at {link} Reply STOP to opt out.";
+  const { ids } = await f.admin("mail/batch-draft", {
+    requestId: "sms-link-001",
+    groups: [],
+    ids: [household],
+    subject: "RSVP",
+    text,
+    channel: "sms",
+  });
+  const listed = (await f.admin("sms/drafts")).drafts[0];
+  assert.equal(listed.text, text);
+  assert.equal(listed.link, undefined);
+  const preview = await f.admin("sms/preview", undefined, { id: ids[0] });
+  await f.admin("sms/send", { id: ids[0], reviewToken: preview.reviewToken, confirm: true });
+  const minted = texts[0].match(/\/rsvp\/#([A-Za-z0-9_-]{43}) /)[1];
+  assert.ok(!texts[0].includes("{link}"));
+  assert.ok((await openLink(f, minted)).setCookie);
+});
+
 test("a delegate can set up an authenticator only inside an owner-opened window, once", async () => {
   const f = await fixture({ adminDelegateEmails: ["diana@example.com"] });
   f.row.email = "diana@example.com";
@@ -1722,4 +1801,49 @@ test("Notion schema changes, imports and authenticator windows are owner-only", 
     () => f.app.dispatch({ path: "/api/admin/schema", method: "POST", body: {}, headers: { origin, cookie: "__session=" + delegate, "x-csrf-token": "dd" } }),
     (e) => e.code === "CSRF_REJECTED",
   );
+});
+
+test("the scheduled drain is disabled by default, rejects bad tokens and retries pending Notion syncs", async () => {
+  const drain = (f, authorization) =>
+    f.app.dispatch({ path: "/api/internal/drain", method: "POST", headers: { authorization }, body: {} });
+  const off = await fixture();
+  await assert.rejects(() => drain(off, "Bearer anything"), (e) => e.status === 404);
+  const f = await fixture({ verifyScheduler: async (h) => h === "Bearer scheduler-token" });
+  await assert.rejects(() => drain(f, "Bearer forged"), (e) => e.status === 401);
+  await assert.rejects(
+    () => f.app.dispatch({ path: "/api/internal/drain", method: "GET", headers: {} }),
+    (e) => e.status === 405,
+  );
+  f.failSync();
+  await f.guest("rsvp", f.input(), { "idempotency-key": "request-drain-1" });
+  assert.equal((await f.ledger.read()).invitations[household].syncState, "pending");
+  f.failSync(false);
+  const result = await drain(f, "Bearer scheduler-token");
+  assert.deepEqual(result.rsvp, { attempted: 1 });
+  assert.ok(result.sms && result.whatsapp);
+  assert.equal((await f.ledger.read()).invitations[household].syncState, "synced");
+  // Nothing left: the next run is a cheap no-op.
+  assert.deepEqual((await drain(f, "Bearer scheduler-token")).rsvp, { attempted: 0 });
+});
+
+test("the event log records the invitation lifecycle in order without contact details", async () => {
+  const f = await fixture();
+  const { id } = await f.admin("mail/draft", { id: household, type: "invitation" });
+  await f.admin("mail/send", { id, confirm: true });
+  await f.guest("rsvp", f.input(), { "idempotency-key": "request-events-1" });
+  await f.admin("revoke", { id: household });
+  const log = (await f.ledger.read()).eventLog;
+  const types = log.map((e) => e.type);
+  for (const [earlier, later] of [
+    ["delivery.claimed", "delivery.accepted"],
+    ["delivery.accepted", "rsvp.submitted"],
+    ["rsvp.submitted", "notion.synced"],
+    ["notion.synced", "invitation.revoked"],
+  ])
+    assert.ok(types.indexOf(earlier) >= 0 && types.indexOf(earlier) < types.indexOf(later), `${earlier} before ${later}: ${types}`);
+  assert.deepEqual(log.find((e) => e.type === "rsvp.submitted").data, { responseId: "request-events-1", people: 4 });
+  assert.equal(log.find((e) => e.type === "delivery.accepted").deliveryId, id);
+  assert.deepEqual(log.map((e) => e.seq), log.map((_, i) => log[0].seq + i));
+  const text = JSON.stringify(log);
+  assert.ok(!text.includes("test@example.com"), "no email addresses in events");
 });

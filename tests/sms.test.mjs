@@ -381,3 +381,16 @@ test("drafts missing the brand prefix or STOP language are rejected at review", 
     (e) => e.code === "SMS_BRAND_OR_STOP_MISSING",
   );
 });
+test("keyword opt-in and opt-out are logged as consent events without the phone number", async () => {
+  const f = await fixture({ keywordConsent: false });
+  await f.callback("inbound", { Body: "sophia", OptOutType: "START" });
+  await f.callback("inbound", { Body: "please stop texting me", OptOutType: "STOP", MessageSid: "SM" + "9".repeat(32) });
+  const log = (await f.ledger.read()).eventLog;
+  assert.deepEqual(
+    log.filter((e) => e.type.startsWith("consent.")).map((e) => [e.type, e.data.keyword]),
+    [["consent.granted", "SOPHIA"], ["consent.revoked", null]],
+  );
+  assert.equal(log[0].data.phoneHash, hash(f.row.phone));
+  const text = JSON.stringify(log);
+  assert.ok(!text.includes(f.row.phone) && !text.toLowerCase().includes("please"));
+});
