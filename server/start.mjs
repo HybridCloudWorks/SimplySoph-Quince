@@ -94,7 +94,14 @@ if (env.EVENT_BUCKET) {
     notificationEmails: (env.NOTIFICATION_EMAILS || env.ADMIN_EMAILS)
       .split(",")
       .map((s) => s.trim().toLowerCase()),
-    ledger: new Ledger(adapter),
+    // Committed event-log entries are mirrored as one log line each, so a copy
+    // exists outside the ledger. Filter: jsonPayload.event.type="rsvp.submitted".
+    ledger: new Ledger(adapter, {
+      onEvents: (entries) => {
+        for (const event of entries)
+          log({ severity: "INFO", message: "event " + event.type, event });
+      },
+    }),
     smsTransport,
     smsWebhook: {
       accountSid: env.TWILIO_ACCOUNT_SID,
@@ -180,10 +187,12 @@ const root = path.resolve(
 if (!Number.isInteger(port) || port < 0 || port > 65535)
   throw new Error("Invalid port");
 // Cloud Logging parses one JSON object per stdout line (severity, httpRequest).
-const log = (entry) =>
+// A function declaration, so the ledger created above can mirror events to it.
+function log(entry) {
   process.stdout.write(
     JSON.stringify({ time: new Date().toISOString(), ...entry }) + "\n",
   );
+}
 const server = createHttpServer({ app, root, origin, log });
 server.requestTimeout = 120000;
 server.headersTimeout = 15000;

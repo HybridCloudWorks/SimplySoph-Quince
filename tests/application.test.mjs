@@ -1825,3 +1825,25 @@ test("the scheduled drain is disabled by default, rejects bad tokens and retries
   // Nothing left: the next run is a cheap no-op.
   assert.deepEqual((await drain(f, "Bearer scheduler-token")).rsvp, { attempted: 0 });
 });
+
+test("the event log records the invitation lifecycle in order without contact details", async () => {
+  const f = await fixture();
+  const { id } = await f.admin("mail/draft", { id: household, type: "invitation" });
+  await f.admin("mail/send", { id, confirm: true });
+  await f.guest("rsvp", f.input(), { "idempotency-key": "request-events-1" });
+  await f.admin("revoke", { id: household });
+  const log = (await f.ledger.read()).eventLog;
+  const types = log.map((e) => e.type);
+  for (const [earlier, later] of [
+    ["delivery.claimed", "delivery.accepted"],
+    ["delivery.accepted", "rsvp.submitted"],
+    ["rsvp.submitted", "notion.synced"],
+    ["notion.synced", "invitation.revoked"],
+  ])
+    assert.ok(types.indexOf(earlier) >= 0 && types.indexOf(earlier) < types.indexOf(later), `${earlier} before ${later}: ${types}`);
+  assert.deepEqual(log.find((e) => e.type === "rsvp.submitted").data, { responseId: "request-events-1", people: 4 });
+  assert.equal(log.find((e) => e.type === "delivery.accepted").deliveryId, id);
+  assert.deepEqual(log.map((e) => e.seq), log.map((_, i) => log[0].seq + i));
+  const text = JSON.stringify(log);
+  assert.ok(!text.includes("test@example.com"), "no email addresses in events");
+});

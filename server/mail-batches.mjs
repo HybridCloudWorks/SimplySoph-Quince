@@ -1,3 +1,4 @@
+import { logEvent } from "./event-log.mjs";
 import { randomUUID } from "node:crypto";
 import { error, hash, token } from "./auth.mjs";
 import { validEmail } from "./audience.mjs";
@@ -295,6 +296,11 @@ export function createMailBatches({
           };
           issued.push(id);
           audit(s, actor, "invitation-issued", id, now());
+          logEvent(s, now(), "invitation.issued", {
+            actor,
+            householdId: id,
+            data: { generation: 1, bulk: true },
+          });
         }
         return { issued: issued.length, skipped };
       });
