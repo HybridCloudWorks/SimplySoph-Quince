@@ -345,19 +345,32 @@ export function createApplication({
   // run inside a transaction) and provider calls (outside any transaction), so
   // the RSVP path can fold both claims into its own save and both results into
   // one final save. syncOne and dispatchMail compose the same steps standalone.
-  function claimSync(s, householdId, owner) {
+  function claimSync(s, householdId, owner, { forceResponse = false } = {}) {
     const row = s.invitations[householdId];
     const profile = s.profiles?.[householdId];
-    if (
-      !row ||
-      (!row.latestSubmissionId && !profile) ||
-      row.syncLease?.until > now()
-    )
+    if (!row || (!row.latestSubmissionId && !profile) || row.syncLease?.until > now())
       return null;
+    // The RSVP column and head counts are written only when the latest answer
+    // has not reached Notion yet, or when an admin chooses to write it again.
+    // A contact-details change writes only the contact columns, so it never
+    // reverts a change the family made to the counts in Notion. Households
+    // synced before this was tracked count as already written.
+    const projected =
+      row.projectedSubmissionId ??
+      (row.syncState === "synced" ? row.latestSubmissionId : null);
+    const withResponse =
+      !!row.latestSubmissionId && (forceResponse || projected !== row.latestSubmissionId);
+    if (!withResponse && !profile) {
+      if (row.syncState === "pending") row.syncState = "synced";
+      return null;
+    }
     row.syncLease = { owner, until: now() + 90000 };
     row.syncTriedAt = now();
-    const response = s.responses[row.latestSubmissionId];
-    return structuredClone({ response, profile });
+    return structuredClone({
+      submissionId: row.latestSubmissionId || null,
+      response: withResponse ? s.responses[row.latestSubmissionId] : undefined,
+      profile,
+    });
   }
   async function projectSync(householdId, task) {
     try {
@@ -378,11 +391,11 @@ export function createApplication({
     // A Notion outage, rate limit or edit conflict is retried by the scheduled
     // drain. Any other refusal (a missing column, a deleted row) will fail the
     // same way every time: mark it failed, stop retrying it automatically, and
-    // tell the family once (NOTION-7). Retry on Invitations tries it again.
+    // tell the family once (NOTION-7). Retry on the Overview page tries it again.
     // A newer response or profile saved meanwhile was never tried, so it stays
     // pending whatever happened to the older one.
     const stale =
-      (row.latestSubmissionId || null) !== (task.response?.id || null) ||
+      (row.latestSubmissionId || null) !== (task.submissionId || null) ||
       s.profiles?.[householdId]?.version !== task.profile?.version;
     const permanent =
       failure && !stale && !notionOutage({ code: failure }) && failure !== "NOTION_409";
@@ -395,7 +408,7 @@ export function createApplication({
           kind: "sync",
           householdId,
           title: `${row.name}: the RSVP could not be saved to Notion`,
-          text: `Notion refused it (${failure}). Check that household's row in Notion, then press Retry on Invitations.`,
+          text: `Notion refused it (${failure}). Check that household's row in Notion, then press "Retry pending Notion updates" on the Overview page.`,
           at: now(),
           read: false,
           emailState: "none",
@@ -409,6 +422,7 @@ export function createApplication({
     } else {
       row.syncState = "synced";
       row.syncError = null;
+      row.projectedSubmissionId = task.submissionId;
     }
     logEvent(
       s,
@@ -421,10 +435,10 @@ export function createApplication({
     );
     return row.syncState;
   }
-  async function syncOne(householdId) {
+  async function syncOne(householdId, options) {
     const owner = token();
     const task = await ledger.transaction((s) =>
-      claimSync(s, householdId, owner),
+      claimSync(s, householdId, owner, options),
     );
     if (!task) return;
     const failure = await projectSync(householdId, task);
@@ -599,11 +613,10 @@ export function createApplication({
   async function retryPendingRsvps({ includeFailed = false } = {}) {
     const s = await ledger.read();
     const ids = Object.values(s.invitations)
-      .filter(
-        (r) =>
-          r.syncState === "pending" ||
-          (includeFailed && (r.syncState === "failed" || s.drift?.[r.id])),
-      )
+      // Households whose Notion row differs are not retried here: the admin
+      // decides each one on Invitations (/api/admin/drift), so a family's own
+      // change in Notion is never undone by a bulk Retry.
+      .filter((r) => r.syncState === "pending" || (includeFailed && r.syncState === "failed"))
       // Pending before failed, then longest since last tried, so rows that keep
       // failing can never crowd out the rest.
       .sort(
@@ -617,60 +630,82 @@ export function createApplication({
     return { attempted: ids.length };
   }
   // NOTION-8: does Notion still show each answered household's website RSVP?
-  // A difference is reported once (per distinct difference) in Notifications
-  // and counted on the dashboard. Notion is never overwritten here: the family
-  // may have changed it on purpose, say after a phone call. If the website is
-  // right, the admin's Retry writes it again; the entry clears once they match.
-  async function checkDrift() {
-    const rows = new Map((await notion.list({ fresh: true })).map((r) => [r.id, r]));
-    const both = (c) => `${c.adultsTeens ?? "–"} adults/teens, ${c.kids ?? "–"} kids`;
-    return ledger.transaction((s) => {
-      s.drift ??= {};
-      let differing = 0;
-      for (const invite of Object.values(s.invitations)) {
-        const response = s.responses[invite.latestSubmissionId],
-          row = rows.get(invite.id);
-        if (!response || !row || row.archived || invite.syncState !== "synced") {
-          delete s.drift[invite.id];
-          continue;
-        }
-        const attending = Object.values(response.attendance).some(
-          (v) => v.adultsTeens + v.kids > 0,
-        );
-        const differences = [];
-        if (row.invitationStatus !== (attending ? "Yes" : "No"))
-          differences.push(
-            `RSVP is "${row.invitationStatus || "empty"}" in Notion, "${attending ? "Yes" : "No"}" on the website`,
-          );
-        for (const event of ["ceremony", "dinner", "dance"]) {
-          const n = row.notionCounts?.[event] || {},
-            w = response.attendance[event];
-          if (n.adultsTeens !== w.adultsTeens || n.kids !== w.kids)
-            differences.push(`${event}: ${both(n)} in Notion, ${both(w)} on the website`);
-        }
-        if (!differences.length) {
-          delete s.drift[invite.id];
-          continue;
-        }
-        differing++;
-        const signature = differences.join("; ");
-        if (s.drift[invite.id]?.signature === signature) continue;
-        s.drift[invite.id] = { signature, at: now() };
-        const note = randomUUID();
-        s.notifications ??= {};
-        s.notifications[note] = {
-          id: note,
-          kind: "drift",
-          householdId: invite.id,
-          title: `${row.name}: Notion differs from the website's RSVP`,
-          text: `${signature}. If Notion is right (for example after a phone call), nothing needs doing. If the website is right, press Retry on Invitations to write it to Notion again.`,
-          at: now(),
-          read: false,
-          emailState: "none",
-        };
+  // Each new difference is reported once in Notifications and counted on the
+  // dashboard. Notion is never overwritten here: the family may have changed
+  // it on purpose, say after a phone call. On Invitations the admin chooses,
+  // per household, to write the website's answer again or to keep Notion's
+  // version (/api/admin/drift); a kept difference is not reported again
+  // unless it changes. Applied to a copy first, so an unchanged check never
+  // writes the ledger.
+  function applyDrift(s, rows, started) {
+    s.drift ??= {};
+    const both = (c) => `${c.adultsTeens ?? 0} adults/teens, ${c.kids ?? 0} kids`;
+    let differing = 0,
+      changed = false;
+    const fresh = [];
+    for (const invite of Object.values(s.invitations)) {
+      const response = s.responses[invite.latestSubmissionId],
+        row = rows.get(invite.id);
+      if (!response || !row || row.archived || invite.syncState !== "synced") {
+        if (s.drift[invite.id]) (delete s.drift[invite.id], (changed = true));
+        continue;
       }
-      return { differing };
-    });
+      // Written moments ago (or being written): Notion may not show it yet.
+      if (invite.syncTriedAt >= started - 120000) continue;
+      const attending = Object.values(response.attendance).some(
+        (v) => v.adultsTeens + v.kids > 0,
+      );
+      const differences = [];
+      if (row.invitationStatus !== (attending ? "Yes" : "No"))
+        differences.push(
+          `RSVP is "${row.invitationStatus || "empty"}" in Notion, "${attending ? "Yes" : "No"}" on the website`,
+        );
+      for (const event of ["ceremony", "dinner", "dance"]) {
+        // An empty Notion cell means 0, as for events a household isn't invited to.
+        const n = row.notionCounts?.[event] || {},
+          w = response.attendance[event];
+        if ((n.adultsTeens ?? 0) !== w.adultsTeens || (n.kids ?? 0) !== w.kids)
+          differences.push(`${event}: ${both(n)} in Notion, ${both(w)} on the website`);
+      }
+      const entry = s.drift[invite.id];
+      if (!differences.length) {
+        if (entry) (delete s.drift[invite.id], (changed = true));
+        continue;
+      }
+      const signature = differences.join("; ");
+      if (entry?.accepted === signature) continue; // the admin kept Notion's version
+      differing++;
+      if (entry?.signature === signature) continue; // already reported
+      s.drift[invite.id] = { signature, at: now() };
+      changed = true;
+      fresh.push({ name: row.name, householdId: invite.id, signature });
+    }
+    const note = (fields) => {
+      const id = randomUUID();
+      s.notifications ??= {};
+      s.notifications[id] = { id, kind: "drift", at: now(), read: false, emailState: "none", ...fields };
+    };
+    // Many at once usually means a renamed column or option, not many phone calls.
+    if (fresh.length > 10)
+      note({
+        title: `${fresh.length} households differ between Notion and the website`,
+        text: `Notion's RSVP or head counts differ for ${fresh.length} households at once. A renamed column or RSVP option in Notion can cause this; check the Invitations database, then review the households on Invitations.`,
+      });
+    else
+      for (const f of fresh)
+        note({
+          householdId: f.householdId,
+          title: `${f.name}: Notion differs from the website's RSVP`,
+          text: `${f.signature}. On Invitations, choose "Keep Notion's version" if the family changed it on purpose (for example after a phone call), or "Write the website's answer" if the website is right.`,
+        });
+    return { differing, changed };
+  }
+  async function checkDrift() {
+    const started = now();
+    const rows = new Map((await notion.list({ fresh: true })).map((r) => [r.id, r]));
+    const preview = applyDrift(await ledger.read(), rows, started);
+    if (!preview.changed) return { differing: preview.differing };
+    return ledger.transaction((s) => ({ differing: applyDrift(s, rows, started).differing }));
   }
   // Scheduled catch-up for projections that failed earlier (Notion outage,
   // rate limit). Each step is bounded and independent: one failing step never
@@ -1791,6 +1826,11 @@ export function createApplication({
                   invited: s.invitations[row.id].invited,
                   locale: s.invitations[row.id].locale,
                   syncState: s.invitations[row.id].syncState,
+                  // A difference from Notion awaiting the admin's choice (NOTION-8).
+                  notionDiffers:
+                    s.drift?.[row.id] && s.drift[row.id].accepted !== s.drift[row.id].signature
+                      ? s.drift[row.id].signature
+                      : null,
                 }
               : {}),
             response:
@@ -1821,7 +1861,8 @@ export function createApplication({
           failedSync: Object.values(s.invitations).filter(
             (r) => r.syncState === "failed",
           ).length,
-          notionDrift: Object.keys(s.drift || {}).length,
+          notionDrift: Object.values(s.drift || {}).filter((d) => d.accepted !== d.signature)
+            .length,
           counts: Object.fromEntries(
             events.map((e) => [
               e,
@@ -1944,6 +1985,28 @@ export function createApplication({
       }
       if (path === "/api/admin/sync" && method === "POST")
         return retryPendingRsvps({ includeFailed: true });
+      // NOTION-8: the admin decides one household's difference. "website" writes
+      // the website's answer to Notion again; "notion" keeps Notion's version and
+      // stops reporting this difference (a new, different one is reported).
+      if (path === "/api/admin/drift" && method === "POST") {
+        if (!ctx.state.drift?.[body.id]) throw error(404, "NOT_FOUND");
+        if (body.keep === "website") {
+          await syncOne(body.id, { forceResponse: true });
+          await ledger.transaction((s) =>
+            audit(s, session.actor, "notion-drift-write-website", body.id, now()),
+          );
+          return { kept: "website", syncState: (await ledger.read()).invitations[body.id]?.syncState };
+        }
+        if (body.keep === "notion")
+          return ledger.transaction((s) => {
+            const entry = s.drift?.[body.id];
+            if (!entry) throw error(404, "NOT_FOUND");
+            entry.accepted = entry.signature;
+            audit(s, session.actor, "notion-drift-keep-notion", body.id, now());
+            return { kept: "notion" };
+          });
+        throw error(422, "INVALID_CHOICE");
+      }
       if (path === "/api/admin/moderation" && method === "GET")
         return {
           messages: Object.values(ctx.state.messages),
