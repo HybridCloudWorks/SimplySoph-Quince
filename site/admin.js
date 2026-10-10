@@ -457,20 +457,27 @@ async function moderation() {
       if (r.kind !== "contact") return;
       cards[i].insertAdjacentHTML(
         "beforeend",
-        `${(r.replies || []).map((reply) => `<blockquote>${esc(reply.text)}</blockquote>`).join("")}<form class="reply-form"><label>Private reply<textarea name="text" required maxlength="2000"></textarea></label><label class="check"><input type="checkbox" name="notify"> Also email them that the family replied. The email only says there is a reply and links to My account; it goes to the email they signed in with (or the household’s Notion email).</label>${formEnd("Reply in guest account")}`,
+        `${(r.replies || []).map((reply) => `<blockquote>${esc(reply.text)}</blockquote>`).join("")}<form class="reply-form"><label>Private reply<textarea name="text" required maxlength="2000"></textarea></label>${
+          // FLOW-8: the admin sees the exact recipient before choosing to email.
+          r.replyTo && d.mailConfigured
+            ? `<label class="check"><input type="checkbox" name="notify"> Also email <strong>${esc(r.replyTo)}</strong> that the family replied. The email only says there is a reply and links to My account.</label>`
+            : `<p class="hint">${d.mailConfigured ? "No email will be sent: this household has no verified email (their sign-in email or the Email in Notion)." : "No email will be sent: email isn’t set up."}</p>`
+        }${formEnd("Reply in guest account")}`,
       );
       submit(cards[i].querySelector(".reply-form"), async (f) => {
+        const notifying = f.get("notify") === "on";
         const result = await api("admin/message-reply", {
           id: r.id,
           text: f.get("text"),
-          notify: f.get("notify") === "on",
+          notify: notifying,
+          ...(notifying ? { to: r.replyTo } : {}),
         });
         await moderation();
         notify(
           result.emailed
             ? `Reply saved, and ${result.to} was emailed that the family replied.`
-            : f.get("notify") === "on"
-              ? "Reply saved in the guest account. No email was sent: there is no verified address, or email isn’t set up."
+            : notifying
+              ? "Reply saved in the guest account, but the email didn’t go through. You can tell them another way."
               : "Reply saved in the guest account. No email sent.",
         );
       });

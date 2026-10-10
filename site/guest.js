@@ -154,7 +154,10 @@ async function accountPage(inv, session) {
           `<article class="card"><p>${esc(m.text)}</p>${m.replies.map((r) => `<blockquote><strong>${tr("Family", "Familia")}:</strong> ${esc(r.text)}</blockquote>`).join("")}</article>`,
       )
       .join("");
-  box.innerHTML = `<h3>${tr("Messages with the family", "Mensajes con la familia")}</h3><div id="thread" aria-live="polite">${messagesHtml(await api("messages"))}</div><p class="hint">${tr("New replies appear here while this page is open.", "Las respuestas nuevas aparecen aquí mientras esta página esté abierta.")}</p><form id="family-message"><label>${tr("Your message", "Tu mensaje")}<textarea name="text" required maxlength="2000"></textarea></label><p role="alert" class="error"></p><button type="submit" class="button burgundy">${tr("Send to the family", "Enviar a la familia")}</button></form>`;
+  // The last markup drawn: the browser normalizes innerHTML (quotes, entities),
+  // so comparing with it would redraw, and re-announce, the thread every minute.
+  let shown = messagesHtml(await api("messages"));
+  box.innerHTML = `<h3>${tr("Messages with the family", "Mensajes con la familia")}</h3><div id="thread" aria-live="polite">${shown}</div><p class="hint">${tr("New replies appear here while this page is open.", "Las respuestas nuevas aparecen aquí mientras esta página esté abierta.")}</p><form id="family-message"><label>${tr("Your message", "Tu mensaje")}<textarea name="text" required maxlength="2000"></textarea></label><p role="alert" class="error"></p><button type="submit" class="button burgundy">${tr("Send to the family", "Enviar a la familia")}</button></form>`;
   submit(document.querySelector("#family-message"), async (f) => {
     await api("messages", {
       kind: "contact",
@@ -171,8 +174,9 @@ async function accountPage(inv, session) {
     if (!thread) return clearInterval(threadTimer);
     if (document.visibilityState !== "visible") return;
     try {
-      const html = messagesHtml(await api("messages"));
-      if (html !== thread.innerHTML) thread.innerHTML = html;
+      // ?poll=1: a background check does not keep the guest signed in.
+      const html = messagesHtml(await api("messages?poll=1"));
+      if (html !== shown) thread.innerHTML = shown = html;
     } catch {
       clearInterval(threadTimer); // signed out or offline: stop quietly
     }

@@ -222,6 +222,14 @@ const messages = {
     "Those households have more guests attending dinner than this table seats. Raise the capacity or choose fewer households.",
     "Esas familias tienen más invitados en la cena de los que caben en esta mesa. Aumenta la capacidad o elige menos familias.",
   ],
+  RECIPIENT_CHANGED: [
+    "This household's verified email changed since the page loaded. Nothing was saved or sent; reload and check the address.",
+    "El correo verificado de esta familia cambió desde que se cargó la página. No se guardó ni se envió nada; recarga y revisa la dirección.",
+  ],
+  EMAIL_NOT_CONFIGURED: [
+    "Email isn't set up, so nothing was saved or sent. Reply without the email option.",
+    "El correo no está configurado, así que no se guardó ni se envió nada. Responde sin la opción de correo.",
+  ],
   INVALID_TABLE: [
     "Give the table a name and a capacity from 1 to 50.",
     "Ponle un nombre a la mesa y una capacidad de 1 a 50.",

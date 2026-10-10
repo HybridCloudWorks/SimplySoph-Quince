@@ -236,6 +236,15 @@ export function createApplication({
     Array.from({ length: 10 }, () => base32(randomBytes(8)).slice(0, 12)).map(
       (c) => `${c.slice(0, 4)}-${c.slice(4, 8)}-${c.slice(8)}`,
     );
+  // FLOW-8: where a "the family replied" email may go: the email the guest
+  // signed in with, while that account is active and still in this household;
+  // otherwise the household's Notion email. Never an address typed into a form.
+  function replyRecipient(s, message, notionEmail) {
+    const account = s.accounts?.[message.accountId];
+    if (account && accountActive(s, account) && account.householdId === message.householdId)
+      return account.email;
+    return notionEmail || null;
+  }
   function securityNote(s, title) {
     const id = randomUUID();
     s.notifications ??= {};
@@ -1148,6 +1157,8 @@ export function createApplication({
       ctx.raw &&
       path !== "/api/logout" &&
       path !== "/api/logout-all" &&
+      // A page checking for replies in the background is not someone using it.
+      req.query?.poll !== "1" &&
       session.expiresAt - now() < 900000
     ) {
       const startedAt = session.startedAt ?? session.expiresAt - 1800000,
@@ -2007,16 +2018,41 @@ export function createApplication({
           });
         throw error(422, "INVALID_CHOICE");
       }
-      if (path === "/api/admin/moderation" && method === "GET")
+      if (path === "/api/admin/moderation" && method === "GET") {
+        // Each contact message shows, before replying, exactly where a reply
+        // email would go (replyTo), so the admin confirms the real recipient.
+        const notionEmails = new Map(
+          (await notion.list({ allowStale: true }).catch(() => [])).map((r) => [r.id, r.email]),
+        );
         return {
-          messages: Object.values(ctx.state.messages),
+          messages: Object.values(ctx.state.messages).map((m) =>
+            m.kind === "contact"
+              ? { ...m, replyTo: replyRecipient(ctx.state, m, notionEmails.get(m.householdId)) }
+              : m,
+          ),
           photos: Object.values(ctx.state.photos),
           albums: siteSettings(ctx.state).albums,
+          mailConfigured: mailer.configured,
         };
+      }
       if (path === "/api/admin/message-reply" && method === "POST") {
         const text = safeText(body.text, 2000);
         if (!text) throw error(422, "MESSAGE_REQUIRED");
-        const message = await ledger.transaction((s) => {
+        // FLOW-8: a reply email goes out only when the admin ticked the box
+        // next to the recipient shown to them, and only if that is still the
+        // verified address now. Checked before the reply is saved, so a refusal
+        // never leaves a saved reply that tempts a second try.
+        const notifying = body.notify === true;
+        let to = null;
+        if (notifying) {
+          if (!mailer.configured) throw error(409, "EMAIL_NOT_CONFIGURED");
+          const found = ctx.state.messages[body.id];
+          if (!found || found.kind !== "contact") throw error(404, "NOT_FOUND");
+          const row = await notion.read(found.householdId, { fresh: true }).catch(() => null);
+          to = replyRecipient(ctx.state, found, row?.email);
+          if (!to || to !== body.to) throw error(409, "RECIPIENT_CHANGED");
+        }
+        await ledger.transaction((s) => {
           const message = s.messages[body.id];
           if (!message || message.kind !== "contact")
             throw error(404, "NOT_FOUND");
@@ -2024,19 +2060,9 @@ export function createApplication({
           if (message.replies.length >= 100) throw error(422, "THREAD_LIMIT");
           message.replies.push({ text, at: now() });
           audit(s, session.actor, "message-reply", body.id, now());
-          return structuredClone(message);
         });
-        // FLOW-8: only when the admin ticks the box (a person confirms every
-        // message), email the guest that the family replied. The email holds
-        // no message text, and it goes only to a verified address: the email
-        // the guest signed in with, or else the household's Notion email,
-        // never an address typed into the form.
-        if (body.notify !== true) return { saved: true, emailed: false };
-        const s = await ledger.read();
-        const to =
-          s.accounts?.[message.accountId]?.email ||
-          (await notion.read(message.householdId, { fresh: true }).catch(() => null))?.email;
-        if (!to || !mailer.configured) return { saved: true, emailed: false };
+        if (!notifying) return { saved: true, emailed: false };
+        let emailed = true;
         try {
           await mailer.send({
             id: token(),
@@ -2045,12 +2071,24 @@ export function createApplication({
             html: `<p>The family replied to your message on Sophia’s website.</p><p>La familia respondió tu mensaje en el sitio de Sophia.</p><p><a href="${origin}/account/">Read it in My account / Léelo en Mi cuenta</a></p>`,
           });
         } catch {
-          return { saved: true, emailed: false };
+          emailed = false;
         }
-        await ledger.transaction((s) =>
-          audit(s, session.actor, "message-reply-email", body.id, now()),
-        );
-        return { saved: true, emailed: true, to };
+        // The reply is already saved; a failed audit write must not look like a
+        // failed reply (and invite a duplicate).
+        await ledger
+          .transaction((s) =>
+            audit(
+              s,
+              session.actor,
+              emailed ? "message-reply-email-sent" : "message-reply-email-failed",
+              body.id,
+              now(),
+            ),
+          )
+          .catch(() => {});
+        return emailed
+          ? { saved: true, emailed: true, to }
+          : { saved: true, emailed: false, reason: "SEND_FAILED" };
       }
       if (path === "/api/admin/moderation" && method === "POST") {
         if (
