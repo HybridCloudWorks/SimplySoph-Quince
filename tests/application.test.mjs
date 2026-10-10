@@ -2477,3 +2477,174 @@ test("an email moved to another household ends its sessions for the old one (re-
   const session = await f.app.dispatch({ path: "/api/session", headers: { cookie: old.setCookie.split(";")[0] } });
   assert.equal(session.kind, null);
 });
+
+test("an RSVP receipt goes to the verified address even when the form's contact email differs (re-audit)", async () => {
+  const f = await fixture();
+  const input = f.input();
+  input.contact.email = "typed@example.org";
+  await f.guest("rsvp", input, { "idempotency-key": "21212121-2121-4121-8121-212121212121" });
+  const receipt = Object.values((await f.ledger.read()).outbox).find((j) => j.type === "receipt");
+  assert.equal(receipt.to, "test@example.com");
+  assert.equal(receipt.state, "accepted");
+  assert.ok(!f.sent.some((m) => m.to === "typed@example.org"), "never to a typed address");
+});
+
+test("an invitation-link RSVP receipt follows the household's current Notion Email (re-audit)", async () => {
+  const f = await fixture();
+  f.row.email = "changed@example.org";
+  await f.linkGuest("rsvp", f.input(), { "idempotency-key": "23232323-2323-4323-8323-232323232323" });
+  const receipt = Object.values((await f.ledger.read()).outbox).find((j) => j.type === "receipt");
+  assert.equal(receipt.to, "changed@example.org");
+  assert.equal(receipt.state, "accepted");
+});
+
+test("at most 5 automatic receipts per household a day; later ones wait as drafts for a person (re-audit)", async () => {
+  const f = await fixture();
+  let previous = null;
+  for (let i = 0; i < 6; i++) {
+    const r = await f.guest(
+      "rsvp",
+      { ...f.input(), previousSubmissionId: previous },
+      { "idempotency-key": `3434343${i}-3434-4434-8434-343434343434` },
+    );
+    previous = r.id;
+    f.advance(1000);
+  }
+  const receipts = Object.values((await f.ledger.read()).outbox).filter((j) => ["receipt", "update"].includes(j.type));
+  assert.equal(receipts.filter((j) => j.state === "accepted").length, 5);
+  const waiting = receipts.find((j) => j.state === "draft");
+  assert.ok(waiting, "the 6th waits as a draft");
+  // A draft whose address has left the Notion row is never sent.
+  f.row.email = "changed@example.org";
+  await assert.rejects(
+    () => f.admin("mail/send", { id: waiting.id, confirm: true }),
+    (e) => e.code === "MAIL_DRAFT_STALE",
+  );
+  f.row.email = "test@example.com";
+  assert.equal((await f.admin("mail/send", { id: waiting.id, confirm: true })).state, "accepted");
+});
+
+test("a retry never writes over head counts the family changed in Notion; an admin's Write survives an outage (re-audit N1, N2, N8)", async () => {
+  const writes = [];
+  let down = true;
+  const f = await fixture({
+    verifyScheduler: async () => true,
+    notion: {
+      async project() {
+        if (down) throw { code: "NOTION_UNAVAILABLE" };
+        writes.push("rsvp");
+      },
+      async projectContact() {
+        if (down) throw { code: "NOTION_UNAVAILABLE" };
+        writes.push("contact");
+      },
+    },
+  });
+  await f.ledger.transaction((s) => {
+    for (const v of Object.values(s.sessions)) if (v.kind === "admin") v.expiresAt = at + 86400000;
+  });
+  await f.guest("rsvp", f.input(), { "idempotency-key": "45454545-4545-4545-8545-454545454545" });
+  assert.equal((await f.ledger.read()).invitations[household].syncState, "pending");
+  // Notion comes back; meanwhile the family typed a phone answer into Notion.
+  down = false;
+  f.advance(120000);
+  f.row.lastEdited = new Date(f.now()).toISOString();
+  f.row.invitationStatus = "Yes";
+  f.row.notionCounts = {
+    ceremony: { adultsTeens: 4, kids: 0 },
+    dinner: { adultsTeens: 4, kids: 0 },
+    dance: { adultsTeens: 0, kids: 0 },
+  };
+  await drain(f);
+  assert.deepEqual(writes, ["contact"], "the head counts were not written over");
+  assert.equal((await f.ledger.read()).invitations[household].syncState, "synced");
+  // The drift check then shows the difference for the admin to decide.
+  f.advance(180000);
+  assert.equal((await drain(f)).drift.differing, 1);
+  assert.match((await driftAlerts(f))[0].text, /4 adults\/teens, 0 kids in Notion, 2 adults\/teens, 1 kid on the website/);
+  // The admin writes the website's answer during an outage; the drain finishes it.
+  down = true;
+  assert.equal((await f.admin("drift", { id: household, keep: "website" })).syncState, "pending");
+  down = false;
+  f.advance(120000);
+  await drain(f);
+  assert.deepEqual(writes, ["contact", "rsvp"], "the admin's choice survived the failed attempt");
+  const s = await f.ledger.read();
+  assert.equal(s.invitations[household].syncState, "synced");
+  assert.equal(s.invitations[household].syncError, null);
+  assert.equal(s.drift?.[household], undefined, "settled at once");
+});
+
+test("phone RSVPs typed into Notion and kept Notion counts drive the dashboard, seating and reminders (re-audit N2)", async () => {
+  const f = await fixture({ verifyScheduler: async () => true });
+  const phoneId = "77777777-7777-4777-8777-777777777777";
+  f.extraRows.push({
+    ...structuredClone(f.row),
+    id: phoneId,
+    name: "Phone family",
+    email: "phone@example.com",
+    administratorEligible: false,
+    invitationStatus: "Yes",
+    notionCounts: {
+      ceremony: { adultsTeens: 3, kids: 1 },
+      dinner: { adultsTeens: 3, kids: 1 },
+      dance: { adultsTeens: 0, kids: 0 },
+    },
+  });
+  await f.ledger.transaction((s) => {
+    s.invitations[phoneId] = { id: phoneId, name: "Phone family", active: true, generation: 1, invited: { ceremony: true, dinner: true, dance: false } };
+  });
+  // "Not sent" is not an answer.
+  f.row.invitationStatus = "Not sent";
+  let dash = await f.admin("dashboard");
+  assert.equal(dash.responded, 1);
+  assert.equal(dash.statuses.attending, 1);
+  assert.deepEqual(dash.counts.dinner, { adultsTeens: 3, kids: 1 });
+  const guests = (await f.admin("guests")).guests;
+  assert.equal(guests.find((g) => g.id === phoneId).answeredIn, "notion");
+  assert.equal((await f.admin("seating")).households.find((h) => h.id === phoneId).count, 4);
+  await assert.rejects(
+    () => f.admin("seating", { name: "T", capacity: 3, households: [phoneId] }),
+    (e) => e.code === "TABLE_OVER_CAPACITY",
+  );
+  // No reminder for a household that answered by phone.
+  const r = await f.admin("mail/invitation-batch", { requestId: "56565656-5656-4656-8656-565656565656", type: "reminder", ids: [phoneId] });
+  assert.equal((await f.admin("mail/batch", undefined, { id: r.id })).skippedList[0].reason, "already-responded");
+  // The website household differs; the admin keeps Notion's numbers.
+  await answeredAndMatching(f);
+  f.row.notionCounts.dinner.adultsTeens = 5;
+  assert.equal((await drain(f)).drift.differing, 1);
+  await f.admin("drift", { id: household, keep: "notion" });
+  dash = await f.admin("dashboard");
+  assert.deepEqual(dash.counts.dinner, { adultsTeens: 3 + 5, kids: 1 + 1 });
+});
+
+test("each drain run writes one summary log line with counts only (re-audit N6)", async () => {
+  const lines = [];
+  const f = await fixture({ verifyScheduler: async () => true, log: (e) => lines.push(e) });
+  await drain(f);
+  const line = lines.find((l) => l.message === "drain");
+  assert.equal(line.severity, "INFO");
+  assert.ok(line.drain.rsvp && line.drain.admins);
+  assert.ok(!JSON.stringify(line).includes("@"), "no email addresses");
+});
+
+test("a reply email uses a sign-in email only while it is on the Notion row, with a Spanish link for Spanish households (re-audit D3, D4)", async () => {
+  const f = await fixture();
+  await f.ledger.transaction((s) => {
+    s.invitations[household].locale = "es";
+  });
+  const { id } = await f.guest("messages", { kind: "contact", name: "Test", text: "Hola" });
+  f.row.additionalEmails = [];
+  f.row.email = "household@example.com";
+  // The signer's email left the row (the account still belongs to the household).
+  const shown = (await f.admin("moderation")).messages.find((m) => m.id === id);
+  assert.equal(shown.replyTo, "household@example.com");
+  await f.admin("message-reply", { id, text: "Gracias", notify: true, to: "household@example.com" });
+  const mail = f.sent.at(-1);
+  assert.equal(mail.to, "household@example.com");
+  assert.ok(mail.html.includes(origin + "/es/account/"));
+  // Back on the row as an Additional Email: the sign-in email is used again.
+  f.row.additionalEmails = ["test@example.com"];
+  assert.equal((await f.admin("moderation")).messages.find((m) => m.id === id).replyTo, "test@example.com");
+});
