@@ -749,13 +749,14 @@ export function createApplication({
   // phone. Their admin access already ends on their next click (stillAdmin);
   // the removal waits until they have looked unticked for a day, and the
   // family is told at once, so a mistaken edit (a duplicated row, a renamed
-  // column) can be put right before anything is lost. A Notion answer with no
-  // ticked row or no emails at all looks like a renamed column and removes
-  // nothing (re-audit).
+  // column) can be put right before anything is lost. An empty Notion answer,
+  // or one without the "Administrator Eligible" or "Email" column (renamed or
+  // deleted), removes nothing (re-audit).
   async function pruneAdmins() {
     const rows = (await notion.list({ fresh: true })).filter((r) => !r.archived);
-    if (!rows.some((r) => r.administratorEligible) || !rows.some((r) => r.email))
-      return { removed: 0, skipped: rows.length ? "NOTION_ADMIN_COLUMNS_LOOK_EMPTY" : "NOTION_EMPTY" };
+    if (!rows.length) return { removed: 0, skipped: "NOTION_EMPTY" };
+    if (rows.some((r) => r.adminColumnsPresent === false))
+      return { removed: 0, skipped: "NOTION_ADMIN_COLUMNS_MISSING" };
     const day = 86400000;
     const plan = (s) => {
       const flag = [],
@@ -2562,9 +2563,13 @@ export function createApplication({
     }
     throw error(404, "NOT_FOUND");
   }
-  // For the HTTP layer: is this cookie a current session? Checked before an
-  // upload body is read (http.mjs); the route checks the session's rights.
-  const sessionKnown = async (cookieHeader) =>
-    !!(await context({ headers: { cookie: cookieHeader } })).session;
-  return { dispatch, syncOne, sessionKnown };
+  // For the HTTP layer, before an upload body is read (http.mjs): is this
+  // cookie a current email sign-in or admin session? Invitation-link sessions
+  // are RSVP-only and never upload, so they cannot hold upload slots
+  // (re-audit). The route still checks the session's rights.
+  const canUpload = async (cookieHeader) => {
+    const { session } = await context({ headers: { cookie: cookieHeader } });
+    return !!session && (session.kind === "admin" || !!session.accountId);
+  };
+  return { dispatch, syncOne, canUpload };
 }

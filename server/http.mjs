@@ -45,11 +45,13 @@ export function createHttpServer({ app = null, root, origin, log = null }) {
   // parsed) being handled at once on this instance; more get a retryable
   // UPLOAD_BUSY, so parallel uploads cannot exhaust memory (re-audit).
   let uploads = 0;
-  const maxUploads = 3;
+  const maxUploads = 3,
+    uploading = new Set();
   return http.createServer(async (req, res) => {
     const started = performance.now();
     let failure,
-      holdsUpload = false;
+      holdsUpload = false,
+      sessionId = null;
     if (log)
       res.on("finish", () => {
         if (req.logPath) apiLog(log, req, res, started, failure);
@@ -120,7 +122,7 @@ export function createHttpServer({ app = null, root, origin, log = null }) {
             upload &&
             !(
               /(?:^|;\s*)__session=/.test(req.headers.cookie || "") &&
-              (await app.sessionKnown(req.headers.cookie))
+              (await app.canUpload(req.headers.cookie))
             )
           )
             throw Object.assign(new Error(), {
@@ -128,22 +130,32 @@ export function createHttpServer({ app = null, root, origin, log = null }) {
               code: "SIGN_IN_REQUIRED",
             });
           if (upload) {
-            if (uploads >= maxUploads)
+            // One upload at a time per session (the page sends files one by
+            // one), so a single sign-in cannot hold every slot (re-audit).
+            sessionId = (req.headers.cookie || "").match(/(?:^|;\s*)__session=([^;]*)/)[1];
+            if (uploads >= maxUploads || uploading.has(sessionId))
               throw Object.assign(new Error(), { status: 503, code: "UPLOAD_BUSY" });
             uploads++;
+            uploading.add(sessionId);
             holdsUpload = true;
           }
           const chunks = [];
           let size = 0;
           // A body that stops arriving for 30 seconds is dropped. A slow but
-          // steady upload from a phone keeps going.
+          // steady upload from a phone keeps going, but an upload still
+          // averaging under 16 KB a second after 15 seconds is dropped too, so
+          // a trickle cannot hold a slot for the full request timeout.
           const idle = Object.assign(new Error(), { status: 408, code: "REQUEST_TIMEOUT" });
+          const begun = Date.now();
           let timer = setTimeout(() => req.destroy(idle), 30000);
           try {
             for await (const chunk of req) {
               clearTimeout(timer);
               timer = setTimeout(() => req.destroy(idle), 30000);
               size += chunk.length;
+              const elapsed = Date.now() - begun;
+              if (upload && elapsed > 15000 && size / elapsed < 16)
+                throw Object.assign(new Error(), { status: 408, code: "UPLOAD_TOO_SLOW" });
               if (size > (upload ? 12_000_000 : 120_000))
                 throw Object.assign(new Error(), {
                   status: 413,
@@ -249,7 +261,10 @@ export function createHttpServer({ app = null, root, origin, log = null }) {
       );
     } finally {
       // Held until the upload has been handled, not only read.
-      if (holdsUpload) uploads--;
+      if (holdsUpload) {
+        uploads--;
+        uploading.delete(sessionId);
+      }
     }
   });
 }

@@ -2336,19 +2336,27 @@ test("the drain removes the authenticator of someone Notion no longer makes an a
   assert.ok(again.enrollmentSecret);
 });
 
-test("a Notion answer with no ticked administrator removes no one (renamed column, re-audit)", async () => {
+test("a renamed admin column removes no one; unticking the only ticked admin still does (re-audit)", async () => {
   const f = await fixture({ verifyScheduler: async () => true });
   await adminSignIn(f, "test@example.com");
   const drain = () =>
     f.app.dispatch({ path: "/api/internal/drain", method: "POST", headers: { authorization: "Bearer x" } });
+  const admin = async () =>
+    Object.values((await f.ledger.read()).admins).find((a) => a.email === "test@example.com");
   // "Administrator Eligible" renamed: every row reads as unticked.
   f.row.administratorEligible = false;
+  f.row.adminColumnsPresent = false;
   f.advance(86400001);
-  assert.equal((await drain()).admins.skipped, "NOTION_ADMIN_COLUMNS_LOOK_EMPTY");
+  assert.equal((await drain()).admins.skipped, "NOTION_ADMIN_COLUMNS_MISSING");
   f.advance(86400001);
-  assert.equal((await drain()).admins.skipped, "NOTION_ADMIN_COLUMNS_LOOK_EMPTY");
-  const admin = Object.values((await f.ledger.read()).admins).find((a) => a.email === "test@example.com");
-  assert.ok(admin && !admin.staleSince, "nothing flagged, nothing removed");
+  assert.equal((await drain()).admins.skipped, "NOTION_ADMIN_COLUMNS_MISSING");
+  assert.ok((await admin()) && !(await admin()).staleSince, "nothing flagged, nothing removed");
+  // The column is back and this was the only ticked row: unticking still counts.
+  f.row.adminColumnsPresent = true;
+  assert.equal((await drain()).admins.pending, 1);
+  f.advance(86400001);
+  assert.equal((await drain()).admins.removed, 1);
+  assert.equal(await admin(), undefined);
 });
 
 test("a guest whose email leaves the Notion row loses data access on the next request (re-audit)", async () => {
@@ -2373,6 +2381,21 @@ test("a guest whose email leaves the Notion row loses data access on the next re
   // Pages that need no invitation details stop too.
   for (const page of ["gallery", "account", "photo/12345678-1234-4234-8234-123456789012"])
     await assert.rejects(() => as(page), (e) => e.code === "SIGN_IN_REQUIRED", page);
+});
+
+test("only email sign-ins and admins may start an upload; RSVP-only link sessions may not (re-audit)", async () => {
+  const f = await fixture();
+  const linkCookie = (await f.app.dispatch({
+    path: "/api/invitation-session",
+    method: "POST",
+    body: { token: f.guestToken },
+    headers: { origin },
+  })).setCookie.split(";")[0];
+  assert.equal(await f.app.canUpload(linkCookie), false);
+  assert.equal(await f.app.canUpload("__session=" + token()), false);
+  await f.publicPost("auth/email/request", { email: "test@example.com" });
+  const s = await f.publicPost("auth/email/verify", { token: linkOf(f.sent.at(-1)) });
+  assert.equal(await f.app.canUpload(s.setCookie.split(";")[0]), true);
 });
 
 test("a guest's sign out everywhere ends guest sign-ins only, never that person's admin session (re-audit)", async () => {

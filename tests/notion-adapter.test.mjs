@@ -239,3 +239,12 @@ test("Additional Emails parse into lowercase sign-in addresses", () => {
   p.properties["Additional Emails"] = { rich_text: [{ plain_text: "saulpatinojr@hotmail.com,jess@example.com\nsis s@x" }] };
   assert.deepEqual(normalizeInvitation(p).additionalEmails, ["saulpatinojr@hotmail.com", "jess@example.com"]);
 });
+
+test("a row says whether the admin columns exist, so a renamed column is not read as unticked (re-audit)", () => {
+  const p = page("0");
+  p.properties.Email = { email: null };
+  p.properties["Administrator Eligible"] = { checkbox: false };
+  assert.equal(normalizeInvitation(p).adminColumnsPresent, true, "empty values still count as present");
+  delete p.properties["Administrator Eligible"];
+  assert.equal(normalizeInvitation(p).adminColumnsPresent, false);
+});
