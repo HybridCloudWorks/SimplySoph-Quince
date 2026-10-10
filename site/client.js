@@ -106,17 +106,9 @@ const messages = {
     "Email sign-in is not open yet. Please contact the family.",
     "El acceso por correo aún no está disponible. Contacta a la familia.",
   ],
-  EMAIL_SIGN_IN_REQUIRED: [
-    "This invitation is registered. Use your email to request a sign-in link.",
-    "Esta invitación está registrada. Usa tu correo para solicitar un enlace de acceso.",
-  ],
   EMAIL_LINK_INVALID: [
     "This link is expired or already used. Request a new sign-in link.",
     "Este enlace venció o ya se utilizó. Solicita uno nuevo.",
-  ],
-  RSVP_FIRST: [
-    "Save your RSVP before registering your email.",
-    "Guarda tu respuesta antes de registrar tu correo.",
   ],
   PAGE_NOT_ALLOWED: [
     "The family has not granted your account access to this page.",
@@ -127,8 +119,8 @@ const messages = {
     "Solo el propietario del sitio puede hacer esto.",
   ],
   SSO_NO_ACCOUNT: [
-    "No registered invitation uses this email. Open your invitation link and register your email first, or sign in with the email you registered.",
-    "Ninguna invitación registrada usa este correo. Abre tu enlace de invitación y registra tu correo primero, o entra con el correo que registraste.",
+    "This email isn't on the guest list. Use the email the family has for your household, or contact the family to add it.",
+    "Este correo no está en la lista de invitados. Usa el correo que la familia tiene de tu hogar o pide a la familia que lo agregue.",
   ],
   SSO_ACCOUNT_CHANGED: [
     "This email is linked to a different Microsoft or Google account. Use the emailed sign-in link instead, or contact the family.",

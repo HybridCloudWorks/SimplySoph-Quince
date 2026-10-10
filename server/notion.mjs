@@ -21,7 +21,12 @@ export function normalizeInvitation(page) {
     id: page.id,
     name: text(p.Guest),
     capacity: { adultsTeens: adults ?? null, kids },
-    email: p.Email?.email ?? "",
+    // Sign-in identity: the row's Email plus any Additional Emails (comma separated).
+    email: (p.Email?.email ?? "").trim().toLowerCase(),
+    additionalEmails: text(p["Additional Emails"])
+      .split(/[\s,;]+/)
+      .map((v) => v.trim().toLowerCase())
+      .filter((v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)),
     phone: p.Phone?.phone_number ?? "",
     administratorEligible: p["Administrator Eligible"]?.checkbox === true,
     role: p.Role?.select?.name ?? "",
@@ -63,14 +68,7 @@ export const projectionSchema = {
   "SMS Consent": { checkbox: {} },
   "SMS Consent Date": { date: {} },
   "SMS Opt Out": { checkbox: {} },
-  "Website RSVP": {
-    select: {
-      options: [
-        { name: "Attending", color: "green" },
-        { name: "Declined", color: "red" },
-      ],
-    },
-  },
+  "Additional Emails": { rich_text: {} },
   "Website response ID": { rich_text: {} },
   "Website response at": { date: {} },
   "Ceremony adults": { number: {} },
@@ -83,7 +81,6 @@ export const projectionSchema = {
   "Website phone": { phone_number: {} },
   "Website address": { rich_text: {} },
   "Website requests": { rich_text: {} },
-  "Website account": { rich_text: {} },
 };
 // 429 means Notion did nothing, so every request may retry it. Other transient
 // failures retry only for reads, queries and idempotent PATCHes: a retried page
@@ -339,12 +336,13 @@ export function notionClient({
         r = (value) => ({
           rich_text: value ? [{ text: { content: value } }] : [],
         });
+      // The family's own RSVP column: Yes when anyone attends, otherwise No.
       const properties = {
-        "Website RSVP": {
+        RSVP: {
           select: {
             name: Object.values(a).some((v) => v.adultsTeens + v.kids > 0)
-              ? "Attending"
-              : "Declined",
+              ? "Yes"
+              : "No",
           },
         },
         "Website response ID": r(response.id),
@@ -386,22 +384,6 @@ export function notionClient({
               ? [{ text: { content: contact.address } }]
               : [],
           },
-        },
-      });
-    },
-    async projectAccount(id, account) {
-      await this.read(id);
-      const content = JSON.stringify({
-        name: account.name,
-        email: account.email,
-        active: account.active,
-        deletedAt: account.deletedAt || null,
-        permissions: account.permissions,
-        verifiedAt: new Date(account.verifiedAt).toISOString(),
-      });
-      await call("pages/" + id, "PATCH", {
-        properties: {
-          "Website account": { rich_text: [{ text: { content } }] },
         },
       });
     },

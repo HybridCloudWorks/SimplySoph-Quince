@@ -33,8 +33,7 @@ Every variable `server/start.mjs` reads. Secrets come from **pinned** Secret Man
 | `ADMIN_GOOGLE_CLIENT_ID` | Live | No | — | Web OAuth client; authorized origin = `PUBLIC_ORIGIN`. Also used for guest Google sign-in on `/account/` |
 | `MICROSOFT_CLIENT_ID` | No | No | empty → Microsoft sign-in hidden | Application (client) ID of the **Mis XV sign-in** Entra app (single-page app, no secret; see Provisioning 7). Created Oct 9, 2026: `7a448a2b-1b47-4423-a92d-2d840d8b0df0` |
 | `MICROSOFT_TENANT_ID` | With `MICROSOFT_CLIENT_ID` | No | — | `83d9aa10-e1de-455e-a9b8-1cc73e99685a` (simplysoph.com). Work accounts from any other organization are refused; personal Microsoft accounts are always accepted |
-| `ADMIN_EMAILS` | Live | No | — | Owners (break-glass role, comma-separated). Removing an email invalidates their sessions |
-| `ADMIN_DELEGATE_EMAILS` | No | No | empty | Delegates: email link + MFA; also need **Administrator Eligible** on their Notion row, and an owner must allow their first authenticator setup (Guest Access → Authenticator setup) |
+| `ADMIN_EMAILS` | Live | No | — | The break-glass owner (one address): the only admin outside Notion. Every other administrator is a Notion row with **Administrator Eligible** ticked ([access model](docs/v1/access-model.md)) |
 | `NOTIFICATION_EMAILS` | No | No | `ADMIN_EMAILS` | All of these receive generic review notifications |
 | `M365_TENANT_ID`, `M365_CLIENT_ID` | Live | No | — | Entra app with Exchange **application RBAC** `Mail.Send` scoped to the event mailbox |
 | `M365_CLIENT_SECRET` | Live | **Yes** | — | Same app; expiry must cover the event |

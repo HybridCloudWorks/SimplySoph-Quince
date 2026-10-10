@@ -116,15 +116,15 @@ export function googleVerifier(clientId, allowEmails) {
     if (!sameNonce(p.nonce, expectedNonce)) throw error(401, "SIGN_IN_FAILED");
     if (
       !p.email_verified ||
-      !allowEmails.includes(p.email?.toLowerCase()) ||
-      (!p.email.endsWith("@gmail.com") && !p.hd)
+      (allowEmails && !allowEmails.includes(p.email?.toLowerCase())) ||
+      (!p.email?.endsWith("@gmail.com") && !p.hd)
     )
       throw error(403, "ADMIN_NOT_ALLOWED");
     return { id: p.sub, email: p.email.toLowerCase() };
   };
 }
 // Guest sign-in with Google: any verified Gmail or Workspace address. The caller
-// maps it to a registered guest account; it never grants administration.
+// matches it to the guest list in Notion; it never grants administration.
 export function googleIdentityVerifier(clientId) {
   const client = new OAuth2Client();
   return async (credential, expectedNonce) => {

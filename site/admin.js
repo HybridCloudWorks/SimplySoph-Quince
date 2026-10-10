@@ -110,17 +110,13 @@ async function attempt(method, fn) {
     if (!accessNote(method, e)) notify(e.message);
   }
 }
+addEventListener("hashchange", () => {
+  if (view === "admin/login") location.reload();
+});
 async function login() {
   const session = await api("session");
   if (session.kind === "admin") {
     location.assign("/admin/");
-    return;
-  }
-  if (session.verified && session.permissions.includes("admin")) {
-    root.innerHTML =
-      '<p>Verify your authenticator to open the administrator pages.</p><button id="step-up" class="button burgundy">Continue with verified email</button><div id="mfa"></div>';
-    document.querySelector("#step-up").onclick = () =>
-      attempt("account", async () => showMfa(await api("auth/step-up", {})));
     return;
   }
   const microsoft = microsoftReturn();
@@ -217,90 +213,47 @@ function showMfa(data) {
     location.assign("/admin/");
   });
 }
+// Who can sign in. Notion decides: tick "Administrator Eligible" on a person's
+// row (with their email) to make them an administrator, untick to remove them.
+// Guests sign in with the email on their household's row. Nothing here grants
+// access; the owner can only reset a lost authenticator.
 async function accountAccess() {
-  const data = await api("admin/accounts"),
-    labels = {
-      gifts: "Legacy private gift notes",
-      padrinos: "Godparents / sponsors",
-      costs: "Costs",
-      admin: "Family administration (MFA required)",
-    };
-  root.innerHTML = `<p>Each household registers one verified contact account after its RSVP. Checked pages are available; unchecked pages are denied by the server. Only the site owner can grant or remove full administration, and the household must first be marked Administrator Eligible in Notion. Eligibility alone does not grant access. Deleted accounts can be restored. The registry is public and does not require page access.</p><div class="cards">${
-    data.accounts
+  const data = await api("admin/accounts");
+  const when = (t) => (t ? esc(new Date(t).toLocaleString()) : "—");
+  root.innerHTML = `<section class="card"><h2>Administrators</h2><p>Administrators are managed in Notion. To add someone, tick <strong>Administrator Eligible</strong> on their row and make sure the row has their email. To remove them, untick it; they are signed out on their next click. Everyone sets up an authenticator app the first time they sign in.</p><div class="table-wrap"><table><thead><tr><th>Name</th><th>Email</th><th>Authenticator</th>${data.owner ? "<th></th>" : ""}</tr></thead><tbody>${data.administrators
+    .map(
+      (a) =>
+        `<tr><td>${esc(a.name)}${a.owner ? " (outside Notion)" : ""}</td><td>${esc(a.email)}</td><td>${a.authenticator ? "Set up" : "Not yet"}</td>${data.owner ? `<td>${!a.owner && a.authenticator ? `<button type="button" class="button" data-reset="${esc(a.email)}">Reset authenticator</button>` : ""}</td>` : ""}</tr>`,
+    )
+    .join("")}</tbody></table></div>${data.flaggedWithoutEmail.length ? `<p class="notice">These rows are ticked but have no email, so they can't sign in: ${data.flaggedWithoutEmail.map(esc).join(", ")}.</p>` : ""}<div id="reset-panel"></div></section><section class="card"><h2>Guest sign-in</h2><p>Guests sign in with the email the family has for their household in Notion (or a comma-separated <strong>Additional Emails</strong> column). ${data.missingEmails ? `<strong>${data.missingEmails} of ${data.households}</strong> households have no email yet, so they can RSVP with their invitation link but can't sign in for photos and messages.` : "Every household has an email."}</p><div class="table-wrap"><table><thead><tr><th>Household</th><th>Email</th><th>First sign-in</th><th>Last sign-in</th></tr></thead><tbody>${
+    data.guests
       .map(
-        (a) =>
-          `<article class="card"><form class="access-form" data-id="${esc(a.id)}"><h2>${esc(a.name)}</h2><p>${esc(a.email)}</p><p>${a.deletedAt ? "Deleted - Access Revoked" : a.administratorEligible ? "Administrator Eligible In Notion" : "Not Eligible For Administration"}</p><label class="check"><input type="checkbox" name="active" ${a.active ? "checked" : ""}${a.deletedAt || (!data.owner && a.permissions.includes("admin")) ? " disabled" : ""}>Account enabled</label><fieldset><legend>Page access</legend>${data.permissions
-            .filter((p) => p !== "gifts")
-            .map(
-              (p) =>
-                `<label class="check"><input type="checkbox" name="permission" value="${p}" ${a.permissions.includes(p) ? "checked" : ""}${a.deletedAt || (p === "admin" && (!data.owner || (!a.administratorEligible && !a.permissions.includes("admin")))) ? " disabled" : ""}>${labels[p]}</label>`,
-            )
-            .join(
-              "",
-            )}</fieldset>${data.owner && !a.deletedAt && !a.permissions.includes("admin") && a.administratorEligible ? field("Your authenticator code (needed only when granting administration)", "code", { max: 6, autocomplete: "one-time-code" }) : ""}${a.deletedAt ? "</form>" : formEnd("Save Access")}${data.owner && !a.protectedOwner ? `<button type="button" data-account-action="${a.deletedAt ? "restore" : "delete"}" data-id="${esc(a.id)}">${a.deletedAt ? "Restore Account" : "Delete Account"}</button>` : ""}</article>`,
+        (g) =>
+          `<tr><td>${esc(g.name)}</td><td>${esc(g.email)}</td><td>${when(g.verifiedAt)}</td><td>${when(g.lastSignInAt)}</td></tr>`,
       )
-      .join("") || "<p>No verified guest accounts yet.</p>"
-  }</div>`;
-  for (const button of root.querySelectorAll("[data-account-action]"))
-    button.onclick = () =>
-      run(async () => {
-        const a = data.accounts.find((a) => a.id === button.dataset.id),
-          action = button.dataset.accountAction;
-        if (
-          !confirm(
-            action === "delete"
-              ? "Delete this account? Access and sessions will be revoked. You can restore it later."
-              : "Restore this account? Administration must be granted again separately.",
-          )
-        )
-          return;
-        await api("admin/accounts/" + action, { id: a.id, version: a.version });
+      .join("") || '<tr><td colspan="4">No guest has signed in yet.</td></tr>'
+  }</tbody></table></div></section>`;
+  for (const button of root.querySelectorAll("[data-reset]"))
+    button.onclick = () => {
+      const panel = root.querySelector("#reset-panel");
+      panel.innerHTML = `<form id="reset-form" class="card"><h3>Reset ${esc(button.dataset.reset)}’s authenticator</h3><p>Use this if they lost their phone. Their current authenticator and admin sessions stop working, and they set up a new one with a QR code at their next sign-in.</p>${field("Your authenticator code", "code", { required: true, max: 6, autocomplete: "one-time-code" })}${formEnd("Reset authenticator")}</form>`;
+      submit(panel.querySelector("#reset-form"), async (f) => {
+        await api("admin/authenticator-reset", {
+          email: button.dataset.reset,
+          code: f.get("code").trim(),
+        });
+        notify(`Authenticator reset for ${button.dataset.reset}.`);
         await accountAccess();
-        notify(action === "delete" ? "Account Deleted" : "Account Restored");
       });
-  for (const form of root.querySelectorAll(".access-form"))
-    submit(form, async (f) => {
-      const a = data.accounts.find((a) => a.id === form.dataset.id),
-        permissions = f.getAll("permission");
-      if (a.permissions.includes("gifts")) permissions.push("gifts");
-      if (!data.owner && a.permissions.includes("admin"))
-        permissions.push("admin");
-      await api("admin/accounts", {
-        id: a.id,
-        version: a.version,
-        active:
-          !data.owner && a.permissions.includes("admin")
-            ? a.active
-            : f.has("active"),
-        permissions,
-        ...(f.get("code") ? { code: f.get("code").trim() } : {}),
-      });
-      await accountAccess();
-      notify(
-        permissions.includes("admin") && !a.permissions.includes("admin")
-          ? "Administration granted. Next, use Authenticator setup below to let them set up their authenticator within 24 hours."
-          : "Access saved. Changes apply to current sessions.",
-      );
-    });
-  if (data.owner) await authenticatorSetup();
-}
-// Owner tools: open a 24-hour authenticator-setup window for a delegate or a
-// promoted guest (optionally resetting a lost authenticator), plus history.
-async function authenticatorSetup() {
-  const r = await api("admin/role-events");
-  const section = document.createElement("section");
-  section.className = "card";
-  section.innerHTML = `<h2>Authenticator setup</h2><p>Family administrators other than the site owner can set up their authenticator only within 24 hours after you allow it here. Allow it, then tell them to sign in at /admin/login/ right away. Use reset if they lost their phone: their current authenticator and admin sessions stop working.</p><form id="mfa-setup">${field("Administrator email", "email", { type: "email", required: true })}<label class="check"><input type="checkbox" name="reset">Reset their existing authenticator first</label>${field("Your authenticator code", "code", { required: true, max: 6, autocomplete: "one-time-code" })}${formEnd("Allow setup for 24 hours")}</form>${r.pendingSetups.length ? `<h3>Open setup windows</h3><ul>${r.pendingSetups.map((p) => `<li>${esc(p.email)} until ${esc(new Date(p.until).toLocaleString())}</li>`).join("")}</ul>` : ""}<h3>Role and authenticator history</h3>${r.events.length ? `<ul>${r.events.map((e) => `<li>${esc(new Date(e.at).toLocaleString())} · ${esc(e.change)} · ${esc(e.target)}</li>`).join("")}</ul>` : "<p>No changes recorded yet.</p>"}`;
-  root.append(section);
-  submit(section.querySelector("#mfa-setup"), async (f) => {
-    const result = await api("admin/mfa-setup", {
-      email: f.get("email"),
-      code: f.get("code").trim(),
-      reset: f.has("reset"),
-    });
-    notify(`Setup allowed until ${new Date(result.allowedUntil).toLocaleString()}.`);
-    await accountAccess();
-  });
+      panel.querySelector("input").focus();
+    };
+  if (data.owner) {
+    const r = await api("admin/role-events");
+    root.insertAdjacentHTML(
+      "beforeend",
+      `<section class="card"><h2>Authenticator history</h2>${r.events.length ? `<ul>${r.events.map((e) => `<li>${esc(new Date(e.at).toLocaleString())} · ${esc({ "authenticator-set-up": "Authenticator set up", "authenticator-reset": "Authenticator reset" }[e.change] || e.change)} · ${esc(e.target)}</li>`).join("")}</ul>` : "<p>No changes recorded yet.</p>"}</section>`,
+    );
+  }
 }
 async function dashboard() {
   const d = await api("admin/dashboard");
@@ -452,7 +405,7 @@ async function moderation() {
   const d = await api("admin/moderation"),
     photos = view === "admin/photos",
     rows = photos ? d.photos : d.messages;
-  root.innerHTML = `<p>${photos ? "Photos and videos are visible only to registered guests after approval. Rejected items remain hidden." : "Contact messages always remain private. Guestbook messages require approval before publication."}</p><div class="cards">${rows.map((r) => `<article class="card">${photos ? `${r.kind === "video" ? `<video controls playsinline preload="metadata" src="/api/photo/${esc(r.id)}"></video>` : `<img src="/api/photo/${esc(r.id)}" alt="Pending photo">`}<p>${esc(r.caption)}</p>` : `<h3>${esc(r.name)}</h3><p>${esc(r.topic || "")}</p><p>${esc(r.email || "")}</p><p>${esc(r.text)}</p><span class="badge">${esc(r.kind)}</span>`}<p>Status: ${esc(r.state)}</p>${photos ? `<label>Album<select data-media-album="${esc(r.id)}">${(d.albums || []).map((a) => `<option value="${esc(a.id)}"${a.id === (r.album || "event") ? " selected" : ""}>${esc(a.en)}</option>`).join("")}</select></label>` : ""}<div class="row-actions">${r.kind !== "contact" ? button("Approve", "approve", r.id) : ""}${button("Remove from display", "reject", r.id)}</div></article>`).join("") || "<p>No submissions yet.</p>"}</div>`;
+  root.innerHTML = `<p>${photos ? "Photos and videos are visible only to signed-in guests after approval. Rejected items remain hidden." : "Contact messages always remain private. Guestbook messages require approval before publication."}</p><div class="cards">${rows.map((r) => `<article class="card">${photos ? `${r.kind === "video" ? `<video controls playsinline preload="metadata" src="/api/photo/${esc(r.id)}"></video>` : `<img src="/api/photo/${esc(r.id)}" alt="Pending photo">`}<p>${esc(r.caption)}</p>` : `<h3>${esc(r.name)}</h3><p>${esc(r.topic || "")}</p><p>${esc(r.email || "")}</p><p>${esc(r.text)}</p><span class="badge">${esc(r.kind)}</span>`}<p>Status: ${esc(r.state)}</p>${photos ? `<label>Album<select data-media-album="${esc(r.id)}">${(d.albums || []).map((a) => `<option value="${esc(a.id)}"${a.id === (r.album || "event") ? " selected" : ""}>${esc(a.en)}</option>`).join("")}</select></label>` : ""}<div class="row-actions">${r.kind !== "contact" ? button("Approve", "approve", r.id) : ""}${button("Remove from display", "reject", r.id)}</div></article>`).join("") || "<p>No submissions yet.</p>"}</div>`;
   if (photos)
     root.insertAdjacentHTML(
       "afterbegin",

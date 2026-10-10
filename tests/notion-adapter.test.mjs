@@ -19,7 +19,7 @@ test("Notion child counts parse deliberately and blanks/nonnumeric values block 
   for (const value of ["", "maybe", "-1", "1.5", "100"])
     assert.equal(normalizeInvitation(page(value)).validCapacity, false);
 });
-test("Notion projection preserves original invitation counts and RSVP delivery status", async () => {
+test("Notion projection preserves original invitation counts and writes the family's RSVP column", async () => {
   const requests = [];
   const client = notionClient({
     token: "fixture-secret",
@@ -50,7 +50,9 @@ test("Notion projection preserves original invitation counts and RSVP delivery s
   const payload = JSON.parse(requests.at(-1).options.body).properties;
   assert.ok(!("Kids" in payload));
   assert.ok(!("Adults/Teens" in payload));
-  assert.ok(!("RSVP" in payload));
+  // Owner decision (Oct 10, 2026): the family's own RSVP column gets Yes/No.
+  assert.equal(payload.RSVP.select.name, "Yes");
+  assert.ok(!("Website RSVP" in payload));
   assert.equal(payload["Dinner kids"].number, 1);
 });
 
@@ -224,4 +226,16 @@ test("429 is retried for any request; 5xx is never retried for page creates", as
     (e) => e.code === "NOTION_429",
   );
   assert.equal(paused.calls.length, 1);
+});
+
+test("Additional Emails parse into lowercase sign-in addresses", () => {
+  const p = page("0");
+  p.properties.Email = { email: " Main@Example.com " };
+  p.properties["Additional Emails"] = { rich_text: [{ plain_text: "Grandma@example.com, not-an-email; aunt@example.org" }] };
+  const row = normalizeInvitation(p);
+  assert.equal(row.email, "main@example.com");
+  assert.deepEqual(row.additionalEmails, ["grandma@example.com", "aunt@example.org"]);
+  // Separators are commas, semicolons or whitespace; letters are never separators.
+  p.properties["Additional Emails"] = { rich_text: [{ plain_text: "saulpatinojr@hotmail.com,jess@example.com\nsis s@x" }] };
+  assert.deepEqual(normalizeInvitation(p).additionalEmails, ["saulpatinojr@hotmail.com", "jess@example.com"]);
 });

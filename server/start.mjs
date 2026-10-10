@@ -83,10 +83,6 @@ if (env.EVENT_BUCKET) {
       "Set both SCHEDULER_AUDIENCE and SCHEDULER_SERVICE_ACCOUNT, or neither",
     );
   app = createApplication({
-    adminDelegateEmails: (env.ADMIN_DELEGATE_EMAILS || "")
-      .split(",")
-      .map((s) => s.trim().toLowerCase())
-      .filter(Boolean),
     whatsappTransport,
     whatsappTemplates: JSON.parse(env.WHATSAPP_TEMPLATES_JSON || "[]"),
     whatsappWebhook: {
@@ -131,7 +127,8 @@ if (env.EVENT_BUCKET) {
       provider: env.MAIL_PROVIDER || "m365",
       fallback: env.SENDGRID_FALLBACK_ENABLED === "true",
     }),
-    verifyGoogle: googleVerifier(env.ADMIN_GOOGLE_CLIENT_ID, adminEmails),
+    // Any verified Google email; Notion (or ADMIN_EMAILS) decides who is an admin.
+    verifyGoogle: googleVerifier(env.ADMIN_GOOGLE_CLIENT_ID, null),
     // Optional: Microsoft sign-in appears only when MICROSOFT_CLIENT_ID is set.
     verifyMicrosoft: microsoftVerifier({
       clientId: env.MICROSOFT_CLIENT_ID,

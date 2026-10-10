@@ -29,6 +29,8 @@ Admin Mode is largely built, and the server enforces it on every request:
 
 ## Target model
 
+> **Superseded on Oct 10, 2026** by [access-model.md](access-model.md): admin access now comes from the Notion "Administrator Eligible" box, checked on every request.
+
 **Single source of truth: the ledger.** Notion "Administrator Eligible" becomes an informational projection. It is no longer half of the grant, because anyone who can edit that Notion database would otherwise hold part of admin access.
 
 | Role | How assigned | Permissions |

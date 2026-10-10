@@ -3,7 +3,8 @@ import { audience, recipientName, validEmail } from "./audience.mjs";
 import { createWhatsapp } from "./whatsapp.mjs";
 import { createSms, smsCompliantText, smsPreview } from "./sms.mjs";
 import { createPlanning } from "./planning.mjs";
-import { createAdminEmail, adminIdentity } from "./admin-email.mjs";
+import { createAdminEmail } from "./admin-email.mjs";
+import { createAdminAccess } from "./admin-access.mjs";
 import { enrollment } from "./mfa-enrollment.mjs";
 import { createNotifications } from "./notifications.mjs";
 import { createMailBatches } from "./mail-batches.mjs";
@@ -36,12 +37,7 @@ import {
   longDate,
 } from "../emails/templates.mjs";
 import { event as eventInfo } from "../site/content.mjs";
-import {
-  createAccounts,
-  accountActive,
-  allowedPages,
-  pagePermissions,
-} from "./accounts.mjs";
+import { createAccounts, accountActive } from "./accounts.mjs";
 const events = ["ceremony", "dinner", "dance"];
 const safeText = (s, max = 1000) => {
   if (
@@ -118,7 +114,6 @@ export function createApplication({
   clientId = "",
   deadline = eventInfo.deadline,
   adminEmails = [],
-  adminDelegateEmails = [],
   notificationEmails = adminEmails,
   now = Date.now,
   mailSleep,
@@ -151,16 +146,12 @@ export function createApplication({
     origin,
     now,
   });
-  const authorizedAdminEmails = [
-    ...new Set([...adminEmails, ...adminDelegateEmails]),
-  ];
+  // Administrators: the break-glass owner(s) in ADMIN_EMAILS plus anyone whose
+  // Notion row has "Administrator Eligible" ticked. Checked on every request.
+  const admins = createAdminAccess({ notion, adminEmails, now });
+  // Owner-only actions (schema, import, authenticator resets) stay with ADMIN_EMAILS.
   const ownerSession = (session) =>
-    !session.accountId && adminEmails.includes(session.email);
-  // Owners (ADMIN_EMAILS) set up their own authenticator. Anyone else may set
-  // one up only inside a 24-hour window an owner opens, so whoever first
-  // completes a delegate's sign-in cannot silently claim that admin account.
-  const setupAllowed = (s, email) =>
-    adminEmails.includes(email) || s.mfaSetup?.[hash(email)]?.expiresAt > now();
+    !session.rowId && adminEmails.includes(session.email);
   // SSO tickets are sealed and stateless. The nonce inside goes to Microsoft and
   // must come back in the ID token; it is spent in the transaction that signs in.
   // The purpose keeps admin and guest sign-in apart: a guest ticket cannot open
@@ -192,8 +183,9 @@ export function createApplication({
   // Guest SSO: the first sign-in binds the provider account to the email. A
   // different provider account later presenting the same email (a recycled
   // address) is refused; the emailed sign-in link still works. Administrators are
-  // linked separately, and only after their authenticator code passes
-  // (/api/auth/mfa); an owner's authenticator reset clears that link.
+  // linked under a separate "admin-microsoft:" key, only after their
+  // authenticator code passes (/api/auth/mfa), so a guest sign-in never links an
+  // account for admin use. An owner's authenticator reset clears that link.
   function bindSso(s, identity) {
     s.ssoBindings ??= {};
     const k = hash(identity.provider + ":" + identity.email),
@@ -222,52 +214,23 @@ export function createApplication({
     s.notifications ??= {};
     s.notifications[id] = { id, kind: "security", title, at: now(), read: false, emailState: "none" };
   }
-  async function checkAdministratorEligibility(accountId, address) {
-    if (!accountId) {
-      if (
-        adminDelegateEmails.includes(address) &&
-        !adminEmails.includes(address)
-      ) {
-        // Authorization reads Notion fresh: a revoked eligibility must apply at once.
-        const rows = await notion.list({ fresh: true });
-        if (
-          !rows.some(
-            (r) =>
-              !r.archived &&
-              r.administratorEligible &&
-              r.email?.trim().toLowerCase() === address,
-          )
-        )
-          throw error(403, "ADMIN_NOT_ELIGIBLE");
-      }
-      return;
-    }
-    const a = (await ledger.read()).accounts?.[accountId];
-    if (!a || !a.permissions.includes("admin"))
-      throw error(403, "ADMIN_NOT_ALLOWED");
-    const row = await notion.read(a.householdId, { fresh: true });
-    if (row.archived || !row.administratorEligible)
-      throw error(403, "ADMIN_NOT_ELIGIBLE");
-  }
+  // Admin sessions are re-checked against Notion on every request (dispatch).
+  // Guest sessions are either RSVP-only (invitation link or code) or a verified
+  // email sign-in (accountId); anything else, such as an older link session
+  // without a scope, is no longer valid.
   const sessionValid = (s, row) =>
     row &&
     row.expiresAt > now() &&
     (row.kind === "admin"
-      ? row.accountId
-        ? accountActive(s, s.accounts?.[row.accountId]) &&
-          allowedPages(s, row).includes("admin")
-        : authorizedAdminEmails.includes(row.email)
+      ? !!row.rowId || adminEmails.includes(row.email)
       : s.invitations[row.householdId]?.active &&
         s.invitations[row.householdId].generation === row.generation &&
         (row.accountId
           ? accountActive(s, s.accounts?.[row.accountId])
-          : row.scope === "rsvp" ||
-            !Object.values(s.accounts || {}).some(
-              (a) => a.householdId === row.householdId,
-            )));
-  // After a household registers, its private link still opens the RSVP, but
-  // only the RSVP: contact details stay hidden and every other route treats the
-  // session as signed out. Account pages need the verified email sign-in.
+          : row.scope === "rsvp"));
+  // An invitation link or typed code opens the RSVP and nothing else: contact
+  // details stay hidden and every other route treats the session as signed out.
+  // Uploads, messages and edits need the email sign-in (owner's access model).
   const rsvpScopeRoutes = new Set([
     "GET /api/session",
     "GET /api/invitation",
@@ -360,10 +323,7 @@ export function createApplication({
       return null;
     row.syncLease = { owner, until: now() + 90000 };
     const response = s.responses[row.latestSubmissionId];
-    const account = Object.values(s.accounts || {}).find(
-      (a) => a.householdId === householdId,
-    );
-    return structuredClone({ response, profile, account });
+    return structuredClone({ response, profile });
   }
   async function projectSync(householdId, task) {
     try {
@@ -373,7 +333,6 @@ export function createApplication({
           contact: task.profile?.contact || task.response.contact,
         });
       else await notion.projectContact(householdId, task.profile.contact);
-      if (task.account) await notion.projectAccount(householdId, task.account);
       return null;
     } catch (e) {
       return e.code || "NOTION_UNAVAILABLE";
@@ -383,14 +342,10 @@ export function createApplication({
     const row = s.invitations[householdId];
     if (row.syncLease?.owner === owner) delete row.syncLease;
     // Always leave a newer response pending after an old projection finishes.
-    const account = Object.values(s.accounts || {}).find(
-      (a) => a.householdId === householdId,
-    );
     if (
       failure ||
       (row.latestSubmissionId || null) !== (task.response?.id || null) ||
-      s.profiles?.[householdId]?.version !== task.profile?.version ||
-      account?.version !== task.account?.version
+      s.profiles?.[householdId]?.version !== task.profile?.version
     ) {
       row.syncState = "pending";
       row.syncError = failure;
@@ -567,7 +522,7 @@ export function createApplication({
   const adminEmail = createAdminEmail({
     ledger,
     mailer,
-    adminEmails: authorizedAdminEmails,
+    admins,
     origin,
     now,
   });
@@ -667,7 +622,7 @@ export function createApplication({
         messages: Object.values(s.messages)
           .filter((r) => r.kind === "guestbook" && r.state === "approved")
           .map((r) => ({ id: r.id, name: r.name, text: r.text })),
-        photos: [], // Media metadata and bytes require a registered guest or administrator.
+        photos: [], // Media metadata and bytes require a signed-in guest or administrator.
       };
     }
     if (path === "/api/auth/admin-email/request" && method === "POST")
@@ -713,18 +668,11 @@ export function createApplication({
         now(),
       );
       const microsoft = identity.provider === "microsoft",
-        binding = microsoft ? hash("microsoft:" + identity.email) : null;
-      // Microsoft sign-ins reach the same administrators as the emailed link:
-      // owners, delegates and guest accounts holding the admin permission.
-      let who = identity;
-      if (microsoft) {
-        who = adminIdentity(
-          await ledger.read(),
-          identity.email,
-          authorizedAdminEmails,
-        );
-        if (!who) throw error(403, "ADMIN_NOT_ALLOWED");
-      }
+        binding = microsoft ? hash("admin-microsoft:" + identity.email) : null;
+      // Google and Microsoft reach the same administrators as the emailed link
+      // (which already resolved them): the owner, or a ticked Notion row.
+      let who = nonce ? await admins.find(identity.email) : identity;
+      if (!who) throw error(403, "ADMIN_NOT_ALLOWED");
       // Microsoft's proof of a second factor ("mfa" in amr) replaces the code
       // only for an administrator who already has an authenticator AND whose
       // Microsoft account was linked by an earlier sign-in that passed it. A
@@ -734,42 +682,35 @@ export function createApplication({
         microsoft &&
         identity.mfa &&
         s.ssoBindings?.[binding] === hash(identity.subject);
-      let eligible = false;
-      if (linked(await ledger.read())) {
-        await checkAdministratorEligibility(who.accountId, who.email);
-        eligible = true;
-      }
+      const eligible = linked(await ledger.read());
       const sessionToken = token(),
         csrf = token();
       const result = await ledger.transaction((s) => {
         if (nonce) spendNonce(s, nonce);
         for (const [id, c] of Object.entries(s.challenges))
           if (c.expiresAt <= now()) delete s.challenges[id];
-        if (!who.accountId) {
-          const existing = Object.entries(s.admins).find(
-            ([, a]) => a.email === who.email,
-          );
-          if (existing) who = { ...who, id: existing[0] };
-        }
+        // An authenticator set up earlier under another id is found by email.
+        const existing = Object.entries(s.admins).find(
+          ([, a]) => a.email === who.email,
+        );
+        if (existing) who = { ...who, id: existing[0] };
         const admin = s.admins[who.id];
         if (eligible && admin && linked(s)) {
-          const current = adminIdentity(s, identity.email, authorizedAdminEmails);
-          if (!current) throw error(403, "ADMIN_NOT_ALLOWED");
           pruneSessions(s, now());
           s.sessions[hash(sessionToken)] = {
             kind: "admin",
             actor: who.id,
             email: who.email,
             csrf,
-            ...(who.accountId ? { accountId: who.accountId } : {}),
+            ...(who.rowId ? { rowId: who.rowId } : {}),
             expiresAt: now() + 1800000,
           };
           audit(s, who.id, "admin-sign-in-microsoft-mfa", who.id, now());
           return { signedIn: true };
         }
+        // Anyone Notion makes an admin may set up an authenticator; the owner is
+        // told in the Notifications inbox when they do (see /api/auth/mfa).
         const secret = newMfaSecret();
-        if (!admin && !setupAllowed(s, who.email))
-          throw error(403, "MFA_SETUP_NOT_ALLOWED");
         s.challenges[hash(challenge)] = {
           ...who,
           // Linked to this email only after the authenticator code passes.
@@ -832,33 +773,20 @@ export function createApplication({
         await rateLimit(ledger, "mfa-unknown-challenge", 300, 900000, now());
         throw error(401, "SIGN_IN_AGAIN");
       }
-      await checkAdministratorEligibility(
-          pendingChallenge.accountId,
-          pendingChallenge.email,
-        );
+      const still = await admins.find(pendingChallenge.email);
+      if (!still) throw error(403, "ADMIN_NOT_ALLOWED");
       const sessionToken = token(),
         csrf = token();
       const outcome = await ledger.transaction((s) => {
         const c = s.challenges[hash(safeText(body.challenge, 100))];
         if (!c || c.expiresAt <= now() || c.attempts >= 5)
           throw error(401, "SIGN_IN_AGAIN");
-        if (
-          c.accountId
-            ? !accountActive(s, s.accounts?.[c.accountId]) ||
-              !allowedPages(s, c).includes("admin")
-            : !authorizedAdminEmails.includes(c.email)
-        )
-          throw error(403, "ADMIN_NOT_ALLOWED");
         c.attempts++;
         const existing = s.admins[c.id];
         const secret = unseal(existing?.secret || c.pendingSecret, key),
           step = verifyTotp(secret, body.code, now(), existing?.lastStep ?? -1);
         if (step === null) return { failed: true };
         if (!existing) {
-          // First authenticator setup: the owner's window must still be open,
-          // and it is used up so it cannot enroll a second device.
-          if (!setupAllowed(s, c.email)) throw error(403, "MFA_SETUP_NOT_ALLOWED");
-          delete s.mfaSetup?.[hash(c.email)];
           roleEvent(s, c.id, c.email, "authenticator-set-up");
           securityNote(s, `Authenticator set up for ${c.email}`);
         }
@@ -879,7 +807,7 @@ export function createApplication({
           actor: c.id,
           email: c.email,
           csrf,
-          ...(c.accountId ? { accountId: c.accountId } : {}),
+          ...(still.rowId ? { rowId: still.rowId } : {}),
           expiresAt: now() + 1800000,
         };
         delete s.challenges[hash(body.challenge)];
@@ -909,7 +837,7 @@ export function createApplication({
         throw error(401, "INVALID_INVITATION");
       }
       await rateLimit(ledger, hash("invite:" + row.id), 20, 900000, now());
-      // Typed codes (80-bit) stay closed after registration; 256-bit links reopen RSVP only.
+      // Links (256-bit) and typed codes (80-bit) both open the RSVP only.
       const viaCode = row.codeHash === fingerprint;
       const current = await notion.read(row.id, { fresh: true });
       if (current.archived || !current.validCapacity)
@@ -925,8 +853,6 @@ export function createApplication({
             !linkOpens(s, fingerprint, r))
         )
           throw error(401, "INVALID_INVITATION");
-        const registered = !!accounts.accountFor(s, row.id);
-        if (registered && viaCode) throw error(409, "EMAIL_SIGN_IN_REQUIRED");
         if (!r.openedAt) {
           r.openedAt = now();
           logEvent(s, now(), "invitation.opened", {
@@ -952,7 +878,7 @@ export function createApplication({
           kind: "guest",
           householdId: r.id,
           generation: r.generation,
-          ...(registered ? { scope: "rsvp" } : {}),
+          scope: "rsvp",
           csrf,
           expiresAt: now() + 1800000,
         };
@@ -960,6 +886,16 @@ export function createApplication({
       return { csrf, setCookie: cookie(value) };
     }
     const ctx = await context(req);
+    // Notion decides admin access: an unticked box ends every session of that
+    // admin on this request, before any route runs.
+    if (ctx.session?.kind === "admin" && !(await admins.stillAdmin(ctx.session))) {
+      const email = ctx.session.email;
+      await ledger.transaction((s) => {
+        for (const [k, v] of Object.entries(s.sessions))
+          if (v.kind === "admin" && v.email === email) delete s.sessions[k];
+      });
+      ctx.session = null;
+    }
     if (
       ctx.session?.scope === "rsvp" &&
       !rsvpScopeRoutes.has(method + " " + path)
@@ -980,7 +916,6 @@ export function createApplication({
         csrf: session?.csrf ?? null,
         verified: !!session?.accountId,
         scope: session?.scope ?? null,
-        permissions: allowedPages(ctx.state, session),
         owner: session?.kind === "admin" && ownerSession(session),
       };
     const requireAuth = (kind) => {
@@ -1005,95 +940,15 @@ export function createApplication({
           })),
       };
     }
-    if (path === "/api/auth/email/request" && method === "POST") {
-      if (body.register === true) requireAuth("guest");
-      return accounts.request(body, session);
-    }
+    if (path === "/api/auth/email/request" && method === "POST")
+      return accounts.request(body);
     if (path === "/api/auth/email/verify" && method === "POST")
       return accounts.consume(body.token);
-    if (path === "/api/auth/step-up" && method === "POST") {
-      requireAuth("guest");
-      await checkAdministratorEligibility(session.accountId, session.email);
-      if (!allowedPages(ctx.state, session).includes("admin"))
-        throw error(403, "ADMIN_NOT_ALLOWED");
-      const challenge = token(),
-        secret = newMfaSecret();
-      const result = await ledger.transaction((s) => {
-        const a = s.accounts?.[session.accountId];
-        if (!accountActive(s, a) || !a.permissions.includes("admin"))
-          throw error(403, "ADMIN_NOT_ALLOWED");
-        const id = "account:" + a.id,
-          admin = s.admins[id];
-        if (!admin && !setupAllowed(s, a.email))
-          throw error(403, "MFA_SETUP_NOT_ALLOWED");
-        s.challenges[hash(challenge)] = {
-          id,
-          email: a.email,
-          accountId: a.id,
-          expiresAt: now() + 300000,
-          attempts: 0,
-          pendingSecret: admin ? null : seal(secret, key),
-        };
-        return admin ? null : a.email;
-      });
-      return {
-        challenge,
-        ...(result ? await enrollment(secret, result) : {}),
-      };
-    }
     if (path === "/api/account" && method === "GET") {
       requireAuth("guest");
       const a = ctx.state.accounts?.[session.accountId];
       return {
-        account: a
-          ? { name: a.name, email: a.email, permissions: a.permissions }
-          : null,
-      };
-    }
-    if (path.startsWith("/api/pages/") && method === "GET") {
-      requireAuth();
-      const page = path.slice(11);
-      if (!pagePermissions.includes(page) || page === "admin")
-        throw error(404, "NOT_FOUND");
-      if (
-        session.kind !== "admin" &&
-        !allowedPages(ctx.state, session).includes(page)
-      )
-        throw error(403, "PAGE_NOT_ALLOWED");
-      return {
-        page,
-        ...(page === "gifts"
-          ? { registries: siteSettings(ctx.state).registries }
-          : {}),
-        ...(["costs", "padrinos"].includes(page)
-          ? {
-              // Only the columns the page displays: no contact details, pledges or notes.
-              planning: Object.values(ctx.state.planning?.[page] || {})
-                .filter((r) => !r.deleted)
-                .map((r) =>
-                  page === "costs"
-                    ? {
-                        item: r.item,
-                        vendor: r.vendor,
-                        finalCost: r.finalCost,
-                        deposit: r.deposit,
-                        additionalPaid: r.additionalPaid,
-                        dueDate: r.dueDate,
-                      }
-                    : {
-                        name: r.name,
-                        gift: r.gift,
-                        contacted: r.contacted,
-                        status: r.status,
-                      },
-                ),
-            }
-          : {}),
-        content: ctx.state.privatePages?.[page] || {
-          en: "",
-          es: "",
-          links: [],
-        },
+        account: a ? { name: a.name, email: a.email } : null,
       };
     }
     if (path === "/api/logout" && method === "POST") {
@@ -1283,11 +1138,14 @@ export function createApplication({
         }
         current.latestSubmissionId = id;
         current.syncState = "pending";
-        if (data.contact.email)
+        // Receipts go only to a verified address: the signed-in email, or the
+        // household's Email in Notion. Never to an address typed in the form.
+        const receiptTo = session.email || row.email;
+        if (receiptTo)
           queue(s, {
             type: response.previousSubmissionId ? "update" : "receipt",
             household: row,
-            recipient: data.contact.email,
+            recipient: receiptTo,
             responseId: id,
             locale: current.locale || "en",
           });
@@ -1492,7 +1350,6 @@ export function createApplication({
     }
     if (path.startsWith("/api/admin/")) {
       requireAuth("admin");
-      await checkAdministratorEligibility(session.accountId, session.email);
       if (path === "/api/admin/records") return records(req, session);
       for (const id of [body.id, req.query?.id])
         if (
@@ -1562,213 +1419,74 @@ export function createApplication({
           row.read = true;
           return { saved: true };
         });
+      // Who can sign in. Administrators come from Notion ("Administrator
+      // Eligible") plus the break-glass owner; guests from their household's
+      // Email. Nothing on this page grants access: Notion does.
       if (path === "/api/admin/accounts" && method === "GET") {
-        const rows = await notion.list();
-        return {
-          accounts: Object.values(ctx.state.accounts || {}).map(
-            ({ emailKey, ...a }) => ({
-              ...a,
-              administratorEligible: rows.some(
-                (r) =>
-                  r.id === a.householdId &&
-                  !r.archived &&
-                  r.administratorEligible,
-              ),
-              protectedOwner: adminEmails.includes(a.email),
-            }),
+        const rows = (await notion.list({ fresh: true })).filter(
+            (r) => !r.archived,
           ),
-          permissions: pagePermissions,
+          enrolled = new Set(
+            Object.values(ctx.state.admins || {}).map((a) => a.email),
+          );
+        const administrators = [
+          ...adminEmails.map((email) => ({ email, name: "Site owner", owner: true })),
+          ...rows
+            .filter((r) => r.administratorEligible)
+            .flatMap((r) =>
+              [r.email, ...(r.additionalEmails || [])]
+                .filter(Boolean)
+                .map((email) => ({ email, name: r.name, owner: false })),
+            ),
+        ]
+          .filter((x, i, all) => all.findIndex((y) => y.email === x.email) === i)
+          .map((x) => ({ ...x, authenticator: enrolled.has(x.email) }));
+        return {
+          administrators,
+          flaggedWithoutEmail: rows
+            .filter((r) => r.administratorEligible && !r.email)
+            .map((r) => r.name),
+          missingEmails: rows.filter((r) => !r.email).length,
+          households: rows.length,
+          guests: Object.values(ctx.state.accounts || {})
+            .filter((a) => !a.deletedAt)
+            .map(({ id, name, email, householdId, verifiedAt, lastSignInAt }) => ({
+              id,
+              name,
+              email,
+              householdId,
+              verifiedAt,
+              lastSignInAt,
+            })),
           owner: ownerSession(session),
         };
       }
-      if (
-        ["/api/admin/accounts/delete", "/api/admin/accounts/restore"].includes(
-          path,
-        ) &&
-        method === "POST"
-      ) {
+      // Owner only: forget a lost authenticator, so that administrator sets up a
+      // new one (QR code) at their next sign-in. Needs the owner's current code.
+      if (path === "/api/admin/authenticator-reset" && method === "POST") {
         if (!ownerSession(session)) throw error(403, "OWNER_REQUIRED");
-        const restoring = path.endsWith("/restore");
-        const householdId = await ledger.transaction((s) => {
-          const a = s.accounts?.[body.id];
-          if (!a) throw error(404, "NOT_FOUND");
-          if (a.version !== body.version) throw error(409, "RESPONSE_CHANGED");
-          if (
-            adminEmails.includes(a.email) ||
-            a.email === session.email ||
-            a.id === session.accountId
-          )
-            throw error(403, "OWNER_PROTECTED");
-          if (restoring) {
-            if (!a.deletedAt) throw error(409, "ACCOUNT_NOT_DELETED");
-            delete a.deletedAt;
-            a.active = a.deletedSnapshot?.active !== false;
-            s.invitations[a.householdId].active =
-              a.deletedSnapshot?.invitationActive !== false;
-            delete a.deletedSnapshot;
-            // Restoring an account never restores administration implicitly.
-            a.permissions = (a.permissions || []).filter((p) => p !== "admin");
-          } else {
-            if (a.deletedAt) throw error(409, "ACCOUNT_ALREADY_DELETED");
-            a.deletedSnapshot = {
-              active: a.active,
-              invitationActive: s.invitations[a.householdId]?.active,
-            };
-            a.deletedAt = new Date(now()).toISOString();
-            s.invitations[a.householdId].active = false;
-            a.active = false;
-            a.permissions = a.permissions.filter((p) => p !== "admin");
-          }
-          a.version++;
-          for (const [id, v] of Object.entries(s.sessions))
-            if (v.accountId === a.id || v.householdId === a.householdId)
-              delete s.sessions[id];
-          for (const map of [s.emailLinks, s.adminEmailLinks, s.challenges])
-            for (const [id, v] of Object.entries(map || {}))
-              if (
-                v.accountId === a.id ||
-                v.householdId === a.householdId ||
-                v.email === a.email
-              )
-                delete map[id];
-          s.invitations[a.householdId].syncState = "pending";
-          audit(
-            s,
-            session.actor,
-            restoring ? "account-restored" : "account-deleted",
-            a.id,
-            now(),
-          );
-          return a.householdId;
-        });
-        await syncOne(householdId);
-        return { saved: true };
-      }
-      if (path === "/api/admin/accounts" && method === "POST") {
-        if (
-          !Array.isArray(body.permissions) ||
-          body.permissions.some((p) => !pagePermissions.includes(p)) ||
-          typeof body.active !== "boolean"
-        )
-          throw error(422, "INVALID_PERMISSIONS");
-        const current = ctx.state.accounts?.[body.id];
-        if (!current) throw error(404, "NOT_FOUND");
-        const fresh = await notion.read(current.householdId, { fresh: true });
-        if (
-          body.permissions.includes("admin") &&
-          (!fresh.administratorEligible || fresh.archived)
-        )
-          throw error(422, "ADMIN_NOT_ELIGIBLE");
-        const householdId = await ledger.transaction((s) => {
-          const a = s.accounts?.[body.id];
-          if (!a) throw error(404, "NOT_FOUND");
-          if (a.deletedAt) throw error(409, "ACCOUNT_DELETED");
-          if (a.version !== body.version) throw error(409, "RESPONSE_CHANGED");
-          if (
-            !ownerSession(session) &&
-            (a.permissions.includes("admin") !==
-              body.permissions.includes("admin") ||
-              (a.permissions.includes("admin") && a.active !== body.active))
-          )
-            throw error(403, "OWNER_REQUIRED");
-          if (adminEmails.includes(a.email) && !body.active)
-            throw error(403, "OWNER_PROTECTED");
-          const wasAdmin = a.permissions.includes("admin"),
-            isAdmin = body.permissions.includes("admin");
-          // Granting administration needs a current code from the owner's own
-          // authenticator; removing it stays one click for emergencies.
-          if (isAdmin && !wasAdmin) requireFreshCode(s, session, body.code);
-          a.permissions = [...new Set(body.permissions)];
-          a.active = body.active;
-          a.version++;
-          if (wasAdmin !== isAdmin)
-            roleEvent(s, session.actor, a.email, isAdmin ? "admin-granted" : "admin-removed");
-          if (wasAdmin && !isAdmin) {
-            // A later re-grant must go through a fresh, owner-opened setup.
-            delete s.admins["account:" + a.id];
-            delete s.mfaSetup?.[hash(a.email)];
-          }
-          if (!a.active || !a.permissions.includes("admin")) {
-            for (const [id, v] of Object.entries(s.sessions))
-              if (v.accountId === a.id && (!a.active || v.kind === "admin"))
-                delete s.sessions[id];
-            for (const [id, v] of Object.entries(s.challenges))
-              if (v.accountId === a.id) delete s.challenges[id];
-            for (const [id, v] of Object.entries(s.adminEmailLinks || {}))
-              if (v.email === a.email) delete s.adminEmailLinks[id];
-          }
-          s.invitations[a.householdId].syncState = "pending";
-          audit(s, session.actor, "account-access-updated", a.id, now());
-          return a.householdId;
-        });
-        await syncOne(householdId);
-        return { saved: true };
-      }
-      // Owner opens a 24-hour authenticator-setup window for a delegate or a
-      // promoted guest, optionally resetting a lost authenticator first.
-      if (path === "/api/admin/mfa-setup" && method === "POST") {
-        if (!ownerSession(session)) throw error(403, "OWNER_REQUIRED");
-        const email = String(body.email || "").trim().toLowerCase();
+        const email = String(body.email || "")
+          .trim()
+          .toLowerCase();
+        if (adminEmails.includes(email)) throw error(403, "OWNER_PROTECTED");
         return ledger.transaction((s) => {
           requireFreshCode(s, session, body.code);
-          const account = Object.values(s.accounts || {}).find(
-            (a) => a.email === email && accountActive(s, a) && a.permissions.includes("admin"),
-          );
-          if (adminEmails.includes(email)) throw error(403, "OWNER_PROTECTED");
-          if (!account && !adminDelegateEmails.includes(email))
-            throw error(422, "NOT_AN_ADMINISTRATOR");
-          if (body.reset === true) {
-            for (const [id, a] of Object.entries(s.admins))
-              if (a.email === email) delete s.admins[id];
-            for (const [id, v] of Object.entries(s.sessions))
-              if (v.kind === "admin" && v.email === email) delete s.sessions[id];
-            for (const [id, v] of Object.entries(s.challenges))
-              if (v.email === email) delete s.challenges[id];
-            for (const provider of ["microsoft", "google"])
-              delete s.ssoBindings?.[hash(provider + ":" + email)];
-          }
-          s.mfaSetup ??= {};
-          s.mfaSetup[hash(email)] = { email, by: session.actor, expiresAt: now() + 86400000 };
-          roleEvent(s, session.actor, email, body.reset === true ? "authenticator-reset" : "authenticator-setup-allowed");
-          audit(s, session.actor, "mfa-setup-allowed", email, now());
-          return { allowedUntil: new Date(now() + 86400000).toISOString() };
+          const had = Object.entries(s.admins).filter(([, a]) => a.email === email);
+          if (!had.length) throw error(404, "NO_AUTHENTICATOR");
+          for (const [id] of had) delete s.admins[id];
+          for (const [id, v] of Object.entries(s.sessions))
+            if (v.kind === "admin" && v.email === email) delete s.sessions[id];
+          for (const [id, v] of Object.entries(s.challenges))
+            if (v.email === email) delete s.challenges[id];
+          delete s.ssoBindings?.[hash("admin-microsoft:" + email)];
+          roleEvent(s, session.actor, email, "authenticator-reset");
+          audit(s, session.actor, "authenticator-reset", email, now());
+          return { reset: true };
         });
       }
-      if (path === "/api/admin/role-events" && method === "GET")
-        return {
-          events: (ctx.state.roleEvents || []).slice(-50).reverse(),
-          pendingSetups: Object.values(ctx.state.mfaSetup || {})
-            .filter((x) => x.expiresAt > now())
-            .map((x) => ({ email: x.email, until: new Date(x.expiresAt).toISOString() })),
-        };
-      if (path === "/api/admin/pages" && method === "GET")
-        return { pages: ctx.state.privatePages || {} };
-      if (path === "/api/admin/pages" && method === "POST") {
-        if (!["gifts", "padrinos", "costs"].includes(body.page))
-          throw error(422, "INVALID_PAGE");
-        const en = safeText(body.en, 10000),
-          es = safeText(body.es, 10000);
-        if (!Array.isArray(body.links) || body.links.length > 20)
-          throw error(422, "INVALID_LINKS");
-        const links = body.links.map((l) => {
-          if (!l || typeof l !== "object") throw error(422, "INVALID_LINKS");
-          const label = safeText(l.label, 120);
-          let url;
-          try {
-            url = new URL(safeText(l.url, 2000));
-          } catch {
-            throw error(422, "INVALID_LINKS");
-          }
-          if (url.protocol !== "https:" || url.username || url.password)
-            throw error(422, "INVALID_LINKS");
-          return { label, url: url.href };
-        });
-        await ledger.transaction((s) => {
-          s.privatePages ??= {};
-          s.privatePages[body.page] = { en, es, links };
-          audit(s, session.actor, "private-page-updated", body.page, now());
-        });
-        return { saved: true };
+      if (path === "/api/admin/role-events" && method === "GET") {
+        if (!ownerSession(session)) throw error(403, "OWNER_REQUIRED");
+        return { events: (ctx.state.roleEvents || []).slice(-50).reverse() };
       }
       if (path === "/api/admin/guests" && method === "GET") {
         const rows = await notion.list(),

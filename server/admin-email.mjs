@@ -1,26 +1,9 @@
 import { token, hash, error, rateLimit, withinLimit } from "./auth.mjs";
-import { accountActive } from "./accounts.mjs";
 
-export function adminIdentity(state, address, owners) {
-  if (owners.includes(address)) {
-    const prior = Object.entries(state.admins).find(
-      ([, a]) => a.email === address,
-    );
-    return { id: prior?.[0] || "owner:" + address, email: address };
-  }
-  const account = Object.values(state.accounts || {}).find(
-    (a) => a.email === address,
-  );
-  if (accountActive(state, account) && account.permissions.includes("admin"))
-    return {
-      id: "account:" + account.id,
-      email: address,
-      accountId: account.id,
-    };
-  return null;
-}
-
-export function createAdminEmail({ ledger, mailer, adminEmails, origin, now }) {
+// Emailed sign-in links for administrators. Who qualifies is decided by
+// admin-access.mjs (the owner, or a ticked Notion "Administrator Eligible" row);
+// the authenticator code is still required after the link.
+export function createAdminEmail({ ledger, mailer, admins, origin, now }) {
   return {
     async request(body) {
       const address = String(body.email || "")
@@ -30,36 +13,32 @@ export function createAdminEmail({ ledger, mailer, adminEmails, origin, now }) {
         throw error(422, "INVALID_EMAIL");
       if (!mailer.configured) throw error(503, "EMAIL_SIGN_IN_UNAVAILABLE");
       await rateLimit(ledger, "admin-email:" + hash(address), 3, 900000, now());
-      // Read first: unknown addresses must never enter the ledger write queue.
-      // A spent send budget is skipped silently so it cannot reveal admins.
+      // Unknown addresses never enter the ledger write queue. A spent send
+      // budget is skipped silently so it cannot reveal who is an admin.
       if (
-        !adminIdentity(await ledger.read(), address, adminEmails) ||
+        !(await admins.find(address, { fresh: false })) ||
         !(await withinLimit(ledger, "admin-email-sends", 60, 3600000, now()))
       )
         return { requested: true };
       const raw = token();
-      const allowed = await ledger.transaction((s) => {
+      await ledger.transaction((s) => {
         s.adminEmailLinks ??= {};
         for (const [id, l] of Object.entries(s.adminEmailLinks))
           if (l.expiresAt <= now()) delete s.adminEmailLinks[id];
-        if (!adminIdentity(s, address, adminEmails)) return false;
         s.adminEmailLinks[hash(raw)] = {
           email: address,
           expiresAt: now() + 900000,
         };
-        return true;
       });
-      if (allowed) {
-        try {
-          await mailer.send({
-            id: token(),
-            to: address,
-            subject: "SimplySoph · Administrator Sign-In",
-            html: `<p>Continue to administrator verification. Your authenticator is still required.</p><p><a href="${origin}/admin/login/#${raw}">Verify Email And Continue</a></p><p>This link works once and expires in 15 minutes. If you did not request it, ignore this email.</p>`,
-          });
-        } catch {
-          /* Do not reveal account existence or retry an ambiguous send. */
-        }
+      try {
+        await mailer.send({
+          id: token(),
+          to: address,
+          subject: "SimplySoph · Administrator sign-in",
+          html: `<p>Continue to administrator verification. Your authenticator is still required.</p><p><a href="${origin}/admin/login/#${raw}">Confirm email and continue</a></p><p>This link works once and expires in 15 minutes. If you did not request it, ignore this email.</p>`,
+        });
+      } catch {
+        /* Do not reveal account existence or retry an ambiguous send. */
       }
       return { requested: true };
     },
@@ -70,15 +49,16 @@ export function createAdminEmail({ ledger, mailer, adminEmails, origin, now }) {
       const known = (await ledger.read()).adminEmailLinks?.[hash(raw)];
       if (!known || known.expiresAt <= now())
         throw error(401, "EMAIL_LINK_INVALID");
-      return ledger.transaction((s) => {
+      // Check Notion before spending the link, so a refused admin keeps it.
+      const identity = await admins.find(known.email);
+      if (!identity) throw error(403, "ADMIN_NOT_ALLOWED");
+      await ledger.transaction((s) => {
         const link = s.adminEmailLinks?.[hash(raw)];
         if (!link || link.expiresAt <= now())
           throw error(401, "EMAIL_LINK_INVALID");
-        const identity = adminIdentity(s, link.email, adminEmails);
-        if (!identity) throw error(401, "EMAIL_LINK_INVALID");
         delete s.adminEmailLinks[hash(raw)];
-        return identity;
       });
+      return identity;
     },
   };
 }

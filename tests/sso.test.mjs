@@ -190,7 +190,7 @@ async function fixture() {
   const session = (cookie) => app.dispatch({ path: "/api/session", method: "GET", headers: { origin, cookie }, ip: "x" });
   const start = (purpose) => post("auth/sso/start", { purpose });
   const ms = (t, email, extra = {}) => JSON.stringify({ nonce: t.nonce, email, sub: "s-" + email, ...extra });
-  return { app, ledger, post, session, start, ms, advance: (ms) => (clock += ms), now: () => clock };
+  return { app, ledger, row, post, session, start, ms, advance: (ms) => (clock += ms), now: () => clock };
 }
 const cookieOf = (r) => r.setCookie.split(";")[0];
 
@@ -220,7 +220,7 @@ test("Microsoft MFA skips the code only after a sign-in that passed the code lin
     first.provisioningUri,
     `otpauth://totp/SimplySoph:owner%40outlook.com?secret=${first.enrollmentSecret}&issuer=SimplySoph&algorithm=SHA1&digits=6&period=30`,
   );
-  assert.equal((await f.ledger.read()).ssoBindings?.[hash("microsoft:owner@outlook.com")], undefined, "not linked before the code passes");
+  assert.equal((await f.ledger.read()).ssoBindings?.[hash("admin-microsoft:owner@outlook.com")], undefined, "not linked before the code passes");
   f.secret = first.enrollmentSecret;
   f.advance(30000);
   await f.post("auth/mfa", { challenge: first.challenge, code: totp(f.secret, Math.floor(f.now() / 30000)) });
@@ -239,7 +239,23 @@ test("a new Microsoft account for an admin's email cannot skip the code (mailbox
   const attacker = await f.post("auth/microsoft", { ticket: t.ticket, credential: f.ms(t, "owner@outlook.com", { mfa: true, sub: "attacker" }) });
   assert.ok(attacker.challenge && !attacker.setCookie);
   // Only passing the owner's authenticator relinks the email to another account.
-  assert.notEqual((await f.ledger.read()).ssoBindings[hash("microsoft:owner@outlook.com")], hash("attacker"));
+  assert.notEqual((await f.ledger.read()).ssoBindings[hash("admin-microsoft:owner@outlook.com")], hash("attacker"));
+});
+
+test("a guest Microsoft sign-in never links that account for admin use", async () => {
+  const f = await fixture();
+  await adminWithCode(f); // the admin has an authenticator
+  await f.ledger.transaction((s) => {
+    s.ssoBindings = {}; // ...but no linked Microsoft account
+  });
+  f.row.additionalEmails = ["owner@outlook.com"]; // and the email is on the guest list
+  // Someone controlling the mailbox makes a Microsoft account with MFA and signs in as a guest.
+  const g = await f.start("guest");
+  const guest = await f.post("auth/sso/guest", { provider: "microsoft", ticket: g.ticket, credential: f.ms(g, "owner@outlook.com", { mfa: true, sub: "attacker" }) });
+  assert.equal((await f.session(cookieOf(guest))).kind, "guest");
+  const t = await f.start("admin");
+  const r = await f.post("auth/microsoft", { ticket: t.ticket, credential: f.ms(t, "owner@outlook.com", { mfa: true, sub: "attacker" }) });
+  assert.ok(r.challenge && !r.setCookie && !r.signedIn, "the authenticator code is still required");
 });
 
 test("without Microsoft MFA the administrator always needs the code", async () => {
@@ -308,7 +324,7 @@ test("a ticket works once and expires after ten minutes", async () => {
   await assert.rejects(f.post("auth/sso/guest", { provider: "microsoft", ticket: late.ticket, credential: f.ms(late, "guest@outlook.com") }), (e) => e.code === "SIGN_IN_AGAIN");
 });
 
-test("guest SSO needs a registered account and never creates one", async () => {
+test("guest SSO for an email not on the guest list is refused and creates nothing", async () => {
   const f = await fixture();
   const t = await f.start("guest");
   await assert.rejects(f.post("auth/sso/guest", { provider: "google", ticket: t.ticket, credential: f.ms(t, "nobody@gmail.com") }), (e) => e.code === "SSO_NO_ACCOUNT");
