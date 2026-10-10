@@ -151,8 +151,16 @@ const messages = {
     "El acceso con Microsoft no está disponible por ahora. Inténtalo de nuevo en un minuto.",
   ],
   MFA_SETUP_NOT_ALLOWED: [
-    "This email isn't set up for administration yet. The site owner must allow it under Guest Access → Authenticator setup (good for 24 hours); then sign in again.",
-    "Este correo aún no está configurado para la administración. El propietario del sitio debe permitirlo en Acceso de invitados → Configuración del autenticador (válido 24 horas); luego vuelve a iniciar sesión.",
+    "Your administrator access hasn't been switched on yet. Please ask Saul or Diana to turn it on, then sign in again.",
+    "Tu acceso de administrador aún no está activado. Pide a Saul o a Diana que lo activen y vuelve a iniciar sesión.",
+  ],
+  ADMIN_NOT_ALLOWED: [
+    "This account isn't an administrator. If you're expecting access, please contact Saul or Diana.",
+    "Esta cuenta no es de administrador. Si esperas tener acceso, comunícate con Saul o Diana.",
+  ],
+  ADMIN_NOT_ELIGIBLE: [
+    "This account isn't an administrator. If you're expecting access, please contact Saul or Diana.",
+    "Esta cuenta no es de administrador. Si esperas tener acceso, comunícate con Saul o Diana.",
   ],
   SIGN_IN_AGAIN: [
     "That sign-in expired or was already used. Choose your sign-in option again.",
