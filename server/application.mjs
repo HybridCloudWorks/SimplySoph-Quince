@@ -37,6 +37,10 @@ import {
   longDate,
 } from "../emails/templates.mjs";
 import { event as eventInfo } from "../site/content.mjs";
+import { previewRoutes } from "../site/preview-content.mjs";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { createAccounts, accountActive } from "./accounts.mjs";
 const events = ["ceremony", "dinner", "dance"];
 const safeText = (s, max = 1000) => {
@@ -117,6 +121,8 @@ export function createApplication({
   notificationEmails = adminEmails,
   now = Date.now,
   mailSleep,
+  // The admin-only page preview built by scripts/build-pages.mjs (never published).
+  previewRoot = fileURLToPath(new URL("../dist-preview/", import.meta.url)),
 }) {
   if (!Buffer.isBuffer(key) || key.length !== 32)
     throw new Error("32-byte application key required");
@@ -1365,6 +1371,18 @@ export function createApplication({
         path.startsWith("/api/admin/documents")
       )
         return planning(req, session);
+      // The approved pages filled with the idea-book examples, for administrators
+      // only (owner decision 9). Opened by plain navigation from the admin portal.
+      if (path === "/api/admin/preview" && method === "GET") {
+        const page = req.query?.page,
+          lang = req.query?.lang || "en";
+        if (!previewRoutes.includes(page) || !["en", "es"].includes(lang))
+          throw error(404, "NOT_FOUND");
+        const html = await readFile(join(previewRoot, lang, page + ".html")).catch(() => {
+          throw error(404, "PREVIEW_NOT_BUILT");
+        });
+        return { binary: html, contentType: "text/html; charset=utf-8" };
+      }
       if (path === "/api/admin/site" && method === "GET")
         return { site: siteSettings(ctx.state) };
       if (path === "/api/admin/site" && method === "POST") {

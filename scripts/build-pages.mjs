@@ -16,12 +16,17 @@ import path from "node:path";
 import QRCode from "qrcode";
 import {
   event,
-  family,
+  family as approvedFamily,
+  padrinoTraditions,
   routes,
   adminRoutes,
   copy,
   textContent,
 } from "../site/content.mjs";
+import { exampleFamily, previewRoutes } from "../site/preview-content.mjs";
+// The public build uses the family's approved content; the admin preview swaps
+// in the idea-book examples (see the end of this file).
+let family = approvedFamily;
 const root = new URL("../dist/", import.meta.url),
   esc = (s) =>
     String(s).replace(
@@ -101,7 +106,7 @@ function contents(route, lang) {
         : ""
     }${
       family.parentsMessage
-        ? `<div class="letter"><p class="eyebrow">${say("A letter from her parents", "Una carta de sus papás")}</p><p>${esc(localized(family.parentsMessage))}</p></div>`
+        ? `<div class="letter"><p class="eyebrow">${say("A letter from her parents", "Una carta de sus papás")}</p><p class="letter-text">${esc(localized(family.parentsMessage))}</p>${family.parentsSignature ? `<p class="signature">${esc(localized(family.parentsSignature))}</p>` : ""}</div>`
         : ""
     }</article>`;
   if (route === "court" && family.court.length) {
@@ -122,13 +127,33 @@ function contents(route, lang) {
       )
       .join("")}${single.map((p) => `<div class="pair">${person(p)}</div>`).join("")}</div>`;
   }
+  // Public thank-you cards: who gave each tradition and what it means. Gratitude
+  // only, so the admin planning list's amounts and status never appear here.
+  if (route === "padrinos" && family.padrinos.length)
+    body = `<p class="lead">${say("With deep gratitude to the padrinos and madrinas whose generosity made Sophia’s celebration possible.", "Con profunda gratitud a los padrinos y madrinas cuya generosidad hizo posible la celebración de Sophia.")}</p><div class="padrino-cards">${family.padrinos
+      .map((p) => {
+        const t = padrinoTraditions[p.gift];
+        if (!t) throw new Error("Unknown padrino tradition: " + p.gift);
+        return `<article class="padrino-card"><h2 class="padrino-name" lang="es">${esc(t.es)}</h2>${es ? "" : `<p class="padrino-en">${esc(t.en)}</p>`}<p>${esc(localized(t.meaning))}</p><p class="padrino-thanks">${say("With gratitude to", "Con gratitud a")} <strong>${esc(p.names)}</strong></p></article>`;
+      })
+      .join("")}</div>`;
   // The day at a glance: church, then dinner, from the confirmed schedule.
-  if (route === "travel")
+  if (route === "travel") {
+    const drive = family.driveMinutes
+      ? `<p class="route-drive">${say(`about ${esc(family.driveMinutes)} min`, `unos ${esc(family.driveMinutes)} min`)}</p>`
+      : "";
+    const stay = family.hotels.map(
+      (item) =>
+        `<article class="card">${item.where ? `<p class="person-role">${esc(localized(item.where))}</p>` : ""}<h2>${esc(item.name)}</h2><p>${esc(localized(item.notes))}</p><a class="button burgundy" href="${safeLink(item.url)}" target="_blank" rel="noopener noreferrer">${say("Hotel information", "Información del hotel")} ↗</a></article>`,
+    );
+    if (family.airport)
+      stay.push(
+        `<article class="card airport-card"><p class="person-role">${say("Flying in", "Si llegas en avión")}</p><h2>${esc(family.airport.name)}</h2><p>${esc(localized(family.airport.notes))}</p></article>`,
+      );
     body =
-      `<div class="route-strip"><div><b>${timeRange({ start: celebration.ceremony.start }, lang)} · ${say("Ceremony", "Ceremonia")}</b><span>${esc(celebration.ceremony.name)}<br>${esc(celebration.ceremony.address)}</span></div><div><b>${timeRange({ start: celebration.dinner.start }, lang)} · ${say("Dinner", "Cena")}</b><span>${esc(celebration.reception.name)}<br>${esc(celebration.reception.address)}</span></div></div>` +
-      (family.hotels.length
-        ? `<div class="cards">${family.hotels.map((item) => `<article class="card">${item.where ? `<p class="person-role">${esc(localized(item.where))}</p>` : ""}<h2>${esc(item.name)}</h2><p>${esc(localized(item.notes))}</p><a class="button burgundy" href="${safeLink(item.url)}" target="_blank" rel="noopener noreferrer">${say("Hotel information", "Información del hotel")} ↗</a></article>`).join("")}</div>`
-        : body);
+      `<div class="route-strip${drive ? " has-drive" : ""}"><div><b>${timeRange({ start: celebration.ceremony.start }, lang)} · ${say("Ceremony", "Ceremonia")}</b><span>${esc(celebration.ceremony.name)}<br>${esc(celebration.ceremony.address)}</span></div>${drive}<div><b>${timeRange({ start: celebration.dinner.start }, lang)} · ${say("Dinner", "Cena")}</b><span>${esc(celebration.reception.name)}<br>${esc(celebration.reception.address)}</span></div></div>` +
+      (stay.length ? `<div class="cards">${stay.join("")}</div>` : body);
+  }
   if (route === "thank-you" && (family.thanksNote || family.highlightVideo))
     body = `<div class="thanks-note"><p class="thanks-script">Gracias</p>${family.thanksNote ? `<p>${esc(localized(family.thanksNote))}</p>` : ""}<p class="actions">${family.highlightVideo ? `<a class="button burgundy" href="${safeLink(family.highlightVideo)}" target="_blank" rel="noopener noreferrer">${say("Watch the highlights", "Ver los mejores momentos")}</a>` : ""}<a href="${href("share", lang)}">${say("Share your photos", "Comparte tus fotos")} ↗</a></p></div>`;
   if (route === "details")
@@ -198,6 +223,14 @@ function contents(route, lang) {
             "Tu invitación indica los lugares para adultos/jóvenes y niños asignados a tu familia. Contacta a la familia si hay un error.",
           ),
         ],
+        family.children && [
+          say("Are children welcome?", "¿Los niños son bienvenidos?"),
+          esc(localized(family.children)),
+        ],
+        family.parking && [
+          say("Where do I park?", "¿Dónde me estaciono?"),
+          esc(localized(family.parking)),
+        ],
         [
           say(
             "What happens between the ceremony and dinner?",
@@ -246,6 +279,7 @@ function contents(route, lang) {
           ),
         ],
       ]
+        .filter(Boolean)
         .map(
           ([q, a]) => `<details><summary>${q}</summary><p>${a}</p></details>`,
         )
@@ -254,7 +288,7 @@ function contents(route, lang) {
     body = `<article class="editorial"><h2>${say("Information for this celebration", "Información para esta celebración")}</h2><p>${say("Private invitations use household contact details and allocated spaces. Responses collect attendance, contact corrections and optional requests. Photos and guestbook submissions are held for family review.", "Las invitaciones privadas usan los datos de contacto y los lugares asignados a cada familia. Las respuestas incluyen asistencia, correcciones de contacto y solicitudes opcionales. Las fotos y mensajes se guardan para revisión de la familia.")}</p><p>${say("Authorized organizers use Notion and a private Google Cloud service to manage responses. Microsoft 365 is the planned email provider. Public pages never include the guest list.", "Los organizadores autorizados usan Notion y un servicio privado de Google Cloud para administrar respuestas. Microsoft 365 es el proveedor previsto de correos. Las páginas públicas nunca incluyen la lista de invitados.")}</p><p>${say("Firebase Hosting serves the site. Google Fonts receives normal network information when fonts load. Signing in with Google or Microsoft is optional; they confirm your email address to us. We have added no advertising or analytics trackers.", "Firebase Hosting aloja el sitio. Google Fonts recibe información de red al cargar fuentes. Entrar con Google o Microsoft es opcional; ellos nos confirman tu correo. No agregamos publicidad ni rastreadores de análisis.")}</p><h3>${say("Your choices", "Tus opciones")}</h3><p>${say("Optional requests, mailing addresses, messages and photos are voluntary. Keep invitation links private. Contact the family to correct or remove information. The family will review event data on February 1, 2027; this is not an automatic deletion date.", "Las solicitudes, direcciones postales, mensajes y fotos son opcionales. Mantén privados los enlaces de invitación. Contacta a la familia para corregir o eliminar información. La familia revisará los datos el 1 de febrero de 2027; no es una eliminación automática.")}</p><a href="mailto:${event.sender}">${event.sender}</a></article>`;
   if (route === "terms") body = "";
   if (route === "whatsapp")
-    body += `<article class="editorial"><h2>${say("Stay In Touch On WhatsApp", "Sigue En Contacto Por WhatsApp")}</h2><p>${say("Simply Soph Media offers optional WhatsApp invitation links, RSVP reminders and event updates for Sophia Isabel’s celebration. Message frequency varies. Internet and data charges may apply. Email remains available; WhatsApp is not required to attend.", "Simply Soph Media ofrece enlaces de invitación, recordatorios de asistencia y novedades opcionales por WhatsApp para la celebración de Sophia Isabel. La frecuencia varía. Pueden aplicarse cargos por internet y datos. El correo sigue disponible; WhatsApp no es obligatorio para asistir.")}</p><h3>${say("Subscribe And Verify Your Number", "Suscríbete Y Verifica Tu Número")}</h3><p>${say("Sign in at My Account with the email the family has for your household, then enter your WhatsApp number with its country code, choose English or Spanish, and agree to WhatsApp messages. Follow the WhatsApp link and send START from that same number to verify it. A subscription is active only after verification and synchronization. If you have not received your private invitation, contact the family first.", "Inicia sesión en Mi Cuenta con el correo que la familia tiene para tu hogar e ingresa tu número de WhatsApp con código de país, elegir inglés o español y aceptar los mensajes de WhatsApp. Sigue el enlace a WhatsApp y envía START desde ese mismo número para verificarlo. La suscripción se activa después de la verificación y sincronización. Si aún no tienes tu invitación privada, contacta a la familia.")}</p><p><a class="button burgundy" href="${href("account", lang)}">${say("My Account", "Mi Cuenta")}</a></p><h3>${say("Help And Unsubscribe", "Ayuda Y Cancelación")}</h3><p>${say("Reply STOP or BAJA to stop WhatsApp event messages, or turn off consent in My Account. Reply HELP or AYUDA for support, or email misxv@simplysoph.com. Sending START alone does not create a guest account or submit an RSVP. Complete your RSVP on the website using your private link.", "Responde STOP o BAJA para dejar de recibir mensajes del evento por WhatsApp, o desactiva el consentimiento en Mi Cuenta. Responde HELP o AYUDA para recibir ayuda, o escribe a misxv@simplysoph.com. Enviar START no crea una cuenta ni confirma asistencia. Completa tu respuesta en el sitio con tu enlace privado.")}</p><p>${say("WhatsApp consent is separate from SMS consent. Twilio and Meta process messages and delivery information to provide this service. We record your consent, language, number and opt-out privately and synchronize them with Notion. We do not sell or share messaging consent for third-party marketing. Review/export is planned for February 1, 2027; no automatic deletion is scheduled.", "El consentimiento de WhatsApp es independiente del de SMS. Twilio y Meta procesan mensajes y datos de entrega para prestar el servicio. Guardamos tu consentimiento, idioma, número y baja de forma privada y los sincronizamos con Notion. No vendemos ni compartimos el consentimiento para marketing de terceros. La revisión y exportación está prevista para el 1 de febrero de 2027; no hay eliminación automática.")}</p><a href="${href("privacy", lang)}">${say("Privacy Policy", "Política De Privacidad")}</a></article>`;
+    body += `<article class="editorial"><h2>${say("Stay In Touch On WhatsApp", "Sigue En Contacto Por WhatsApp")}</h2><p>${say("Simply Soph Media offers optional WhatsApp invitation links, RSVP reminders and event updates for Sophia Isabel’s celebration. Message frequency varies. Internet and data charges may apply. Email remains available; WhatsApp is not required to attend.", "Simply Soph Media ofrece enlaces de invitación, recordatorios de asistencia y novedades opcionales por WhatsApp para la celebración de Sophia Isabel. La frecuencia varía. Pueden aplicarse cargos por internet y datos. El correo sigue disponible; WhatsApp no es obligatorio para asistir.")}</p><h3>${say("Subscribe And Verify Your Number", "Suscríbete Y Verifica Tu Número")}</h3><p>${say("Sign in at My account with the email the family has for your household, then enter your WhatsApp number with its country code, choose English or Spanish, and agree to WhatsApp messages. Follow the WhatsApp link and send START from that same number to verify it. A subscription is active only after verification and synchronization. If you have not received your private invitation, contact the family first.", "Inicia sesión en Mi cuenta con el correo que la familia tiene para tu hogar e ingresa tu número de WhatsApp con código de país, elegir inglés o español y aceptar los mensajes de WhatsApp. Sigue el enlace a WhatsApp y envía START desde ese mismo número para verificarlo. La suscripción se activa después de la verificación y sincronización. Si aún no tienes tu invitación privada, contacta a la familia.")}</p><p><a class="button burgundy" href="${href("account", lang)}">${say("My account", "Mi cuenta")}</a></p><h3>${say("Help And Unsubscribe", "Ayuda Y Cancelación")}</h3><p>${say("Reply STOP or BAJA to stop WhatsApp event messages, or turn off consent in My account. Reply HELP or AYUDA for support, or email misxv@simplysoph.com. Sending START alone does not create a guest account or submit an RSVP. Complete your RSVP on the website using your private link.", "Responde STOP o BAJA para dejar de recibir mensajes del evento por WhatsApp, o desactiva el consentimiento en Mi cuenta. Responde HELP o AYUDA para recibir ayuda, o escribe a misxv@simplysoph.com. Enviar START no crea una cuenta ni confirma asistencia. Completa tu respuesta en el sitio con tu enlace privado.")}</p><p>${say("WhatsApp consent is separate from SMS consent. Twilio and Meta process messages and delivery information to provide this service. We record your consent, language, number and opt-out privately and synchronize them with Notion. We do not sell or share messaging consent for third-party marketing. Review/export is planned for February 1, 2027; no automatic deletion is scheduled.", "El consentimiento de WhatsApp es independiente del de SMS. Twilio y Meta procesan mensajes y datos de entrega para prestar el servicio. Guardamos tu consentimiento, idioma, número y baja de forma privada y los sincronizamos con Notion. No vendemos ni compartimos el consentimiento para marketing de terceros. La revisión y exportación está prevista para el 1 de febrero de 2027; no hay eliminación automática.")}</p><a href="${href("privacy", lang)}">${say("Privacy policy", "Política de privacidad")}</a></article>`;
   if (route === "privacy")
     body += `<article class="editorial"><h2>${say("Optional WhatsApp Messages", "Mensajes WhatsApp Opcionales")}</h2><p>${say("WhatsApp participation is optional and separate from SMS and email. Your WhatsApp number, language, consent evidence, opt-out and delivery status are processed by our event service, Twilio and Meta and synchronized to our private Notion guest records. These details are used to deliver event communications, not sold or shared for third-party marketing. STOP or BAJA withdraws WhatsApp consent. Minimal suppression records may remain to honor that choice.", "WhatsApp es opcional e independiente de SMS y correo. Nuestro servicio, Twilio y Meta procesan tu número, idioma, consentimiento, baja y estado de entrega, y los sincronizamos con nuestros registros privados de Notion. Los usamos para comunicaciones del evento; no los vendemos ni compartimos para marketing de terceros. STOP o BAJA cancela el consentimiento de WhatsApp. Podemos conservar registros mínimos para respetar esa decisión.")}</p><a href="${href("whatsapp", lang)}">${say("WhatsApp Program And Terms", "Programa Y Términos De WhatsApp")}</a></article>`;
   // Twilio campaign reviewers verify this public call to action against the
@@ -309,10 +343,29 @@ function contents(route, lang) {
       "</a></article>";
   if (route === "404")
     body = `<p class="lead">${say("Let’s get you back to the celebration.", "Volvamos a la celebración.")}</p>${link("", t.home)}`;
-  if (route === "gallery" && family.portraits.length)
-    body =
-      `<div class="cards">${family.portraits.map((photo) => `<figure class="card"><img loading="lazy" src="${safeLink(photo.src)}" alt="${esc(localized(photo.caption))}"><figcaption>${esc(localized(photo.caption))}</figcaption></figure>`).join("")}</div>` +
-      body;
+  // Chapters: one album at a time, oldest photos first, captions in Sophia's words.
+  if (route === "gallery" && family.portraits.length) {
+    for (const photo of family.portraits)
+      if (!celebration.albums.some((a) => a.id === photo.album))
+        throw new Error("Unknown gallery album: " + photo.album);
+    const chapters = celebration.albums
+        .map((album) => {
+          const photos = family.portraits
+            .filter((p) => p.album === album.id)
+            .sort((a, b) => (a.age ?? 99) - (b.age ?? 99));
+          return photos.length
+            ? `<section class="chapter"><h2>${esc(album[lang])}</h2><div class="chapter-photos">${photos
+                .map(
+                  (photo) =>
+                    `<figure>${photo.src ? `<img loading="lazy" src="${safeLink(photo.src)}" alt="${esc(localized(photo.caption))}">` : `<div class="photo-placeholder" aria-hidden="true"><b>${esc(photo.age ?? "")}</b>${say("Photo", "Foto")}</div>`}<figcaption>${esc(localized(photo.caption))}</figcaption></figure>`,
+                )
+                .join("")}</div></section>`
+            : "";
+        })
+        .join("");
+    // After the page's opening line, before the album cards.
+    body = body.replace(/^<p class="lead">[\s\S]*?<\/p>/, (lead) => lead + chapters);
+  }
 
   if (route === "privacy")
     body += `<article class="editorial"><h2>${say("Guest accounts", "Cuentas de invitados")}</h2><p>${say("You sign in with the email the family has for your household. We confirm it with a one-time link, or Google or Microsoft confirms it for us. Our private backend keeps sign-in records (which email signed in and when), contact profiles, responses and private messages to operate your guest account. Your response and head counts are written to the family’s private Notion guest list. Contact-email changes do not change your sign-in email.", "Inicias sesión con el correo que la familia tiene para tu hogar. Lo confirmamos con un enlace de un solo uso, o Google o Microsoft nos lo confirman. Nuestro servidor privado guarda registros de acceso (qué correo inició sesión y cuándo), perfiles de contacto, respuestas y mensajes privados para operar tu cuenta. Tu respuesta y el número de asistentes se guardan en la lista privada de invitados de la familia en Notion. Cambiar el correo de contacto no cambia tu correo de acceso.")}</p></article>`;
@@ -357,7 +410,7 @@ function document({ route, title, lang = "en", admin = false }) {
             "",
           )}<button class="plain-button" id="logout">Sign out</button></aside><div><p class="eyebrow">SOPHIA · MIS XV</p><h1 class="page-title">${title}</h1><div id="admin-app" data-view="${route}"><p role="status">Loading secure workspace…</p></div></div></section>`
       : contents(route, lang)
-  }</main><footer><p class="copyright">© 2026 Simply Soph Media (SimplySoph). All Rights Reserved.</p><div><a href="${href("privacy", lang)}">${lang === "es" ? "Política de privacidad" : "Privacy Policy"}</a> · <a href="${href("terms", lang)}">${lang === "es" ? "Política de medios" : "Media Policy"}</a> · <a href="${href("whatsapp", lang)}">WhatsApp</a> · <a href="${href("sms", lang)}">${lang === "es" ? "Mensajes SMS" : "SMS Updates"}</a> · <a href="${href("contact", lang)}">${lang === "es" ? "Contáctanos" : "Contact Us"}</a></div></footer><div id="status" role="status" aria-live="polite"></div></body></html>`;
+  }</main><footer><p class="copyright">© 2026 Simply Soph Media (SimplySoph). All Rights Reserved.</p><div><a href="${href("privacy", lang)}">${lang === "es" ? "Política de privacidad" : "Privacy policy"}</a> · <a href="${href("terms", lang)}">${lang === "es" ? "Política de medios" : "Media policy"}</a> · <a href="${href("whatsapp", lang)}">WhatsApp</a> · <a href="${href("sms", lang)}">${lang === "es" ? "Mensajes SMS" : "SMS Updates"}</a> · <a href="${href("contact", lang)}">${lang === "es" ? "Contáctanos" : "Contact us"}</a></div></footer><div id="status" role="status" aria-live="polite"></div></body></html>`;
 }
 // Only remove the known generated directory inside this checkout, never a supplied path.
 const checkout = fileURLToPath(new URL("../", import.meta.url));
@@ -433,6 +486,30 @@ for (const kind of ["ceremony", "dinner", "reception"]) {
 }
 
 await writeFile(new URL("robots.txt", root), "User-agent: *\nDisallow: /\n");
+
+// Admin-only preview: the approved page layouts filled with the idea-book
+// examples, so the family can review wording live without guests seeing made-up
+// names. Written outside dist/ so Hosting never publishes it; the API serves it
+// to administrators at /api/admin/preview (server/application.mjs).
+const previewRoot = new URL("../dist-preview/", import.meta.url);
+if (path.resolve(fileURLToPath(previewRoot)) !== path.join(checkout, "dist-preview"))
+  throw new Error("Invalid preview output");
+await rm(previewRoot, { recursive: true, force: true });
+family = exampleFamily;
+for (const lang of ["en", "es"]) {
+  await mkdir(new URL(lang + "/", previewRoot), { recursive: true });
+  for (const route of previewRoutes) {
+    const [, en, es] = routes.find((r) => r[0] === route);
+    const other = lang === "es" ? "en" : "es",
+      preview = (r, l) => `/api/admin/preview?page=${r}&amp;lang=${l}`;
+    const banner = `<aside class="preview-banner" role="note"><p><strong>${lang === "es" ? "Vista previa con texto de ejemplo." : "Preview with example text."}</strong> ${lang === "es" ? "Los invitados no ven esta página. Los nombres, fotos y enlaces son ejemplos hasta que la familia los confirme." : "Guests can’t see this page. Names, photos and links are examples until the family confirms them."}</p><p>${previewRoutes.map((r) => `<a href="${preview(r, lang)}"${r === route ? ' aria-current="page"' : ""}>${esc(routes.find((x) => x[0] === r)[lang === "es" ? 2 : 1])}</a>`).join(" · ")}</p><p><a href="${preview(route, other)}" lang="${other}">${lang === "es" ? "View in English" : "Ver en español"}</a> · <a href="/admin/site/">${lang === "es" ? "Volver a la administración" : "Back to admin"}</a></p></aside>`;
+    const html = document({ route, title: lang === "es" ? es : en, lang })
+      .replace("<title>", `<title>${lang === "es" ? "Vista previa" : "Preview"} · `)
+      .replace('<main id="main">', `<main id="main">${banner}`);
+    await writeFile(new URL(`${lang}/${route}.html`, previewRoot), html);
+  }
+}
+family = approvedFamily;
 console.log(
-  `Built ${count} pages, English/Spanish guest routes, private admin shells and calendar. Runtime features require the configured API.`,
+  `Built ${count} pages, English/Spanish guest routes, private admin shells and calendar, plus ${previewRoutes.length * 2} admin preview pages. Runtime features require the configured API.`,
 );

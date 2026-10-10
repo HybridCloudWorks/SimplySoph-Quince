@@ -33,7 +33,7 @@ function wireEmailSignIn() {
     await api("auth/email/request", { email: data.get("email") });
     portal.innerHTML = `<p class="notice">${tr("If this email is on the guest list, a sign-in link is on its way. Check your inbox and spam folder; the link expires in 15 minutes.", "Si este correo está en la lista de invitados, te enviamos un enlace de acceso. Revisa tu bandeja de entrada y el correo no deseado; el enlace vence en 15 minutos.")}</p><a href="${route("account")}">${tr("Back to sign-in", "Volver al acceso")}</a>`;
   });
-  // Microsoft returns only to My invitation, so the buttons live there.
+  // Microsoft returns only to My account, so the buttons live there.
   if (document.body.dataset.route === "account") ssoChoices();
   else
     portal.insertAdjacentHTML(
@@ -247,7 +247,7 @@ function confirmation(inv, session) {
     session.scope === "rsvp"
       ? ""
       : `<details class="card"><summary>${tr("Optional: get event updates on WhatsApp", "Opcional: recibe novedades del evento por WhatsApp")}</summary><section id="whatsapp-preferences"></section></details>`;
-  const account = `<p><a class="button burgundy" href="${route("account")}">${session.verified ? tr("Open my invitation page", "Abrir mi invitación") : tr("Sign in with your email for photos and messages", "Entra con tu correo para fotos y mensajes")}</a></p>`;
+  const account = `<p><a class="button burgundy" href="${route("account")}">${session.verified ? tr("Open my account", "Abrir mi cuenta") : tr("Sign in with your email for photos and messages", "Entra con tu correo para fotos y mensajes")}</a></p>`;
   if (!attending.length)
     return `<div class="notice success"><h2>${tr("Thank you for letting us know.", "Gracias por avisarnos.")}</h2><p>${tr(`We’ll miss you, ${esc(inv.name)}. You’re always in our hearts.`, `Te extrañaremos, ${esc(inv.name)}. Siempre estarás en nuestro corazón.`)}</p>${saved}</div><p>${tr("Would you like to leave Sophia a note?", "¿Quieres dejarle un mensaje a Sophia?")}</p><p><a class="button burgundy" href="${route("guestbook")}">${tr("Write in the guestbook", "Escribir en el libro de visitas")}</a></p>${edit}${sync}${account}`;
   const calendars = attending

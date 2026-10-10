@@ -11,24 +11,53 @@ export const event = {
 //   portrait: "/assets/…" photo beside the bio
 //   moments: [{ age: 0, text: { en, es } }] — "fifteen years in six moments", oldest first
 //   court: [{ name, role: "escort" | "dama" | "chambelan", pair: 1, line: { en, es }, photo }]
+//   parentsSignature: { en, es } — signed in script under the parents' letter
+//   padrinos: [{ gift: "misa" (a key of padrinoTraditions), names }] — public thank-you
+//     cards: names and tradition only, never amounts or planning status
 //   hotels: [{ name, where: { en, es }, notes: { en, es }, url }]
+//   airport: { name, notes: { en, es } } — the "Flying in" card on Travel
+//   driveMinutes: 15 — church to reception, shown on the route strip
+//   portraits: [{ album: "childhood" (a celebration album id), age, caption: { en, es }, src }]
+//     — gallery chapters, oldest first; a missing src shows the age as a placeholder
+//   parking, children: { en, es } — answers on Good to know
 //   thanksNote: { en, es } — the thank-you page message, after the event
 export const family = {
   bio: null,
   portrait: null,
   moments: [],
   parentsMessage: null,
+  parentsSignature: null,
   court: [],
   padrinos: [],
   registry: [],
   hotels: [],
+  airport: null,
+  driveMinutes: null,
   portraits: [],
   churchAddress: null,
   churchName: null,
   churchNotes: null,
   dressCode: null,
+  parking: null,
+  children: null,
   highlightVideo: null,
   thanksNote: null,
+};
+// Padrino traditions for the public thank-you cards: the Spanish name in script,
+// the English name underneath, and a one-line meaning (from the approved idea book).
+export const padrinoTraditions = {
+  misa: { es: "de Misa", en: "Mass", meaning: { en: "Sponsor the Mass of thanksgiving that opens the day.", es: "Patrocinan la Misa de acción de gracias que abre el día." } },
+  vestido: { es: "de Vestido", en: "Gown", meaning: { en: "Give the gown Sophia wears into her new chapter.", es: "Regalan el vestido con el que Sophia entra a su nuevo capítulo." } },
+  corona: { es: "de Corona", en: "Tiara", meaning: { en: "A sign that she is a princess before God and her family.", es: "Señal de que es una princesa ante Dios y su familia." } },
+  zapatos: { es: "de Zapatos", en: "Shoes", meaning: { en: "Flats become heels at the reception: the step into young womanhood.", es: "Las zapatillas se cambian por tacones en la recepción: el paso a ser una joven mujer." } },
+  medalla: { es: "de Medalla", en: "Medal", meaning: { en: "A religious medal blessed during the ceremony, a sign of her faith.", es: "Una medalla bendecida durante la ceremonia, señal de su fe." } },
+  biblia: { es: "de Biblia y Rosario", en: "Bible & rosary", meaning: { en: "To keep God’s word and prayer close as she grows.", es: "Para mantener cerca la palabra de Dios y la oración mientras crece." } },
+  anillo: { es: "de Anillo", en: "Ring", meaning: { en: "A circle with no end: her commitment to God, family and community.", es: "Un círculo sin fin: su compromiso con Dios, su familia y su comunidad." } },
+  cojin: { es: "de Cojín", en: "Kneeler", meaning: { en: "The cushion Sophia kneels on at the altar.", es: "El cojín en el que Sophia se arrodilla ante el altar." } },
+  ramo: { es: "de Ramo", en: "Bouquet", meaning: { en: "The flowers Sophia offers to Our Lady of Guadalupe.", es: "Las flores que Sophia ofrece a la Virgen de Guadalupe." } },
+  muneca: { es: "de Última Muñeca", en: "Last doll", meaning: { en: "The last doll, passed on as she leaves childhood behind.", es: "La última muñeca, que entrega al dejar atrás la infancia." } },
+  pastel: { es: "de Pastel", en: "Cake", meaning: { en: "The cake for the celebration.", es: "El pastel de la celebración." } },
+  brindis: { es: "de Brindis", en: "Toast", meaning: { en: "The glasses for the family toast.", es: "Las copas para el brindis de la familia." } },
 };
 export const routes = [
   ["", "Home", "Inicio"],
@@ -38,7 +67,7 @@ export const routes = [
   ["reception", "Dinner & reception", "Cena y recepción"],
   ["rsvp", "Your invitation", "Tu invitación"],
   ["rsvp/confirmed", "Your response", "Tu respuesta"],
-  ["account", "My invitation", "Mi invitación"],
+  ["account", "My account", "Mi cuenta"],
   ["court", "Court of honor", "Corte de honor"],
   ["padrinos", "With gratitude", "Con gratitud"],
   ["gallery", "The moments", "Los momentos"],
@@ -48,7 +77,7 @@ export const routes = [
   ["faq", "Good to know", "Lo que debes saber"],
   ["guestbook", "A note for Sophia", "Un mensaje para Sophia"],
   ["contact", "Contact us", "Contáctanos"],
-  ["privacy", "Guest privacy", "Privacidad"],
+  ["privacy", "Privacy policy", "Política de privacidad"],
   ["terms", "Media policy", "Política de medios"],
   ["whatsapp", "WhatsApp Updates", "Mensajes WhatsApp"],
   ["sms", "SMS Updates", "Mensajes SMS"],
@@ -147,17 +176,6 @@ export const textContent = {
     [
       "Acknowledgements and padrino roles will be shared with the family’s approval.",
       "Compartiremos los agradecimientos y los roles de los padrinos con la aprobación de la familia.",
-    ],
-  ],
-  gifts: [
-    ["Your presence is a gift", "Tu presencia es un regalo"],
-    [
-      "Thank you for celebrating with Sophia.",
-      "Gracias por celebrar con Sophia.",
-    ],
-    [
-      "Gift preferences and registry links will be posted after the family confirms them. No payment collection is enabled here.",
-      "Publicaremos las preferencias de regalos y los enlaces cuando la familia los confirme. Esta página no recibe pagos.",
     ],
   ],
   travel: [

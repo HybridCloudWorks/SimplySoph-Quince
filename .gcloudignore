@@ -2,6 +2,7 @@
 .git/
 node_modules/
 dist/
+dist-preview/
 work/
 outputs/
 .firebase/

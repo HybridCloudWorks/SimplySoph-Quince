@@ -99,7 +99,7 @@ function accessNote(method, e) {
       account: "your guest account",
     }[method],
     pending = e.code === "MFA_SETUP_NOT_ALLOWED";
-  root.innerHTML = `<section class="card access-note" role="alert"><h2>${pending ? "Your access isn’t turned on yet" : "This account isn’t an administrator"}</h2><p>You signed in with ${how}, and that part worked.</p><p>${pending ? "Your administrator access hasn’t been switched on yet. Please ask Saul or Diana to turn it on, then come back and sign in again within a day to finish setting up." : "The administrator pages are only for the few people helping to run Sophia’s celebration. If you’re expecting access, please contact Saul or Diana."}</p><p>Looking for your invitation? Your RSVP, the event details and photos are under <a href="/account/">My invitation</a>.</p><p><a href="/admin/login/">Try a different account</a></p></section>`;
+  root.innerHTML = `<section class="card access-note" role="alert"><h2>${pending ? "Your access isn’t turned on yet" : "This account isn’t an administrator"}</h2><p>You signed in with ${how}, and that part worked.</p><p>${pending ? "Your administrator access hasn’t been switched on yet. Please ask Saul or Diana to turn it on, then come back and sign in again within a day to finish setting up." : "The administrator pages are only for the few people helping to run Sophia’s celebration. If you’re expecting access, please contact Saul or Diana."}</p><p>Looking for your invitation? Your RSVP, the event details and photos are under <a href="/account/">My account</a>.</p><p><a href="/admin/login/">Try a different account</a></p></section>`;
   root.scrollIntoView({ block: "start" });
   return true;
 }
