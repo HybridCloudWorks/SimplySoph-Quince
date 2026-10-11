@@ -1,8 +1,8 @@
 # Team handoff
 
-Repository: https://github.com/HybridCloudWorks/SimplySoph-Quince
-Draft review: https://github.com/HybridCloudWorks/SimplySoph-Quince/pull/1
-Branch: feature/complete-quince-site
+> History: this was the original handoff from September 2026, when the work lived on a draft branch. For how the project works today, start with [README.md](README.md).
+
+Repository: https://github.com/HybridCloudWorks/SimplySoph-Quince (work happens on short-lived branches merged into `main` by pull request)
 
 Use README.md, PAGE-SCOPE.md and DEPLOYMENT.md as the current implementation contract. Earlier five-page/demo proposals are superseded.
 

@@ -1,8 +1,8 @@
 # Published website
 
-The multi-page website is live at **https://misxv.simplysoph.com** and **https://misxv-simplysoph.web.app**. The current build contains 57 routes plus a 404 document and the corrected invitation. Normal HTTPS validation succeeds on the custom domain.
+The multi-page website is live at **https://misxv.simplysoph.com** and **https://misxv-simplysoph.web.app**. Each build contains every English and Spanish page plus a 404 document. Normal HTTPS validation succeeds on the custom domain.
 
-The Cloud Run RSVP/email backend is deployed and connected through `/api/**`. Live configuration confirms both providers are configured, and unauthenticated private endpoints reject access. Microsoft accepted the two approved setup emails; actual delivery, organizer MFA, guest registration/returning sign-in, Notion response projection and media moderation still require live acceptance. Do not distribute invitations until those checks pass. These acceptance gates do not block publishing static page improvements.
+The Cloud Run RSVP and sign-in service is deployed and connected through `/api/**`, and unauthenticated private endpoints reject access. Before distributing invitations, run the live acceptance checklist in DEPLOYMENT.md: real email delivery, administrator and guest sign-in, Notion projection and media moderation. Those checks do not block publishing page improvements.
 
 ## Automatic publishing
 
