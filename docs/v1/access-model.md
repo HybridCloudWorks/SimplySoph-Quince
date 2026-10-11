@@ -24,9 +24,12 @@ A seven-agent audit on October 10, 2026 counted 11 sign-in paths and 7 sources o
 4. Guest identity is the Notion row's Email, plus an optional **Additional Emails** column.
 5. Invitation links and codes are RSVP-only.
 6. RSVPs write the family's **RSVP** column. "Website RSVP" is no longer written.
-7. Sign-in links are sent automatically on the guest's own request. Receipts go only to a verified address (the signed-in email or the Notion Email), never to an address typed into the form.
+7. Sign-in links are sent automatically on the guest's own request. Receipts go only to a verified address (the signed-in email or the Notion Email), never to an address typed into the form. Confirmed after the re-audit (Oct 11, 2026): receipts stay automatic, at most 5 per household a day; later ones wait as drafts for a person.
 8. Page permissions (gifts, padrinos, costs) are removed. The registry is public, and costs and the padrinos planning list are admin-only.
 12. The automatic Notion retry (Cloud Scheduler drain) is turned on.
+13. (Oct 11, 2026) WhatsApp's automatic replies to the STOP, START and HELP keywords are an approved exception to the person-in-the-loop rule. Any other inbound text gets no automatic reply. The four templates are resubmitted with the November 15 deadline before WhatsApp is switched on; the server refuses to start with WhatsApp on while an approved template shows another date.
+14. (Oct 11, 2026) The GitHub repository stays public. Guest data, invitation links, exports and credentials never go into it (they live in the ledger, Secret Manager and private storage).
+15. (Oct 11, 2026) The Notion workspace requires two-step sign-in, and only the family members who manage the guest list can edit the Invitations database, since its Email and Administrator Eligible columns decide who can sign in and who is an administrator.
 
 ## Removed
 

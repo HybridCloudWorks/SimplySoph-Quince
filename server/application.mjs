@@ -152,6 +152,7 @@ export function createApplication({
     key,
     origin,
     now,
+    deadline,
   });
   const sendNotification = createNotifications({
     ledger,

@@ -298,3 +298,21 @@ test("WhatsApp answers only the STOP, START and HELP keywords on its own; other 
   assert.ok(!other.includes("<Message>"), "a person answers other messages");
   assert.match(await reply("STOP", "9"), /<Message>.*unsubscribed/);
 });
+
+test("WhatsApp cannot be switched on while an approved template shows another RSVP deadline (re-audit N5)", () => {
+  const deadline = "2026-11-15T23:59:00-06:00";
+  const template = (key, language, body) => ({
+    key, language, body, status: "approved", category: "MARKETING",
+    contentSid: "HX" + "5".repeat(32), variables: ["1"],
+  });
+  const old = [
+    template("invitation_en", "en", "Simply Soph Media: Please RSVP by October 31, 2026 using your private link: {{1}}"),
+    template("invitation_es", "es", "Simply Soph Media: Confirma antes del 15 de noviembre de 2026: {{1}}"),
+  ];
+  const build = (templates, enabled) =>
+    createWhatsapp({ ledger: null, notion: null, transport: { enabled }, templates, deadline });
+  assert.throws(() => build(old, true), /another RSVP deadline: invitation_en$/);
+  assert.doesNotThrow(() => build(old, false), "switched off, the catalog may still be updated");
+  const current = [old[1], template("invitation_en", "en", "Simply Soph Media: Please RSVP by November 15, 2026 using your private link: {{1}}")];
+  assert.doesNotThrow(() => build(current, true));
+});

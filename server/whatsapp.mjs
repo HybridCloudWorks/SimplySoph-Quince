@@ -20,6 +20,15 @@ const xml = (text = "") => ({
   ),
   contentType: "text/xml; charset=utf-8",
 });
+// The RSVP deadline as a template must show it, in the template's language:
+// "November 15, 2026" or "15 de noviembre de 2026".
+export const deadlineText = (deadline, language) =>
+  new Intl.DateTimeFormat(language === "es" ? "es-MX" : "en-US", {
+    timeZone: "America/Chicago",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(deadline));
 export function createWhatsapp({
   ledger,
   notion,
@@ -29,6 +38,8 @@ export function createWhatsapp({
   key,
   origin,
   now = Date.now,
+  // The RSVP deadline (site/content.mjs); checked against approved templates.
+  deadline = null,
 }) {
   if (
     !Array.isArray(templates) ||
@@ -53,6 +64,15 @@ export function createWhatsapp({
   )
     throw Error("Invalid WhatsApp template catalog");
   const enabled = transport?.enabled === true;
+  // Templates repeat the RSVP deadline, which Meta freezes at approval. WhatsApp
+  // cannot be switched on while an approved template shows another date, so
+  // guests are never told the wrong day (re-audit N5; templates resubmitted
+  // after the deadline moved to November 15).
+  const outdated = deadline
+    ? templates.filter((t) => t.status === "approved" && !t.body.includes(deadlineText(deadline, t.language)))
+    : [];
+  if (enabled && outdated.length)
+    throw Error("WhatsApp templates show another RSVP deadline: " + outdated.map((t) => t.key).join(", "));
   const eligible = (row, s) => {
     try {
       const phone = whatsappDestination(row.whatsappPhone),
