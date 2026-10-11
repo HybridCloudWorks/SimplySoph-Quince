@@ -17,18 +17,18 @@ We evaluated three models:
 | Household, contacts, capacity, groups | Notion | Source columns |
 | **Invited events** (ceremony/dinner/dance) | **Notion** (new checkboxes; today these live only in the ledger) | `Invited Ceremony/Dinner/Dance` |
 | Budget, godparents | Notion (website shows a read-only view with "Open in Notion") | Source |
-| Admin eligibility | Ledger role (Admin Center) | `Website role` (read-only) |
+| Admin eligibility | Notion (`Administrator Eligible` on the row's main `Email`; see `access-model.md`) | Source column |
 | Invitation links, delivery status | Ledger | `Website invitation` (Issued / Emailed / Revoked + date) |
-| RSVP answers, contact corrections | Guest on the website | `Website RSVP`, `Website …` (read-only) |
+| RSVP answers, contact corrections | Guest on the website (or the family, for an answer taken by phone) | `RSVP` (Yes/No), the per-event head counts and `Website …` columns |
 | SMS / WhatsApp consent | Guest's keyword message → ledger | `SMS Consent`, `SMS Opt Out` (read-only projection; **no longer an input**) |
 | Event details (venues, times, deadline) | Admin Center → ledger | `Event Summary` page (scheduled one-way update) |
 
-Rule: **`Website …` columns are written only by the app.** A drift report flags manual edits and re-projects.
+Rule: **`Website …` columns are written only by the app.** A drift check flags Notion edits to the RSVP and head counts. An admin then keeps Notion's version or writes the website's answer again, and a retry never writes over an edit made after the answer (see `NOTION-INTEGRATION.md`).
 
 ## Gaps found
 
 1. **Rate limits.** The runtime client has no throttle and no 429/Retry-After handling; every non-2xx becomes a 503. Every guest page view reads Notion live. `notion.list()` runs on dashboard, guests and accounts views and on every consent sync.
-2. **Manual retries only.** Pending projections wait until someone clicks Retry Sync (batches of 10/25).
+2. **Manual retries only.** Pending projections wait until someone clicks Retry sync (batches of 10/25).
 3. **Schema coupling.** Source column names are hard-coded and never validated. Renaming `Kids` breaks every household.
 4. **Hard-coded IDs.** Planning data-source IDs and the site URL are hard-coded in `planning-notion.mjs`; the Invitations source comes from env.
 5. **Guest CSV import** has no stable import ID, so a re-import duplicates rows.

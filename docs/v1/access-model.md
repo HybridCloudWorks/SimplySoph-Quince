@@ -46,4 +46,4 @@ A seven-agent audit on October 10, 2026 counted 11 sign-in paths and 7 sources o
 
 - Notion becomes the key to admin access. Restrict who can edit the Invitations database and turn on two-step sign-in for the workspace. Every authenticator setup is reported in the Notifications inbox.
 - Households without an Email in Notion can still RSVP with their link, but can't sign in for photos and messages until one is added.
-- Each admin request reads that person's Notion row (with a 5-second cache). If Notion is unreachable, admin pages return an error instead of signing the admin out. The break-glass owner keeps working.
+- Each admin request reads that person's Notion row (with a 5-second cache). If Notion is unreachable, an admin Notion confirmed in the last 15 minutes keeps working; after that, admin pages return an error instead of signing the admin out. The break-glass owner keeps working.

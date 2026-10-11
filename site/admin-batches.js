@@ -19,7 +19,9 @@ const reasons = {
   "link-already-exists": "Already has a link (never replaced in bulk)",
 };
 const typeNames = { invitation: "Invitation emails", reminder: "Reminder emails" };
-const events = ["ceremony", "dinner", "dance"];
+// The same names guests see on the RSVP form.
+export const eventNames = { ceremony: "Ceremony", dinner: "Dinner", dance: "Reception & dance" };
+const events = Object.keys(eventNames);
 
 export function selectedIds(root) {
   return [...root.querySelectorAll("[data-select]:checked")].map((b) => b.value);
@@ -47,7 +49,7 @@ export function batchToolbar(root, guests, reload) {
   });
   bar.querySelector("[data-batch=issue]").onclick = () => {
     const ids = selectedIds(root);
-    box.innerHTML = `<form id="issue-batch" class="card"><h2>Create links for ${ids.length} households</h2><p>Only households without a link get one; existing links are never replaced here. Nothing is emailed.</p>${events.map((e) => `<label class="check"><input type="checkbox" name="${e}" checked>${e}</label>`).join("")}<label>Language<select name="locale"><option value="en">English</option><option value="es">Español</option></select></label><p class="error" role="alert"></p><button type="submit" class="button burgundy">Create links</button></form>`;
+    box.innerHTML = `<form id="issue-batch" class="card"><h2>Create links for ${ids.length} households</h2><p>Only households without a link get one; existing links are never replaced here. Nothing is emailed.</p>${events.map((e) => `<label class="check"><input type="checkbox" name="${e}" checked>${eventNames[e]}</label>`).join("")}<label>Language<select name="locale"><option value="en">English</option><option value="es">Español</option></select></label><p class="error" role="alert"></p><button type="submit" class="button burgundy">Create links</button></form>`;
     const form = box.querySelector("form");
     form.onsubmit = async (e) => {
       e.preventDefault();

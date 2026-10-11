@@ -4,18 +4,18 @@ const fields = {
     ["item", "Item"],
     ["category", "Category"],
     ["quantity", "Quantity"],
-    ["unitPrice", "Unit Price", "number"],
-    ["costOwner", "Cost Owner"],
+    ["unitPrice", "Unit price", "number"],
+    ["costOwner", "Cost owner"],
     ["sponsor", "Sponsor"],
     ["vendor", "Vendor"],
     ["contact", "Contact"],
     ["email", "Email", "email"],
     ["phone", "Phone"],
-    ["estimated", "Estimated Cost", "number"],
-    ["finalCost", "Final Cost", "number"],
-    ["deposit", "Deposit Paid", "number"],
-    ["additionalPaid", "Additional Paid", "number"],
-    ["dueDate", "Due Date", "date"],
+    ["estimated", "Estimated cost", "number"],
+    ["finalCost", "Final cost", "number"],
+    ["deposit", "Deposit paid", "number"],
+    ["additionalPaid", "Additional paid", "number"],
+    ["dueDate", "Due date", "date"],
     ["status", "Status"],
     ["notes", "Notes"],
   ],
@@ -23,13 +23,13 @@ const fields = {
     ["name", "Name"],
     ["email", "Email", "email"],
     ["phone", "Phone"],
-    ["gift", "Gift / Contribution"],
+    ["gift", "Gift / contribution"],
     ["role", "Role"],
-    ["pledged", "Pledged Value", "number"],
-    ["received", "Received Value", "number"],
+    ["pledged", "Pledged value", "number"],
+    ["received", "Received value", "number"],
     ["contacted", "Contacted", "checkbox"],
-    ["contactedAt", "Contacted Date", "date"],
-    ["followUp", "Follow-Up Date", "date"],
+    ["contactedAt", "Contacted date", "date"],
+    ["followUp", "Follow-up date", "date"],
     ["status", "Status"],
     ["notes", "Notes"],
   ],
@@ -57,7 +57,7 @@ export async function planningEditor(root) {
     const paid = (row) => cents(row.deposit) + cents(row.additionalPaid);
     const cell = (row, key, type) =>
       key === "deposit" && kind === "costs"
-        ? `<span title="Initial Deposit: ${dollars(row.deposit)}; Additional Payments: ${dollars(row.additionalPaid)}">${dollars(paid(row) / 100)}</span>`
+        ? `<span title="Initial deposit: ${dollars(row.deposit)}; Additional payments: ${dollars(row.additionalPaid)}">${dollars(paid(row) / 100)}</span>`
         : type === "number"
           ? row[key] == null
             ? "—"
@@ -71,7 +71,7 @@ export async function planningEditor(root) {
       r.sync?.status === "synced"
         ? "Synced"
         : r.sync
-          ? `<span>${r.sync.status === "syncing" ? "Syncing" : r.sync.status === "failed" ? "Refused By Notion" : "Pending"}</span><button class="plain-button" data-sync="${r.id}">Retry Sync</button>`
+          ? `<span>${r.sync.status === "syncing" ? "Syncing" : r.sync.status === "failed" ? "Refused by Notion" : "Pending"}</span><button class="plain-button" data-sync="${r.id}">Retry sync</button>`
           : "Imported";
     const totalCells = columns
       .map(
@@ -79,11 +79,11 @@ export async function planningEditor(root) {
           `<td>${index === 0 ? "Totals" : key === "finalCost" ? (data.totals.finalCents == null ? "Pending" : dollars(data.totals.finalCents / 100)) : key === "deposit" ? dollars(data.totals.paidCents / 100) : ""}</td>`,
       )
       .join("");
-    grid.innerHTML = `<h2>${kind === "costs" ? "Accounting" : "Godparents"}</h2>${kind === "costs" ? `<p>Deposit Paid includes the initial deposit and subsequent payments. Owed = Final Cost − Deposit Paid. Edit a record to see or change the payment breakdown. Negative owed amounts indicate a credit.</p>${data.totals.pendingFinals ? `<p>${data.totals.pendingFinals} record(s) still need a final cost. Final Cost and Owed totals remain pending until all final costs are entered.</p>` : ""}` : ""}
-      <details><summary>Import From Notion</summary><p>Import new rows from the connected Notion database. Existing and deleted rows are preserved. Website edits update the linked Notion row.</p><form id="planning-import"><p class="error" role="alert"></p><button type="submit" class="button burgundy">Import New Rows</button></form></details>
-      <div class="row-actions"><button id="new-record" class="button burgundy">Add ${kind === "costs" ? "Expense" : "Godparent"}</button></div>
-      <div class="table-wrap"><table class="planning-table"><thead><tr>${columns.map(([, label]) => `<th>${label}</th>`).join("")}${kind === "costs" ? "<th>Owed</th>" : ""}<th>Notion Sync</th><th>Actions</th></tr></thead><tbody>${rows.map((r) => `<tr>${columns.map(([key, , type]) => `<td>${cell(r, key, type)}</td>`).join("")}${kind === "costs" ? `<td class="money">${r.finalCost == null ? "—" : dollars((cents(r.finalCost) - paid(r)) / 100)}</td>` : ""}<td>${syncCell(r)}</td><td><div class="table-actions"><button class="plain-button" data-edit="${r.id}">Edit</button><a target="_blank" rel="noopener" aria-label="Documents For ${esc(r.item || r.name)}" href="/admin/documents/?kind=${kind}&rowId=${r.id}">📄 Documents</a><button class="plain-button" data-state="${r.id}" data-deleted="true">Delete</button></div></td></tr>`).join("") || `<tr><td colspan="${columns.length + (kind === "costs" ? 3 : 2)}">No records yet. Add a record or import from Notion.</td></tr>`}</tbody>${kind === "costs" ? `<tfoot><tr>${totalCells}<td class="money">${data.totals.owedCents == null ? "Pending" : dollars(data.totals.owedCents / 100)}</td><td></td><td></td></tr></tfoot>` : ""}</table></div>
-      <details><summary>Deleted Records (${deleted.length})</summary><p>Delete archives the linked Notion record and removes it from active totals. Restore returns the same record. Documents and payment history are kept.</p>${deleted.map((r) => `<article class="card"><h3>${esc(r.item || r.name)}</h3><p>${syncCell(r)}</p><button class="plain-button" data-state="${r.id}" data-deleted="false">Restore</button></article>`).join("") || "<p>No deleted records.</p>"}</details><div id="planning-edit"></div>`;
+    grid.innerHTML = `<h2>${kind === "costs" ? "Accounting" : "Godparents"}</h2>${kind === "costs" ? `<p>Deposit paid includes the initial deposit and subsequent payments. Owed = Final cost − Deposit paid. Edit a record to see or change the payment breakdown. Negative owed amounts indicate a credit.</p>${data.totals.pendingFinals ? `<p>${data.totals.pendingFinals} record(s) still need a final cost. Final cost and Owed totals remain pending until all final costs are entered.</p>` : ""}` : ""}
+      <details><summary>Import from Notion</summary><p>Import new rows from the connected Notion database. Existing and deleted rows are preserved. Website edits update the linked Notion row.</p><form id="planning-import"><p class="error" role="alert"></p><button type="submit" class="button burgundy">Import new rows</button></form></details>
+      <div class="row-actions"><button id="new-record" class="button burgundy">Add ${kind === "costs" ? "expense" : "godparent"}</button></div>
+      <div class="table-wrap"><table class="planning-table"><thead><tr>${columns.map(([, label]) => `<th>${label}</th>`).join("")}${kind === "costs" ? "<th>Owed</th>" : ""}<th>Notion sync</th><th>Actions</th></tr></thead><tbody>${rows.map((r) => `<tr>${columns.map(([key, , type]) => `<td>${cell(r, key, type)}</td>`).join("")}${kind === "costs" ? `<td class="money">${r.finalCost == null ? "—" : dollars((cents(r.finalCost) - paid(r)) / 100)}</td>` : ""}<td>${syncCell(r)}</td><td><div class="table-actions"><button class="plain-button" data-edit="${r.id}">Edit</button><a target="_blank" rel="noopener" aria-label="Documents for ${esc(r.item || r.name)}" href="/admin/documents/?kind=${kind}&rowId=${r.id}">📄 Documents</a><button class="plain-button" data-state="${r.id}" data-deleted="true">Delete</button></div></td></tr>`).join("") || `<tr><td colspan="${columns.length + (kind === "costs" ? 3 : 2)}">No records yet. Add a record or import from Notion.</td></tr>`}</tbody>${kind === "costs" ? `<tfoot><tr>${totalCells}<td class="money">${data.totals.owedCents == null ? "Pending" : dollars(data.totals.owedCents / 100)}</td><td></td><td></td></tr></tfoot>` : ""}</table></div>
+      <details><summary>Deleted records (${deleted.length})</summary><p>Delete archives the linked Notion record and removes it from active totals. Restore returns the same record. Documents and payment history are kept.</p>${deleted.map((r) => `<article class="card"><h3>${esc(r.item || r.name)}</h3><p>${syncCell(r)}</p><button class="plain-button" data-state="${r.id}" data-deleted="false">Restore</button></article>`).join("") || "<p>No deleted records.</p>"}</details><div id="planning-edit"></div>`;
     grid.querySelectorAll("[data-state]").forEach((button) => {
       button.onclick = async () => {
         const row = allRows.find((r) => r.id === button.dataset.state);
@@ -99,9 +99,9 @@ export async function planningEditor(root) {
           notify(
             saved.row.sync?.status === "synced"
               ? saved.row.deleted
-                ? "Record Deleted And Archived In Notion. Restore Is Available."
-                : "Record Restored And Synced To Notion."
-              : "Change Saved. Notion Sync Pending; Use Retry Sync.",
+                ? "Record deleted and archived in Notion. Restore is available."
+                : "Record restored and synced to Notion."
+              : "Change saved. Notion sync pending; use Retry sync.",
           );
         } catch (e) {
           notify(e.message);
@@ -116,13 +116,13 @@ export async function planningEditor(root) {
       });
       await draw(kind);
       notify(
-        `${result.added} Imported; ${result.skipped} Existing Rows Preserved.`,
+        `${result.added} imported; ${result.skipped} existing rows preserved.`,
       );
     });
     function edit(row = {}) {
       const panel = grid.querySelector("#planning-edit"),
         createId = crypto.randomUUID();
-      panel.innerHTML = `<form class="card planning-editor"><h3 class="full">${row.id ? "Edit" : "Add"} ${kind === "costs" ? "Expense" : "Godparent"}</h3>${kind === "costs" ? '<p class="full">Enter the initial deposit and additional payments separately. The table combines both under Deposit Paid.</p>' : ""}${fields[kind].map(([key, label, type]) => (type === "checkbox" ? `<label class="check"><input type="checkbox" name="${key}" ${row[key] ? "checked" : ""}>${label}</label>` : key === "notes" ? `<label class="full">Notes<textarea name="notes" maxlength="4000">${esc(row.notes || "")}</textarea></label>` : `<label>${key === "deposit" && kind === "costs" ? "Initial Deposit" : label}<input name="${key}" type="${type || "text"}" value="${esc(row[key] ?? "")}" ${type === "number" ? 'min="0" step="0.01"' : 'maxlength="250"'} ${["item", "name"].includes(key) ? "required" : ""}></label>`)).join("")}<div class="full"><p class="error" role="alert"></p><button type="submit" class="button burgundy">Save Record</button></div></form>`;
+      panel.innerHTML = `<form class="card planning-editor"><h3 class="full">${row.id ? "Edit" : "Add"} ${kind === "costs" ? "expense" : "godparent"}</h3>${kind === "costs" ? '<p class="full">Enter the initial deposit and additional payments separately. The table combines both under Deposit paid.</p>' : ""}${fields[kind].map(([key, label, type]) => (type === "checkbox" ? `<label class="check"><input type="checkbox" name="${key}" ${row[key] ? "checked" : ""}>${label}</label>` : key === "notes" ? `<label class="full">Notes<textarea name="notes" maxlength="4000">${esc(row.notes || "")}</textarea></label>` : `<label>${key === "deposit" && kind === "costs" ? "Initial deposit" : label}<input name="${key}" type="${type || "text"}" value="${esc(row[key] ?? "")}" ${type === "number" ? 'min="0" step="0.01"' : 'maxlength="250"'} ${["item", "name"].includes(key) ? "required" : ""}></label>`)).join("")}<div class="full"><p class="error" role="alert"></p><button type="submit" class="button burgundy">Save record</button></div></form>`;
       submit(panel.querySelector("form"), async (f) => {
         const values = Object.fromEntries(f);
         if (kind === "padrinos") values.contacted = f.has("contacted");
@@ -134,10 +134,10 @@ export async function planningEditor(root) {
         await draw(kind);
         notify(
           saved.row.sync?.status === "synced"
-            ? "Saved And Synced To Notion."
+            ? "Saved and synced to Notion."
             : saved.row.sync?.status === "failed"
-              ? "Saved On Website. Notion Refused The Change; See Notifications."
-              : "Saved On Website. Notion Sync Pending; Use Retry Sync.",
+              ? "Saved on website. Notion refused the change; see Notifications."
+              : "Saved on website. Notion sync pending; use Retry sync.",
         );
       });
       panel.scrollIntoView({ block: "nearest" });
@@ -154,10 +154,10 @@ export async function planningEditor(root) {
             await draw(kind);
             notify(
               result.row.sync?.status === "synced"
-                ? "Synced To Notion."
+                ? "Synced to Notion."
                 : result.row.sync?.status === "failed"
-                  ? "Notion Refused The Change; See Notifications."
-                  : "Notion Sync Still Pending.",
+                  ? "Notion refused the change; see Notifications."
+                  : "Notion sync still pending.",
             );
           } catch (e) {
             notify(e.message);
@@ -197,11 +197,11 @@ export async function documentWorkspace(root) {
   }
   const suffix = "kind=" + kind + "&rowId=" + rowId;
   const data = await api("admin/documents?" + suffix);
-  root.innerHTML = `<h2>${esc(data.row.item || data.row.name)}</h2><p>Upload bills and contracts here. Images, PDF and text open in a separate tab. Office files download for opening in their application. Delete moves a file to this workspace’s trash; Restore makes it available again.</p><form id="document-upload" class="card"><label>Document<input type="file" name="file" accept=".jpg,.jpeg,.png,.webp,.pdf,.txt,.docx,.xlsx,.pptx" required></label><p>Maximum 8 MB. Images are normalized and stripped of source metadata.</p><p class="error" role="alert"></p><button type="submit" class="button burgundy">Upload Document</button></form><div class="cards">${data.documents.map((d) => `<article class="card"><h3>${esc(d.name)}</h3><p>${(d.size / 1024).toFixed(0)} KB ${d.deleted ? "· In Trash" : ""}</p><div class="row-actions">${!d.deleted ? `<a target="_blank" rel="noopener" href="/api/admin/documents/open?${suffix}&id=${d.id}">Open / View</a><a href="/api/admin/documents/open?${suffix}&id=${d.id}&download=1">Download</a>` : ""}<button class="plain-button" data-doc="${d.id}" data-deleted="${!d.deleted}">${d.deleted ? "Restore" : "Delete"}</button></div></article>`).join("") || "<p>No documents uploaded yet.</p>"}</div>`;
+  root.innerHTML = `<h2>${esc(data.row.item || data.row.name)}</h2><p>Upload bills and contracts here. Images, PDF and text open in a separate tab. Office files download for opening in their application. Delete moves a file to this workspace’s trash; Restore makes it available again.</p><form id="document-upload" class="card"><label>Document<input type="file" name="file" accept=".jpg,.jpeg,.png,.webp,.pdf,.txt,.docx,.xlsx,.pptx" required></label><p>Maximum 8 MB. Images are normalized and stripped of source metadata.</p><p class="error" role="alert"></p><button type="submit" class="button burgundy">Upload document</button></form><div class="cards">${data.documents.map((d) => `<article class="card"><h3>${esc(d.name)}</h3><p>${(d.size / 1024).toFixed(0)} KB ${d.deleted ? "· In trash" : ""}</p><div class="row-actions">${!d.deleted ? `<a target="_blank" rel="noopener" href="/api/admin/documents/open?${suffix}&id=${d.id}">Open / view</a><a href="/api/admin/documents/open?${suffix}&id=${d.id}&download=1">Download</a>` : ""}<button class="plain-button" data-doc="${d.id}" data-deleted="${!d.deleted}">${d.deleted ? "Restore" : "Delete"}</button></div></article>`).join("") || "<p>No documents uploaded yet.</p>"}</div>`;
   submit(root.querySelector("#document-upload"), async (f) => {
     const file = f.get("file");
     if (!file?.size || file.size > 8 * 1024 * 1024)
-      throw Error("Choose A File Up To 8 MB.");
+      throw Error("Choose a file up to 8 MB.");
     const bytes = new Uint8Array(await file.arrayBuffer());
     let raw = "";
     for (let i = 0; i < bytes.length; i += 32768)
@@ -213,7 +213,7 @@ export async function documentWorkspace(root) {
       data: btoa(raw),
     });
     await documentWorkspace(root);
-    notify("Document Uploaded.");
+    notify("Document uploaded.");
   });
   root.querySelectorAll("[data-doc]").forEach(
     (b) =>

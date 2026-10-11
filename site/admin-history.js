@@ -14,11 +14,11 @@ export async function communicationHistory(root) {
   const kind =
     new URLSearchParams(location.search).get("kind") || "announcements";
   if (!Object.hasOwn(names, kind)) {
-    root.innerHTML = '<p role="alert">Choose A Valid History Category.</p>';
+    root.innerHTML = '<p role="alert">Choose a valid history category.</p>';
     return;
   }
   const { rows } = await api("admin/records?kind=" + encodeURIComponent(kind));
-  root.innerHTML = `<p><a href="${kind === "notifications" ? "/admin/notifications/" : "/admin/updates/?tab=" + kind}">← Back To ${names[kind]}</a></p><h2>${names[kind]} History</h2><div class="history-controls"><label>Search<input type="search" name="search" placeholder="Recipient, title, message or status"></label><label>Status<select name="state"><option value="">All Statuses</option>${[
+  root.innerHTML = `<p><a href="${kind === "notifications" ? "/admin/notifications/" : "/admin/updates/?tab=" + kind}">← Back to ${names[kind]}</a></p><h2>${names[kind]} history</h2><div class="history-controls"><label>Search<input type="search" name="search" placeholder="Recipient, title, message or status"></label><label>Status<select name="state"><option value="">All statuses</option>${[
     ...new Set(
       rows.map(
         (r) =>
@@ -35,7 +35,7 @@ export async function communicationHistory(root) {
     .map((state) => `<option value="${esc(state)}">${esc(state)}</option>`)
     .join(
       "",
-    )}</select></label><label>Sort By<select name="sort"><option value="newest">Newest First</option><option value="oldest">Oldest First</option><option value="name">Recipient / Title A–Z</option><option value="status">Status A–Z</option></select></label><label class="check"><input type="checkbox" name="archived">Include Archived</label></div>${["notifications", "announcements"].includes(kind) ? '<button class="button burgundy" type="button" data-create>Create Record</button>' : ""}<p data-count role="status"></p><div id="history-editor"></div><div class="table-wrap"><table><thead><tr><th>Date</th><th>Recipient / Title</th><th>Message</th><th>Status</th><th>Actions</th></tr></thead><tbody></tbody></table></div>`;
+    )}</select></label><label>Sort by<select name="sort"><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="name">Recipient / title A–Z</option><option value="status">Status A–Z</option></select></label><label class="check"><input type="checkbox" name="archived">Include archived</label></div>${["notifications", "announcements"].includes(kind) ? '<button class="button burgundy" type="button" data-create>Create record</button>' : ""}<p data-count role="status"></p><div id="history-editor"></div><div class="table-wrap"><table><thead><tr><th>Date</th><th>Recipient / title</th><th>Message</th><th>Status</th><th>Actions</th></tr></thead><tbody></tbody></table></div>`;
   const status = (row) =>
     row.archived
       ? "Archived"
@@ -76,14 +76,14 @@ export async function communicationHistory(root) {
             : instant(b) - instant(a),
     );
     root.querySelector("[data-count]").textContent =
-      `${filtered.length} Record(s)`;
+      `${filtered.length} record(s)`;
     root.querySelector("tbody").innerHTML =
       filtered
         .map(
           (row) =>
-            `<tr><td>${instant(row) ? esc(new Date(instant(row)).toLocaleString()) : "—"}</td><td>${esc(label(row))}${row.subject ? `<small>${esc(row.subject)}</small>` : ""}</td><td><p class="history-snippet">${esc(row.text || row.notes || row.templateKey || "")}</p></td><td>${esc(status(row))}</td><td><div class="table-actions"><button type="button" class="plain-button" data-edit="${esc(row.id)}">${row.state && row.state !== "draft" ? "View / Notes" : "View / Edit"}</button><button type="button" class="plain-button" data-archive="${esc(row.id)}">${row.archived ? "Restore" : "Archive"}</button>${["email", "sms", "whatsapp"].includes(kind) && !row.archived ? `<a href="/admin/updates/?tab=${kind}&review=${encodeURIComponent(row.id)}">Review Message</a>` : ""}</div></td></tr>`,
+            `<tr><td>${instant(row) ? esc(new Date(instant(row)).toLocaleString()) : "—"}</td><td>${esc(label(row))}${row.subject ? `<small>${esc(row.subject)}</small>` : ""}</td><td><p class="history-snippet">${esc(row.text || row.notes || row.templateKey || "")}</p></td><td>${esc(status(row))}</td><td><div class="table-actions"><button type="button" class="plain-button" data-edit="${esc(row.id)}">${row.state && row.state !== "draft" ? "View / notes" : "View / edit"}</button><button type="button" class="plain-button" data-archive="${esc(row.id)}">${row.archived ? "Restore" : "Archive"}</button>${["email", "sms", "whatsapp"].includes(kind) && !row.archived ? `<a href="/admin/updates/?tab=${kind}&review=${encodeURIComponent(row.id)}">Review message</a>` : ""}</div></td></tr>`,
         )
-        .join("") || '<tr><td colspan="5">No Matching Records.</td></tr>';
+        .join("") || '<tr><td colspan="5">No matching records.</td></tr>';
     for (const button of root.querySelectorAll("[data-edit]"))
       button.onclick = () =>
         edit(rows.find((row) => row.id === button.dataset.edit));
@@ -109,7 +109,7 @@ export async function communicationHistory(root) {
     const full = ["notifications", "announcements"].includes(kind),
       draft = ["email", "sms"].includes(kind) && row.state === "draft";
     const box = root.querySelector("#history-editor");
-    box.innerHTML = `<form class="card"><h3>${row.id ? "Record Details" : "Create Record"}</h3>${full ? field("Title", "title", { value: row.title || "", required: true, max: 140 }) : draft ? field("Subject / Title", "subject", { value: row.subject || "", max: 140 }) : `<p>${esc(label(row))}</p><p>${esc(row.text || row.subject || row.templateKey || "")}</p><p>Delivery And Recipient Facts Cannot Be Edited.</p>`}${full || draft ? `<label>${kind === "email" ? "Replacement Message (Optional · Leave Blank To Keep Original)" : "Message"}<textarea name="text" maxlength="5000"${kind === "email" ? "" : " required"}>${esc(row.text || "")}</textarea></label>` : ""}${kind === "announcements" ? `${field("Spanish Title", "titleEs", { value: row.titleEs || "", max: 140 })}<label>Spanish Message<textarea name="textEs" maxlength="2000">${esc(row.textEs || "")}</textarea></label><label class="check"><input name="published" type="checkbox"${row.published ? " checked" : ""}>Published On Website</label>` : ""}${kind === "notifications" ? `<label class="check"><input name="read" type="checkbox"${row.read ? " checked" : ""}>Read</label>` : ""}${kind === "email" && row.id ? "<div data-original-email></div>" : ""}<label>Private Notes<textarea name="notes" maxlength="2000">${esc(row.notes || "")}</textarea></label><p role="alert" class="error"></p><div class="row-actions"><button type="submit" class="button burgundy">Save Record</button><button type="button" class="plain-button" data-cancel>Cancel</button></div></form>`;
+    box.innerHTML = `<form class="card"><h3>${row.id ? "Record details" : "Create record"}</h3>${full ? field("Title", "title", { value: row.title || "", required: true, max: 140 }) : draft ? field("Subject / title", "subject", { value: row.subject || "", max: 140 }) : `<p>${esc(label(row))}</p><p>${esc(row.text || row.subject || row.templateKey || "")}</p><p>Delivery and recipient facts cannot be edited.</p>`}${full || draft ? `<label>${kind === "email" ? "Replacement message (optional · leave blank to keep original)" : "Message"}<textarea name="text" maxlength="5000"${kind === "email" ? "" : " required"}>${esc(row.text || "")}</textarea></label>` : ""}${kind === "announcements" ? `${field("Spanish title", "titleEs", { value: row.titleEs || "", max: 140 })}<label>Spanish message<textarea name="textEs" maxlength="2000">${esc(row.textEs || "")}</textarea></label><label class="check"><input name="published" type="checkbox"${row.published ? " checked" : ""}>Published on website</label>` : ""}${kind === "notifications" ? `<label class="check"><input name="read" type="checkbox"${row.read ? " checked" : ""}>Read</label>` : ""}${kind === "email" && row.id ? "<div data-original-email></div>" : ""}<label>Private notes<textarea name="notes" maxlength="2000">${esc(row.notes || "")}</textarea></label><p role="alert" class="error"></p><div class="row-actions"><button type="submit" class="button burgundy">Save record</button><button type="button" class="plain-button" data-cancel>Cancel</button></div></form>`;
     box.querySelector("[data-cancel]").onclick = () => {
       box.innerHTML = "";
     };
@@ -126,7 +126,7 @@ export async function communicationHistory(root) {
         values,
       });
       await communicationHistory(root);
-      notify("Record Saved.");
+      notify("Record saved.");
     });
     box.scrollIntoView({ behavior: "smooth", block: "start" });
     if (kind === "email" && row.id) {
@@ -136,10 +136,10 @@ export async function communicationHistory(root) {
           "admin/mail/preview?id=" + encodeURIComponent(row.id),
         );
         previewBox.innerHTML =
-          '<h4>Original Email</h4><iframe class="preview-frame" title="Original Email Preview" sandbox=""></iframe>';
+          '<h4>Original email</h4><iframe class="preview-frame" title="Original email preview" sandbox=""></iframe>';
         previewBox.querySelector("iframe").srcdoc = preview.html;
       } catch (error) {
-        previewBox.textContent = "Original Preview: " + error.message;
+        previewBox.textContent = "Original preview: " + error.message;
       }
     }
   }

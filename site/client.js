@@ -15,59 +15,59 @@ export function setCsrf(value) {
 }
 const messages = {
   INVALID_AMOUNT: [
-    "Use A Nonnegative Amount With At Most Two Decimal Places.",
+    "Use a nonnegative amount with at most two decimal places.",
     "Usa una cantidad positiva con hasta dos decimales.",
   ],
   INVALID_DOCUMENT: [
-    "Choose A Valid JPG, PNG, WebP, PDF, Text Or Office File Up To 8 MB.",
+    "Choose a valid JPG, PNG, WebP, PDF, text or Office file up to 8 MB.",
     "Elige un archivo válido de hasta 8 MB.",
   ],
   NO_ELIGIBLE_RECIPIENTS: [
-    "Select Recipients With Valid Contact Details. SMS Also Requires The Guest To Have Texted SOPHIA From That Phone.",
+    "Select recipients with valid contact details. SMS also requires the guest to have texted SOPHIA from that phone.",
     "Selecciona destinatarios con datos válidos. Para SMS, el invitado debe haber enviado SOPHIA desde ese teléfono.",
   ],
   CONFIRM_COUNT_MISMATCH: [
-    "Type The Exact Number Of Emails Shown To Confirm. Nothing Was Sent.",
+    "Type the exact number of emails shown to confirm. Nothing was sent.",
     "Escribe el número exacto de correos para confirmar. No se envió nada.",
   ],
   BATCH_NOT_CONFIRMED: [
-    "Confirm This Batch Before Sending.",
+    "Confirm this batch before sending.",
     "Confirma este lote antes de enviarlo.",
   ],
   BATCH_NOT_DRAFT: [
-    "This Batch Was Already Confirmed Or Cancelled. Reopen It To See Its Status.",
+    "This batch was already confirmed or cancelled. Reopen it to see its status.",
     "Este lote ya fue confirmado o cancelado.",
   ],
   BATCH_ALREADY_SENDING: [
-    "This Batch Is Being Sent From Another Tab. Wait A Minute, Then Reopen It.",
+    "This batch is being sent from another tab. Wait a minute, then reopen it.",
     "Este lote se está enviando desde otra pestaña. Espera un minuto y vuelve a abrirlo.",
   ],
   INVALID_AUDIENCE: [
-    "Select At Least One Household.",
+    "Select at least one household.",
     "Selecciona al menos una familia.",
   ],
   EVENTS_REQUIRED: [
-    "Choose At Least One Event For The Invitation.",
+    "Choose at least one event for the invitation.",
     "Elige al menos un evento para la invitación.",
   ],
   LINKS_NOT_READY: [
-    "None Of These Households Has An Active Private Link For {link}. Create Their Links First. Nothing Was Drafted.",
+    "None of these households has an active private link for {link}. Create their links first. Nothing was drafted.",
     "Ninguno de estos hogares tiene un enlace privado activo para {link}. Crea sus enlaces primero. No se creó ningún borrador.",
   ],
   SMS_BRAND_OR_STOP_MISSING: [
-    "Start The Text With “Simply Soph Media:” And Include STOP Opt-Out Wording.",
+    "Start the text with “Simply Soph Media:” and include STOP opt-out wording.",
     "Empieza el mensaje con “Simply Soph Media:” e incluye la opción STOP.",
   ],
   INVALID_DATA_SOURCE: [
-    "Enter The Notion Data Source ID For This Table.",
+    "Enter the Notion data source ID for this table.",
     "Ingresa el ID de la fuente de datos de Notion.",
   ],
   NAME_REQUIRED: [
-    "Enter An Item Or Person Name.",
+    "Enter an item or person name.",
     "Ingresa el nombre del artículo o persona.",
   ],
   NOTION_404: [
-    "Share This Database With The Dedicated Notion Connection And Check Its Data Source ID.",
+    "Share this database with the dedicated Notion connection and check its data source ID.",
     "Comparte esta base de datos con la conexión de Notion y verifica su ID.",
   ],
   SETTINGS_CHANGED: [
