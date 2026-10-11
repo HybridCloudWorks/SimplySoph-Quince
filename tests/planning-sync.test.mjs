@@ -399,3 +399,64 @@ test("the drain leaves planning errors that need a person to the admin's Retry S
   assert.deepEqual(await handle.retryPending(), { attempted: 0 }, "not retried every 10 minutes");
   assert.equal(writes, 1);
 });
+test("a change Notion refuses is marked failed, reported once, left out of the drain, and corrected by editing (re-audit N3)", async () => {
+  const ledger = new Ledger(memoryAdapter());
+  let refuse = true;
+  const writes = [];
+  const handle = createPlanning({
+    ledger,
+    now: Date.now,
+    notion: {
+      writePlanning: async (k, source, row, keys) => {
+        writes.push(keys);
+        if (refuse) throw Object.assign(new Error(), { code: "NOTION_400" });
+        return "page";
+      },
+    },
+  });
+  const notes = async () =>
+    Object.values((await ledger.read()).notifications || {}).filter((n) => n.kind === "sync");
+  const a = await handle(req("", { row: { item: "Cake", estimated: 50 } }), actor);
+  assert.equal(a.row.sync.status, "failed");
+  assert.equal(a.row.sync.error, "NOTION_400");
+  assert.equal((await notes()).length, 1);
+  assert.match((await notes())[0].title, /Cake: Notion refused the change/);
+  assert.deepEqual(await handle.retryPending(), { attempted: 0 }, "the drain leaves it alone");
+  await handle(req("/sync", { id: a.row.id }), actor);
+  assert.equal((await notes()).length, 1, "the same refusal is reported once");
+  // Editing the record corrects it; the new write carries the refused fields.
+  refuse = false;
+  const row = (await ledger.read()).planning.costs[a.row.id];
+  const b = await handle(req("", { id: row.id, version: row.version, row: { item: "Cake", estimated: 60 } }), actor);
+  assert.equal(b.row.sync.status, "synced");
+  assert.ok(writes.at(-1).includes("item") && writes.at(-1).includes("estimated"));
+});
+test("a create Notion refused can be corrected by editing; lost access stays pending, not refused (re-audit M3, L3)", async () => {
+  const ledger = new Ledger(memoryAdapter());
+  let answer = "NOTION_400";
+  const handle = createPlanning({
+    ledger,
+    now: Date.now,
+    notion: {
+      // Like planning-notion.mjs: an earlier create attempt with no page found
+      // is uncertain; a refused create is marked as not created.
+      writePlanning: async (k, source, row, keys, beforeCreate) => {
+        if (!row.notionId && row.sync.createAttempted)
+          throw Object.assign(new Error(), { code: "NOTION_CREATE_UNCERTAIN" });
+        await beforeCreate();
+        if (answer) throw Object.assign(new Error(), { code: answer, notCreated: answer === "NOTION_400" });
+        return "page";
+      },
+    },
+  });
+  const a = await handle(req("", { row: { item: "Flowers", estimated: 80 } }), actor);
+  assert.equal(a.row.sync.status, "failed");
+  answer = null;
+  const row = (await ledger.read()).planning.costs[a.row.id];
+  const b = await handle(req("", { id: row.id, version: row.version, row: { item: "Flowers", estimated: 90 } }), actor);
+  assert.equal(b.row.sync.status, "synced", "the corrected record is created");
+  // A revoked token (403) is not the record's fault: pending, retried later.
+  answer = "NOTION_403";
+  const c = await handle(req("", { row: { item: "Cake", estimated: 50 } }), actor);
+  assert.equal(c.row.sync.status, "pending");
+});

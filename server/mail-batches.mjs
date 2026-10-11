@@ -2,6 +2,7 @@ import { logEvent } from "./event-log.mjs";
 import { randomUUID } from "node:crypto";
 import { error, hash, token } from "./auth.mjs";
 import { validEmail } from "./audience.mjs";
+import { attendanceOf } from "./attendance.mjs";
 
 // Invitation and reminder emails for many households, with one human gate:
 // draft -> organizer reviews recipients, skips and samples -> organizer types
@@ -41,7 +42,8 @@ export function createMailBatches({
     );
     if (mail.some((j) => j.type === type && j.state === "draft" && !j.archived))
       return "draft-already-exists";
-    if (invite.latestSubmissionId) return "already-responded";
+    // Answered on the website, or by phone with the answer typed into Notion.
+    if (attendanceOf(s, row)) return "already-responded";
     if (type === "invitation" && mail.some((j) => j.type === "invitation" && accepted(j)))
       return "already-invited";
     if (type === "reminder") {

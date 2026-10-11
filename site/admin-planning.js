@@ -71,7 +71,7 @@ export async function planningEditor(root) {
       r.sync?.status === "synced"
         ? "Synced"
         : r.sync
-          ? `<span>${r.sync.status === "syncing" ? "Syncing" : "Pending"}</span><button class="plain-button" data-sync="${r.id}">Retry Sync</button>`
+          ? `<span>${r.sync.status === "syncing" ? "Syncing" : r.sync.status === "failed" ? "Refused By Notion" : "Pending"}</span><button class="plain-button" data-sync="${r.id}">Retry Sync</button>`
           : "Imported";
     const totalCells = columns
       .map(
@@ -135,7 +135,9 @@ export async function planningEditor(root) {
         notify(
           saved.row.sync?.status === "synced"
             ? "Saved And Synced To Notion."
-            : "Saved On Website. Notion Sync Pending; Use Retry Sync.",
+            : saved.row.sync?.status === "failed"
+              ? "Saved On Website. Notion Refused The Change; See Notifications."
+              : "Saved On Website. Notion Sync Pending; Use Retry Sync.",
         );
       });
       panel.scrollIntoView({ block: "nearest" });
@@ -153,7 +155,9 @@ export async function planningEditor(root) {
             notify(
               result.row.sync?.status === "synced"
                 ? "Synced To Notion."
-                : "Notion Sync Still Pending.",
+                : result.row.sync?.status === "failed"
+                  ? "Notion Refused The Change; See Notifications."
+                  : "Notion Sync Still Pending.",
             );
           } catch (e) {
             notify(e.message);
