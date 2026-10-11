@@ -415,24 +415,30 @@ export function createApplication({
     return structuredClone({
       submissionId: row.latestSubmissionId || null,
       response: withResponse ? s.responses[row.latestSubmissionId] : undefined,
+      // The answer the website last wrote to Notion, if any (holdBackEdited).
+      written: projected ? (s.responses[projected]?.attendance ?? null) : null,
       profile,
       forced,
     });
   }
   // A retry (the scheduled drain, Retry on Overview, a later contact change)
-  // never writes over head counts the family changed in Notion after this
-  // answer was given, say after a phone call. It writes the contact columns
-  // only and marks the answer handled; the drift check then shows the
-  // difference on Invitations, where an admin chooses per household (re-audit
-  // N1). The guest's own RSVP and an admin's Write are written as they are.
+  // never writes over an answer the family put in Notion themselves, say after
+  // a phone call: Notion's RSVP or head counts differ from what the website
+  // last wrote there, or, if it never wrote any, Notion already shows Yes or
+  // No. Then it writes the Website columns only (contact, requests, response
+  // ID) and marks the answer handled; the drift check shows the difference on
+  // Invitations, where an admin chooses per household (re-audit N1). Values
+  // are compared, not edit times, so an edit to another column holds nothing
+  // back. The guest's own RSVP and an admin's Write are written as they are.
   async function holdBackEdited(householdId, task) {
     if (!task.response || task.forced) return null;
     try {
       const row = await notion.read(householdId, { fresh: true });
-      if (Date.parse(row.lastEdited) > Date.parse(task.response.submittedAt)) {
-        task.profile ??= { contact: task.response.contact };
-        task.response = undefined;
-      }
+      const familyAnswer = task.written
+        ? notionDifferences(row, task.written).length > 0
+        : ["Yes", "No"].includes(row.invitationStatus);
+      if (familyAnswer && notionDifferences(row, task.response.attendance).length)
+        task.heldBack = true;
       return null;
     } catch (e) {
       return e.code || "NOTION_UNAVAILABLE";
@@ -441,10 +447,11 @@ export function createApplication({
   async function projectSync(householdId, task) {
     try {
       if (task.response)
-        await notion.project(householdId, {
-          ...task.response,
-          contact: task.profile?.contact || task.response.contact,
-        });
+        await notion.project(
+          householdId,
+          { ...task.response, contact: task.profile?.contact || task.response.contact },
+          { answer: !task.heldBack },
+        );
       else await notion.projectContact(householdId, task.profile.contact);
       return null;
     } catch (e) {
@@ -489,11 +496,16 @@ export function createApplication({
       row.syncState = "synced";
       row.syncError = null;
       row.projectedSubmissionId = task.submissionId;
-      // Notion now shows the website's answer the admin chose to write: the
-      // difference is settled at once, not at the next check (re-audit N8).
-      if (task.forced && task.response) {
-        delete row.forceSubmissionId;
-        delete s.drift?.[householdId];
+      if (row.latestSubmissionId && row.forceSubmissionId === row.latestSubmissionId) {
+        // Notion now shows the website's answer the admin chose to write: the
+        // difference is settled at once, not at the next check (re-audit N8).
+        if (task.forced && task.response && !task.heldBack) {
+          delete row.forceSubmissionId;
+          delete s.drift?.[householdId];
+        }
+        // The admin chose to write it while another sync held the row: that
+        // write is still to do, so the drain does it (re-audit H1).
+        else row.syncState = "pending";
       }
     }
     logEvent(
@@ -705,6 +717,27 @@ export function createApplication({
     for (const id of ids) await syncOne(id);
     return { attempted: ids.length };
   }
+  // How a household's Notion RSVP and head counts differ from an answer, in
+  // words for the family; none when Notion shows exactly that answer.
+  function notionDifferences(row, attendance) {
+    const count = (n, one, many) => `${n ?? 0} ${n === 1 ? one : many}`;
+    const both = (c) =>
+      `${count(c.adultsTeens, "adult/teen", "adults/teens")}, ${count(c.kids, "kid", "kids")}`;
+    const attending = Object.values(attendance).some((v) => v.adultsTeens + v.kids > 0);
+    const differences = [];
+    if (row.invitationStatus !== (attending ? "Yes" : "No"))
+      differences.push(
+        `RSVP is "${row.invitationStatus || "empty"}" in Notion, "${attending ? "Yes" : "No"}" on the website`,
+      );
+    for (const event of ["ceremony", "dinner", "dance"]) {
+      // An empty Notion cell means 0, as for events a household isn't invited to.
+      const n = row.notionCounts?.[event] || {},
+        w = attendance[event];
+      if ((n.adultsTeens ?? 0) !== w.adultsTeens || (n.kids ?? 0) !== w.kids)
+        differences.push(`${event}: ${both(n)} in Notion, ${both(w)} on the website`);
+    }
+    return differences;
+  }
   // NOTION-8: does Notion still show each answered household's website RSVP?
   // Each new difference is reported once in Notifications and counted on the
   // dashboard. Notion is never overwritten here: the family may have changed
@@ -715,9 +748,6 @@ export function createApplication({
   // writes the ledger.
   function applyDrift(s, rows, started) {
     s.drift ??= {};
-    const count = (n, one, many) => `${n ?? 0} ${n === 1 ? one : many}`;
-    const both = (c) =>
-      `${count(c.adultsTeens, "adult/teen", "adults/teens")}, ${count(c.kids, "kid", "kids")}`;
     let differing = 0,
       changed = false;
     const fresh = [];
@@ -730,21 +760,7 @@ export function createApplication({
       }
       // Written moments ago (or being written): Notion may not show it yet.
       if (invite.syncTriedAt >= started - 120000) continue;
-      const attending = Object.values(response.attendance).some(
-        (v) => v.adultsTeens + v.kids > 0,
-      );
-      const differences = [];
-      if (row.invitationStatus !== (attending ? "Yes" : "No"))
-        differences.push(
-          `RSVP is "${row.invitationStatus || "empty"}" in Notion, "${attending ? "Yes" : "No"}" on the website`,
-        );
-      for (const event of ["ceremony", "dinner", "dance"]) {
-        // An empty Notion cell means 0, as for events a household isn't invited to.
-        const n = row.notionCounts?.[event] || {},
-          w = response.attendance[event];
-        if ((n.adultsTeens ?? 0) !== w.adultsTeens || (n.kids ?? 0) !== w.kids)
-          differences.push(`${event}: ${both(n)} in Notion, ${both(w)} on the website`);
-      }
+      const differences = notionDifferences(row, response.attendance);
       const entry = s.drift[invite.id];
       if (!differences.length) {
         if (entry) (delete s.drift[invite.id], (changed = true));
@@ -1623,6 +1639,8 @@ export function createApplication({
         }
         current.latestSubmissionId = id;
         current.syncState = "pending";
+        // An admin's earlier choice to write an older answer no longer applies.
+        delete current.forceSubmissionId;
         // Receipts go only to a verified address: the signed-in email, or the
         // household's Email in Notion. Never to an address typed in the form.
         const receiptTo = session.email || row.email;
@@ -2200,6 +2218,8 @@ export function createApplication({
             const entry = s.drift?.[body.id];
             if (!entry) throw error(404, "NOT_FOUND");
             entry.accepted = entry.signature;
+            // Keeping Notion's version cancels a Write still waiting to be done.
+            delete s.invitations[body.id]?.forceSubmissionId;
             audit(s, session.actor, "notion-drift-keep-notion", body.id, now());
             return { kept: "notion" };
           });
@@ -2304,8 +2324,13 @@ export function createApplication({
       // dinner seats follow attendanceOf (re-audit N2).
       const seatable = (s, r) =>
         !r.archived && (s.invitations[r.id] ? s.invitations[r.id].active : !!attendanceOf(s, r));
+      // With Notion unreachable and nothing cached, seating still works from
+      // the issued invitations and the website's answers.
+      const seatingRows = async () =>
+        (await notion.list({ allowStale: true }).catch(() => null)) ??
+        Object.values(ctx.state.invitations).map((r) => ({ id: r.id, name: r.name }));
       if (path === "/api/admin/seating" && method === "GET") {
-        const rows = await notion.list({ allowStale: true });
+        const rows = await seatingRows();
         return {
           tables: Object.values(ctx.state.tables),
           households: rows
@@ -2318,7 +2343,7 @@ export function createApplication({
         };
       }
       if (path === "/api/admin/seating" && method === "POST") {
-        const rows = new Map((await notion.list({ allowStale: true })).map((r) => [r.id, r]));
+        const rows = new Map((await seatingRows()).map((r) => [r.id, r]));
         return ledger.transaction((s) => {
           const id = body.id || randomUUID(),
             name = safeText(body.name, 80),

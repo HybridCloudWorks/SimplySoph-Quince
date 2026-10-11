@@ -36,17 +36,18 @@ test("Notion projection preserves original invitation counts and writes the fami
       );
     },
   });
-  await client.project(page("1").id, {
+  const response = {
     id: "receipt-1",
     submittedAt: "2026-10-01T00:00:00Z",
     contact: { email: "", phone: "", address: null },
-    requests: "",
+    requests: "No nuts",
     attendance: {
       ceremony: { adultsTeens: 1, kids: 0 },
       dinner: { adultsTeens: 2, kids: 1 },
       dance: { adultsTeens: 0, kids: 0 },
     },
-  });
+  };
+  await client.project(page("1").id, response);
   const payload = JSON.parse(requests.at(-1).options.body).properties;
   assert.ok(!("Kids" in payload));
   assert.ok(!("Adults/Teens" in payload));
@@ -54,6 +55,11 @@ test("Notion projection preserves original invitation counts and writes the fami
   assert.equal(payload.RSVP.select.name, "Yes");
   assert.ok(!("Website RSVP" in payload));
   assert.equal(payload["Dinner kids"].number, 1);
+  // Held back (the family's own answer in Notion): Website columns only.
+  await client.project(page("1").id, response, { answer: false });
+  const held = JSON.parse(requests.at(-1).options.body).properties;
+  assert.ok(!("RSVP" in held) && !("Dinner kids" in held) && !("Dinner adults" in held));
+  assert.equal(held["Website requests"].rich_text[0].text.content, "No nuts");
 });
 
 test("WhatsApp consent is channel-specific and missing fields never inherit SMS consent", () => {

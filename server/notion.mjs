@@ -366,21 +366,15 @@ export function notionClient({
         await call("data_sources/" + sourceId, "PATCH", { properties });
       return Object.keys(properties);
     },
-    async project(id, response) {
+    // `answer: false` writes the Website columns only, leaving RSVP and the
+    // head counts as the family set them in Notion (application.mjs, holdBack).
+    async project(id, response, { answer = true } = {}) {
       await this.read(id);
       const a = response.attendance,
         r = (value) => ({
           rich_text: value ? [{ text: { content: value } }] : [],
         });
-      // The family's own RSVP column: Yes when anyone attends, otherwise No.
       const properties = {
-        RSVP: {
-          select: {
-            name: Object.values(a).some((v) => v.adultsTeens + v.kids > 0)
-              ? "Yes"
-              : "No",
-          },
-        },
         "Website response ID": r(response.id),
         "Website response at": { date: { start: response.submittedAt } },
         "Website contact email": { email: response.contact.email || null },
@@ -388,10 +382,18 @@ export function notionClient({
         "Website address": r(response.contact.address),
         "Website requests": r(response.requests),
       };
-      for (const event of ["ceremony", "dinner", "dance"]) {
-        const name = event[0].toUpperCase() + event.slice(1);
-        properties[name + " adults"] = { number: a[event].adultsTeens };
-        properties[name + " kids"] = { number: a[event].kids };
+      if (answer) {
+        // The family's own RSVP column: Yes when anyone attends, otherwise No.
+        properties.RSVP = {
+          select: {
+            name: Object.values(a).some((v) => v.adultsTeens + v.kids > 0) ? "Yes" : "No",
+          },
+        };
+        for (const event of ["ceremony", "dinner", "dance"]) {
+          const name = event[0].toUpperCase() + event.slice(1);
+          properties[name + " adults"] = { number: a[event].adultsTeens };
+          properties[name + " kids"] = { number: a[event].kids };
+        }
       }
       await call("pages/" + id, "PATCH", { properties });
     },

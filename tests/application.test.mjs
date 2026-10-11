@@ -2526,13 +2526,15 @@ test("at most 5 automatic receipts per household a day; later ones wait as draft
 
 test("a retry never writes over head counts the family changed in Notion; an admin's Write survives an outage (re-audit N1, N2, N8)", async () => {
   const writes = [];
-  let down = true;
+  let down = true,
+    requests = null;
   const f = await fixture({
     verifyScheduler: async () => true,
     notion: {
-      async project() {
+      async project(id, response, options) {
         if (down) throw { code: "NOTION_UNAVAILABLE" };
-        writes.push("rsvp");
+        writes.push(options?.answer === false ? "website-columns" : "rsvp");
+        requests = response.requests;
       },
       async projectContact() {
         if (down) throw { code: "NOTION_UNAVAILABLE" };
@@ -2543,12 +2545,11 @@ test("a retry never writes over head counts the family changed in Notion; an adm
   await f.ledger.transaction((s) => {
     for (const v of Object.values(s.sessions)) if (v.kind === "admin") v.expiresAt = at + 86400000;
   });
-  await f.guest("rsvp", f.input(), { "idempotency-key": "45454545-4545-4545-8545-454545454545" });
+  await f.guest("rsvp", { ...f.input(), requests: "Peanut allergy" }, { "idempotency-key": "45454545-4545-4545-8545-454545454545" });
   assert.equal((await f.ledger.read()).invitations[household].syncState, "pending");
   // Notion comes back; meanwhile the family typed a phone answer into Notion.
   down = false;
   f.advance(120000);
-  f.row.lastEdited = new Date(f.now()).toISOString();
   f.row.invitationStatus = "Yes";
   f.row.notionCounts = {
     ceremony: { adultsTeens: 4, kids: 0 },
@@ -2556,7 +2557,8 @@ test("a retry never writes over head counts the family changed in Notion; an adm
     dance: { adultsTeens: 0, kids: 0 },
   };
   await drain(f);
-  assert.deepEqual(writes, ["contact"], "the head counts were not written over");
+  assert.deepEqual(writes, ["website-columns"], "the head counts were not written over");
+  assert.equal(requests, "Peanut allergy", "the guest's requests still reach Notion (re-audit M1)");
   assert.equal((await f.ledger.read()).invitations[household].syncState, "synced");
   // The drift check then shows the difference for the admin to decide.
   f.advance(180000);
@@ -2568,7 +2570,7 @@ test("a retry never writes over head counts the family changed in Notion; an adm
   down = false;
   f.advance(120000);
   await drain(f);
-  assert.deepEqual(writes, ["contact", "rsvp"], "the admin's choice survived the failed attempt");
+  assert.deepEqual(writes, ["website-columns", "rsvp"], "the admin's choice survived the failed attempt");
   const s = await f.ledger.read();
   assert.equal(s.invitations[household].syncState, "synced");
   assert.equal(s.invitations[household].syncError, null);
@@ -2647,4 +2649,96 @@ test("a reply email uses a sign-in email only while it is on the Notion row, wit
   // Back on the row as an Additional Email: the sign-in email is used again.
   f.row.additionalEmails = ["test@example.com"];
   assert.equal((await f.admin("moderation")).messages.find((m) => m.id === id).replyTo, "test@example.com");
+});
+
+test("an edit to another Notion column never holds back the guest's own answer (re-audit M2)", async () => {
+  const writes = [];
+  let down = true;
+  const f = await fixture({
+    verifyScheduler: async () => true,
+    notion: {
+      async project(id, response, options) {
+        if (down) throw { code: "NOTION_UNAVAILABLE" };
+        writes.push(options?.answer === false ? "website-columns" : "rsvp");
+      },
+    },
+  });
+  await f.guest("rsvp", f.input(), { "idempotency-key": "46464646-4646-4646-8646-464646464646" });
+  down = false;
+  // The family ticks some other box later: the row was edited, the answer was not.
+  f.advance(120000);
+  f.row.lastEdited = new Date(f.now()).toISOString();
+  f.row.invitationStatus = "Not sent";
+  await drain(f);
+  assert.deepEqual(writes, ["rsvp"], "the answer is written");
+  // A later answer whose predecessor still shows in Notion is written too.
+  f.row.invitationStatus = "Yes";
+  f.row.notionCounts = structuredClone((await f.ledger.read()).responses["46464646-4646-4646-8646-464646464646"].attendance);
+  down = true;
+  const latest = (await f.ledger.read()).invitations[household].latestSubmissionId;
+  await f.guest("rsvp", { ...f.input(), previousSubmissionId: latest }, { "idempotency-key": "47474747-4747-4747-8747-474747474747" });
+  down = false;
+  await drain(f);
+  assert.deepEqual(writes, ["rsvp", "rsvp"]);
+});
+
+test("an admin's Write made while another sync holds the row is still done, and Keep Notion cancels a waiting one (re-audit H1)", async () => {
+  const writes = [];
+  let gate = null;
+  const f = await fixture({
+    verifyScheduler: async () => true,
+    notion: {
+      async project(id, response, options) {
+        writes.push(options?.answer === false ? "website-columns" : "rsvp");
+      },
+      async projectContact() {
+        writes.push("contact");
+        if (gate) await gate;
+      },
+    },
+  });
+  await f.ledger.transaction((s) => {
+    for (const v of Object.values(s.sessions)) if (v.kind === "admin") v.expiresAt = at + 86400000;
+    for (const v of Object.values(s.sessions)) if (v.accountId) v.expiresAt = at + 86400000;
+    s.profiles = { [household]: { id: household, name: "Test family", contact: { email: "test@example.com", phone: "", address: null }, version: 1 } };
+  });
+  await answeredAndMatching(f);
+  f.row.notionCounts.dinner.adultsTeens += 3;
+  assert.equal((await drain(f)).drift.differing, 1);
+  // A contact-details save holds the row while the admin presses Write.
+  let open;
+  gate = new Promise((r) => (open = r));
+  const { version } = (await f.ledger.read()).profiles[household];
+  let settled = false;
+  const saving = f
+    .guest("profile", { version, email: "test@example.com", phone: "555", address: null })
+    .finally(() => (settled = true));
+  while (!writes.includes("contact") && !settled) await new Promise((r) => setTimeout(r, 2));
+  assert.ok(!settled, "the contact save is holding the row");
+  assert.equal((await f.admin("drift", { id: household, keep: "website" })).syncState, "pending");
+  open();
+  gate = null;
+  await saving;
+  assert.equal((await f.ledger.read()).invitations[household].syncState, "pending", "the Write is still to do");
+  const before = writes.filter((w) => w === "rsvp").length;
+  await drain(f);
+  assert.equal(writes.filter((w) => w === "rsvp").length, before + 1, "the drain did the admin's Write");
+  let s = await f.ledger.read();
+  assert.equal(s.invitations[household].forceSubmissionId, undefined);
+  assert.equal(s.drift?.[household], undefined);
+  // A Write still waiting when the admin then keeps Notion's version is cancelled.
+  f.row.notionCounts.dinner.kids += 2;
+  f.advance(180000);
+  assert.equal((await drain(f)).drift.differing, 1);
+  await f.ledger.transaction((st) => {
+    st.invitations[household].syncLease = { owner: "someone-else", until: f.now() + 90000 };
+  });
+  await f.admin("drift", { id: household, keep: "website" });
+  await f.admin("drift", { id: household, keep: "notion" });
+  s = await f.ledger.read();
+  assert.equal(s.invitations[household].forceSubmissionId, undefined);
+  const rsvpWrites = writes.filter((w) => w === "rsvp").length;
+  f.advance(91000);
+  await drain(f);
+  assert.equal(writes.filter((w) => w === "rsvp").length, rsvpWrites, "Notion's version is kept");
 });

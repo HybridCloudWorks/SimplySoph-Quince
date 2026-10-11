@@ -155,11 +155,19 @@ export function planningNotion(call) {
         return id;
       }
       await beforeCreate();
-      const page = await call("pages", "POST", {
-        parent: { type: "data_source_id", data_source_id: sourceId },
-        properties: planningProperties(kind, row),
-      });
-      return page.id;
+      try {
+        const page = await call("pages", "POST", {
+          parent: { type: "data_source_id", data_source_id: sourceId },
+          properties: planningProperties(kind, row),
+        });
+        return page.id;
+      } catch (e) {
+        // Notion refused the create outright, so no page exists and the next
+        // try may create one (planning.mjs clears createAttempted).
+        if (/^NOTION_4\d\d$/.test(e.code || "") && !["NOTION_408", "NOTION_409", "NOTION_429"].includes(e.code))
+          e.notCreated = true;
+        throw e;
+      }
     },
   };
 }

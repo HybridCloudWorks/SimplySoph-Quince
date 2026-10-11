@@ -221,8 +221,12 @@ export function createPlanning({ ledger, documents, notion, now }) {
       // Notion refused the write itself (say, a value its column rejects): it
       // will be refused the same way every time, so it is marked failed, left
       // out of the scheduled retries, and reported once. Editing the record
-      // or Retry Sync tries again (re-audit N3).
-      const refused = /^NOTION_4\d\d$/.test(e.code || "") && !["NOTION_409", "NOTION_429"].includes(e.code);
+      // or Retry Sync tries again (re-audit N3). Lost access (401/403, say a
+      // revoked token) is not the record's fault: it stays pending and is
+      // retried once access is back.
+      const refused =
+        /^NOTION_4\d\d$/.test(e.code || "") &&
+        !["NOTION_401", "NOTION_403", "NOTION_408", "NOTION_409", "NOTION_429"].includes(e.code);
       await ledger.transaction((s) => {
         const row = s.planning[kind][id];
         if (row.sync.lock !== lock) return;
@@ -244,6 +248,9 @@ export function createPlanning({ ledger, documents, notion, now }) {
           status: refused ? "failed" : "pending",
           lock: null,
           lockUntil: 0,
+          // A create Notion refused outright made no page, so the next try may
+          // create one instead of stopping as uncertain (planning-notion.mjs).
+          ...(e.notCreated && { createAttempted: false }),
           error: refused
             ? e.code
             : needsPerson.has(e.code)
