@@ -2742,3 +2742,30 @@ test("an admin's Write made while another sync holds the row is still done, and 
   await drain(f);
   assert.equal(writes.filter((w) => w === "rsvp").length, rsvpWrites, "Notion's version is kept");
 });
+
+test("a household synced before the written answer was recorded still gets its next answer written (re-audit)", async () => {
+  const writes = [];
+  let down = false;
+  const f = await fixture({
+    verifyScheduler: async () => true,
+    notion: {
+      async project(id, response, options) {
+        if (down) throw { code: "NOTION_UNAVAILABLE" };
+        writes.push(options?.answer === false ? "website-columns" : "rsvp");
+      },
+    },
+  });
+  const r1 = await answeredAndMatching(f);
+  // As written by the API before this release: synced, with no record of it.
+  await f.ledger.transaction((s) => {
+    delete s.invitations[household].projectedSubmissionId;
+  });
+  // The next answer's own write fails briefly; the drain then retries it.
+  down = true;
+  const input = f.input();
+  input.attendance.dinner = { adultsTeens: 1, kids: 0 };
+  await f.guest("rsvp", { ...input, previousSubmissionId: r1.id }, { "idempotency-key": "48484848-4848-4848-8848-484848484848" });
+  down = false;
+  await drain(f);
+  assert.deepEqual(writes, ["rsvp", "rsvp"], "the new head counts reach Notion");
+});

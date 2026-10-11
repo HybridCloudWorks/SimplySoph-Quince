@@ -383,6 +383,14 @@ export function createApplication({
   // run inside a transaction) and provider calls (outside any transaction), so
   // the RSVP path can fold both claims into its own save and both results into
   // one final save. syncOne and dispatchMail compose the same steps standalone.
+  // A household synced before projectedSubmissionId was recorded keeps its
+  // written answer on record when it goes back to pending, so a later retry
+  // knows what the website wrote (holdBackEdited).
+  function markPending(invite) {
+    if (invite.projectedSubmissionId === undefined && invite.syncState === "synced" && invite.latestSubmissionId)
+      invite.projectedSubmissionId = invite.latestSubmissionId;
+    invite.syncState = "pending";
+  }
   function claimSync(s, householdId, owner, { forceResponse = false } = {}) {
     const row = s.invitations[householdId];
     const profile = s.profiles?.[householdId];
@@ -391,7 +399,7 @@ export function createApplication({
     // scheduled drain writes it later (re-audit N2).
     if (forceResponse && row?.latestSubmissionId) {
       row.forceSubmissionId = row.latestSubmissionId;
-      if (row.syncState === "synced") row.syncState = "pending";
+      if (row.syncState === "synced") markPending(row);
     }
     if (!row || (!row.latestSubmissionId && !profile) || row.syncLease?.until > now())
       return null;
@@ -1521,7 +1529,7 @@ export function createApplication({
         p.version++;
         p.updatedAt = now();
         // Synced to Notion with the household's invitation record (once issued).
-        if (invite) invite.syncState = "pending";
+        if (invite) markPending(invite);
         audit(
           s,
           session.householdId,
@@ -1637,8 +1645,8 @@ export function createApplication({
           s.profiles[row.id].version++;
           s.profiles[row.id].updatedAt = now();
         }
+        markPending(current);
         current.latestSubmissionId = id;
-        current.syncState = "pending";
         // An admin's earlier choice to write an older answer no longer applies.
         delete current.forceSubmissionId;
         // Receipts go only to a verified address: the signed-in email, or the
