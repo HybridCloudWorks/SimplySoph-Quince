@@ -180,7 +180,7 @@ function contents(route, lang) {
       )
       .join(
         "",
-      )}</div><div class="editorial"><h2>${say("Dress code", "Código de vestimenta")}</h2><p>${t.pending} ${say("Burgundy and gold are the site theme, not a required outfit.", "Borgoña y dorado son los colores del sitio, no una vestimenta obligatoria.")}</p><h3>${say("Add to your calendar", "Agrega a tu calendario")}</h3><div class="calendar-actions" data-calendar-links>${["ceremony", "dinner", "reception"].map((k) => `<div><strong>${say({ ceremony: "Ceremony", dinner: "Dinner", reception: "Reception" }[k], { ceremony: "Ceremonia", dinner: "Cena", reception: "Recepción" }[k])}</strong>${calendarLink(k, celebration, lang)}</div>`).join("")}</div></div>`;
+      )}</div><div class="editorial"><h2>${say("Dress code", "Código de vestimenta")}</h2><p>${t.pending} ${say("Burgundy and gold are the site theme, not a required outfit.", "Borgoña y dorado son los colores del sitio, no una vestimenta obligatoria.")}</p><h3 class="calendar-heading">${say("Add to your calendar", "Agrega a tu calendario")}</h3><div class="calendar-actions" data-calendar-links>${["ceremony", "dinner", "reception"].map((k) => `<div><strong>${say({ ceremony: "Ceremony", dinner: "Dinner", reception: "Reception" }[k], { ceremony: "Ceremonia", dinner: "Cena", reception: "Recepción" }[k])}</strong>${calendarLink(k, celebration, lang)}</div>`).join("")}</div></div>`;
   if (route === "ceremony" || route === "reception")
     body =
       '<div data-venue="' +

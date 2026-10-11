@@ -40,7 +40,7 @@ const dollars = (n) =>
   );
 export async function planningEditor(root) {
   root.innerHTML =
-    '<p>Track expenses and godparent arrangements here. Website saves update Notion. Pending syncs remain saved here and can be retried. Import adds new Notion records. Amounts are in USD. Document access is administrator-only.</p><div class="row-actions"><button class="button burgundy" data-kind="costs">Accounting</button><button class="button burgundy" data-kind="padrinos">Godparents</button></div><div id="planning-grid"></div>';
+    '<p>Track expenses and godparent arrangements here. Website saves update Notion. Pending syncs remain saved here and can be retried. Import adds new Notion records. Amounts are in USD. Document access is administrator-only.</p><div class="row-actions"><button class="button burgundy" data-kind="costs" aria-pressed="true">Accounting</button><button class="button outline" data-kind="padrinos" aria-pressed="false">Godparents</button></div><div id="planning-grid"></div>';
   const grid = root.querySelector("#planning-grid");
   async function draw(kind) {
     const data = await api("admin/planning?kind=" + kind),
@@ -145,11 +145,23 @@ export async function planningEditor(root) {
     grid.querySelectorAll("[data-sync]").forEach(
       (b) =>
         (b.onclick = async () => {
+          // An interrupted create may or may not have reached Notion: create it
+          // again only after the admin has looked and found no page for it.
+          const row = allRows.find((r) => r.id === b.dataset.sync);
+          const uncertain = row?.sync?.error === "NOTION_CREATE_UNCERTAIN";
+          if (
+            uncertain &&
+            !confirm(
+              `Notion may already have "${row.item || row.name}" from an interrupted save. Look for it in the ${kind === "costs" ? "Budget" : "Godparents"} database first. If it is not there, press OK to create it.`,
+            )
+          )
+            return;
           b.disabled = true;
           try {
             const result = await api("admin/planning/sync", {
               kind,
               id: b.dataset.sync,
+              ...(uncertain && { confirmNoPage: true }),
             });
             await draw(kind);
             notify(
@@ -177,8 +189,15 @@ export async function planningEditor(root) {
     .querySelectorAll("[data-kind]")
     .forEach(
       (b) =>
-        (b.onclick = () =>
-          draw(b.dataset.kind).catch((e) => notify(e.message))),
+        (b.onclick = () => {
+          for (const other of root.querySelectorAll("[data-kind]")) {
+            const shown = other === b;
+            other.setAttribute("aria-pressed", String(shown));
+            other.classList.toggle("burgundy", shown);
+            other.classList.toggle("outline", !shown);
+          }
+          draw(b.dataset.kind).catch((e) => notify(e.message));
+        }),
     );
   await draw("costs");
 }

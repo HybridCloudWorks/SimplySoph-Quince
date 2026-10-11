@@ -109,6 +109,9 @@ export function mediaUpload(portal, albums) {
     } finally {
       busy = false;
       controls.forEach((el) => (el.disabled = false));
+      // Clear the chooser, so picking the same file again (after "Not
+      // uploaded") counts as a new choice; the results stay listed below.
+      input.value = "";
       render();
     }
   });

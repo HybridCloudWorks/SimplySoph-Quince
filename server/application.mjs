@@ -353,9 +353,19 @@ export function createApplication({
   // details (gallery, photos, My account) check only this.
   const listedOn = (row, email) =>
     row.email === email || (row.additionalEmails || []).includes(email);
+  // That person's sign-ins for the household end too, so their pages show the
+  // sign-in form again instead of a signed-in page that can do nothing.
+  async function signOutRemoved(session) {
+    await ledger.transaction((s) => {
+      for (const [k, v] of Object.entries(s.sessions))
+        if (v.accountId === session.accountId && v.householdId === session.householdId)
+          delete s.sessions[k];
+    });
+    throw error(401, "SIGN_IN_REQUIRED");
+  }
   async function stillListed(session) {
     const row = await notion.read(session.householdId, { allowStale: true });
-    if (row.archived || !listedOn(row, session.email)) throw error(401, "SIGN_IN_REQUIRED");
+    if (row.archived || !listedOn(row, session.email)) await signOutRemoved(session);
   }
   async function guestInvitation(session, { fresh = false, allowStale = false } = {}) {
     const row = await notion.read(session.householdId, { fresh, allowStale }),
@@ -363,7 +373,7 @@ export function createApplication({
       record = s.invitations[row.id];
     if (row.archived || !invitationOpen(s, session))
       throw error(401, "INVITATION_INACTIVE");
-    if (session.accountId && !listedOn(row, session.email)) throw error(401, "SIGN_IN_REQUIRED");
+    if (session.accountId && !listedOn(row, session.email)) await signOutRemoved(session);
     if (!row.validCapacity) throw error(409, "CAPACITY_NEEDS_REVIEW");
     return {
       ...row,
@@ -431,20 +441,23 @@ export function createApplication({
   }
   // A retry (the scheduled drain, Retry on Overview, a later contact change)
   // never writes over an answer the family put in Notion themselves, say after
-  // a phone call: Notion's RSVP or head counts differ from what the website
-  // last wrote there, or, if it never wrote any, Notion already shows Yes or
-  // No. Then it writes the Website columns only (contact, requests, response
-  // ID) and marks the answer handled; the drift check shows the difference on
-  // Invitations, where an admin chooses per household (re-audit N1). Values
-  // are compared, not edit times, so an edit to another column holds nothing
-  // back. The guest's own RSVP and an admin's Write are written as they are.
+  // a phone call: Notion's RSVP shows Yes or No (an answer, as in attendanceOf)
+  // and, if the website wrote an answer before, that answer or its head counts
+  // differ from what is there now. Then it writes the Website columns only
+  // (contact, requests, response ID) and marks the answer handled; the drift
+  // check shows the difference on Invitations, where an admin chooses per
+  // household (re-audit N1). Values are compared, not edit times, so an edit
+  // to another column holds nothing back, and a row whose RSVP still says
+  // "Not sent" (households answered before the RSVP column was written) is
+  // written as usual. The guest's own RSVP and an admin's Write are written
+  // as they are.
   async function holdBackEdited(householdId, task) {
     if (!task.response || task.forced) return null;
     try {
       const row = await notion.read(householdId, { fresh: true });
-      const familyAnswer = task.written
-        ? notionDifferences(row, task.written).length > 0
-        : ["Yes", "No"].includes(row.invitationStatus);
+      const familyAnswer =
+        ["Yes", "No"].includes(row.invitationStatus) &&
+        (!task.written || notionDifferences(row, task.written).length > 0);
       if (familyAnswer && notionDifferences(row, task.response.attendance).length)
         task.heldBack = true;
       return null;
@@ -538,6 +551,7 @@ export function createApplication({
     await ledger.transaction((s) =>
       finishSync(s, householdId, owner, task, failure),
     );
+    return failure;
   }
   // Throws (leaving the draft untouched) unless the draft may be sent now.
   function claimMail(s, id, currentGuest) {
@@ -556,6 +570,10 @@ export function createApplication({
         throw error(409, "MAIL_DRAFT_STALE");
     } else if (!invite?.active || invite.generation !== j.generation)
       throw error(409, "MAIL_DRAFT_STALE");
+    // An invitation or reminder drafted before the household answered (on the
+    // website, or by phone into Notion) is set aside, not sent (re-audit L4).
+    if (["invitation", "reminder"].includes(j.type) && attendanceOf(s, currentGuest))
+      throw error(409, "ALREADY_RESPONDED");
     // An RSVP receipt goes to an address that is still on the household's
     // Notion row (Email or Additional Emails): the one the guest signed in with,
     // or the row's Email. The contact email typed into the form never counts
@@ -706,7 +724,9 @@ export function createApplication({
   // Up to 10 households whose RSVP is still waiting to reach Notion. The
   // scheduled drain retries only "pending"; an admin's Retry also re-tries
   // "failed" rows after they fix the cause in Notion.
-  async function retryPendingRsvps({ includeFailed = false } = {}) {
+  // The scheduled drain passes `until` (a time budget) and stops at the first
+  // Notion outage, so a backlog during an outage cannot outlast the scheduler.
+  async function retryPendingRsvps({ includeFailed = false, until = Infinity } = {}) {
     const s = await ledger.read();
     const ids = Object.values(s.invitations)
       // Households whose Notion row differs are not retried here: the admin
@@ -722,8 +742,14 @@ export function createApplication({
       )
       .slice(0, 10)
       .map((r) => r.id);
-    for (const id of ids) await syncOne(id);
-    return { attempted: ids.length };
+    let attempted = 0;
+    for (const id of ids) {
+      if (Date.now() > until) break;
+      attempted++;
+      const failure = await syncOne(id);
+      if (failure && until !== Infinity && notionOutage({ code: failure })) break;
+    }
+    return { attempted };
   }
   // How a household's Notion RSVP and head counts differ from an answer, in
   // words for the family; none when Notion shows exactly that answer.
@@ -762,8 +788,12 @@ export function createApplication({
     for (const invite of Object.values(s.invitations)) {
       const response = s.responses[invite.latestSubmissionId],
         row = rows.get(invite.id);
+      // An admin's Write still waiting to be done keeps its difference, so the
+      // admin can still change their mind and keep Notion's version instead.
+      const writeWaiting =
+        !!response && !!row && !row.archived && invite.forceSubmissionId === invite.latestSubmissionId;
       if (!response || !row || row.archived || invite.syncState !== "synced") {
-        if (s.drift[invite.id]) (delete s.drift[invite.id], (changed = true));
+        if (s.drift[invite.id] && !writeWaiting) (delete s.drift[invite.id], (changed = true));
         continue;
       }
       // Written moments ago (or being written): Notion may not show it yet.
@@ -862,17 +892,26 @@ export function createApplication({
   // Scheduled catch-up for projections that failed earlier (Notion outage,
   // rate limit). Each step is bounded and independent: one failing step never
   // blocks the others, and nothing here sends a message to a guest.
+  // Cloud Scheduler waits 60 s and Cloud Run 120 s: the retry steps start no
+  // new item after 30 s, and the two checks are skipped after 45 s (re-audit
+  // L3), so the run and its log line always finish.
   async function drainPending() {
+    const started = Date.now(),
+      until = started + 30000;
     const steps = {
-      rsvp: retryPendingRsvps,
-      sms: () => sms.retrySync(),
-      whatsapp: () => whatsapp.retrySync(),
-      planning: () => planning.retryPending(),
+      rsvp: () => retryPendingRsvps({ until }),
+      sms: () => sms.retrySync({ until }),
+      whatsapp: () => whatsapp.retrySync({ until }),
+      planning: () => planning.retryPending({ until }),
       drift: checkDrift,
       admins: pruneAdmins,
     };
     const result = {};
     for (const [name, step] of Object.entries(steps)) {
+      if (Date.now() > started + 45000) {
+        result[name] = { skipped: "TIME_BUDGET" };
+        continue;
+      }
       try {
         result[name] = await step();
       } catch (e) {
@@ -1769,12 +1808,11 @@ export function createApplication({
       requireAuth("guest");
       await guestInvitation(session);
       if (body.consent !== true) throw error(422, "CONSENT_REQUIRED");
-      await rateLimit(
-        ledger,
-        hash("photo:" + session.householdId),
-        20,
-        86400000,
-        now(),
+      // 20 photos and videos per household a day, said plainly to the guest.
+      await rateLimit(ledger, hash("photo:" + session.householdId), 20, 86400000, now()).catch(
+        (e) => {
+          throw e.status === 429 ? error(429, "DAILY_UPLOAD_LIMIT") : e;
+        },
       );
       if (typeof body.base64 !== "string" || body.base64.length > 11_200_000)
         throw error(413, "PHOTO_TOO_LARGE");
@@ -2668,15 +2706,17 @@ export function createApplication({
     }
     throw error(404, "NOT_FOUND");
   }
-  // For the HTTP layer, before an upload body is read (http.mjs): the key of
-  // this cookie's session if it is a current email sign-in or admin session,
+  // For the HTTP layer, before an upload body is read (http.mjs): who is
+  // uploading, if this cookie is a current email sign-in or admin session,
   // otherwise null. Invitation-link sessions are RSVP-only and never upload,
-  // so they cannot hold upload slots (re-audit). The key is the resolved
-  // session, so one session counts once however its cookie is spelled. The
-  // route still checks the session's rights.
+  // so they cannot hold upload slots (re-audit). The key is the person, not
+  // the session or the cookie's spelling, so one person signed in on several
+  // devices still uploads one file at a time. The route still checks rights.
   const canUpload = async (cookieHeader) => {
-    const { session, sessionHash } = await context({ headers: { cookie: cookieHeader } });
-    return session && (session.kind === "admin" || session.accountId) ? sessionHash : null;
+    const { session } = await context({ headers: { cookie: cookieHeader } });
+    if (!session) return null;
+    if (session.kind === "admin") return "admin:" + session.email;
+    return session.accountId ? "account:" + session.accountId : null;
   };
   return { dispatch, syncOne, canUpload };
 }

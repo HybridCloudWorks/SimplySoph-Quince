@@ -288,3 +288,13 @@ test("a delayed START projection cannot overwrite a newer STOP", async () => {
   );
   await assert.rejects(f.draft, (e) => e.code === "NO_ELIGIBLE_RECIPIENTS");
 });
+
+test("WhatsApp answers only the STOP, START and HELP keywords on its own; other text gets no reply (owner's rule)", async () => {
+  const f = await fixture();
+  const reply = async (text, id) => (await f.callback(text, id)).binary.toString();
+  assert.match(await reply("HELP", "6"), /<Message>Simply Soph Media event support/);
+  assert.match(await reply("ayuda", "7"), /<Message>/);
+  const other = await reply("Can we bring a plus one?", "8");
+  assert.ok(!other.includes("<Message>"), "a person answers other messages");
+  assert.match(await reply("STOP", "9"), /<Message>.*unsubscribed/);
+});

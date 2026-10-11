@@ -481,9 +481,14 @@ export function createWhatsapp({
             : "Simply Soph Media: First request WhatsApp updates in your website account or ask the family to record your consent, then send START again. HELP: misxv@simplysoph.com.",
         );
       }
-      return xml(
-        "Simply Soph Media event support: misxv@simplysoph.com. Reply STOP to unsubscribe. RSVP at https://misxv.simplysoph.com/rsvp/ using your private invitation.",
-      );
+      // HELP gets the support answer the program requires. Any other text gets
+      // no automatic reply: a person answers messages (the owner's rule), so
+      // nothing goes out without one (re-audit).
+      if (/^(HELP|INFO|AYUDA)$/.test(body))
+        return xml(
+          "Simply Soph Media event support: misxv@simplysoph.com. Reply STOP to unsubscribe. RSVP at https://misxv.simplysoph.com/rsvp/ using your private invitation.",
+        );
+      return xml();
     }
     const ranks = {
       accepted: 0,
@@ -524,14 +529,22 @@ export function createWhatsapp({
     });
     return xml();
   }
-  async function retrySync() {
-    const pending = Object.values(
-      (await ledger.read()).whatsappPreferences || {},
-    )
+  // Longest since this instance last tried first; `until` is the drain's
+  // time budget (see sms.mjs).
+  const lastTry = new Map();
+  async function retrySync({ until = Infinity } = {}) {
+    const pending = Object.values((await ledger.read()).whatsappPreferences || {})
       .filter((p) => p.syncState === "pending")
+      .sort((a, b) => (lastTry.get(a.phone) || 0) - (lastTry.get(b.phone) || 0))
       .slice(0, 25);
-    for (const p of pending) await sync(p.phone);
-    return { attempted: pending.length };
+    let attempted = 0;
+    for (const p of pending) {
+      if (Date.now() > until) break;
+      lastTry.set(p.phone, Date.now());
+      attempted++;
+      await sync(p.phone);
+    }
+    return { attempted };
   }
   async function list() {
     const s = await ledger.read(),

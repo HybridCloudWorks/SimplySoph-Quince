@@ -34,7 +34,7 @@ The model, in one table. The decision record is [docs/v1/access-model.md](docs/v
   - Work accounts must be members of the simplysoph.com tenant with a verified email domain.
   - Google accepts Gmail and Google Workspace addresses only, and Microsoft personal accounts only Microsoft's own addresses (Outlook, Hotmail, Live, MSN). Neither provider vouches for who owns other addresses registered in their accounts, so a recycled address could be taken over; those addresses use the emailed link.
   - The first guest sign-in binds that Microsoft or Google account to the email. A different provider account for the same email is refused; the emailed link still works.
-- **Authenticator codes:** 5 tries per sign-in. Ten wrong codes for one administrator within an hour pause that administrator's sign-ins for an hour, including sign-ins already open, and you get a note in Notifications. During a pause the owner can still sign in with a recovery code.
+- **Authenticator codes:** 5 tries per sign-in. Ten wrong codes for one administrator within an hour pause that administrator's sign-ins for an hour, including sign-ins already open, and you get a note in Notifications. During a pause the owner can still sign in with a recovery code. A linked Microsoft account whose two-step sign-in Microsoft confirmed stands in for the code, so it is not paused.
 - **Sessions:**
   - Guests signed in with their email stay signed in while they use the site: 30 minutes after their last visit, at most 12 hours after signing in. Removing their email from the Notion row ends their access on their next request.
   - Invitation-link sessions (RSVP only) and administrator sessions last 30 minutes.

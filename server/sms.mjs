@@ -339,12 +339,23 @@ export function createSms({
       contentType: "text/xml; charset=utf-8",
     };
   }
-  async function retrySync() {
-    const pending = Object.values(
-      (await ledger.read()).smsSuppression || {},
-    ).filter((x) => x.syncState === "pending");
-    for (const row of pending.slice(0, 25)) await syncOptOut(row.phone);
-    return { attempted: Math.min(25, pending.length) };
+  // Longest since this instance last tried first, so a phone that keeps
+  // failing (say, on no Notion row) cannot crowd out the rest; `until` is the
+  // drain's time budget.
+  const lastTry = new Map();
+  async function retrySync({ until = Infinity } = {}) {
+    const pending = Object.values((await ledger.read()).smsSuppression || {})
+      .filter((x) => x.syncState === "pending")
+      .sort((a, b) => (lastTry.get(a.phone) || 0) - (lastTry.get(b.phone) || 0))
+      .slice(0, 25);
+    let attempted = 0;
+    for (const row of pending) {
+      if (Date.now() > until) break;
+      lastTry.set(row.phone, Date.now());
+      attempted++;
+      await syncOptOut(row.phone);
+    }
+    return { attempted };
   }
   return { enabled, review, send, callback, retrySync };
 }

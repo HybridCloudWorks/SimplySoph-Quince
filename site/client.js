@@ -206,6 +206,10 @@ const messages = {
     "That email is not a family administrator. Grant administration first, or check the email.",
     "Ese correo no es de un administrador. Otorga la administración primero o revisa el correo.",
   ],
+  ALREADY_RESPONDED: [
+    "This household has already answered, so this email was set aside.",
+    "Esta familia ya respondió, así que este correo se apartó.",
+  ],
   MAIL_DRAFT_STALE: [
     "This invitation or recipient changed. Create and review a new email draft.",
     "La invitación o el destinatario cambió. Crea y revisa un nuevo borrador.",
@@ -273,6 +277,10 @@ const messages = {
   TOO_MANY_REQUESTS: [
     "Please wait before trying again.",
     "Espera antes de intentarlo de nuevo.",
+  ],
+  DAILY_UPLOAD_LIMIT: [
+    "Your household has shared 20 photos and videos today, the daily limit. Please share more tomorrow.",
+    "Tu familia ya compartió 20 fotos y videos hoy, el límite diario. Comparte más mañana.",
   ],
   API_NOT_CONFIGURED: [
     "Online submissions are not open yet. Please contact the family.",
