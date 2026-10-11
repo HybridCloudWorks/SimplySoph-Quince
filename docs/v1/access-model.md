@@ -29,7 +29,7 @@ A seven-agent audit on October 10, 2026 counted 11 sign-in paths and 7 sources o
 12. The automatic Notion retry (Cloud Scheduler drain) is turned on.
 13. (Oct 11, 2026) WhatsApp's automatic replies to the STOP, START and HELP keywords are an approved exception to the person-in-the-loop rule. Any other inbound text gets no automatic reply. The four templates are resubmitted with the November 15 deadline before WhatsApp is switched on; the server refuses to start with WhatsApp on while an approved template shows another date.
 14. (Oct 11, 2026) The GitHub repository stays public. Guest data, invitation links, exports and credentials never go into it (they live in the ledger, Secret Manager and private storage).
-15. (Oct 11, 2026) The Notion workspace requires two-step sign-in, and only the family members who manage the guest list can edit the Invitations database, since its Email and Administrator Eligible columns decide who can sign in and who is an administrator.
+15. (Oct 11, 2026) The owner is the Notion workspace's only member and signs in with a passkey, so Notion's two-step verification (which needs a password) is not used. The Invitations database is shared with invited people only, never "Anyone on the web with link", since it holds guests' contact details and its Email and Administrator Eligible columns decide who can sign in and who is an administrator. The website reads it through its own Notion connection, which general access does not affect.
 
 ## Removed
 
