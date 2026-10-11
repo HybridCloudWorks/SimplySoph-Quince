@@ -80,7 +80,9 @@ export function graphMailer({
   const configured = !!(tenant && clientId && clientSecret && sender);
   return {
     configured,
-    async send({ to, subject, html, id }) {
+    // secret: a sign-in link. Not kept in the shared mailbox's Sent Items, where
+    // anyone with access to the mailbox could use it (re-audit).
+    async send({ to, subject, html, id, secret = false }) {
       if (!configured) throw error(503, "MAIL_NOT_CONFIGURED");
       let auth;
       try {
@@ -123,7 +125,7 @@ export function graphMailer({
                   { name: "x-misxv-message-id", value: id },
                 ],
               },
-              saveToSentItems: true,
+              saveToSentItems: !secret,
             }),
           },
         );

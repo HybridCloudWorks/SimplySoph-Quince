@@ -4,7 +4,7 @@ import { createWhatsapp } from "./whatsapp.mjs";
 import { createSms, smsCompliantText, smsPreview } from "./sms.mjs";
 import { createPlanning } from "./planning.mjs";
 import { createAdminEmail } from "./admin-email.mjs";
-import { createAdminAccess } from "./admin-access.mjs";
+import { createAdminAccess, adminRow } from "./admin-access.mjs";
 import { enrollment } from "./mfa-enrollment.mjs";
 import { createNotifications } from "./notifications.mjs";
 import { createMailBatches } from "./mail-batches.mjs";
@@ -130,6 +130,8 @@ export function createApplication({
   photoGate = imageGate,
   // Sign-in link requests answer no sooner than this (SEC-8); 0 in tests.
   signInFloorMs = 0,
+  // How many sign-in link requests may wait out that floor at once per instance.
+  signInConcurrency = 16,
 }) {
   if (!Buffer.isBuffer(key) || key.length !== 32)
     throw new Error("32-byte application key required");
@@ -245,6 +247,8 @@ export function createApplication({
       return account.email;
     return notionEmail || null;
   }
+  const mfaPaused = (s, email) =>
+    s.mfaFailures?.[hash("mfa-fail:" + email)]?.pausedUntil > now();
   function securityNote(s, title) {
     const id = randomUUID();
     s.notifications ??= {};
@@ -254,13 +258,24 @@ export function createApplication({
   // Guest sessions are either RSVP-only (invitation link or code) or a verified
   // email sign-in (accountId); anything else, such as an older link session
   // without a scope, is no longer valid.
+  // A link session belongs to one issue of the invitation link (generation): a
+  // reissued or revoked link ends it. An email sign-in belongs to the person: it
+  // needs only that the household's invitation is not revoked (or not issued
+  // yet), so reissuing a forwarded link never signs the family out, and a
+  // household can sign in before its link goes out (re-audit; owner model:
+  // "put their email in Notion, nothing else is needed").
+  const invitationOpen = (s, session) => {
+    const invite = s.invitations[session.householdId];
+    return session.accountId
+      ? !invite || invite.active
+      : !!invite?.active && invite.generation === session.generation;
+  };
   const sessionValid = (s, row) =>
     row &&
     row.expiresAt > now() &&
     (row.kind === "admin"
       ? !!row.rowId || adminEmails.includes(row.email)
-      : s.invitations[row.householdId]?.active &&
-        s.invitations[row.householdId].generation === row.generation &&
+      : invitationOpen(s, row) &&
         (row.accountId
           ? accountActive(s, s.accounts?.[row.accountId])
           : row.scope === "rsvp"));
@@ -328,26 +343,36 @@ export function createApplication({
   // Page views may use the short Notion cache, and read-only views opt in to
   // the last good answer during a Notion outage (allowStale). Guest writes use
   // the cache but never stale data; RSVP submission reads fresh.
+  // An email sign-in works only while that email is still on this household's
+  // row: removing or moving it in Notion ends access on the next request
+  // (re-audit), not when the session runs out. Pages that need no invitation
+  // details (gallery, photos, My account) check only this.
+  const listedOn = (row, email) =>
+    row.email === email || (row.additionalEmails || []).includes(email);
+  async function stillListed(session) {
+    const row = await notion.read(session.householdId, { allowStale: true });
+    if (row.archived || !listedOn(row, session.email)) throw error(401, "SIGN_IN_REQUIRED");
+  }
   async function guestInvitation(session, { fresh = false, allowStale = false } = {}) {
     const row = await notion.read(session.householdId, { fresh, allowStale }),
       s = await ledger.read(),
       record = s.invitations[row.id];
-    if (
-      row.archived ||
-      !record?.active ||
-      record.generation !== session.generation
-    )
+    if (row.archived || !invitationOpen(s, session))
       throw error(401, "INVITATION_INACTIVE");
+    if (session.accountId && !listedOn(row, session.email)) throw error(401, "SIGN_IN_REQUIRED");
     if (!row.validCapacity) throw error(409, "CAPACITY_NEEDS_REVIEW");
     return {
       ...row,
       ...record,
+      // False until the family issues this household's invitation link; until
+      // then a signed-in guest can upload and write, but not RSVP yet.
+      invitationReady: !!record?.active,
       // Notion owns the household's name and capacity; the invitation record's
       // copy of the name is from when the link was issued (NOTION-5).
       name: row.name,
       capacity: row.capacity,
       deadline,
-      latestSubmissionId: record.latestSubmissionId ?? null,
+      latestSubmissionId: record?.latestSubmissionId ?? null,
     };
   }
   // Notion sync and outbound mail are split into ledger steps (claim/finish,
@@ -578,11 +603,13 @@ export function createApplication({
     };
     return id;
   }
-  // Sign-in link requests hold their slot for the timing floor, so at most one
-  // runs per instance with one waiting; the rest get a retryable SIGN_IN_BUSY.
-  // Cloud Run serves 4 requests per instance, so sign-in can never hold more
-  // than 2 of them, whatever a stranger sends (review of SEC-8).
-  const signInGate = createGate({ max: 1, queue: 1, code: "SIGN_IN_BUSY" });
+  // Sign-in link requests hold their request slot for the 0.9 s timing floor
+  // (a wait that uses no CPU). Cloud Run serves 40 requests per instance
+  // (--concurrency=40, DEPLOYMENT.md); at most signInConcurrency of them may be
+  // sign-in requests, the rest get a retryable SIGN_IN_BUSY. Blocking sign-in
+  // then takes a sustained flood (about 18 requests a second per instance), and
+  // the other 24 slots stay free for RSVPs and admin pages (re-audit of SEC-8).
+  const signInGate = createGate({ max: signInConcurrency, queue: 0, code: "SIGN_IN_BUSY" });
   const accounts = createAccounts({
     ledger,
     mailer,
@@ -716,6 +743,56 @@ export function createApplication({
     if (!preview.changed) return { differing: preview.differing };
     return ledger.transaction((s) => ({ differing: applyDrift(s, rows, started).differing }));
   }
+  // SEC-9: when someone is no longer an administrator in Notion (box unticked or
+  // main Email changed), their authenticator and linked Microsoft account are
+  // removed, so ticking them again later means a fresh QR setup, not the old
+  // phone. Their admin access already ends on their next click (stillAdmin);
+  // the removal waits until they have looked unticked for a day, and the
+  // family is told at once, so a mistaken edit (a duplicated row, a renamed
+  // column) can be put right before anything is lost. An empty Notion answer,
+  // or one without the "Administrator Eligible" or "Email" column (renamed or
+  // deleted), removes nothing (re-audit).
+  async function pruneAdmins() {
+    const rows = (await notion.list({ fresh: true })).filter((r) => !r.archived);
+    if (!rows.length) return { removed: 0, skipped: "NOTION_EMPTY" };
+    if (rows.some((r) => r.adminColumnsPresent === false))
+      return { removed: 0, skipped: "NOTION_ADMIN_COLUMNS_MISSING" };
+    const day = 86400000;
+    const plan = (s) => {
+      const flag = [],
+        clear = [],
+        remove = [];
+      for (const [id, a] of Object.entries(s.admins || {})) {
+        const ok = adminEmails.includes(a.email) || !!adminRow(rows, a.email);
+        if (ok && a.staleSince) clear.push(id);
+        else if (!ok && !a.staleSince) flag.push(id);
+        else if (!ok && a.staleSince <= now() - day) remove.push(id);
+      }
+      return { flag, clear, remove };
+    };
+    const first = plan(await ledger.read());
+    if (!first.flag.length && !first.clear.length && !first.remove.length) return { removed: 0 };
+    return ledger.transaction((s) => {
+      const { flag, clear, remove } = plan(s);
+      for (const id of clear) delete s.admins[id].staleSince;
+      for (const id of flag) {
+        s.admins[id].staleSince = now();
+        securityNote(
+          s,
+          `${s.admins[id].email} is no longer an administrator in Notion. Their authenticator will be removed in a day unless their row is ticked again.`,
+        );
+      }
+      for (const id of remove) {
+        const email = s.admins[id].email;
+        delete s.admins[id];
+        delete s.ssoBindings?.[hash("admin-microsoft:" + email)];
+        for (const [k, v] of Object.entries(s.sessions))
+          if (v.kind === "admin" && v.email === email) delete s.sessions[k];
+        roleEvent(s, "notion", email, "authenticator-removed");
+      }
+      return { removed: remove.length, pending: flag.length };
+    });
+  }
   // Scheduled catch-up for projections that failed earlier (Notion outage,
   // rate limit). Each step is bounded and independent: one failing step never
   // blocks the others, and nothing here sends a message to a guest.
@@ -726,6 +803,7 @@ export function createApplication({
       whatsapp: () => whatsapp.retrySync(),
       planning: () => planning.retryPending(),
       drift: checkDrift,
+      admins: pruneAdmins,
     };
     const result = {};
     for (const [name, step] of Object.entries(steps)) {
@@ -914,6 +992,15 @@ export function createApplication({
           audit(s, who.id, "admin-sign-in-microsoft-mfa", who.id, now());
           return { signedIn: true };
         }
+        // Too many wrong authenticator codes for this admin across sign-ins:
+        // sign-ins are paused for an hour (each sign-in already allows only 5
+        // tries). An owner may still start one, to use a recovery code.
+        if (mfaPaused(s, who.email) && !adminEmails.includes(who.email))
+          throw error(429, "ADMIN_SIGN_IN_PAUSED");
+        // A first authenticator is set up only after the emailed link: a Google
+        // or Microsoft account can carry an address its holder no longer owns,
+        // and must not be able to claim an admin's empty slot (re-audit).
+        if (!admin && nonce) throw error(403, "ADMIN_SETUP_BY_EMAIL");
         // Anyone Notion makes an admin may set up an authenticator; the owner is
         // told in the Notifications inbox when they do (see /api/auth/mfa).
         const secret = newMfaSecret();
@@ -989,12 +1076,40 @@ export function createApplication({
           throw error(401, "SIGN_IN_AGAIN");
         c.attempts++;
         const existing = s.admins[c.id];
+        // Wrong codes are also counted per admin across sign-ins: the 10th
+        // within an hour pauses that admin's sign-ins for an hour from then,
+        // including ones already open, and tells the family once. A correct
+        // code clears the count. During a pause only an owner's recovery code
+        // (and then the new authenticator's code) is accepted, so the
+        // break-glass path stays open (re-audit).
+        const failKey = hash("mfa-fail:" + c.email);
+        const recovery = recoveryInput(body.code),
+          owner = adminEmails.includes(c.email);
+        if (mfaPaused(s, c.email) && !c.replacing && !(recovery && owner))
+          throw error(429, "ADMIN_SIGN_IN_PAUSED");
+        const fail = () => {
+          s.mfaFailures ??= {};
+          const previous = s.mfaFailures[failKey];
+          const f =
+            previous?.since > now() - 3600000
+              ? previous
+              : { count: 0, since: now(), pausedUntil: previous?.pausedUntil };
+          f.count++;
+          s.mfaFailures[failKey] = f;
+          if (f.count === 10) {
+            f.pausedUntil = now() + 3600000;
+            securityNote(
+              s,
+              `10 wrong authenticator codes for ${c.email} within an hour. Sign-ins for this administrator are paused for an hour${owner ? "; recovery codes still work" : ""}.`,
+            );
+          }
+          return { failed: true };
+        };
         // The owner's recovery code: spend it and start a new authenticator setup
         // on this same challenge; the sign-in finishes with the new app's code.
-        const recovery = recoveryInput(body.code);
-        if (recovery && adminEmails.includes(c.email) && existing?.recovery?.length) {
+        if (recovery && owner && existing?.recovery?.length) {
           const i = existing.recovery.indexOf(recoveryHash(recovery));
-          if (i < 0) return { failed: true };
+          if (i < 0) return fail();
           existing.recovery.splice(i, 1);
           const fresh = newMfaSecret();
           c.pendingSecret = seal(fresh, key);
@@ -1026,7 +1141,8 @@ export function createApplication({
             now(),
             c.replacing ? -1 : (existing?.lastStep ?? -1),
           );
-        if (step === null) return { failed: true };
+        if (step === null) return fail();
+        delete s.mfaFailures?.[failKey];
         if (!existing || c.replacing) {
           roleEvent(s, c.id, c.email, existing ? "authenticator-replaced" : "authenticator-set-up");
           securityNote(s, `Authenticator ${existing ? "replaced" : "set up"} for ${c.email}`);
@@ -1205,6 +1321,7 @@ export function createApplication({
       requireAuth();
       if (session.kind !== "admin" && !session.accountId)
         throw error(403, "VERIFIED_ACCOUNT_REQUIRED");
+      if (session.kind !== "admin") await stillListed(session);
       return {
         media: Object.values(ctx.state.photos)
           .filter((r) => r.state === "approved")
@@ -1223,6 +1340,7 @@ export function createApplication({
       return accounts.consume(body.token);
     if (path === "/api/account" && method === "GET") {
       requireAuth("guest");
+      if (session.accountId) await stillListed(session);
       const a = ctx.state.accounts?.[session.accountId];
       return {
         account: a ? { name: a.name, email: a.email } : null,
@@ -1245,11 +1363,14 @@ export function createApplication({
       requireAuth();
       const signedOut = await ledger.transaction((s) => {
         let n = 0;
+        // Every session of this person. From the admin menu that includes their
+        // guest sign-ins; from My account only guest sign-ins, so a guest
+        // sign-in alone cannot sign an administrator out (re-audit).
         for (const [k, v] of Object.entries(s.sessions))
           if (
-            session.kind === "admin"
-              ? v.kind === "admin" && v.email === session.email
-              : !!session.accountId && v.accountId === session.accountId
+            (session.kind === "admin" || v.kind !== "admin") &&
+            ((session.email && v.email === session.email) ||
+              (!!session.accountId && v.accountId === session.accountId))
           ) {
             delete s.sessions[k];
             n++;
@@ -1288,6 +1409,7 @@ export function createApplication({
               },
         contactHidden: session.scope === "rsvp",
         syncState: row.syncState,
+        invitationReady: row.invitationReady,
       };
     }
     if (path === "/api/whatsapp/consent" && ["GET", "POST"].includes(method)) {
@@ -1327,14 +1449,14 @@ export function createApplication({
       const profile = await ledger.transaction((s) => {
         const invite = s.invitations[session.householdId],
           p = s.profiles?.[session.householdId];
-        if (!invite?.active || invite.generation !== session.generation)
-          throw error(401, "INVITATION_INACTIVE");
+        if (!invitationOpen(s, session)) throw error(401, "INVITATION_INACTIVE");
         if (!p || p.version !== body.version)
           throw error(409, "PROFILE_CHANGED");
         p.contact = contact;
         p.version++;
         p.updatedAt = now();
-        invite.syncState = "pending";
+        // Synced to Notion with the household's invitation record (once issued).
+        if (invite) invite.syncState = "pending";
         audit(
           s,
           session.householdId,
@@ -1348,8 +1470,8 @@ export function createApplication({
       return {
         profile,
         saved: true,
-        syncState: (await ledger.read()).invitations[session.householdId]
-          .syncState,
+        // No invitation issued yet: nothing to sync until there is.
+        syncState: (await ledger.read()).invitations[session.householdId]?.syncState ?? null,
       };
     }
     if (path === "/api/messages" && method === "GET") {
@@ -1376,6 +1498,7 @@ export function createApplication({
       const row = await guestInvitation(session, { fresh: true }),
         fingerprint = digestInput(body),
         owner = token();
+      if (!row.invitationReady) throw error(409, "INVITATION_NOT_READY");
       // One save records the response and claims the Notion sync and the
       // receipt email; one final save records both outcomes (2 writes, not 5).
       const claim = (s, response) => {
@@ -1397,7 +1520,9 @@ export function createApplication({
       };
       const { response: receipt, task, job } = await ledger.transaction((s) => {
         const current = s.invitations[row.id];
-        if (!current?.active || current.generation !== session.generation)
+        // The RSVP needs an issued invitation (it holds the invited events).
+        if (!current) throw error(409, "INVITATION_NOT_READY");
+        if (!current.active || !invitationOpen(s, session))
           throw error(401, "INVITATION_INACTIVE");
         const existing = s.responses[id];
         if (existing) {
@@ -1641,6 +1766,7 @@ export function createApplication({
       requireAuth();
       if (session.kind !== "admin" && !session.accountId)
         throw error(403, "VERIFIED_ACCOUNT_REQUIRED");
+      if (session.kind !== "admin") await stillListed(session);
       const id = path.slice(11);
       if (!/^[a-f0-9-]{36}$/.test(id)) throw error(404, "NOT_FOUND");
       const row = ctx.state.photos[id];
@@ -1749,13 +1875,10 @@ export function createApplication({
           );
         const administrators = [
           ...adminEmails.map((email) => ({ email, name: "Site owner", owner: true })),
+          // Only the main Email of a ticked row is an administrator.
           ...rows
-            .filter((r) => r.administratorEligible)
-            .flatMap((r) =>
-              [r.email, ...(r.additionalEmails || [])]
-                .filter(Boolean)
-                .map((email) => ({ email, name: r.name, owner: false })),
-            ),
+            .filter((r) => r.administratorEligible && r.email)
+            .map((r) => ({ email: r.email, name: r.name, owner: false })),
         ]
           .filter((x, i, all) => all.findIndex((y) => y.email === x.email) === i)
           .map((x) => ({ ...x, authenticator: enrolled.has(x.email) }));
@@ -2440,5 +2563,15 @@ export function createApplication({
     }
     throw error(404, "NOT_FOUND");
   }
-  return { dispatch, syncOne };
+  // For the HTTP layer, before an upload body is read (http.mjs): the key of
+  // this cookie's session if it is a current email sign-in or admin session,
+  // otherwise null. Invitation-link sessions are RSVP-only and never upload,
+  // so they cannot hold upload slots (re-audit). The key is the resolved
+  // session, so one session counts once however its cookie is spelled. The
+  // route still checks the session's rights.
+  const canUpload = async (cookieHeader) => {
+    const { session, sessionHash } = await context({ headers: { cookie: cookieHeader } });
+    return session && (session.kind === "admin" || session.accountId) ? sessionHash : null;
+  };
+  return { dispatch, syncOne, canUpload };
 }

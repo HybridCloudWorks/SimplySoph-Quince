@@ -12,3 +12,6 @@ gha-creds-*.json
 
 # Disposable local visual review artifacts
 outputs/
+
+# Local Claude Code settings (never commit)
+.claude/

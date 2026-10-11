@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { generateKeyPairSync, sign, createHmac } from "node:crypto";
 import { Ledger, memoryAdapter } from "../server/store.mjs";
 import { createApplication } from "../server/application.mjs";
-import { hash, error, totp, microsoftVerifier, MSA_TENANT } from "../server/auth.mjs";
+import { hash, error, totp, seal, base32, microsoftVerifier, MSA_TENANT } from "../server/auth.mjs";
 
 const origin = "https://misxv.simplysoph.com",
   at = Date.parse("2026-10-09T18:00:00Z"),
@@ -199,29 +199,39 @@ test("config advertises the Microsoft client id", async () => {
   assert.equal((await f.app.dispatch({ path: "/api/config", method: "GET", headers: {} })).microsoftClientId, CLIENT);
 });
 
+// The owner set up an authenticator earlier through the emailed link (a first
+// setup is never done through Google or Microsoft).
+const OWNER_SECRET = base32(Buffer.alloc(20, 5));
+async function enroll(f) {
+  await f.ledger.transaction((s) => {
+    s.admins["owner:owner@outlook.com"] = { secret: seal(OWNER_SECRET, key), lastStep: -1, email: "owner@outlook.com" };
+  });
+  f.secret = OWNER_SECRET;
+}
 // Signs in with Microsoft and finishes with the authenticator code when asked.
 async function adminWithCode(f, extra = {}) {
+  if (!f.secret) await enroll(f);
   const t = await f.start("admin");
   const r = await f.post("auth/microsoft", { ticket: t.ticket, credential: f.ms(t, "owner@outlook.com", { mfa: true, ...extra }) });
   if (r.signedIn) return r;
-  f.secret ??= r.enrollmentSecret;
   f.advance(30000); // a fresh 30-second step, so the code is not a replay
   return f.post("auth/mfa", { challenge: r.challenge, code: totp(f.secret, Math.floor(f.now() / 30000)) });
 }
 
 test("Microsoft MFA skips the code only after a sign-in that passed the code linked that account", async () => {
   const f = await fixture();
+  // No authenticator yet: a first setup must come through the emailed link.
+  const t0 = await f.start("admin");
+  await assert.rejects(
+    f.post("auth/microsoft", { ticket: t0.ticket, credential: f.ms(t0, "owner@outlook.com", { mfa: true }) }),
+    (e) => e.code === "ADMIN_SETUP_BY_EMAIL",
+  );
+  await enroll(f);
   const t = await f.start("admin");
   const first = await f.post("auth/microsoft", { ticket: t.ticket, credential: f.ms(t, "owner@outlook.com", { mfa: true }) });
   assert.ok(first.challenge && !first.setCookie, "the first Microsoft sign-in still needs the authenticator");
-  // First-time setup comes as a standard QR code (Google and Microsoft Authenticator).
-  assert.match(first.provisioningQr, /^data:image\/png;base64,[A-Za-z0-9+/=]{200,}$/);
-  assert.equal(
-    first.provisioningUri,
-    `otpauth://totp/SimplySoph:owner%40outlook.com?secret=${first.enrollmentSecret}&issuer=SimplySoph&algorithm=SHA1&digits=6&period=30`,
-  );
+  assert.equal(first.enrollmentSecret, undefined, "it reuses the authenticator set up by email");
   assert.equal((await f.ledger.read()).ssoBindings?.[hash("admin-microsoft:owner@outlook.com")], undefined, "not linked before the code passes");
-  f.secret = first.enrollmentSecret;
   f.advance(30000);
   await f.post("auth/mfa", { challenge: first.challenge, code: totp(f.secret, Math.floor(f.now() / 30000)) });
   const t2 = await f.start("admin");
@@ -341,4 +351,12 @@ test("a different provider account claiming a guest's bound email is refused", a
     f.post("auth/sso/guest", { provider: "microsoft", ticket: t2.ticket, credential: f.ms(t2, "guest@outlook.com", { sub: "someone-new" }) }),
     (e) => e.code === "SSO_ACCOUNT_CHANGED",
   );
+});
+
+test("a personal Microsoft account must use a Microsoft address; others use the emailed link (re-audit)", async () => {
+  const { verify } = verifier();
+  for (const email of ["aunt@hotmail.co.uk", "uncle@live.com.mx", "cousin@msn.com"])
+    assert.equal((await verify(idToken(claims({ email })), "n-1")).email, email);
+  for (const email of ["aunt@yahoo.com", "uncle@icloud.com", "cousin@gmail.com", "x@outlook.com.evil.io", "a@outlook.xyz", "b@live.net", "c@msn.biz", "d@passport.org", "e@hotmail.com.ai", "f@outlook.com.ng"])
+    await assert.rejects(verify(idToken(claims({ email })), "n-1"), (e) => e.code === "SSO_EMAIL_NOT_VERIFIED", email);
 });

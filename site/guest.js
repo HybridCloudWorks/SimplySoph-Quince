@@ -331,6 +331,11 @@ async function showPortal() {
     await accountPage(inv, session);
     return;
   }
+  // Signed in before the family issued this household's invitation link.
+  if (view.startsWith("rsvp") && !inv.invitationReady) {
+    portal.innerHTML = `<p class="notice">${tr("Your invitation hasn’t been sent yet. The RSVP opens here once the family sends it. You can already share photos and write to the family from My account.", "Tu invitación aún no se ha enviado. La respuesta se abrirá aquí cuando la familia la envíe. Ya puedes compartir fotos y escribir a la familia desde Mi cuenta.")}</p><a href="${route("account")}">${tr("My account", "Mi cuenta")}</a>`;
+    return;
+  }
   if (view === "rsvp") {
     rsvpForm(inv);
     return;

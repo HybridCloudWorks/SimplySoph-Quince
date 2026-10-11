@@ -362,8 +362,11 @@ test("MFA is required; invalid attempts persist and valid code cannot be reused"
       body: { ...body, ticket: await adminTicket(f.app) },
       ip: "new-admin",
     });
+  // The owner set up an authenticator earlier (a first setup uses the emailed link).
+  await f.ownerCode();
   const login = await request({ credential: "verified-by-fixture" });
-  const code = totp(login.enrollmentSecret, Math.floor(at / 30000));
+  assert.equal(login.enrollmentSecret, undefined);
+  const code = totp(OWNER_TOTP, Math.floor(at / 30000));
   const verify = (body) =>
     f.app.dispatch({
       path: "/api/auth/mfa",
@@ -1016,6 +1019,7 @@ test("anonymous junk sign-ins and invitation codes cannot lock out valid credent
   });
   const post = (path, body) =>
     f.app.dispatch({ path: "/api/" + path, method: "POST", headers: { origin }, body, ip: "attacker" });
+  await f.ownerCode(); // the owner already has an authenticator
   const codes = [];
   for (let i = 0; i < 70; i++)
     await post("auth/google", { credential: "junk", ticket: await adminTicket(f.app) }).catch((e) => codes.push(e.code));
@@ -1825,7 +1829,7 @@ test("a guest whose email leaves the Notion row is not renewed, so access ends s
 });
 
 test("sign-in requests take the full floor and only a few run at once (SEC-8)", async () => {
-  const f = await fixture({ signInFloorMs: 150 });
+  const f = await fixture({ signInFloorMs: 150, signInConcurrency: 2 });
   for (const [path, email] of [
     ["auth/email/request", "nobody@example.com"],
     ["auth/email/request", "test@example.com"],
@@ -1836,7 +1840,8 @@ test("sign-in requests take the full floor and only a few run at once (SEC-8)", 
     assert.deepEqual(await f.publicPost(path, { email }), { requested: true });
     assert.ok(Date.now() - started >= 145, `${path} for ${email} answered early`);
   }
-  // One runs and one waits per instance; a third at the same moment is told to retry.
+  // Up to signInConcurrency at once (2 here, 16 in production); one more at the
+  // same moment is told to retry instead of holding another request slot.
   const outcomes = await Promise.allSettled(
     [1, 2, 3].map(() => f.publicPost("auth/email/request", { email: "nobody@example.com" })),
   );
@@ -1942,7 +1947,9 @@ test("an administrator's sign out everywhere leaves other administrators alone (
     () => f.app.dispatch({ path: "/api/logout-all", method: "POST", body: {}, headers: { origin, cookie: secondCookie } }),
     (e) => e.code === "CSRF_REJECTED",
   );
-  assert.equal((await first.as("logout-all", {})).signedOut, 2);
+  // Both admin sessions, plus that person's own guest sign-in with the same email.
+  assert.equal((await first.as("logout-all", {})).signedOut, 3);
+  await assert.rejects(() => f.guest("account"), (e) => e.code === "SIGN_IN_REQUIRED");
   assert.equal((await f.app.dispatch({ path: "/api/session", headers: { cookie: secondCookie } })).kind, null);
   assert.ok(await f.admin("guests"), "the owner is still signed in");
 });
@@ -2193,4 +2200,277 @@ test("checking for replies in the background does not keep a guest signed in (FL
   assert.equal(poll.setCookie, undefined, "a background poll does not renew");
   const visit = await f.app.dispatch({ path: "/api/messages", headers: { cookie } });
   assert.match(visit.setCookie, /^__session=/, "a real visit still does");
+});
+
+// ---- Re-audit fixes: sign-in and security -----------------------------------
+
+test("ten wrong authenticator codes in an hour pause that admin's sign-ins and tell the family (re-audit)", async () => {
+  const f = await fixture();
+  const { c } = await adminSignIn(f, "test@example.com");
+  const challenge = async () => {
+    await f.publicPost("auth/admin-email/request", { email: "test@example.com" });
+    return (await f.publicPost("auth/admin-email/verify", { token: linkOf(f.sent.at(-1)) })).challenge;
+  };
+  let wrong = 0;
+  while (wrong < 9) {
+    const ch = await challenge();
+    for (let i = 0; i < 5 && wrong < 9; i++, wrong++)
+      await assert.rejects(() => f.publicPost("auth/mfa", { challenge: ch, code: "000000" }), (e) => e.code === "INVALID_MFA");
+    f.advance(16 * 60000); // past the per-address link limit
+  }
+  // A sign-in opened before the pause, kept for later; the 10th wrong code
+  // comes from another one.
+  const early = await challenge();
+  const last = await challenge();
+  await assert.rejects(() => f.publicPost("auth/mfa", { challenge: last, code: "000000" }), (e) => e.code === "INVALID_MFA");
+  await f.publicPost("auth/admin-email/request", { email: "test@example.com" });
+  await assert.rejects(
+    () => f.publicPost("auth/admin-email/verify", { token: linkOf(f.sent.at(-1)) }),
+    (e) => e.code === "ADMIN_SIGN_IN_PAUSED",
+  );
+  // The pause also covers sign-ins that were already open, even with the right code.
+  await assert.rejects(
+    () => f.publicPost("auth/mfa", { challenge: early, code: totp(c.enrollmentSecret, Math.floor(f.now() / 30000)) }),
+    (e) => e.code === "ADMIN_SIGN_IN_PAUSED",
+  );
+  // It lasts a full hour from the 10th wrong code.
+  f.advance(59 * 60000);
+  await f.publicPost("auth/admin-email/request", { email: "test@example.com" });
+  await assert.rejects(
+    () => f.publicPost("auth/admin-email/verify", { token: linkOf(f.sent.at(-1)) }),
+    (e) => e.code === "ADMIN_SIGN_IN_PAUSED",
+  );
+  const notes = Object.values((await f.ledger.read()).notifications).map((n) => n.title);
+  assert.ok(notes.some((t) => /10 wrong authenticator codes for test@example.com/.test(t)));
+  // An hour later sign-in works again, and a correct code clears the count.
+  f.advance(3600001);
+  const ok = await challenge();
+  f.advance(30000);
+  const signed = await f.publicPost("auth/mfa", { challenge: ok, code: totp(c.enrollmentSecret, Math.floor(f.now() / 30000)) });
+  assert.match(signed.setCookie, /^__session=/);
+  assert.equal((await f.ledger.read()).mfaFailures?.[hash("mfa-fail:test@example.com")], undefined);
+});
+
+test("while the owner's codes are paused, a recovery code still lets the owner in (re-audit)", async () => {
+  const f = await fixture();
+  const { codes } = await f.admin("recovery-codes", { code: await f.ownerCode() });
+  const challenge = async () => {
+    await f.publicPost("auth/admin-email/request", { email: "organizer@gmail.com" });
+    return (await f.publicPost("auth/admin-email/verify", { token: linkOf(f.sent.at(-1)) })).challenge;
+  };
+  let wrong = 0;
+  while (wrong < 10) {
+    const ch = await challenge();
+    for (let i = 0; i < 5 && wrong < 10; i++, wrong++)
+      await assert.rejects(() => f.publicPost("auth/mfa", { challenge: ch, code: "000000" }), (e) => e.code === "INVALID_MFA");
+    f.advance(16 * 60000);
+  }
+  // The owner can still open a sign-in, but an authenticator code is refused...
+  const ch = await challenge();
+  await assert.rejects(
+    () => f.publicPost("auth/mfa", { challenge: ch, code: "123456" }),
+    (e) => e.code === "ADMIN_SIGN_IN_PAUSED",
+  );
+  // ...and a recovery code opens a new setup whose code finishes the sign-in.
+  const recovered = await f.publicPost("auth/mfa", { challenge: ch, code: codes[0] });
+  assert.equal(recovered.recovered, true);
+  f.advance(30000);
+  const signed = await f.publicPost("auth/mfa", {
+    challenge: ch,
+    code: totp(recovered.enrollmentSecret, Math.floor(f.now() / 30000)),
+  });
+  assert.match(signed.setCookie, /^__session=/);
+  assert.equal((await f.ledger.read()).mfaFailures?.[hash("mfa-fail:organizer@gmail.com")], undefined, "the pause is lifted");
+});
+
+test("only the main Email of a ticked row is an administrator, never an Additional Email (re-audit)", async () => {
+  const f = await fixture();
+  f.row.additionalEmails = ["teen@example.com"];
+  const before = f.sent.length;
+  assert.deepEqual(await f.publicPost("auth/admin-email/request", { email: "teen@example.com" }), { requested: true });
+  assert.equal(f.sent.length, before, "no admin link for an Additional Email");
+  const list = await f.admin("accounts");
+  assert.ok(!list.administrators.some((a) => a.email === "teen@example.com"));
+  assert.ok(list.administrators.some((a) => a.email === "test@example.com"));
+  // The same address can still sign in as a guest.
+  await f.publicPost("auth/email/request", { email: "teen@example.com" });
+  assert.equal(f.sent.length, before + 1);
+});
+
+test("the drain removes the authenticator of someone Notion no longer makes an admin, a day later (SEC-9)", async () => {
+  const f = await fixture({ verifyScheduler: async () => true });
+  await adminSignIn(f, "test@example.com");
+  await f.ownerCode(); // the owner has an authenticator too
+  // Another administrator stays ticked, so Notion's admin column clearly works.
+  f.extraRows.push({ ...structuredClone(f.row), id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", name: "Other", email: "other@example.com" });
+  const has = async (email = "test@example.com") =>
+    Object.values((await f.ledger.read()).admins).some((a) => a.email === email);
+  const drain = () =>
+    f.app.dispatch({ path: "/api/internal/drain", method: "POST", headers: { authorization: "Bearer x" } });
+  assert.equal((await drain()).admins.removed, 0, "still ticked: kept");
+  // Unticked: the family is told at once; the authenticator goes a day later.
+  f.row.administratorEligible = false;
+  assert.deepEqual((await drain()).admins, { removed: 0, pending: 1 });
+  assert.equal(await has(), true);
+  const notes = Object.values((await f.ledger.read()).notifications).map((n) => n.title);
+  assert.ok(notes.some((t) => /test@example.com is no longer an administrator/.test(t)));
+  // Ticked again within the day: nothing is lost.
+  f.row.administratorEligible = true;
+  await drain();
+  f.advance(86400001);
+  assert.equal((await drain()).admins.removed, 0);
+  assert.equal(await has(), true);
+  // Unticked for a whole day: removed, the owner never.
+  f.row.administratorEligible = false;
+  await drain();
+  f.advance(86400001);
+  assert.equal((await drain()).admins.removed, 1);
+  assert.equal(await has(), false);
+  assert.equal(await has("organizer@gmail.com"), true, "the owner is never removed");
+  const events = (await f.ledger.read()).roleEvents.map((e) => e.change);
+  assert.ok(events.includes("authenticator-removed"));
+  // Ticked again later: a fresh QR setup, not the old phone.
+  f.row.administratorEligible = true;
+  await f.publicPost("auth/admin-email/request", { email: "test@example.com" });
+  const again = await f.publicPost("auth/admin-email/verify", { token: linkOf(f.sent.at(-1)) });
+  assert.ok(again.enrollmentSecret);
+});
+
+test("a renamed admin column removes no one; unticking the only ticked admin still does (re-audit)", async () => {
+  const f = await fixture({ verifyScheduler: async () => true });
+  await adminSignIn(f, "test@example.com");
+  const drain = () =>
+    f.app.dispatch({ path: "/api/internal/drain", method: "POST", headers: { authorization: "Bearer x" } });
+  const admin = async () =>
+    Object.values((await f.ledger.read()).admins).find((a) => a.email === "test@example.com");
+  // "Administrator Eligible" renamed: every row reads as unticked.
+  f.row.administratorEligible = false;
+  f.row.adminColumnsPresent = false;
+  f.advance(86400001);
+  assert.equal((await drain()).admins.skipped, "NOTION_ADMIN_COLUMNS_MISSING");
+  f.advance(86400001);
+  assert.equal((await drain()).admins.skipped, "NOTION_ADMIN_COLUMNS_MISSING");
+  assert.ok((await admin()) && !(await admin()).staleSince, "nothing flagged, nothing removed");
+  // The column is back and this was the only ticked row: unticking still counts.
+  f.row.adminColumnsPresent = true;
+  assert.equal((await drain()).admins.pending, 1);
+  f.advance(86400001);
+  assert.equal((await drain()).admins.removed, 1);
+  assert.equal(await admin(), undefined);
+});
+
+test("a guest whose email leaves the Notion row loses data access on the next request (re-audit)", async () => {
+  const f = await fixture();
+  await f.publicPost("auth/email/request", { email: "test@example.com" });
+  const s = await f.publicPost("auth/email/verify", { token: linkOf(f.sent.at(-1)) });
+  const as = (path, body) =>
+    f.app.dispatch({
+      path: "/api/" + path,
+      method: body ? "POST" : "GET",
+      body,
+      headers: { origin, cookie: s.setCookie.split(";")[0], "x-csrf-token": s.csrf },
+    });
+  assert.ok(await as("messages"));
+  assert.ok(await as("gallery"));
+  f.row.email = "someone-else@example.com";
+  await assert.rejects(() => as("messages"), (e) => e.code === "SIGN_IN_REQUIRED");
+  await assert.rejects(
+    () => as("messages", { kind: "guestbook", name: "A", text: "Hi", consent: true }),
+    (e) => e.code === "SIGN_IN_REQUIRED",
+  );
+  // Pages that need no invitation details stop too.
+  for (const page of ["gallery", "account", "photo/12345678-1234-4234-8234-123456789012"])
+    await assert.rejects(() => as(page), (e) => e.code === "SIGN_IN_REQUIRED", page);
+});
+
+test("only email sign-ins and admins may start an upload; RSVP-only link sessions may not (re-audit)", async () => {
+  const f = await fixture();
+  const linkCookie = (await f.app.dispatch({
+    path: "/api/invitation-session",
+    method: "POST",
+    body: { token: f.guestToken },
+    headers: { origin },
+  })).setCookie.split(";")[0];
+  assert.equal(await f.app.canUpload(linkCookie), null);
+  assert.equal(await f.app.canUpload("__session=" + token()), null);
+  await f.publicPost("auth/email/request", { email: "test@example.com" });
+  const s = await f.publicPost("auth/email/verify", { token: linkOf(f.sent.at(-1)) });
+  const cookie = s.setCookie.split(";")[0];
+  const key = await f.app.canUpload(cookie);
+  assert.ok(key);
+  // One session, one key, however the cookie header is spelled.
+  assert.equal(await f.app.canUpload(cookie + "  ;a=1"), key);
+});
+
+test("a guest's sign out everywhere ends guest sign-ins only, never that person's admin session (re-audit)", async () => {
+  const f = await fixture();
+  const admin = await adminSignIn(f, "test@example.com");
+  await f.publicPost("auth/email/request", { email: "test@example.com" });
+  const s = await f.publicPost("auth/email/verify", { token: linkOf(f.sent.at(-1)) });
+  const out = await f.app.dispatch({
+    path: "/api/logout-all",
+    method: "POST",
+    body: {},
+    headers: { origin, cookie: s.setCookie.split(";")[0], "x-csrf-token": s.csrf },
+  });
+  assert.equal(out.signedOut, 2, "this sign-in and the fixture's guest session");
+  assert.equal((await admin.as("session")).kind, "admin", "the admin session is untouched");
+});
+
+test("email sign-in needs only the Notion email: before a link is issued, and through a reissued link (re-audit D1)", async () => {
+  const f = await fixture();
+  // No invitation link yet for this household.
+  await f.ledger.transaction((s) => {
+    delete s.invitations[household];
+  });
+  await f.publicPost("auth/email/request", { email: "test@example.com" });
+  const s = await f.publicPost("auth/email/verify", { token: linkOf(f.sent.at(-1)) });
+  const as = (path, body, headers = {}) =>
+    f.app.dispatch({
+      path: "/api/" + path,
+      method: body ? "POST" : "GET",
+      body,
+      headers: { origin, cookie: s.setCookie.split(";")[0], "x-csrf-token": s.csrf, ...headers },
+    });
+  assert.equal((await as("invitation")).invitationReady, false);
+  assert.ok(await as("messages", { kind: "contact", name: "A", text: "Hello" }), "can write to the family");
+  await assert.rejects(
+    () => as("rsvp", f.input(), { "idempotency-key": "13131313-1313-4313-8313-131313131313" }),
+    (e) => e.code === "INVITATION_NOT_READY",
+  );
+  // Contact details save too (nothing to sync to Notion until a link is issued).
+  const { profile } = await as("profile");
+  const saved = await as("profile", { version: profile.version, email: "test@example.com", phone: "555", address: null });
+  assert.equal(saved.saved, true);
+  assert.equal(saved.syncState, null);
+  // The family issues the link, then reissues it (say it was forwarded):
+  await f.ledger.transaction((st) => {
+    st.invitations[household] = { id: household, name: "Test family", active: true, generation: 1, invited: { ceremony: true, dinner: true, dance: true } };
+  });
+  assert.equal((await as("invitation")).invitationReady, true);
+  await f.ledger.transaction((st) => {
+    st.invitations[household].generation = 2;
+  });
+  assert.equal((await as("session")).verified, true, "reissuing a link does not sign the family out");
+  // Revoking the invitation still ends everyone's access.
+  await f.ledger.transaction((st) => {
+    st.invitations[household].active = false;
+  });
+  assert.equal((await as("session")).kind, null);
+});
+
+test("an email moved to another household ends its sessions for the old one (re-audit)", async () => {
+  const f = await fixture();
+  await f.publicPost("auth/email/request", { email: "test@example.com" });
+  const old = await f.publicPost("auth/email/verify", { token: linkOf(f.sent.at(-1)) });
+  const other = "21212121-2121-4121-8121-212121212121";
+  await f.ledger.transaction((s) => {
+    s.invitations[other] = { id: other, name: "Other family", active: true, generation: 1, invited: { ceremony: true, dinner: true, dance: true } };
+  });
+  f.extraRows.push({ ...f.row, id: other, name: "Other family", email: "test@example.com" });
+  f.row.email = "";
+  await f.publicPost("auth/email/request", { email: "test@example.com" });
+  await f.publicPost("auth/email/verify", { token: linkOf(f.sent.at(-1)) });
+  const session = await f.app.dispatch({ path: "/api/session", headers: { cookie: old.setCookie.split(";")[0] } });
+  assert.equal(session.kind, null);
 });

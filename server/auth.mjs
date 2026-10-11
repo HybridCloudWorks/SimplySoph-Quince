@@ -159,6 +159,15 @@ export function googleIdentityVerifier(clientId) {
 }
 // Personal Microsoft accounts (Outlook, Hotmail, Live) sign in through this tenant.
 export const MSA_TENANT = "9188040d-6c67-4c5b-b112-36a304b66dad";
+// Microsoft's own consumer mail domains, listed exactly. An address on any
+// other domain uses the emailed link instead.
+const microsoftConsumerDomains = new Set([
+  "outlook.com", "hotmail.com", "live.com", "msn.com", "passport.com", "windowslive.com",
+  "outlook.es", "outlook.fr", "outlook.de", "outlook.it", "outlook.com.br",
+  "hotmail.es", "hotmail.fr", "hotmail.de", "hotmail.it", "hotmail.co.uk", "hotmail.ca",
+  "hotmail.com.br", "hotmail.com.ar",
+  "live.com.mx", "live.co.uk", "live.ca", "live.fr", "live.de", "live.it",
+]);
 // Verifies a v2.0 Microsoft ID token obtained by the browser (authorization code
 // with PKCE, no client secret). Only personal accounts and the family's own work
 // tenant are accepted; every other organization is refused even though the app
@@ -259,6 +268,13 @@ export function microsoftVerifier({
       throw error(403, "SSO_EMAIL_NOT_VERIFIED");
     const email = typeof p.email === "string" ? p.email.trim().toLowerCase() : "";
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254)
+      throw error(403, "SSO_EMAIL_NOT_VERIFIED");
+    // A personal Microsoft account can be registered with any address (Yahoo,
+    // iCloud, Gmail), which Microsoft checked once but does not own, so a
+    // recycled address could be taken over. As for Google, only Microsoft's own
+    // addresses are trusted here, by exact domain; others use the emailed link
+    // (re-audit).
+    if (p.tid === MSA_TENANT && !microsoftConsumerDomains.has(email.split("@")[1]))
       throw error(403, "SSO_EMAIL_NOT_VERIFIED");
     return {
       provider: "microsoft",

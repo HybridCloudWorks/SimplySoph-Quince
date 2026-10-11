@@ -29,6 +29,9 @@ export function normalizeInvitation(page) {
       .filter((v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)),
     phone: p.Phone?.phone_number ?? "",
     administratorEligible: p["Administrator Eligible"]?.checkbox === true,
+    // Notion returns every column on every row, empty or not: a missing one
+    // was renamed or deleted, so admin flags read from it mean nothing.
+    adminColumnsPresent: Object.hasOwn(p, "Administrator Eligible") && Object.hasOwn(p, "Email"),
     role: p.Role?.select?.name ?? "",
     firstName: text(p["First Name"]),
     lastName: text(p["Last Name"]),

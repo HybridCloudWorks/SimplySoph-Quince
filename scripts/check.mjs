@@ -24,7 +24,7 @@ for (const page of pages) {
   }
   if (
     !html.includes('id="main"') ||
-    !html.includes('name="referrer" content="no-referrer"')
+    !html.includes('name="referrer" content="strict-origin-when-cross-origin"')
   )
     throw new Error(`Missing accessibility/privacy structure in ${page}`);
   if (/SOPHIA-DEMO|RSVP demonstration only/.test(html))

@@ -48,6 +48,14 @@ if (env.EVENT_BUCKET) {
     adminEmails = env.ADMIN_EMAILS.split(",").map((s) =>
       s.trim().toLowerCase(),
     );
+  // The break-glass owner list must be real addresses: an empty entry ("a@b.c,")
+  // would otherwise match an empty email somewhere.
+  if (!adminEmails.length || adminEmails.some((e) => !/^[^\s@,]+@[^\s@,]+\.[^\s@,]+$/.test(e)))
+    throw new Error("ADMIN_EMAILS must be one or more valid addresses, comma separated");
+  // Without the tenant, work accounts in the family's Microsoft tenant would be
+  // refused silently; set both or neither.
+  if (!env.MICROSOFT_CLIENT_ID !== !env.MICROSOFT_TENANT_ID)
+    throw new Error("Set both MICROSOFT_CLIENT_ID and MICROSOFT_TENANT_ID, or neither");
   const smsTransport = twilioTransport({
     accountSid: env.TWILIO_ACCOUNT_SID,
     serviceSid: env.TWILIO_MESSAGING_SERVICE_SID,
