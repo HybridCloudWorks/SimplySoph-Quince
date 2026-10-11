@@ -2,7 +2,7 @@ import { planningEditor, documentWorkspace } from "./admin-planning.js";
 import { whatsappComposer } from "./admin-whatsapp.js";
 import { communicationHistory } from "./admin-history.js";
 import { audienceComposer } from "./admin-audience.js";
-import { batchToolbar } from "./admin-batches.js";
+import { batchToolbar, eventNames } from "./admin-batches.js";
 import { startPulse, activityBanner } from "./admin-pulse.js";
 import { websiteEditor, notificationInbox } from "./admin-experience.js";
 import { api, esc, field, submit, notify } from "./client.js";
@@ -157,7 +157,7 @@ async function login() {
     return;
   }
   const cfg = await api("config");
-  root.innerHTML = `<form id="admin-email-login" class="card"><h2>Sign In By Email</h2><p>Enter your approved email. Follow the one-time link, then enter your authenticator code.</p>${field("Email", "email", { type: "email", required: true, max: 254 })}<p id="admin-email-result" role="status"></p>${formEnd("Email My Sign-In Link")}${
+  root.innerHTML = `<form id="admin-email-login" class="card"><h2>Sign in by email</h2><p>Enter your approved email. Follow the one-time link, then enter your authenticator code.</p>${field("Email", "email", { type: "email", required: true, max: 254 })}<p id="admin-email-result" role="status"></p>${formEnd("Email my sign-in link")}${
     cfg.microsoftClientId || cfg.clientId
       ? `<section class="sso-choices"><h2>Or sign in with</h2>${ssoRow({
           microsoft: cfg.microsoftClientId && "Sign in with Microsoft",
@@ -233,7 +233,7 @@ async function accountAccess() {
   root.innerHTML = `<section class="card"><h2>Administrators</h2><p>Administrators are managed in Notion. To add someone, tick <strong>Administrator Eligible</strong> on their row and make sure the row has their email. To remove them, untick it; they are signed out on their next click. Everyone sets up an authenticator app the first time they sign in.</p><div class="table-wrap"><table><thead><tr><th>Name</th><th>Email</th><th>Authenticator</th>${data.owner ? "<th></th>" : ""}</tr></thead><tbody>${data.administrators
     .map(
       (a) =>
-        `<tr><td>${esc(a.name)}${a.owner ? " (outside Notion)" : ""}</td><td>${esc(a.email)}</td><td>${a.authenticator ? "Set up" : "Not yet"}</td>${data.owner ? `<td>${!a.owner && a.authenticator ? `<button type="button" class="button" data-reset="${esc(a.email)}">Reset authenticator</button>` : ""}</td>` : ""}</tr>`,
+        `<tr><td>${esc(a.name)}${a.owner ? " (outside Notion)" : ""}</td><td>${esc(a.email)}</td><td>${a.authenticator ? "Set up" : "Not yet"}</td>${data.owner ? `<td>${!a.owner && a.authenticator ? `<button type="button" class="button outline" data-reset="${esc(a.email)}">Reset authenticator</button>` : ""}</td>` : ""}</tr>`,
     )
     .join("")}</tbody></table></div>${data.flaggedWithoutEmail.length ? `<p class="notice">These rows are ticked but have no email, so they can't sign in: ${data.flaggedWithoutEmail.map(esc).join(", ")}.</p>` : ""}<div id="reset-panel"></div></section><section class="card"><h2>Guest sign-in</h2><p>Guests sign in with the email the family has for their household in Notion (or a comma-separated <strong>Additional Emails</strong> column). ${data.missingEmails ? `<strong>${data.missingEmails} of ${data.households}</strong> households have no email yet, so they can RSVP with their invitation link but can't sign in for photos and messages.` : "Every household has an email."}</p><div class="table-wrap"><table><thead><tr><th>Household</th><th>Email</th><th>First sign-in</th><th>Last sign-in</th></tr></thead><tbody>${
     data.guests
@@ -268,7 +268,7 @@ async function accountAccess() {
     };
     root.insertAdjacentHTML(
       "beforeend",
-      `<section class="card" id="recovery"><h2>Your recovery codes</h2><p>If you lose your phone, a recovery code lets you sign in once and set up a new authenticator. You have <strong>${data.recoveryCodesLeft}</strong> unused ${data.recoveryCodesLeft === 1 ? "code" : "codes"}. Creating a new set cancels the old one.</p><div id="recovery-panel"><button type="button" class="button" id="recovery-new">Create new recovery codes</button></div></section><section class="card"><h2>Authenticator history</h2>${r.events.length ? `<ul>${r.events.map((e) => `<li>${esc(new Date(e.at).toLocaleString())} · ${esc(changes[e.change] || e.change)} · ${esc(e.target)}</li>`).join("")}</ul>` : "<p>No changes recorded yet.</p>"}</section>`,
+      `<section class="card" id="recovery"><h2>Your recovery codes</h2><p>If you lose your phone, a recovery code lets you sign in once and set up a new authenticator. You have <strong>${data.recoveryCodesLeft}</strong> unused ${data.recoveryCodesLeft === 1 ? "code" : "codes"}. Creating a new set cancels the old one.</p><div id="recovery-panel"><button type="button" class="button outline" id="recovery-new">Create new recovery codes</button></div></section><section class="card"><h2>Authenticator history</h2>${r.events.length ? `<ul>${r.events.map((e) => `<li>${esc(new Date(e.at).toLocaleString())} · ${esc(changes[e.change] || e.change)} · ${esc(e.target)}</li>`).join("")}</ul>` : "<p>No changes recorded yet.</p>"}</section>`,
     );
     root.querySelector("#recovery-new").onclick = () => {
       const panel = root.querySelector("#recovery-panel");
@@ -307,13 +307,13 @@ async function dashboard() {
     ["Event", "Adults/teens", "Children", "Total"],
     Object.entries(d.counts).map(
       ([e, c]) =>
-        `<tr><td>${esc(e)}</td><td>${c.adultsTeens}</td><td>${c.kids}</td><td>${c.adultsTeens + c.kids}</td></tr>`,
+        `<tr><td>${esc(eventNames[e] || e)}</td><td>${c.adultsTeens}</td><td>${c.kids}</td><td>${c.adultsTeens + c.kids}</td></tr>`,
     ),
-  )}<p>Counts use the latest saved response for each active invitation.</p><h2>Dietary, accessibility & song requests</h2>${d.requests.map((r) => `<p class="card">${esc(r.text)}</p>`).join("") || "<p>No requests recorded.</p>"}<h2>Email status</h2>${
+  )}<p>Counts use each household's answer: the latest one saved on the website, or Notion's for an answer taken by phone or a difference you chose to keep.</p><h2>Dietary, accessibility & song requests</h2>${d.requests.map((r) => `<p class="card">${esc(r.text)}</p>`).join("") || "<p>No requests recorded.</p>"}<h2>Email status</h2>${
     Object.entries(d.mail)
       .map(([s, n]) => `<p>${esc(s)}: ${n}</p>`)
       .join("") || "<p>No email drafted.</p>"
-  }${button("Retry pending Notion updates", "sync", "")}${button("Prepare RSVP columns in Notion", "schema", "")}`;
+  }<div class="row-actions">${button("Retry pending Notion updates", "sync", "")}${button("Prepare RSVP columns in Notion", "schema", "")}</div>`;
 }
 const statusLabels = {
   "not-issued": "No link yet",
@@ -342,14 +342,14 @@ async function guestList() {
       ([k, v]) =>
         `<option value="${k}">${esc(v)} (${guests.filter((g) => g.status === k).length})</option>`,
     )
-    .join("")}</select></label></div><div id="batch-toolbar" class="row-actions"><span data-selected-count></span><button type="button" class="button" data-batch="issue">Create links</button><button type="button" class="button burgundy" data-batch="invitation">Email invitation</button><button type="button" class="button" data-batch="reminder">Email reminder</button></div><p class="hint">Emails are drafted for review first. Nothing sends until you check the recipients and sample and type the number to confirm.</p>${table(
+    .join("")}</select></label></div><div id="batch-toolbar" class="row-actions"><span data-selected-count></span><button type="button" class="button outline" data-batch="issue">Create links</button><button type="button" class="button burgundy" data-batch="invitation">Email invitation</button><button type="button" class="button outline" data-batch="reminder">Email reminder</button></div><p class="hint">Emails are drafted for review first. Nothing sends until you check the recipients and sample and type the number to confirm.</p>${table(
     ['<input type="checkbox" data-select-all aria-label="Select all shown households">', "Household", "Status", "Invited capacity", "Email", "Response / sync", "Actions"],
     guests.map(
       (r) =>
-        `<tr data-guest-row data-status="${esc(r.status)}"><td><input type="checkbox" data-select value="${esc(r.id)}" aria-label="Select ${esc(r.name)}"></td><td>${esc(r.name)}<br><span class="badge">${esc(r.role)}</span></td><td><span class="badge">${esc(statusLabels[r.status] || r.status)}</span>${r.respondedAt || r.openedAt ? `<br><small>${esc(when(r.respondedAt || r.openedAt))}</small>` : ""}</td><td>${r.capacity.adultsTeens ?? "?"} adults/teens · ${r.capacity.kids ?? "?"} ${r.capacity.kids === 1 ? "child" : "children"}${r.validCapacity ? "" : "<br>Needs review"}</td><td>${esc(r.email)}</td><td>${
+        `<tr data-guest-row data-name="${esc(r.name)}" data-status="${esc(r.status)}"><td><input type="checkbox" data-select value="${esc(r.id)}" aria-label="Select ${esc(r.name)}"></td><td>${esc(r.name)}<br><span class="badge">${esc(r.role)}</span></td><td><span class="badge">${esc(statusLabels[r.status] || r.status)}</span>${r.respondedAt || r.openedAt ? `<br><small>${esc(when(r.respondedAt || r.openedAt))}</small>` : ""}</td><td>${r.capacity.adultsTeens ?? "?"} adults/teens · ${r.capacity.kids ?? "?"} ${r.capacity.kids === 1 ? "child" : "children"}${r.validCapacity ? "" : "<br>Needs review"}</td><td>${esc(r.email)}</td><td>${
           r.response
             ? Object.entries(r.response.attendance)
-                .map(([e, v]) => `${e}: ${v.adultsTeens + v.kids}`)
+                .map(([e, v]) => `${esc(eventNames[e] || e)}: ${v.adultsTeens + v.kids}`)
                 .join("<br>")
             : "No response"
         }<br>${esc(r.syncState)}${r.notionDiffers ? `<p class="notice">Notion differs: ${esc(r.notionDiffers)}.</p>${button("Keep Notion's version", "drift-notion", r.id)}${button("Write the website's answer", "drift-website", r.id)}` : ""}</td><td><a href="https://www.notion.so/${encodeURIComponent(r.id.replaceAll("-", ""))}" target="_blank" rel="noopener noreferrer">Edit household in Notion</a>${button("Review / create link", "invite-form", r.id)}${r.active ? button("Revoke link", "revoke", r.id) : ""}</td></tr>`,
@@ -368,7 +368,7 @@ async function guestList() {
 function invitationEditor(id) {
   const r = guests.find((r) => r.id === id),
     box = document.querySelector("#guest-editor");
-  box.innerHTML = `<form id="invitation" class="card"><h2>${esc(r.name)}</h2><p>Creating a link replaces any previous link. Review the eligible events.</p>${["ceremony", "dinner", "dance"].map((e) => `<label class="check"><input type="checkbox" name="${e}" ${r.invited?.[e] ? "checked" : ""}>${e}</label>`).join("")}<label>Language<select name="locale"><option value="en">English</option><option value="es"${r.locale === "es" ? " selected" : ""}>Español</option></select></label>${formEnd("Create private invitation link")}`;
+  box.innerHTML = `<form id="invitation" class="card"><h2>${esc(r.name)}</h2><p>Creating a link replaces any previous link. Review the eligible events.</p>${Object.entries(eventNames).map(([e, name]) => `<label class="check"><input type="checkbox" name="${e}" ${r.invited?.[e] ? "checked" : ""}>${name}</label>`).join("")}<label>Language<select name="locale"><option value="en">English</option><option value="es"${r.locale === "es" ? " selected" : ""}>Español</option></select></label>${formEnd("Create private invitation link")}`;
   submit(document.querySelector("#invitation"), async (f) => {
     const result = await api("admin/invitation", {
       id,
@@ -486,16 +486,16 @@ async function moderation() {
 }
 async function updates() {
   const choices = {
-    announcements: "General Announcements",
-    whatsapp: "WhatsApp Reminders",
-    sms: "SMS Reminders",
-    email: "Communication Emails",
+    announcements: "General announcements",
+    whatsapp: "WhatsApp reminders",
+    sms: "SMS reminders",
+    email: "Communication emails",
   };
   const query = new URLSearchParams(location.search);
   const selected = Object.hasOwn(choices, query.get("tab"))
     ? query.get("tab")
     : "announcements";
-  root.innerHTML = `<div class="communication-tabs" role="tablist" aria-label="Communication Channels">${Object.entries(
+  root.innerHTML = `<div class="communication-tabs" role="tablist" aria-label="Communication channels">${Object.entries(
     choices,
   )
     .map(
@@ -547,15 +547,15 @@ async function updates() {
       .filter((a) => !a.archived)
       .sort(newestFirst)
       .slice(0, 5);
-    panel.innerHTML = `<form id="announcement" class="card"><h2>Publish A Website Announcement</h2>${field("English Title", "title", { required: true, max: 140 })}<label>English Message<textarea name="text" required maxlength="2000"></textarea></label>${field("Spanish Title", "titleEs", { max: 140 })}<label>Spanish Message<textarea name="textEs" maxlength="2000"></textarea></label>${formEnd("Publish On Website")}<section class="recent-records"><h2>Latest Five Announcements</h2><a href="/admin/history/?kind=announcements">View Full Announcement History</a>${announcements.map((a) => `<article class="compact-record"><h3>${esc(a.title)}</h3><p>${esc(a.text)}</p><small>${a.at ? esc(new Date(a.at).toLocaleString()) : ""} · ${a.published ? "Published" : "Unpublished"}</small></article>`).join("") || "<p>No Announcements Yet.</p>"}</section>`;
+    panel.innerHTML = `<form id="announcement" class="card"><h2>Publish a website announcement</h2>${field("English title", "title", { required: true, max: 140 })}<label>English message<textarea name="text" required maxlength="2000"></textarea></label>${field("Spanish title", "titleEs", { max: 140 })}<label>Spanish message<textarea name="textEs" maxlength="2000"></textarea></label>${formEnd("Publish on website")}<section class="recent-records"><h2>Latest five announcements</h2><a href="/admin/history/?kind=announcements">View full announcement history</a>${announcements.map((a) => `<article class="compact-record"><h3>${esc(a.title)}</h3><p>${esc(a.text)}</p><small>${a.at ? esc(new Date(a.at).toLocaleString()) : ""} · ${a.published ? "Published" : "Unpublished"}</small></article>`).join("") || "<p>No announcements yet.</p>"}</section>`;
     submit(panel.querySelector("#announcement"), async (f) => {
       await api("admin/updates", Object.fromEntries(f));
-      notify("Announcement Published. No Email Sent.");
+      notify("Announcement published. No email sent.");
       await updates();
     });
     return;
   }
-  panel.innerHTML = `${d.mailConfigured ? "" : '<p class="notice">Email Sending Is Not Configured. Drafts Can Be Reviewed But Cannot Be Sent Yet.</p>'}<div id="email-groups"></div><section id="email-outbox" class="recent-records"><h2>Latest Five Emails</h2><a href="/admin/history/?kind=email">View Full Email History</a><p>Review Each Recipient Before Sending. Accepted Means The Provider Accepted The Request, Not Confirmed Delivery.</p>${table(
+  panel.innerHTML = `${d.mailConfigured ? "" : '<p class="notice">Email sending is not configured. Drafts can be reviewed but cannot be sent yet.</p>'}<div id="email-groups"></div><section id="email-outbox" class="recent-records"><h2>Latest five emails</h2><a href="/admin/history/?kind=email">View full email history</a><p>Review each recipient before sending. Accepted means the provider accepted the request, not confirmed delivery.</p>${table(
     ["Recipient", "Subject", "State", "Review"],
     d.outbox
       .filter((m) => !m.archived)
@@ -563,7 +563,7 @@ async function updates() {
       .slice(0, 5)
       .map(
         (m) =>
-          `<tr><td>${esc(m.to)}</td><td>${esc(m.subject)}</td><td>${esc(m.state)}</td><td>${button("Review Message", "mail-review", m.id)}</td></tr>`,
+          `<tr><td>${esc(m.to)}</td><td>${esc(m.subject)}</td><td>${esc(m.state)}</td><td>${button("Review message", "mail-review", m.id)}</td></tr>`,
       ),
   )}</section><div id="mail-review"></div>`;
   await audienceComposer(
@@ -626,9 +626,8 @@ root.addEventListener("click", (e) => {
       );
     if (action === "revoke") {
       // One click used to revoke at once; name the household and ask first.
-      const name =
-        b.closest("tr")?.cells[1]?.textContent.trim().split("\n")[0] ||
-        "this household";
+      // From data-name: the name cell's text also holds the role badge.
+      const name = b.closest("tr")?.dataset.name || "this household";
       if (
         !confirm(
           `Revoke the invitation link for ${name}? Their current link will stop working. You can create a new one later.`,
@@ -657,7 +656,7 @@ root.addEventListener("click", (e) => {
     if (action === "draft-invitation") {
       await api("admin/mail/draft", { id, type: "invitation" });
       notify("Draft saved. Review it on Communications before sending.", {
-        href: "/admin/updates/",
+        href: "/admin/updates/?tab=email",
         label: "Open Communications",
       });
     }
@@ -727,7 +726,7 @@ try {
     }
   }
 } catch (e) {
-  root.innerHTML = `<p role="alert" class="notice">${esc(e.message)}</p>${e.status === 401 || e.status === 403 ? '<a href="/admin/login/">Administrator Login</a>' : '<button type="button" class="button" id="retry-admin-page">Retry This Page</button>'}`;
+  root.innerHTML = `<p role="alert" class="notice">${esc(e.message)}</p>${e.status === 401 || e.status === 403 ? '<a href="/admin/login/">Administrator sign-in</a>' : '<button type="button" class="button outline" id="retry-admin-page">Retry this page</button>'}`;
   root
     .querySelector("#retry-admin-page")
     ?.addEventListener("click", () => location.reload());

@@ -2,7 +2,7 @@
 
 Multi-page English/Spanish guest website and private family administration for **Friday, January 15, 2027**, Fort Worth. RSVP deadline: **November 15, 2026, 11:59 PM Central**.
 
-The multi-page site is live at **https://misxv.simplysoph.com**. `npm run check` builds 65 routes plus `404.html` and validates all 66 documents. Only pushes to `main` publish, after the Node 24 checks and dependency audit pass; other branches and pull requests only run checks. The API is deployed separately to Cloud Run. Invitations must not go out until the acceptance gate in `DEPLOYMENT.md` passes. The v1.0 design set and plan are in [`docs/v1/`](docs/v1/README.md).
+The multi-page site is live at **https://misxv.simplysoph.com**. `npm run check` builds every route plus `404.html` and validates every document. Only pushes to `main` publish, after the Node 24 checks and dependency audit pass; other branches and pull requests only run checks. The API is deployed separately to Cloud Run. Invitations must not go out until the acceptance gate in `DEPLOYMENT.md` passes. The v1.0 design set and plan are in [`docs/v1/`](docs/v1/README.md).
 
 ## Run and check
 
@@ -20,8 +20,8 @@ Open http://127.0.0.1:4173/. Without production configuration, the site serves e
 
 - `site/content.mjs`: bilingual route catalog, confirmed event details and family content inputs.
 - `scripts/build-pages.mjs`: static pages, shared navigation, calendar and printable upload QR.
-- `site/guest.js`: private invitation exchange, RSVP review/edit, photo and message submissions.
-- `site/admin.js`: authorized Google sign-in plus authenticator MFA, counts, invitations, CSV import/export, seating, moderation, announcements and reviewed email outbox.
+- `site/guest.js`: private invitation exchange, guest sign-in, RSVP review/edit, photo and message submissions.
+- `site/admin.js`: administrator sign-in (emailed link, Google or Microsoft) plus an authenticator code, counts, invitations, CSV import/export, seating, moderation, announcements and reviewed email outbox.
 - `server/application.mjs`: authenticated API workflows; no provider credentials in browser assets.
 - `server/store.mjs`: private Google Cloud Storage ledger with generation preconditions for durable concurrent transactions.
 - `server/notion.mjs`: real Notion data-source adapter; preserves original invited capacities and projects website responses into separate columns.
@@ -29,7 +29,7 @@ Open http://127.0.0.1:4173/. Without production configuration, the site serves e
 - `server/sms.mjs`, `server/whatsapp.mjs`: Twilio SMS/WhatsApp with keyword consent, reviewed sends and signed callbacks; see `docs/twilio-setup.md`.
 - `DEPLOYMENT.md`: service configuration, release gates, provider setup and rollback.
 - `PAGE-SCOPE.md`: all requested pages and their responsibilities.
-- `ACCOUNT-ACCESS.md`: invitation onboarding, verified email links, per-account private pages and MFA administration.
+- `ACCOUNT-ACCESS.md`: who can sign in (decided in Notion), guest and administrator sign-in, authenticators and recovery codes.
 - `CLEANUP.md` and `ops/event-resources.json`: export, ownership checks and retirement inventory.
 
 ## Team workflow

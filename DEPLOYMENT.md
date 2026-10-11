@@ -8,7 +8,7 @@ Related: [PUBLISHING.md](PUBLISHING.md) (static release pipeline) · [ACCOUNT-AC
 
 | Component | Implementation | Deployed by |
 |---|---|---|
-| Static site (EN/ES, 65 routes + 404) | `scripts/build-pages.mjs` → `dist/` → Firebase Hosting site `misxv-simplysoph`, target `misxv` | GitHub Actions on push to `main` only (OIDC, no stored key) |
+| Static site (EN/ES, every route + 404) | `scripts/build-pages.mjs` → `dist/` → Firebase Hosting site `misxv-simplysoph`, target `misxv` | GitHub Actions on push to `main` only (OIDC, no stored key) |
 | API | Node 24, `server/start.mjs`, one Cloud Run service `misxv-api` in `us-central1`, reached via Hosting rewrite `/api/**` | **Manual** (see "Deploy the API") |
 | State | One JSON ledger in a private GCS bucket with generation preconditions (`server/store.mjs`, 20 MB cap); media/documents as separate private objects | — |
 | Guest roster and planning | Notion data sources via a dedicated scoped connection | — |
@@ -55,7 +55,7 @@ Every variable `server/start.mjs` reads. Secrets come from **pinned** Secret Man
 
 1. Record a scoped baseline before creating anything, and inventory every object, grant, secret version and image in `ops/event-resources.json`. Preserve the shared project, default Hosting site and billing.
 2. Runtime service account: `objectUser` on the event bucket only; Secret Accessor on individual event secrets only. No project Editor, no downloadable keys.
-3. Google OAuth client: exact production origin plus explicitly chosen preview origins only. Keep a second owner and authenticator recovery material.
+3. Google OAuth client: exact production origin plus explicitly chosen preview origins only. The owner keeps recovery codes (Guest access → Your recovery codes) away from their phone.
 4. Notion connection: read/update/insert on **only** the organizer-approved databases (Invitations, Budget, Godparents). No user profiles, comments or agents.
 5. Microsoft: Exchange application RBAC limited to `misxv@simplysoph.com`; verify another mailbox is denied. No tenant-wide `Mail.Send`. SPF authorizes Microsoft 365. DKIM selector1 signs and passes; the selector2 CNAME was restored in Cloudflare (verified Oct 9, 2026). DMARC is published at `p=none` with no report address.
 6. Twilio: see [docs/twilio-setup.md](docs/twilio-setup.md). Grant Messages *create* to the runtime key only at activation.
@@ -145,25 +145,25 @@ SMS only goes to phones whose owner texted the program keyword (`SOPHIA`, `START
 Record date, tester and evidence for each item in the inventory. Status as of this revision: **all unverified.**
 
 - [ ] `npm run check` and `npm audit --omit=dev` pass on Node 24 in CI. Desktop, mobile and Spanish navigation verified in a real browser.
-- [ ] Google login rejects unauthorized accounts. MFA enrollment, sign-in, code replay and expired session verified with the real OAuth client. A second owner can sign in.
+- [ ] Administrator sign-in with the real providers: an address that is not a ticked row's main Email (or an owner) is refused; the first setup works only from the emailed link (QR); Google and Microsoft work afterwards; code replay and an expired session are refused; ten wrong codes pause sign-in; an owner recovery code works.
 - [ ] Disposable Notion test household:
   - [ ] Lookup, allocation limits, decline and mixed attendance.
   - [ ] Concurrent-edit protection, replay and ledger restart.
   - [ ] Notion projection and admin counts.
   - [ ] Afterwards, archive only that fixture.
-- [ ] Notion outage keeps the receipt pending; the scheduled drain (every 10 minutes) or Retry Sync then reconciles it.
-- [ ] A permanent Notion refusal (for example a missing column) marks the row failed and adds one alert to Notifications; after fixing the row, Retry Sync writes it.
+- [ ] Notion outage keeps the answer pending; the scheduled drain (every 10 minutes) or Retry sync then reconciles it. If the family edited the row in Notion meanwhile, the retry writes only the Website columns and the drift check reports the difference; Keep and Write both behave as described on Invitations.
+- [ ] A permanent Notion refusal (for example a missing column) marks the row failed and adds one alert to Notifications; after fixing the row, Retry sync writes it. The same holds for a refused Budget or Godparents change.
 - [ ] Media: upload a disposable image, confirm metadata is stripped and the item is private-pending, then approve and remove it.
-- [ ] One reviewed email to an organizer-chosen test recipient. Verify Sent Items, receipt, SPF/DKIM headers, and the Spanish rendering.
-- [ ] Guest registration, returning sign-in and private pages (ACCOUNT-ACCESS.md). Delegates verify their own email and enroll MFA themselves.
+- [ ] One reviewed email to an organizer-chosen test recipient. Verify Sent Items (sign-in link emails are deliberately not kept there), receipt, SPF/DKIM headers, and the Spanish rendering.
+- [ ] Guest sign-in with a household's Notion Email and with an Additional Email (emailed link, Google, Microsoft); removing the email in Notion ends access on the next request; the RSVP receipt arrives at the verified address (ACCOUNT-ACCESS.md).
 - [ ] Real content confirmed (church, dinner, dress code, retention date), invitation artwork, and that guest links never appear in logs or public artifacts.
 - [ ] Before using SMS or WhatsApp: the acceptance steps in docs/twilio-setup.md.
 
 ## Reliability and limits
 
 - **Ledger.** GCS generation preconditions serialize writes across instances. A failed write never returns a saved receipt. The 20 MB cap suits one small event; media bytes are stored separately. Each request checks the ledger's generation and downloads it only when it changed. Rate-limit counters live in memory, not the ledger. An RSVP takes 2 ledger writes: one save records the response and claims the Notion sync and the receipt email, and one final save records both outcomes. Heavy bursts can still return a retryable `BUSY`.
-- **Invitation links.** 256-bit secrets, stored only as hashes. Revoking or rotating a link invalidates its sessions and unsent drafts.
-- **Data authority.** Notion owns invited capacity. The ledger owns accepted website responses.
+- **Invitation links.** 256-bit secrets, stored only as hashes. Reissuing a link ends that link's sessions and unsent drafts; email sign-ins stay. Revoking an invitation ends every session for the household.
+- **Data authority.** Notion owns invited capacity and who may sign in. The ledger owns accepted website responses. Head counts follow the website's answer, or Notion's for phone answers and differences the admin chose to keep.
 - **Notion client.** Requests are paced to 2.5/s per instance and retried on 429 (honoring `Retry-After` up to 10 s). Server errors are retried for reads and updates, never for page creates. Guest-list reads are cached for 30 s, and any write clears the cache. RSVP submit, invitation exchange, sign-in and every outbound send read fresh; page views may lag a direct Notion edit by up to 30 s. Each admin request re-reads the admin's row (5-second positive cache). During a Notion outage, read-only views (the guest's invitation, profile and messages, and the admin guest list, dashboard and audience) serve the last good answer for up to an hour, and an admin confirmed within the last 15 minutes keeps working. Guest writes and fresh reads (sign-in, RSVP) return a retryable error instead of using old data.
 - **Logs.** API requests are written to stdout as Cloud Logging JSON: method, path, status and latency only. Unexpected failures log `ERROR` with a stack trace; known 5xx codes such as `BUSY` log `WARNING`. Create a log-based alert on `severity>=ERROR` for `misxv-api`.
 - **Rate limits.** Counters are kept in memory per instance, so effective limits are up to 2× with two instances. Shared budgets count only rejected credentials or outgoing mail, so anonymous junk cannot lock out valid users. Sign-in links: at most 3 per address per 15 minutes plus a shared hourly budget, counting only links actually sent; requests answer in no less than 0.9 s either way, and the same way even when saving the link fails. Each one holds its request slot for that time (a wait, not CPU), so Cloud Run serves 40 requests per instance and at most 16 of them may be sign-in requests; more at the same moment get a retryable `SIGN_IN_BUSY` (which points to Microsoft and Google sign-in). Blocking sign-in takes a sustained flood, and the other slots stay free. A counter whose window is open is never evicted; a full table refuses new keys instead. Per-identity, per-household and per-actor budgets limit legitimate use, and each MFA challenge allows 5 attempts. Forwarding headers are not trusted.
@@ -174,12 +174,12 @@ Record date, tester and evidence for each item in the inventory. Status as of th
   - Limits: 8 MB per file, 25 MP per image, video 60 s and 4096 px per side.
   - One video conversion per instance at a time.
   - Images are re-encoded to JPEG and videos to MP4/H.264/AAC, with metadata removed.
-  - Approved media is only visible to registered guests. Rejection removes access immediately.
+  - Approved media is only visible to signed-in guests. Rejection removes access immediately.
 - **Documents.** Stored under `private/documents/`, admin only, 8 MB limit. Delete marks them as trash; it does not purge.
 
 ## Notion planning sync
 
-Budget and Godparents edits made on the website are saved to the ledger as `pending`, then patched into the linked Notion row (changed fields only). New rows use a stable `Website Record ID`, and an ambiguous create is looked up, never repeated. A five-minute durable lock serializes writes to each row. Direct Notion edits do **not** flow back to the website. Rows still waiting to reach Notion after an outage are retried by the scheduled drain, oldest attempt first; errors that need a person (a schema conflict, a duplicate or missing record, an uncertain create) wait for Retry Sync. The recommended v1.0 ownership model is in [docs/v1/notion-strategy.md](docs/v1/notion-strategy.md).
+Budget and Godparents edits made on the website are saved to the ledger as `pending`, then patched into the linked Notion row (changed fields only). New rows use a stable `Website Record ID`, and an ambiguous create is looked up, never repeated. A five-minute durable lock serializes writes to each row. Direct Notion edits do **not** flow back to the website. Rows still waiting to reach Notion after an outage are retried by the scheduled drain, oldest attempt first; errors that need a person (a schema conflict, a duplicate or missing record, an uncertain create) wait for Retry sync. A change Notion refuses outright shows "Refused by Notion", is reported once in Notifications, and is corrected by editing the record or pressing Retry sync. The recommended v1.0 ownership model is in [docs/v1/notion-strategy.md](docs/v1/notion-strategy.md).
 
 ## Release and rollback
 
@@ -198,6 +198,6 @@ The bucket has object versioning, public access prevention, uniform access and 7
 3. Download the chosen generation to a restricted location and validate it against the audit log.
 4. Copy it back with a precondition on the current generation.
 
-Never restore while writes are active. A whole-ledger rollback can revive old sessions, codes or pending mail. Invalidate sessions and challenges, and reconcile invitation generations, permissions and outbox state, before restarting. Restore media together with its moderation metadata. Preserve `APP_KEY` until every wanted export has been read.
+Never restore while writes are active. A whole-ledger rollback can revive old sessions, codes or pending mail. Invalidate sessions and challenges, and reconcile invitation generations, authenticators and outbox state, before restarting. Restore media together with its moderation metadata. Preserve `APP_KEY` until every wanted export has been read.
 
 At retirement, export the approved media and guest data, verify the exports, then include **all object generations** in the reviewed cleanup (CLEANUP.md). Nothing schedules deletion automatically.

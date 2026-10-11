@@ -35,22 +35,22 @@ export const celebration = {
   albums: [
     {
       id: "childhood",
-      en: "Childhood Memories",
+      en: "Childhood memories",
       es: "Recuerdos de la infancia",
     },
-    { id: "family", en: "Family Moments", es: "Momentos en familia" },
-    { id: "faith", en: "Faith & Traditions", es: "Fe y tradiciones" },
+    { id: "family", en: "Family moments", es: "Momentos en familia" },
+    { id: "faith", en: "Faith & traditions", es: "Fe y tradiciones" },
     {
       id: "friends",
-      en: "Friends & Celebrations",
+      en: "Friends & celebrations",
       es: "Amigos y celebraciones",
     },
     {
       id: "portraits",
-      en: "Quinceañera Portraits",
+      en: "Quinceañera portraits",
       es: "Retratos de quinceañera",
     },
-    { id: "event", en: "Event Day Highlights", es: "Momentos del gran día" },
+    { id: "event", en: "Event day highlights", es: "Momentos del gran día" },
   ],
   registries: [
     {
@@ -73,6 +73,7 @@ export const escapeHtml = (value) =>
         c
       ],
   );
+// The stored topic values the server checks; guests see the labels below.
 export const contactTopics = [
   "RSVP Questions",
   "Event Information",
@@ -80,6 +81,15 @@ export const contactTopics = [
   "Transportation",
   "Photo Submissions",
   "Registry Questions",
+  "Other",
+];
+export const contactTopicsEn = [
+  "RSVP questions",
+  "Event information",
+  "Accommodations",
+  "Transportation",
+  "Photo submissions",
+  "Registry questions",
   "Other",
 ];
 export const contactTopicsEs = [
@@ -124,7 +134,7 @@ export function timeRange(item, lang = "en") {
 export function maps(address, lang = "en") {
   const q = encodeURIComponent(address),
     e = escapeHtml;
-  return `<div class="venue-actions"><a class="button burgundy" target="_blank" rel="noopener noreferrer" href="https://www.google.com/maps/search/?api=1&amp;query=${q}">${label("Open in Google Maps", "Abrir en Google Maps", lang)}</a><a class="button outline" target="_blank" rel="noopener noreferrer" href="https://maps.apple.com/?q=${q}">${label("Open in Apple Maps", "Abrir en Apple Maps", lang)}</a><button class="plain-button" type="button" data-copy-address="${e(address)}">${label("Copy Address", "Copiar dirección", lang)}</button></div>`;
+  return `<div class="venue-actions"><a class="button burgundy" target="_blank" rel="noopener noreferrer" href="https://www.google.com/maps/search/?api=1&amp;query=${q}">${label("Open in Google Maps", "Abrir en Google Maps", lang)}</a><a class="button outline" target="_blank" rel="noopener noreferrer" href="https://maps.apple.com/?q=${q}">${label("Open in Apple Maps", "Abrir en Apple Maps", lang)}</a><button class="plain-button" type="button" data-copy-address="${e(address)}">${label("Copy address", "Copiar dirección", lang)}</button></div>`;
 }
 export function calendarLink(kind, c = celebration, lang = "en", live = false) {
   const item = c[kind],
@@ -144,7 +154,7 @@ export function albumCards(c = celebration, lang = "en") {
   return `<div class="album-grid">${c.albums.map((a, i) => `<button type="button" class="album-card album-${i % 3}" data-album="${escapeHtml(a.id)}"><span class="album-art" aria-hidden="true">${["✦", "♡", "✧", "❀", "♕", "✶"][i % 6]}</span><span class="album-title">${escapeHtml(a[lang])}</span><span class="album-overlay">${label("Explore this album", "Explora este álbum", lang)} ↗</span></button>`).join("")}</div>`;
 }
 export function registryCards(items, lang = "en") {
-  return `<div class="registry-grid">${items.map((r) => `<article class="registry-card">${r.logo ? `<img src="${escapeHtml(r.logo)}" width="72" height="72" alt="${escapeHtml(r.name)}">` : ""}<h2>${escapeHtml(r.name)}</h2><p>${escapeHtml(r.description[lang])}</p>${r.url ? `<a class="button burgundy" href="${escapeHtml(r.url)}" target="_blank" rel="noopener noreferrer">${label("Visit Registry", "Visitar registro", lang)} ↗</a>` : `<p class="hint">${label("Registry link coming soon.", "El enlace estará disponible pronto.", lang)}</p>`}</article>`).join("")}</div>`;
+  return `<div class="registry-grid">${items.map((r) => `<article class="registry-card">${r.logo ? `<img src="${escapeHtml(r.logo)}" width="72" height="72" alt="${escapeHtml(r.name)}">` : ""}<h2>${escapeHtml(r.name)}</h2><p>${escapeHtml(r.description[lang])}</p>${r.url ? `<a class="button burgundy" href="${escapeHtml(r.url)}" target="_blank" rel="noopener noreferrer">${label("Visit registry", "Visitar registro", lang)} ↗</a>` : `<p class="hint">${label("Registry link coming soon.", "El enlace estará disponible pronto.", lang)}</p>`}</article>`).join("")}</div>`;
 }
 const icsEscape = (s) =>
   String(s)
@@ -174,9 +184,9 @@ export function calendar(kind, c = celebration) {
   const utc = (value) =>
     new Date(value).toISOString().replace(/[-:]/g, "").replace(".000", "");
   const title = {
-    ceremony: "Religious Ceremony",
+    ceremony: "Religious ceremony",
     dinner: "Dinner",
-    reception: "Reception & Dance",
+    reception: "Reception & dance",
   }[kind];
   return [
     "BEGIN:VCALENDAR",

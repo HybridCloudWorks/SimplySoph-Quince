@@ -76,14 +76,15 @@ export const routes = [
   ["contact", "Contact us", "Contáctanos"],
   ["privacy", "Privacy policy", "Política de privacidad"],
   ["terms", "Media policy", "Política de medios"],
-  ["whatsapp", "WhatsApp Updates", "Mensajes WhatsApp"],
+  ["whatsapp", "WhatsApp updates", "Mensajes WhatsApp"],
+  // Title Case on purpose: the registered SMS campaign quotes these word for word.
   ["sms", "SMS Updates", "Mensajes SMS"],
   ["sms-terms", "SMS Terms", "Términos SMS"],
   ["thank-you", "With love & thanks", "Con cariño y gratitud"],
   ["404", "Page not found", "Página no encontrada"],
 ];
 export const adminRoutes = [
-  ["admin/login", "Administrator login"],
+  ["admin/login", "Administrator sign-in"],
   ["admin", "Overview"],
   ["admin/guests", "Invitations"],
   ["admin/access", "Guest access"],

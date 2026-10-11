@@ -8,7 +8,7 @@ WhatsApp is optional and separate from email and SMS. Guests with a private invi
 
 For a guest who has not received an invitation yet, the organizer can record explicit WhatsApp permission in Notion: WhatsApp Phone, Language (en/es), Consent, Consent Date, Consent Source and Consent Version. Record actual evidence, not an inferred opt-in. Ask the guest to read /whatsapp/ and send START to +16827868002. A matching consent record and verified incoming message are required before the admin sender includes them. Merely adding a number is insufficient.
 
-STOP/BAJA blocks WhatsApp sends locally even during Notion outages. Pending changes remain blocked until projection succeeds. Admin Retry Sync recovers failed projections. Phone changes require new verification. Shared phones are deduplicated per campaign.
+STOP/BAJA blocks WhatsApp sends locally even during Notion outages. Pending changes remain blocked until projection succeeds. Admin Retry sync recovers failed projections. Phone changes require new verification. Shared phones are deduplicated per campaign.
 
 ## Templates
 

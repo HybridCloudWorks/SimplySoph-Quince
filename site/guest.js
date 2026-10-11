@@ -4,6 +4,7 @@ import { experienceReady, eventContent, liveContent } from "./experience.js";
 import {
   registryCards,
   contactTopics,
+  contactTopicsEn,
   contactTopicsEs,
   calendarLink,
 } from "./celebration.mjs";
@@ -217,7 +218,7 @@ function rsvpForm(inv) {
     )
     .join("")}${
     inv.contactHidden
-      ? `<p class="hint">${tr("Your contact details are kept in your guest account. Sign in from My Account to change them.", "Tus datos de contacto están en tu cuenta de invitado. Inicia sesión en Mi Cuenta para cambiarlos.")}</p>`
+      ? `<p class="hint">${tr("Your contact details are kept in your guest account. Sign in from My account to change them.", "Tus datos de contacto están en tu cuenta de invitado. Inicia sesión en Mi cuenta para cambiarlos.")}</p>`
       : `<div class="field-grid">${field(tr("Email", "Correo electrónico"), "email", { type: "email", value: contact.email, autocomplete: "email" })}${field(tr("Phone (optional)", "Teléfono (opcional)"), "phone", { type: "tel", value: contact.phone, max: 40, autocomplete: "tel" })}</div>${field(tr("Mailing address (optional)", "Dirección postal (opcional)"), "address", { value: contact.address || "", max: 500, autocomplete: "street-address" })}`
   }<label>${tr("Dietary/accessibility needs or song request (optional)", "Necesidades alimentarias/de accesibilidad o canción (opcional)")}<textarea name="requests" maxlength="1000">${esc(saved?.requests || "")}</textarea></label><p class="hint">${tr("Meal selections will be offered if the family confirms menu choices.", "Ofreceremos selección de comida si la familia confirma opciones de menú.")}</p><p class="error" role="alert"></p><button class="button burgundy" type="submit">${tr("Review response", "Revisar respuesta")}</button></form>`;
   submit(document.querySelector("#response"), async (data) => {
@@ -355,7 +356,7 @@ async function showPortal() {
     return;
   }
   if (["contact", "guestbook"].includes(view)) {
-    portal.innerHTML = `<form id="message">${field(tr("Your display name", "Nombre para mostrar"), "name", { required: true, max: 100 })}${view === "contact" ? `${field(tr("Email", "Correo electrónico"), "email", { type: "email", required: true, value: inv.contact.email })}<label>${tr("Topic", "Tema")}<select name="topic">${contactTopics.map((t, i) => `<option value="${esc(t)}">${esc(es ? contactTopicsEs[i] : t)}</option>`).join("")}</select></label>` : ""}<label>${tr("Message", "Mensaje")}<textarea name="text" maxlength="2000" required></textarea></label>${view === "guestbook" ? `<label class="check"><input type="checkbox" name="consent" required>${tr("The family may publish this name and message after review.", "La familia puede publicar este nombre y mensaje después de revisarlo.")}</label>` : ""}<p class="error" role="alert"></p><button class="button burgundy" type="submit">${tr("Send message", "Enviar mensaje")}</button></form>`;
+    portal.innerHTML = `<form id="message">${field(tr("Your display name", "Nombre para mostrar"), "name", { required: true, max: 100 })}${view === "contact" ? `${field(tr("Email", "Correo electrónico"), "email", { type: "email", required: true, value: inv.contact.email })}<label>${tr("Topic", "Tema")}<select name="topic">${contactTopics.map((t, i) => `<option value="${esc(t)}">${esc(es ? contactTopicsEs[i] : contactTopicsEn[i])}</option>`).join("")}</select></label>` : ""}<label>${tr("Message", "Mensaje")}<textarea name="text" maxlength="2000" required></textarea></label>${view === "guestbook" ? `<label class="check"><input type="checkbox" name="consent" required>${tr("The family may publish this name and message after review.", "La familia puede publicar este nombre y mensaje después de revisarlo.")}</label>` : ""}<p class="error" role="alert"></p><button class="button burgundy" type="submit">${tr("Send message", "Enviar mensaje")}</button></form>`;
     submit(document.querySelector("#message"), async (data) => {
       await api("messages", {
         kind: view,
@@ -463,6 +464,10 @@ async function gallery() {
   if (!photos || !videos) return;
   let items = [];
   try {
+    // Only a verified sign-in (or an administrator) may see media; anyone else
+    // gets the sign-in prompt without a refused request in the console.
+    const session = await api("session");
+    if (session.kind !== "admin" && !session.verified) throw new Error();
     items = (await api("gallery")).media;
   } catch {
     photos.innerHTML = videos.innerHTML =

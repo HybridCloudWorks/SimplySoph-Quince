@@ -42,6 +42,13 @@ const root = new URL("../dist/", import.meta.url),
     );
 const href = (route, lang) =>
   `${lang === "es" ? "/es" : ""}/${route ? route + "/" : ""}`;
+// The wordmark's gold S, inline (the CSP allows data: images) so browsers don't
+// fall back to a missing /favicon.ico.
+const favicon =
+  "data:image/svg+xml," +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="#651625"/><text x="16" y="23" text-anchor="middle" font-family="Georgia,serif" font-style="italic" font-size="22" fill="#e9c77b">S</text></svg>',
+  );
 function contents(route, lang) {
   const es = lang === "es",
     t = copy[lang],
@@ -90,8 +97,9 @@ function contents(route, lang) {
     dama: "Dama",
     chambelan: "Chambelán",
   };
+  // Names are the court page's only headings, so they follow its h1 directly.
   const person = (p) =>
-    `<div class="person">${monogram(p)}<div><p class="person-role">${esc(courtRole[p.role] || localized(p.role))}</p><h3>${esc(p.name)}</h3>${p.line ? `<p>${esc(localized(p.line))}</p>` : ""}</div></div>`;
+    `<div class="person">${monogram(p)}<div><p class="person-role">${esc(courtRole[p.role] || localized(p.role))}</p><h2>${esc(p.name)}</h2>${p.line ? `<p>${esc(localized(p.line))}</p>` : ""}</div></div>`;
   if (
     route === "sophia" &&
     (family.bio || family.parentsMessage || family.moments.length)
@@ -172,7 +180,7 @@ function contents(route, lang) {
       )
       .join(
         "",
-      )}</div><div class="editorial"><h2>${say("Dress code", "Código de vestimenta")}</h2><p>${t.pending} ${say("Burgundy and gold are the site theme, not a required outfit.", "Borgoña y dorado son los colores del sitio, no una vestimenta obligatoria.")}</p><div class="calendar-actions" data-calendar-links>${["ceremony", "dinner", "reception"].map((k) => `<div><strong>${say({ ceremony: "Ceremony", dinner: "Dinner", reception: "Reception" }[k], { ceremony: "Ceremonia", dinner: "Cena", reception: "Recepción" }[k])}</strong>${calendarLink(k, celebration, lang)}</div>`).join("")}</div></div>`;
+      )}</div><div class="editorial"><h2>${say("Dress code", "Código de vestimenta")}</h2><p>${t.pending} ${say("Burgundy and gold are the site theme, not a required outfit.", "Borgoña y dorado son los colores del sitio, no una vestimenta obligatoria.")}</p><h3>${say("Add to your calendar", "Agrega a tu calendario")}</h3><div class="calendar-actions" data-calendar-links>${["ceremony", "dinner", "reception"].map((k) => `<div><strong>${say({ ceremony: "Ceremony", dinner: "Dinner", reception: "Reception" }[k], { ceremony: "Ceremonia", dinner: "Cena", reception: "Recepción" }[k])}</strong>${calendarLink(k, celebration, lang)}</div>`).join("")}</div></div>`;
   if (route === "ceremony" || route === "reception")
     body =
       '<div data-venue="' +
@@ -395,7 +403,7 @@ function navigation(lang, current) {
 }
 function document({ route, title, lang = "en", admin = false }) {
   const t = copy[lang];
-  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="strict-origin-when-cross-origin"><meta name="description" content="${esc(t.tagline)}"><title>${esc(title)} · Sophia</title><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/pages.css"><script type="module" src="/${admin ? "admin" : "guest"}.js"></script></head><body data-route="${route}"><a class="skip" href="#main">${lang === "es" ? "Ir al contenido" : "Skip to content"}</a>${navigation(lang, admin ? "" : route)}<main id="main">${
+  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="strict-origin-when-cross-origin"><meta name="description" content="${esc(t.tagline)}"><title>${esc(title)} · Sophia</title><link rel="icon" type="image/svg+xml" href="${favicon}"><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/pages.css"><script type="module" src="/${admin ? "admin" : "guest"}.js"></script></head><body data-route="${route}"><a class="skip" href="#main">${lang === "es" ? "Ir al contenido" : "Skip to content"}</a>${navigation(lang, admin ? "" : route)}<main id="main">${
     admin
       ? `<section class="section admin-shell"><aside aria-label="Administration" hidden>${adminRoutes
           .filter(
@@ -410,7 +418,7 @@ function document({ route, title, lang = "en", admin = false }) {
             "",
           )}<button class="plain-button" id="logout">Sign out</button><button class="plain-button" id="logout-all">Sign out everywhere</button></aside><div><p class="eyebrow">SOPHIA · MIS XV</p><h1 class="page-title">${title}</h1><div id="admin-app" data-view="${route}"><p role="status">Loading secure workspace…</p></div></div></section>`
       : contents(route, lang)
-  }</main><footer><p class="copyright">© 2026 Simply Soph Media (SimplySoph). All Rights Reserved.</p><div><a href="${href("privacy", lang)}">${lang === "es" ? "Política de privacidad" : "Privacy policy"}</a> · <a href="${href("terms", lang)}">${lang === "es" ? "Política de medios" : "Media policy"}</a> · <a href="${href("whatsapp", lang)}">WhatsApp</a> · <a href="${href("sms", lang)}">${lang === "es" ? "Mensajes SMS" : "SMS Updates"}</a> · <a href="${href("contact", lang)}">${lang === "es" ? "Contáctanos" : "Contact us"}</a></div></footer><div id="status" role="status" aria-live="polite"></div></body></html>`;
+  }</main><footer><p class="copyright">© 2026 Simply Soph Media (SimplySoph). ${lang === "es" ? "Todos los derechos reservados." : "All rights reserved."}</p><div><a href="${href("privacy", lang)}">${lang === "es" ? "Política de privacidad" : "Privacy policy"}</a> · <a href="${href("terms", lang)}">${lang === "es" ? "Política de medios" : "Media policy"}</a> · <a href="${href("whatsapp", lang)}">WhatsApp</a> · <a href="${href("sms", lang)}">${lang === "es" ? "Mensajes SMS" : "SMS Updates"}</a> · <a href="${href("contact", lang)}">${lang === "es" ? "Contáctanos" : "Contact us"}</a></div></footer><div id="status" role="status" aria-live="polite"></div></body></html>`;
 }
 // Only remove the known generated directory inside this checkout, never a supplied path.
 const checkout = fileURLToPath(new URL("../", import.meta.url));
