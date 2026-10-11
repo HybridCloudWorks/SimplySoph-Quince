@@ -13,8 +13,19 @@ import {
   ssoRow,
   googleButton,
 } from "./sso.js";
+import { contactTopics, contactTopicsEn } from "./celebration.mjs";
 const root = document.querySelector("#admin-app"),
   view = root.dataset.view;
+// Contact messages store the topic value the server checks; show the label
+// the guest chose from.
+const topicLabel = (topic) => contactTopicsEn[contactTopics.indexOf(topic)] || topic || "";
+const mailStates = {
+  draft: "Waiting for review",
+  sending: "Sending",
+  accepted: "Sent",
+  failed: "Not sent",
+  unknown: "Delivery unknown",
+};
 const button = (name, action, id) =>
   `<button class="button burgundy compact" data-action="${action}" data-id="${esc(id)}">${name}</button>`;
 const formEnd = (label) =>
@@ -311,7 +322,7 @@ async function dashboard() {
     ),
   )}<p>Counts use each household's answer: the latest one saved on the website, or Notion's for an answer taken by phone or a difference you chose to keep.</p><h2>Dietary, accessibility & song requests</h2>${d.requests.map((r) => `<p class="card">${esc(r.text)}</p>`).join("") || "<p>No requests recorded.</p>"}<h2>Email status</h2>${
     Object.entries(d.mail)
-      .map(([s, n]) => `<p>${esc(s)}: ${n}</p>`)
+      .map(([s, n]) => `<p>${esc(mailStates[s] || s)}: ${n}</p>`)
       .join("") || "<p>No email drafted.</p>"
   }<div class="row-actions">${button("Retry pending Notion updates", "sync", "")}${button("Prepare RSVP columns in Notion", "schema", "")}</div>`;
 }
@@ -351,7 +362,13 @@ async function guestList() {
             ? Object.entries(r.response.attendance)
                 .map(([e, v]) => `${esc(eventNames[e] || e)}: ${v.adultsTeens + v.kids}`)
                 .join("<br>")
-            : "No response"
+            : r.answeredIn === "notion"
+              ? // An answer typed into Notion, say after a phone call.
+                `Answered in Notion: ${esc(r.invitationStatus)}<br>` +
+                Object.entries(r.notionCounts || {})
+                  .map(([e, v]) => `${esc(eventNames[e] || e)}: ${(v.adultsTeens ?? 0) + (v.kids ?? 0)}`)
+                  .join("<br>")
+              : "No response"
         }<br>${esc(r.syncState)}${r.notionDiffers ? `<p class="notice">Notion differs: ${esc(r.notionDiffers)}.</p>${button("Keep Notion's version", "drift-notion", r.id)}${button("Write the website's answer", "drift-website", r.id)}` : ""}</td><td><a href="https://www.notion.so/${encodeURIComponent(r.id.replaceAll("-", ""))}" target="_blank" rel="noopener noreferrer">Edit household in Notion</a>${button("Review / create link", "invite-form", r.id)}${r.active ? button("Revoke link", "revoke", r.id) : ""}</td></tr>`,
     ),
   )}</div><div id="recent-batches"></div>`;
@@ -445,7 +462,7 @@ async function moderation() {
   const d = await api("admin/moderation"),
     photos = view === "admin/photos",
     rows = photos ? d.photos : d.messages;
-  root.innerHTML = `<p>${photos ? "Photos and videos are visible only to signed-in guests after approval. Rejected items remain hidden." : "Contact messages always remain private. Guestbook messages require approval before publication."}</p><div class="cards">${rows.map((r) => `<article class="card">${photos ? `${r.kind === "video" ? `<video controls playsinline preload="metadata" src="/api/photo/${esc(r.id)}"></video>` : `<img src="/api/photo/${esc(r.id)}" alt="Pending photo">`}<p>${esc(r.caption)}</p>` : `<h3>${esc(r.name)}</h3><p>${esc(r.topic || "")}</p><p>${esc(r.email || "")}</p><p>${esc(r.text)}</p><span class="badge">${esc(r.kind)}</span>`}<p>Status: ${esc(r.state)}</p>${photos ? `<label>Album<select data-media-album="${esc(r.id)}">${(d.albums || []).map((a) => `<option value="${esc(a.id)}"${a.id === (r.album || "event") ? " selected" : ""}>${esc(a.en)}</option>`).join("")}</select></label>` : ""}<div class="row-actions">${r.kind !== "contact" ? button("Approve", "approve", r.id) : ""}${button("Remove from display", "reject", r.id)}</div></article>`).join("") || "<p>No submissions yet.</p>"}</div>`;
+  root.innerHTML = `<p>${photos ? "Photos and videos are visible only to signed-in guests after approval. Rejected items remain hidden." : "Contact messages always remain private. Guestbook messages require approval before publication."}</p><div class="cards">${rows.map((r) => `<article class="card">${photos ? `${r.kind === "video" ? `<video controls playsinline preload="metadata" src="/api/photo/${esc(r.id)}"></video>` : `<img src="/api/photo/${esc(r.id)}" alt="Pending photo">`}<p>${esc(r.caption)}</p>` : `<h3>${esc(r.name)}</h3><p>${esc(topicLabel(r.topic))}</p><p>${esc(r.email || "")}</p><p>${esc(r.text)}</p><span class="badge">${esc(r.kind)}</span>`}<p>Status: ${esc(r.state)}</p>${photos ? `<label>Album<select data-media-album="${esc(r.id)}">${(d.albums || []).map((a) => `<option value="${esc(a.id)}"${a.id === (r.album || "event") ? " selected" : ""}>${esc(a.en)}</option>`).join("")}</select></label>` : ""}<div class="row-actions">${r.kind !== "contact" ? button("Approve", "approve", r.id) : ""}${button("Remove from display", "reject", r.id)}</div></article>`).join("") || "<p>No submissions yet.</p>"}</div>`;
   if (photos)
     root.insertAdjacentHTML(
       "afterbegin",
@@ -596,7 +613,7 @@ async function mailReview(id) {
   box.querySelector("iframe").srcdoc = r.html;
   submit(document.querySelector("#send-mail"), async () => {
     const result = await api("admin/mail/send", { id, confirm: true });
-    notify("Email status: " + result.state);
+    notify("Email status: " + (mailStates[result.state] || result.state).toLowerCase() + ".");
     await updates();
   });
   box.scrollIntoView({ block: "nearest" });

@@ -2769,3 +2769,133 @@ test("a household synced before the written answer was recorded still gets its n
   await drain(f);
   assert.deepEqual(writes, ["rsvp", "rsvp"], "the new head counts reach Notion");
 });
+
+const longAdmin = (f) =>
+  f.ledger.transaction((s) => {
+    for (const v of Object.values(s.sessions)) if (v.kind === "admin") v.expiresAt = at + 86400000;
+  });
+
+test("an update for a household whose Notion RSVP still says Not sent is written, not held back (final L1)", async () => {
+  const writes = [];
+  let down = false;
+  const f = await fixture({
+    verifyScheduler: async () => true,
+    notion: {
+      async project(id, response, options) {
+        if (down) throw { code: "NOTION_UNAVAILABLE" };
+        writes.push(options?.answer === false ? "website-columns" : "rsvp");
+      },
+    },
+  });
+  const r1 = await answeredAndMatching(f);
+  // Answered before the website wrote the RSVP column: Notion still says "Not sent".
+  f.row.invitationStatus = "Not sent";
+  down = true;
+  const input = f.input();
+  input.attendance.dinner = { adultsTeens: 1, kids: 0 };
+  await f.guest("rsvp", { ...input, previousSubmissionId: r1.id }, { "idempotency-key": "49494949-4949-4949-8949-494949494949" });
+  down = false;
+  await drain(f);
+  assert.deepEqual(writes, ["rsvp", "rsvp"]);
+});
+
+test("a Write still waiting during a Notion write outage can still be cancelled with Keep (final L2)", async () => {
+  let down = false,
+    projected = 0;
+  const f = await fixture({
+    verifyScheduler: async () => true,
+    notion: {
+      async project() {
+        if (down) throw { code: "NOTION_UNAVAILABLE" };
+        projected++;
+      },
+    },
+  });
+  await longAdmin(f);
+  await answeredAndMatching(f);
+  f.row.notionCounts.dinner.adultsTeens += 2;
+  assert.equal((await drain(f)).drift.differing, 1);
+  down = true;
+  assert.equal((await f.admin("drift", { id: household, keep: "website" })).syncState, "pending");
+  f.advance(180000);
+  await drain(f); // the retry fails again and the drift check runs meanwhile
+  assert.deepEqual(await f.admin("drift", { id: household, keep: "notion" }), { kept: "notion" });
+  down = false;
+  const before = projected;
+  f.advance(180000);
+  await drain(f);
+  assert.equal(projected, before, "Notion's version is kept");
+});
+
+test("the scheduled drain stops retrying RSVPs at the first Notion outage; Retry tries them all (final L3)", async () => {
+  let calls = 0;
+  const f = await fixture({
+    verifyScheduler: async () => true,
+    notion: {
+      async project() {
+        calls++;
+        throw { code: "NOTION_UNAVAILABLE" };
+      },
+    },
+  });
+  await f.guest("rsvp", f.input(), { "idempotency-key": "50505050-5050-4050-8050-505050505050" });
+  await f.ledger.transaction((s) => {
+    const invite = s.invitations[household];
+    for (const id of ["aaaaaaaa-aaaa-4aaa-8aaa-000000000001", "aaaaaaaa-aaaa-4aaa-8aaa-000000000002"])
+      s.invitations[id] = { ...structuredClone(invite), id };
+  });
+  const before = calls;
+  assert.equal((await drain(f)).rsvp.attempted, 1);
+  assert.equal(calls, before + 1, "one Notion write, then it stops");
+  assert.equal((await f.admin("sync", {})).attempted, 3, "an admin's Retry still tries each");
+});
+
+test("a reminder drafted before the household answered by phone is set aside, not sent (final L4)", async () => {
+  const f = await fixture();
+  const r = await f.admin("mail/invitation-batch", { requestId: batchId(60), type: "reminder", ids: [household] });
+  assert.equal(r.total, 1);
+  // The family types the phone answer into Notion before confirming.
+  f.row.invitationStatus = "Yes";
+  f.row.notionCounts = { ceremony: { adultsTeens: 2, kids: 0 }, dinner: { adultsTeens: 2, kids: 0 }, dance: { adultsTeens: 0, kids: 0 } };
+  await f.admin("mail/batch/confirm", { id: batchId(60), count: 1 });
+  const sent = await f.admin("mail/batch/send", { id: batchId(60) });
+  assert.equal(sent.accepted, 0);
+  assert.equal(sent.skipped, 1);
+  assert.equal(f.sends(), 0, "nothing was sent");
+  const draft = Object.values((await f.ledger.read()).outbox).find((j) => j.batchId === batchId(60));
+  assert.equal(draft.error, "ALREADY_RESPONDED");
+});
+
+test("a guest whose email left the Notion row is signed out, so the page offers sign-in again (final)", async () => {
+  const f = await fixture();
+  await f.publicPost("auth/email/request", { email: "test@example.com" });
+  const s = await f.publicPost("auth/email/verify", { token: linkOf(f.sent.at(-1)) });
+  const as = (path) =>
+    f.app.dispatch({ path: "/api/" + path, method: "GET", headers: { origin, cookie: s.setCookie.split(";")[0] } });
+  assert.equal((await as("session")).verified, true);
+  f.row.email = "someone-else@example.com";
+  await assert.rejects(() => as("account"), (e) => e.code === "SIGN_IN_REQUIRED");
+  assert.equal((await as("session")).kind, null, "the session ended");
+});
+
+test("one person signed in on two devices uploads one file at a time; the daily limit is named (final)", async () => {
+  const f = await fixture();
+  const signIn = async () => {
+    await f.publicPost("auth/email/request", { email: "test@example.com" });
+    f.advance(1000);
+    return (await f.publicPost("auth/email/verify", { token: linkOf(f.sent.at(-1)) })).setCookie.split(";")[0];
+  };
+  const phone = await signIn(),
+    laptop = await signIn();
+  assert.ok(phone !== laptop);
+  assert.equal(await f.app.canUpload(phone), await f.app.canUpload(laptop));
+  // 20 photos and videos a household a day, then a plain message.
+  await f.ledger.transaction((st) => {
+    for (const v of Object.values(st.sessions)) if (v.accountId) v.expiresAt = at + 86400000;
+  });
+  const upload = () =>
+    f.guest("photos", { album: "event", caption: "", base64: "x", consent: true }).catch((e) => e);
+  let last;
+  for (let i = 0; i < 21; i++) last = await upload();
+  assert.equal(last.code, "DAILY_UPLOAD_LIMIT");
+});

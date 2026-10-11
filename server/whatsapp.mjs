@@ -20,6 +20,15 @@ const xml = (text = "") => ({
   ),
   contentType: "text/xml; charset=utf-8",
 });
+// The RSVP deadline as a template must show it, in the template's language:
+// "November 15, 2026" or "15 de noviembre de 2026".
+export const deadlineText = (deadline, language) =>
+  new Intl.DateTimeFormat(language === "es" ? "es-MX" : "en-US", {
+    timeZone: "America/Chicago",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(deadline));
 export function createWhatsapp({
   ledger,
   notion,
@@ -29,6 +38,8 @@ export function createWhatsapp({
   key,
   origin,
   now = Date.now,
+  // The RSVP deadline (site/content.mjs); checked against approved templates.
+  deadline = null,
 }) {
   if (
     !Array.isArray(templates) ||
@@ -53,6 +64,15 @@ export function createWhatsapp({
   )
     throw Error("Invalid WhatsApp template catalog");
   const enabled = transport?.enabled === true;
+  // Templates repeat the RSVP deadline, which Meta freezes at approval. WhatsApp
+  // cannot be switched on while an approved template shows another date, so
+  // guests are never told the wrong day (re-audit N5; templates resubmitted
+  // after the deadline moved to November 15).
+  const outdated = deadline
+    ? templates.filter((t) => t.status === "approved" && !t.body.includes(deadlineText(deadline, t.language)))
+    : [];
+  if (enabled && outdated.length)
+    throw Error("WhatsApp templates show another RSVP deadline: " + outdated.map((t) => t.key).join(", "));
   const eligible = (row, s) => {
     try {
       const phone = whatsappDestination(row.whatsappPhone),
@@ -481,9 +501,14 @@ export function createWhatsapp({
             : "Simply Soph Media: First request WhatsApp updates in your website account or ask the family to record your consent, then send START again. HELP: misxv@simplysoph.com.",
         );
       }
-      return xml(
-        "Simply Soph Media event support: misxv@simplysoph.com. Reply STOP to unsubscribe. RSVP at https://misxv.simplysoph.com/rsvp/ using your private invitation.",
-      );
+      // HELP gets the support answer the program requires. Any other text gets
+      // no automatic reply: a person answers messages (the owner's rule), so
+      // nothing goes out without one (re-audit).
+      if (/^(HELP|INFO|AYUDA)$/.test(body))
+        return xml(
+          "Simply Soph Media event support: misxv@simplysoph.com. Reply STOP to unsubscribe. RSVP at https://misxv.simplysoph.com/rsvp/ using your private invitation.",
+        );
+      return xml();
     }
     const ranks = {
       accepted: 0,
@@ -524,14 +549,22 @@ export function createWhatsapp({
     });
     return xml();
   }
-  async function retrySync() {
-    const pending = Object.values(
-      (await ledger.read()).whatsappPreferences || {},
-    )
+  // Longest since this instance last tried first; `until` is the drain's
+  // time budget (see sms.mjs).
+  const lastTry = new Map();
+  async function retrySync({ until = Infinity } = {}) {
+    const pending = Object.values((await ledger.read()).whatsappPreferences || {})
       .filter((p) => p.syncState === "pending")
+      .sort((a, b) => (lastTry.get(a.phone) || 0) - (lastTry.get(b.phone) || 0))
       .slice(0, 25);
-    for (const p of pending) await sync(p.phone);
-    return { attempted: pending.length };
+    let attempted = 0;
+    for (const p of pending) {
+      if (Date.now() > until) break;
+      lastTry.set(p.phone, Date.now());
+      attempted++;
+      await sync(p.phone);
+    }
+    return { attempted };
   }
   async function list() {
     const s = await ledger.read(),

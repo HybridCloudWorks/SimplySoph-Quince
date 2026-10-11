@@ -274,7 +274,7 @@ export function createPlanning({ ledger, documents, notion, now }) {
     "PLANNING_SCHEMA_CONFLICT",
     "NOTION_DUPLICATE_RECORD",
   ]);
-  handle.retryPending = async () => {
+  handle.retryPending = async ({ until = Infinity } = {}) => {
     const s = await ledger.read();
     const due = Object.entries(s.planning || {})
       .flatMap(([kind, rows]) =>
@@ -290,8 +290,13 @@ export function createPlanning({ ledger, documents, notion, now }) {
       )
       .sort((a, b) => a[2] - b[2])
       .slice(0, 10);
-    for (const [kind, id] of due) await sync(kind, id).catch(() => {});
-    return { attempted: due.length };
+    let attempted = 0;
+    for (const [kind, id] of due) {
+      if (Date.now() > until) break;
+      attempted++;
+      await sync(kind, id).catch(() => {});
+    }
+    return { attempted };
   };
   return handle;
   async function handle(req, session) {
@@ -390,8 +395,18 @@ export function createPlanning({ ledger, documents, notion, now }) {
       });
       return sync(kind, id);
     }
-    if (path === "/api/admin/planning/sync" && method === "POST")
+    if (path === "/api/admin/planning/sync" && method === "POST") {
+      // An uncertain create (the connection dropped mid-create) is never
+      // repeated blindly. Once the admin has checked Notion and confirms there
+      // is no page for the record, it may be created again (re-audit L5).
+      if (body.confirmNoPage === true)
+        await ledger.transaction((s) => {
+          const row = s.planning?.[kind]?.[body.id];
+          if (row?.sync?.error === "NOTION_CREATE_UNCERTAIN" && !row.notionId)
+            row.sync = { ...row.sync, createAttempted: false, error: null };
+        });
       return sync(kind, body.id);
+    }
     if (path === "/api/admin/planning/import" && method === "POST") {
       if (
         typeof body.sourceId !== "string" ||

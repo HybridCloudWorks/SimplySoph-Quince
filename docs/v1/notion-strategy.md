@@ -16,7 +16,7 @@ We evaluated three models:
 |---|---|---|
 | Household, contacts, capacity, groups | Notion | Source columns |
 | **Invited events** (ceremony/dinner/dance) | **Notion** (new checkboxes; today these live only in the ledger) | `Invited Ceremony/Dinner/Dance` |
-| Budget, godparents | Notion (website shows a read-only view with "Open in Notion") | Source |
+| Budget, godparents | Notion, or the website's Accounting & godparents page (its edits are written to the linked Notion row) | Source |
 | Admin eligibility | Notion (`Administrator Eligible` on the row's main `Email`; see `access-model.md`) | Source column |
 | Invitation links, delivery status | Ledger | `Website invitation` (Issued / Emailed / Revoked + date) |
 | RSVP answers, contact corrections | Guest on the website (or the family, for an answer taken by phone) | `RSVP` (Yes/No), the per-event head counts and `Website …` columns |
@@ -26,6 +26,8 @@ We evaluated three models:
 Rule: **`Website …` columns are written only by the app.** A drift check flags Notion edits to the RSVP and head counts. An admin then keeps Notion's version or writes the website's answer again, and a retry never writes over an edit made after the answer (see `NOTION-INTEGRATION.md`).
 
 ## Gaps found
+
+Status since this review: 1 and 2 are fixed (the client paces requests and honors 429 Retry-After, page views use a short cache, and a scheduled drain retries pending projections every 10 minutes). See `DEPLOYMENT.md`, "Reliability and limits".
 
 1. **Rate limits.** The runtime client has no throttle and no 429/Retry-After handling; every non-2xx becomes a 503. Every guest page view reads Notion live. `notion.list()` runs on dashboard, guests and accounts views and on every consent sync.
 2. **Manual retries only.** Pending projections wait until someone clicks Retry sync (batches of 10/25).

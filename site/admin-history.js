@@ -1,10 +1,11 @@
 import { api, esc, field, submit, notify } from "./client.js";
+// [where the back link goes, the page heading]
 const names = {
-  notifications: "Notifications",
-  announcements: "Announcements",
-  email: "Emails",
-  sms: "SMS",
-  whatsapp: "WhatsApp",
+  notifications: ["notifications", "Notification history"],
+  announcements: ["announcements", "Announcement history"],
+  email: ["emails", "Email history"],
+  sms: ["SMS", "SMS history"],
+  whatsapp: ["WhatsApp", "WhatsApp history"],
 };
 const instant = (row) => {
   const value = row.at ?? row.createdAt;
@@ -18,7 +19,7 @@ export async function communicationHistory(root) {
     return;
   }
   const { rows } = await api("admin/records?kind=" + encodeURIComponent(kind));
-  root.innerHTML = `<p><a href="${kind === "notifications" ? "/admin/notifications/" : "/admin/updates/?tab=" + kind}">← Back to ${names[kind]}</a></p><h2>${names[kind]} history</h2><div class="history-controls"><label>Search<input type="search" name="search" placeholder="Recipient, title, message or status"></label><label>Status<select name="state"><option value="">All statuses</option>${[
+  root.innerHTML = `<p><a href="${kind === "notifications" ? "/admin/notifications/" : "/admin/updates/?tab=" + kind}">← Back to ${names[kind][0]}</a></p><h2>${names[kind][1]}</h2><div class="history-controls"><label>Search<input type="search" name="search" placeholder="Recipient, title, message or status"></label><label>Status<select name="state"><option value="">All statuses</option>${[
     ...new Set(
       rows.map(
         (r) =>

@@ -1332,6 +1332,11 @@ td .table-actions a {
 .route-strip + .editorial {
   margin-left: 0;
 }
+/* Details: the calendar heading belongs to the links below it, not the dress
+   code paragraph above. */
+.calendar-heading {
+  margin-top: 32px;
+}
 .portal hr {
   border: 0;
   border-top: 1px solid var(--line);

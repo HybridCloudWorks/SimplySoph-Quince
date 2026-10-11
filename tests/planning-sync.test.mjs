@@ -460,3 +460,31 @@ test("a create Notion refused can be corrected by editing; lost access stays pen
   const c = await handle(req("", { row: { item: "Cake", estimated: 50 } }), actor);
   assert.equal(c.row.sync.status, "pending");
 });
+test("after an uncertain create, the admin can confirm there is no page and create it again (final L5)", async () => {
+  const ledger = new Ledger(memoryAdapter());
+  let failing = true,
+    creates = 0;
+  const handle = createPlanning({
+    ledger,
+    now: Date.now,
+    notion: {
+      // Like planning-notion.mjs: an earlier create attempt with no page found
+      // is uncertain; a dropped connection mid-create leaves it uncertain.
+      writePlanning: async (k, source, row, keys, beforeCreate) => {
+        if (!row.notionId && row.sync.createAttempted)
+          throw Object.assign(new Error(), { code: "NOTION_CREATE_UNCERTAIN" });
+        await beforeCreate();
+        creates++;
+        if (failing) throw Object.assign(new Error(), { code: "NOTION_UNAVAILABLE" });
+        return "page";
+      },
+    },
+  });
+  const a = await handle(req("", { row: { item: "Tent", estimated: 300 } }), actor);
+  failing = false;
+  const stuck = await handle(req("/sync", { id: a.row.id }), actor);
+  assert.equal(stuck.row.sync.error, "NOTION_CREATE_UNCERTAIN", "never repeated blindly");
+  const fixed = await handle(req("/sync", { id: a.row.id, confirmNoPage: true }), actor);
+  assert.equal(fixed.row.sync.status, "synced");
+  assert.equal(creates, 2);
+});
