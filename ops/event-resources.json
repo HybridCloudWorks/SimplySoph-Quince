@@ -1176,18 +1176,18 @@
       "type": "budget-alert",
       "projectId": "simplysoph-66c78",
       "ownership": "event-change-to-existing",
-      "resource": "billingAccounts/01C581-187C4A-A4B565/budgets/9aeb50e2-bce5-4867-8dc4-1aedb1d10533 (Firebase Project simplysoph-66c78)",
+      "resource": "Budget \"Firebase Project simplysoph-66c78\" on the project's billing account (account ID not published, owner decision 17)",
       "baseline": {
         "verifiedAt": "2026-10-09T21:45:00.000Z",
-        "scope": "Budgets on billing account 01C581-187C4A-A4B565",
+        "scope": "Budgets on the project's billing account",
         "allowedTypes": [
           "budget-alert"
         ],
-        "evidence": "Budget API listed one pre-existing budget, Firebase Project simplysoph-66c78: 25 USD monthly, project 424903425639 only, all credits included, alerts at 50/90/100% of current spend to billing admins (default notifications)."
+        "evidence": "Budget API listed one pre-existing budget, Firebase Project simplysoph-66c78: monthly, this project only, all credits included, alerts at 50/90/100% of current spend to billing admins (default notifications). Amounts are not published (owner decision 17)."
       },
-      "creationEvidence": "2026-10-09: the owner chose 20 USD; only the amount was changed from 25 to 20 USD and read back. The Budget API was enabled for this one change and disabled again afterwards; enabled services listed no budget API.",
+      "creationEvidence": "2026-10-09: the owner lowered the monthly amount; only the amount was changed and read back. The Budget API was enabled for this one change and disabled again afterwards; enabled services listed no budget API.",
       "verifyBeforeCleanup": "Confirm the event is over and that the owner still wants a budget on this shared project.",
-      "cleanupSteps": "Set this budget amount back to 25 USD in Billing > Budgets & alerts (or keep 20 USD if the owner prefers); do not delete the budget.",
+      "cleanupSteps": "Set this budget back to its pre-event amount in Billing > Budgets & alerts (or keep the current amount if the owner prefers); do not delete the budget. The owner keeps both amounts; they are not recorded here.",
       "verifyAfterCleanup": "Read the budget back and confirm the amount, project filter and thresholds.",
       "dependsOn": [],
       "status": "active"
