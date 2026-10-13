@@ -12,3 +12,4 @@ outputs/
 .agents/
 skills-lock.json
 gha-creds-*.json
+.claude/
