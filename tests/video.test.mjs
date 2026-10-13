@@ -129,6 +129,10 @@ test("ffprobe must report a video stream, a length of at most 60 seconds and at 
     "too wide": meta({ duration: "5" }, [video(4097, 360)]),
     "too tall": meta({ duration: "5" }, [video(640, 4097)]),
     "zero width": meta({ duration: "5" }, [video(0, 360)]),
+    // A stream that does not say how big it is cannot be checked against the limit (#95).
+    "missing width": meta({ duration: "5" }, [video(undefined, 360)]),
+    "missing height": meta({ duration: "5" }, [video(640, undefined)]),
+    "non-numeric width": meta({ duration: "5" }, [video("wide", 360)]),
     "not JSON": "Input #0, mov,mp4,m4a",
   };
   for (const [name, json] of Object.entries(refused)) {

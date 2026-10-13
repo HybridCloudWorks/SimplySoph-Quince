@@ -110,10 +110,21 @@ test("Google admin and guest sign-in refuse tokens for another client or issuer,
 test("Google sign-in refuses an address Google has not verified, even on a valid token (#74)", async () => {
   const admin = googleVerifier(CLIENT, null),
     guest = googleIdentityVerifier(CLIENT);
-  for (const over of [{ email_verified: false }, { email_verified: undefined }]) {
+  // Only a real "verified" passes: a string "false" or any other value is refused (#95).
+  for (const over of [{ email_verified: false }, { email_verified: undefined }, { email_verified: "false" }, { email_verified: 1 }, { email_verified: "yes" }]) {
     await assert.rejects(admin(idToken(over), "nonce-1"), refused(403, "ADMIN_NOT_ALLOWED"), JSON.stringify(over));
     await assert.rejects(guest(idToken(over), "nonce-1"), refused(403, "SSO_EMAIL_NOT_VERIFIED"), JSON.stringify(over));
   }
+});
+
+test("Google sign-in accepts a verified address whatever its letter case, and the string \"true\" some Google endpoints send (#95)", async () => {
+  const admin = googleVerifier(CLIENT, null),
+    guest = googleIdentityVerifier(CLIENT);
+  // A Gmail address in capitals is still a Gmail address; it is stored lowercased.
+  assert.equal((await admin(idToken({ email: "Aunt.Fixture@GMAIL.COM" }), "nonce-1")).email, "aunt.fixture@gmail.com");
+  assert.equal((await guest(idToken({ email: "Aunt.Fixture@GMAIL.COM" }), "nonce-1")).email, "aunt.fixture@gmail.com");
+  assert.equal((await admin(idToken({ email_verified: "true" }), "nonce-1")).email, "aunt.fixture@gmail.com");
+  assert.equal((await guest(idToken({ email_verified: "true" }), "nonce-1")).email, "aunt.fixture@gmail.com");
 });
 
 test("without a client ID neither Google verifier contacts Google (#74)", async () => {

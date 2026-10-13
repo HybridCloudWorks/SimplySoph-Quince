@@ -48,6 +48,9 @@ export async function normalizeVideo(bytes) {
       !Number.isFinite(duration) ||
       duration <= 0 ||
       duration > 60 ||
+      // A stream that does not report its size cannot be checked (#95).
+      !Number.isInteger(video.width) ||
+      !Number.isInteger(video.height) ||
       video.width < 1 ||
       video.height < 1 ||
       video.width > 4096 ||

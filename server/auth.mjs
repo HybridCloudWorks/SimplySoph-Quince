@@ -101,6 +101,9 @@ export const sameNonce = (a, b) =>
   typeof b === "string" &&
   Buffer.byteLength(a) === Buffer.byteLength(b) &&
   timingSafeEqual(Buffer.from(a), Buffer.from(b));
+// Google sends a boolean; some of its endpoints send the string "true". Anything
+// else, including the string "false", is not a verified address (#95).
+const googleVerified = (p) => p.email_verified === true || p.email_verified === "true";
 export function googleVerifier(clientId, allowEmails) {
   const client = new OAuth2Client();
   return async (credential, expectedNonce) => {
@@ -116,9 +119,9 @@ export function googleVerifier(clientId, allowEmails) {
     // The page's one-time admin ticket: a token captured elsewhere cannot be replayed here.
     if (!sameNonce(p.nonce, expectedNonce)) throw error(401, "SIGN_IN_FAILED");
     if (
-      !p.email_verified ||
+      !googleVerified(p) ||
       (allowEmails && !allowEmails.includes(p.email?.toLowerCase())) ||
-      (!p.email?.endsWith("@gmail.com") && !p.hd)
+      (!p.email?.toLowerCase().endsWith("@gmail.com") && !p.hd)
     )
       throw error(403, "ADMIN_NOT_ALLOWED");
     return { id: p.sub, email: p.email.toLowerCase() };
@@ -146,7 +149,7 @@ export function googleIdentityVerifier(clientId) {
       throw error(401, "SIGN_IN_FAILED");
     }
     if (!sameNonce(p.nonce, expectedNonce)) throw error(401, "SIGN_IN_FAILED");
-    if (!p.email_verified || (!p.email?.toLowerCase().endsWith("@gmail.com") && !p.hd))
+    if (!googleVerified(p) || (!p.email?.toLowerCase().endsWith("@gmail.com") && !p.hd))
       throw error(403, "SSO_EMAIL_NOT_VERIFIED");
     // Google ID tokens carry no reliable proof of two-step verification.
     return {

@@ -326,10 +326,19 @@ test("planning import reads every page of the data source, skips archived rows a
       Status: { type: "status", status: { name: "Ordered" } },
     },
   };
+  // A row from a database that has Amount paid but no Additional Paid column.
+  const amountOnly = {
+    id: "aaaaaaaa-0000-4000-8000-000000000005",
+    properties: {
+      Name: title("Flowers"),
+      Deposit: num(25),
+      "Amount paid": num(75),
+    },
+  };
   const gone = (id, flag) => ({ id, [flag]: true, properties: { Item: title("Removed") } });
   const { client, requests } = recordingClient(({ body }) =>
     body.start_cursor === "cursor-2"
-      ? [200, { results: [older], has_more: false, next_cursor: null }]
+      ? [200, { results: [older, amountOnly], has_more: false, next_cursor: null }]
       : [
           200,
           {
@@ -347,7 +356,7 @@ test("planning import reads every page of the data source, skips archived rows a
   ]);
   assert.deepEqual(
     rows.map((r) => r.id),
-    [current.id, older.id],
+    [current.id, older.id, amountOnly.id],
   );
   assert.deepEqual(rows[0], {
     id: current.id,
@@ -377,7 +386,12 @@ test("planning import reads every page of the data source, skips archived rows a
   assert.equal(legacy.item, "Cake", "Name stands in for Item");
   assert.equal(legacy.estimated, 300, "Estimate stands in for Estimated total");
   assert.equal(legacy.finalCost, 280, "Cost stands in for Final Cost");
-  assert.equal(legacy.additionalPaid, 100, "an empty Additional Paid falls back to Amount paid");
+  // Owner decision (2026-10-13, #95): Amount paid may already include the
+  // Deposit, so it is never used; an empty Additional Paid counts as 0.00 until
+  // the family fills it in.
+  assert.equal(legacy.additionalPaid, 0, "an empty Additional Paid counts as 0.00, not Amount paid");
+  assert.equal(rows[2].fields.additionalPaid, 0, "Amount paid is not read even without an Additional Paid column");
+  assert.equal(rows[2].fields.deposit, 25, "the deposit still counts");
   assert.equal(legacy.status, "Ordered", "a Notion status column is read by name");
   assert.equal(legacy.dueDate, "");
   // The import route validates each row next; both must pass as they are.
@@ -385,7 +399,7 @@ test("planning import reads every page of the data source, skips archived rows a
   const checked = validatePlanning("costs", legacy);
   assert.equal(checked.unitPrice, null);
   assert.equal(checked.deposit, null);
-  assert.equal(checked.additionalPaid, 100);
+  assert.equal(checked.additionalPaid, 0);
 });
 
 test("padrino import reads the Contacted checkbox and its dates (#74)", async () => {
