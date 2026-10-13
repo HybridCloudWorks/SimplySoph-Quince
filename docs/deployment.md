@@ -142,22 +142,25 @@ SMS only goes to phones whose owner texted the program keyword (`SOPHIA`, `START
 
 ## Acceptance gate before any real invitation
 
-Record date, tester and evidence for each item in the inventory. Status as of this revision: **all unverified.**
+Record date, tester and evidence for each item in the inventory. Status on October 13, 2026: the owner confirmed the ticked items; anything unticked is still unverified.
 
 - [ ] `npm run check` and `npm audit --omit=dev` pass on Node 24 in CI. Desktop, mobile and Spanish navigation verified in a real browser.
-- [ ] Administrator sign-in with the real providers: an address that is not a ticked row's main Email (or an owner) is refused; the first setup works only from the emailed link (QR); Google and Microsoft work afterwards; code replay and an expired session are refused; ten wrong codes pause sign-in; an owner recovery code works.
+- [x] Administrator sign-in with the real providers: the emailed link, Google or Microsoft, then the authenticator code (owner, October 13, 2026).
+- [ ] Administrator refusals: an address that is not a ticked row's main Email (or an owner) is refused; the first setup works only from the emailed link (QR); code replay and an expired session are refused; ten wrong codes pause sign-in; an owner recovery code works.
 - [ ] Disposable Notion test household:
   - [ ] Lookup, allocation limits, decline and mixed attendance.
   - [ ] Concurrent-edit protection, replay and ledger restart.
-  - [ ] Notion projection and admin counts.
+  - [x] Notion projection and admin counts: a test household's answer reached Notion and Admin → Overview (owner, October 13, 2026).
   - [ ] Afterwards, archive only that fixture.
 - [ ] A Notion write outage keeps the answer saved and pending (if Notion cannot be read at all, the RSVP is refused with a retryable error and nothing is saved); the scheduled drain (every 10 minutes) or Retry sync then reconciles it. If the family edited the row in Notion meanwhile, the retry writes only the Website columns and the drift check reports the difference; Keep and Write both behave as described on Invitations.
 - [ ] A permanent Notion refusal (for example a missing column) marks the row failed and adds one alert to Notifications; after fixing the row, Retry sync writes it. The same holds for a refused Budget or Godparents change.
-- [ ] Media: upload a disposable image, confirm metadata is stripped and the item is private-pending, then approve and remove it.
+- [x] Media: upload a disposable image, approve it and remove it (owner, October 13, 2026).
+- [ ] Media: confirm metadata is stripped and a new upload stays private until approved.
 - [ ] One reviewed email to an organizer-chosen test recipient. Verify Sent Items (sign-in link emails are deliberately not kept there), receipt, SPF/DKIM headers, and the Spanish rendering.
 - [ ] Guest sign-in with a household's Notion Email and with an Additional Email (emailed link, Google, Microsoft); removing the email in Notion ends access on the next request; the RSVP receipt arrives at the verified address ([account-access.md](account-access.md)).
 - [ ] Real content confirmed (church, dinner, dress code, retention date), invitation artwork, and that guest links never appear in logs or public artifacts.
-- [ ] Before using SMS or WhatsApp: the [technical checks](twilio-setup.md#technical-checks) in the Twilio guide, and the [WhatsApp guide](whatsapp-activation.md) for WhatsApp.
+- [x] SMS: accepted on October 13, 2026 (handset keywords and a delivered test text; see [twilio-setup.md](twilio-setup.md)).
+- [ ] WhatsApp: the checks in the [WhatsApp guide](whatsapp-activation.md), after Meta approves the templates.
 
 ## Reliability and limits
 

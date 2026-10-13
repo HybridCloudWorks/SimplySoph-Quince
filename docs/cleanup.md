@@ -4,7 +4,7 @@ The family requires a way to remove everything added for Sophia's event. The eve
 
 The Twilio sender, Messaging Service, API key, secrets and WhatsApp sender retirement checklist is in [twilio-setup.md](twilio-setup.md#retirement); the provisioned Twilio resources are inventoried in `ops/event-resources.json`. February 1, 2027 remains a review date only.
 
-Target: `misxv.simplysoph.com`, in the **existing** Google project `simplysoph-66c78`. Protect the `simplysoph.com` registration, existing DNS zone/nameservers, existing Google project/billing, existing mail and Notion records. Do not delete a shared service to remove this event's use of it.
+Target: `misxv.simplysoph.com`, in the **existing** Google project `simplysoph-66c78`. Protect the `simplysoph.com` registration (Hostinger), existing DNS zone and nameservers (Cloudflare), existing Google project/billing, existing mail and Notion records. Do not delete a shared service to remove this event's use of it.
 
 ## Before creating anything
 
@@ -44,9 +44,9 @@ Target: `misxv.simplysoph.com`, in the **existing** Google project `simplysoph-6
 
 The keyless GitHub Hosting publisher is inventoried: dedicated service account, workload identity pool/provider, minimal custom role and two exact IAM bindings. Disable the production deployment job and wait for active runs before removing its trust/grants, then remove the dedicated identities and role. Preserve the shared Google project and default Hosting site. No service-account key was created.
 
-The dedicated Google web login client, private event bucket, runtime service account and bucket-scoped objectUser grant are now inventoried. Remove the exact bucket grant before the identity/bucket. Preserve the pre-existing Google web client. Include verified guest accounts, link challenges, private page content and message replies in the ledger export/retirement review ([account-access.md](account-access.md)).
+The dedicated Google web login client, private event bucket, runtime service account and bucket-scoped objectUser grant are now inventoried. Remove the exact bucket grant before the identity/bucket. Preserve the pre-existing Google web client. Include verified guest accounts, link challenges and message replies in the ledger export/retirement review ([account-access.md](account-access.md)).
 
-The `misxv-notion-token` Secret Manager container and user-added version 1 are registered with a scoped baseline. A dedicated SimplySoph Mis XV Website Notion connection was created with explicit approval and is separately inventoried. Runtime IAM and new-connection token storage remain pending. Revoke the eventual dedicated Notion connection before removing its stored credential; disconnecting the website alone does not revoke that connection.
+The `misxv-notion-token` Secret Manager container and user-added version 1 are registered with a scoped baseline. A dedicated SimplySoph Mis XV Website Notion connection was created with explicit approval and is separately inventoried. The API reads token version 2 through its dedicated runtime service account (checked October 13, 2026). Revoke the eventual dedicated Notion connection before removing its stored credential; disconnecting the website alone does not revoke that connection.
 
 The event Microsoft 365 shared mailbox misxv@simplysoph.com and its approved administrator Read and Manage / Send As delegation are inventoried with exact identities and scoped baselines. Remove the delegation before deleting the mailbox. Preserve the existing administrator account. The dedicated Firebase Hosting site, event custom-domain association, CNAME and certificate TXT record are also inventoried. Cleanup orders DNS before the domain association and the site. The validator rejects the protected default Hosting site. The global Google/DNS/Notion baseline remains incomplete. The plan generator and manual GitHub workflow produce a review checklist, not automated teardown.
 
