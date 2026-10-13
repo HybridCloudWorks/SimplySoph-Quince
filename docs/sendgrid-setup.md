@@ -16,7 +16,7 @@ The existing Microsoft configuration is still required at startup so returning t
 
 ## Retirement Review
 
-February 1, 2027 is a review/export date, not automatic deletion. Disable fallback, reconcile in-flight messages, revoke the dedicated API key and remove its event secret/binding after approval. Remove SendGrid domain authentication/link-branding records only if no other sender uses them. Preserve shared Microsoft, Firebase, Cloudflare, the domain and the Google project.
+February 1, 2027 is a review/export date, not automatic deletion. Disable fallback, reconcile in-flight messages, downgrade the paid Email API plan so billing stops, revoke the dedicated API key and remove its event secret/binding after approval. Remove SendGrid domain authentication/link-branding records only if no other sender uses them. Preserve shared Microsoft, Firebase, Cloudflare, the domain and the Google project.
 
 Reference: [SendGrid Mail Send API](https://www.twilio.com/docs/sendgrid/api-reference/mail-send/mail-send).
 
