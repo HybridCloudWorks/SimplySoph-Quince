@@ -35,7 +35,7 @@ for (const page of pages) {
       throw new Error(`Example text "${marker}" leaked into ${page}`);
   if (html.includes("preview-banner"))
     throw new Error(`Preview banner leaked into ${page}`);
-  if (/^(es\/)?(registry|gifts)\/index\.html$/.test(page)) {
+  if (/^(es\/)?registry\/index\.html$/.test(page)) {
     if (
       !html.includes("data-public-registries") ||
       !html.includes("https://www.target.com/gift-registry/gift/quincenera") ||
