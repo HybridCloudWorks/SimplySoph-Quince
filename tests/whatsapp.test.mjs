@@ -78,6 +78,8 @@ async function fixture(options = {}) {
       send: async () => {
         count++;
         if (options.unknown) throw Error();
+        if (options.rejected)
+          throw Object.assign(Error(), { code: "WHATSAPP_REJECTED" });
         return { state: "accepted", providerId: "SM" + "3".repeat(32) };
       },
     },
@@ -315,4 +317,204 @@ test("WhatsApp cannot be switched on while an approved template shows another RS
   assert.doesNotThrow(() => build(old, false), "switched off, the catalog may still be updated");
   const current = [old[1], template("invitation_en", "en", "Simply Soph Media: Please RSVP by November 15, 2026 using your private link: {{1}}")];
   assert.doesNotThrow(() => build(current, true));
+});
+
+// ---- Delivery status callbacks and the preference retry loop (#74) ----
+const accepted = "SM" + "3".repeat(32);
+// A Twilio status callback for a message to `to`, signed like Twilio signs it.
+function status(f, MessageStatus, { sid = accepted, to = f.row.whatsappPhone, signature } = {}) {
+  const p = {
+    AccountSid: webhook.accountSid,
+    MessageSid: sid,
+    From: "whatsapp:" + webhook.from,
+    To: "whatsapp:" + to,
+    MessageStatus,
+  };
+  return f.app.callback(
+    "status",
+    p,
+    signature ??
+      twilio.getExpectedTwilioSignature(webhook.authToken, webhook.origin + "/api/whatsapp/status", p),
+  );
+}
+async function sentDraft(options) {
+  const f = await fixture(options);
+  await f.callback("START");
+  const { ids } = await f.draft();
+  const preview = await f.app.review(ids[0]);
+  return { ...f, id: ids[0], preview };
+}
+const deliveryEvents = (s, sid) =>
+  s.eventLog.filter((e) => e.data?.providerId === sid).map((e) => e.type);
+
+test("delivery statuses are recorded against the accepted message and never move backwards (#74)", async () => {
+  const f = await sentDraft();
+  const result = await f.app.send(f.id, f.preview.reviewToken, "admin");
+  assert.equal(result.providerId, accepted);
+  let s = await f.ledger.read();
+  assert.equal(s.whatsappDrafts[f.id].state, "accepted");
+  assert.equal(typeof s.whatsappDrafts[f.id].acceptedAt, "number");
+  for (const step of ["queued", "sent", "delivered"]) await status(f, step);
+  // Late or repeated callbacks are acknowledged but change nothing.
+  await status(f, "sent");
+  await status(f, "delivered");
+  s = await f.ledger.read();
+  assert.equal(s.whatsappDelivery[accepted].status, "delivered");
+  assert.deepEqual(deliveryEvents(s, accepted), ["delivery.queued", "delivery.sent", "delivery.delivered"]);
+  // read, failed and undelivered are final: the first one recorded stays.
+  await status(f, "read");
+  await status(f, "failed");
+  s = await f.ledger.read();
+  assert.equal(s.whatsappDelivery[accepted].status, "read");
+  const read = s.eventLog.find((e) => e.type === "delivery.read");
+  assert.equal(read.householdId, f.row.id);
+  assert.equal(read.deliveryId, f.id);
+  assert.ok(!JSON.stringify(read).includes(f.row.whatsappPhone), "events carry ids, never the phone number");
+  // The admin list shows the delivery status but never the sealed invitation link.
+  const list = await f.app.list();
+  assert.equal(list.drafts[0].delivery, "read");
+  assert.ok(!("variables" in list.drafts[0]));
+  assert.ok(!JSON.stringify(list).includes("/rsvp/#"));
+  assert.deepEqual(
+    list.recipients.map(({ id, phone, language }) => ({ id, phone, language })),
+    [{ id: f.row.id, phone: f.row.whatsappPhone, language: "en" }],
+  );
+  assert.equal(f.sends(), 1, "status callbacks never send");
+});
+
+test("status callbacks that are unsigned, malformed or for someone else's message are refused and record nothing (#74)", async () => {
+  const f = await sentDraft();
+  await f.app.send(f.id, f.preview.reviewToken, "admin");
+  await assert.rejects(status(f, "delivered", { signature: "forged" }), (e) => e.status === 403 && e.code === "TWILIO_SIGNATURE_INVALID");
+  await assert.rejects(status(f, "delivered", { sid: "SM-not-a-sid" }), (e) => e.status === 422 && e.code === "INVALID_MESSAGE");
+  await assert.rejects(status(f, "opened"), (e) => e.status === 422 && e.code === "INVALID_MESSAGE_STATUS");
+  // The accepted message's id, reported for another phone.
+  await assert.rejects(
+    status(f, "delivered", { to: "+442079460999" }),
+    (e) => e.status === 409 && e.code === "WHATSAPP_CALLBACK_UNMATCHED",
+  );
+  // An unknown message id for this phone, with no send in doubt.
+  await assert.rejects(
+    status(f, "delivered", { sid: "SM" + "8".repeat(32) }),
+    (e) => e.status === 409 && e.code === "WHATSAPP_CALLBACK_UNMATCHED",
+  );
+  const s = await f.ledger.read();
+  assert.deepEqual(s.whatsappDelivery ?? {}, {});
+  assert.equal(s.eventLog.filter((e) => e.data?.providerId).length, 0);
+});
+
+test("a delivery report for an uncertain or rejected send is kept, but the draft is never sent again (#74)", async () => {
+  const f = await sentDraft({ unknown: true });
+  await assert.rejects(
+    () => f.app.send(f.id, f.preview.reviewToken, "admin"),
+    (e) => e.code === "WHATSAPP_DELIVERY_UNKNOWN",
+  );
+  // Twilio may still report on the message whose acceptance was lost.
+  const lost = "SM" + "7".repeat(32);
+  await status(f, "failed", { sid: lost });
+  await status(f, "undelivered", { sid: lost });
+  let s = await f.ledger.read();
+  assert.equal(s.whatsappDelivery[lost].status, "failed");
+  assert.equal(s.whatsappDrafts[f.id].state, "unknown");
+  assert.equal(s.whatsappDrafts[f.id].error, "WHATSAPP_DELIVERY_UNKNOWN");
+  // Not even a failure report reopens the send, and repeating the draft
+  // request returns the same draft rather than a new one.
+  const again = await f.app.review(f.id);
+  await assert.rejects(
+    () => f.app.send(f.id, again.reviewToken, "admin"),
+    (e) => e.code === "WHATSAPP_ALREADY_ATTEMPTED",
+  );
+  assert.deepEqual(await f.draft(), { ids: [f.id], count: 1, channel: "whatsapp" });
+  assert.equal(f.sends(), 1);
+  // A refusal by Twilio is final too.
+  const r = await sentDraft({ rejected: true });
+  await assert.rejects(
+    () => r.app.send(r.id, r.preview.reviewToken, "admin"),
+    (e) => e.status === 503 && e.code === "WHATSAPP_REJECTED",
+  );
+  s = await r.ledger.read();
+  assert.equal(s.whatsappDrafts[r.id].state, "rejected");
+  assert.ok(s.eventLog.some((e) => e.type === "delivery.rejected" && e.deliveryId === r.id));
+  const reviewed = await r.app.review(r.id);
+  await assert.rejects(
+    () => r.app.send(r.id, reviewed.reviewToken, "admin"),
+    (e) => e.code === "WHATSAPP_ALREADY_ATTEMPTED",
+  );
+  assert.equal(r.sends(), 1);
+});
+
+test("the retry loop projects START and STOP to Notion after an outage and never sends (#74)", async () => {
+  const options = { syncFail: true };
+  const f = await fixture(options);
+  const h = hash(f.row.whatsappPhone);
+  await f.callback("START");
+  let s = await f.ledger.read();
+  assert.equal(s.whatsappPreferences[h].syncState, "pending");
+  assert.deepEqual((await f.app.list()).recipients, [], "unconfirmed in Notion: not eligible");
+  // Still down: the attempt leaves it pending.
+  assert.deepEqual(await f.app.retrySync(), { attempted: 1 });
+  assert.equal((await f.ledger.read()).whatsappPreferences[h].syncState, "pending");
+  options.syncFail = false;
+  // A spent time budget attempts nothing.
+  assert.deepEqual(await f.app.retrySync({ until: 0 }), { attempted: 0 });
+  assert.deepEqual(await f.app.retrySync(), { attempted: 1 });
+  s = await f.ledger.read();
+  assert.equal(s.whatsappPreferences[h].syncState, "synced");
+  assert.equal(s.whatsappConsentPhones[f.row.id], f.row.whatsappPhone);
+  assert.equal(s.whatsappSuppression[h], undefined);
+  assert.deepEqual(await f.app.retrySync(), { attempted: 0 }, "nothing left to retry");
+  assert.equal((await f.app.list()).recipients.length, 1);
+  // A STOP during an outage blocks sending at once and reaches Notion later.
+  options.syncFail = true;
+  f.advance();
+  await f.callback("STOP", "5");
+  s = await f.ledger.read();
+  assert.equal(s.whatsappPreferences[h].syncState, "pending");
+  assert.ok(s.whatsappSuppression[h]);
+  assert.deepEqual((await f.app.list()).recipients, []);
+  options.syncFail = false;
+  assert.deepEqual(await f.app.retrySync(), { attempted: 1 });
+  s = await f.ledger.read();
+  assert.equal(f.row.whatsappOptOut, true);
+  assert.equal(s.whatsappPreferences[h].syncState, "synced");
+  assert.ok(s.whatsappSuppression[h], "a STOP stays suppressed after it is synced");
+  assert.equal(f.sends(), 0);
+});
+
+test("the retry loop tries at most 25 preferences per run, least recently tried first (#74)", async () => {
+  const phones = Array.from({ length: 30 }, (_, i) => "+1555555" + String(i).padStart(4, "0"));
+  const ledger = new Ledger(memoryAdapter());
+  await ledger.transaction((s) => {
+    s.whatsappPreferences = {};
+    for (const [i, phone] of phones.entries())
+      s.whatsappPreferences[hash(phone)] = { phone, type: "STOP", at: i, messageId: "stop-" + i, syncState: "pending" };
+  });
+  const tried = [];
+  const app = createWhatsapp({
+    ledger,
+    templates: [],
+    notion: {
+      list: async () => phones.map((phone, i) => ({ id: "household-" + i, whatsappPhone: phone })),
+      // Notion keeps failing, so every preference stays pending.
+      projectWhatsappOptOut: async (id) => {
+        tried.push(id);
+        throw Error("Notion unavailable");
+      },
+    },
+    transport: {
+      enabled: false,
+      send: async () => assert.fail("retrying a preference never sends a message"),
+    },
+  });
+  assert.deepEqual(await app.retrySync(), { attempted: 25 });
+  const first = new Set(tried);
+  assert.equal(first.size, 25);
+  tried.length = 0;
+  assert.deepEqual(await app.retrySync(), { attempted: 25 });
+  // The five that waited go first, so one failing row cannot starve the rest.
+  const waited = phones.map((_, i) => "household-" + i).filter((x) => !first.has(x));
+  assert.deepEqual(tried.slice(0, 5).sort(), waited.sort());
+  assert.ok(
+    Object.values((await ledger.read()).whatsappPreferences).every((p) => p.syncState === "pending"),
+  );
 });
