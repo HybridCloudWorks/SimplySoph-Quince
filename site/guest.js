@@ -269,6 +269,18 @@ function summary(response) {
     )
     .join("")}</ul>`;
 }
+// Same cut-off as the server: at the deadline itself, answers are closed.
+const rsvpOpen = (inv) => Date.now() < Date.parse(inv.deadline);
+function rsvpClosed(inv) {
+  const until = new Date(inv.deadline).toLocaleDateString(es ? "es-US" : "en-US", {
+    month: "long",
+    day: "numeric",
+  });
+  const answered = inv.response
+    ? `<p>${tr("Your saved answer:", "Tu respuesta guardada:")}</p>${summary(inv.response)}`
+    : "";
+  return `<div class="notice"><h2>${tr("RSVPs are closed", "Las respuestas están cerradas")}</h2><p>${tr(`RSVPs closed on ${until}. To answer or change your answer now, please contact the family.`, `Las respuestas cerraron el ${until}. Para responder o cambiar tu respuesta, contacta a la familia.`)}</p>${answered}<p><a class="button burgundy" href="${route("contact")}">${tr("Contact the family", "Contacta a la familia")}</a></p></div>`;
+}
 // The page after saving adapts to the answer: attending households get only
 // the calendars and directions they need; declining households get a warm note.
 const calendarKind = { ceremony: "ceremony", dinner: "dinner", dance: "reception" };
@@ -277,7 +289,7 @@ function confirmation(inv, session) {
     attending = Object.entries(r.attendance).filter(
       ([e, v]) => inv.invited[e] && v.adultsTeens + v.kids > 0,
     ),
-    open = Date.now() <= Date.parse(inv.deadline),
+    open = rsvpOpen(inv),
     until = new Date(inv.deadline).toLocaleDateString(es ? "es-US" : "en-US", {
       month: "long",
       day: "numeric",
@@ -338,6 +350,12 @@ async function showPortal() {
     return;
   }
   if (view === "rsvp") {
+    // After the deadline the server refuses every save, so show why instead of
+    // a form that would only be refused after it is filled in.
+    if (!rsvpOpen(inv)) {
+      portal.innerHTML = rsvpClosed(inv);
+      return;
+    }
     rsvpForm(inv);
     return;
   }
