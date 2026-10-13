@@ -15,3 +15,11 @@ outputs/
 
 # Local Claude Code settings (never commit)
 .claude/
+
+# Keys and credential files
+*.pem
+*.key
+
+# Local agent tool state
+.agents/
+skills-lock.json
