@@ -2,6 +2,8 @@
 
 This is the only current Twilio guide. It replaces `twilio-runtime-status.md` and `whatsapp-setup.md`, which mixed point-in-time logs with stale plans. **Treat every live Twilio claim as unverified until the acceptance steps below are completed and recorded.** The gap analysis is in [v1/twilio-gap-analysis.md](v1/twilio-gap-analysis.md). The exact campaign field values are in [sms-campaign-registration.md](sms-campaign-registration.md).
 
+**SMS status:** the A2P campaign `CMc4a08f…` is **approved** (Twilio email, received by 2026-10-12). Both `SMS_*` flags stay off until the acceptance steps below are completed and recorded.
+
 ## What the code does
 
 | Concern | SMS (US/Canada 10DLC) | WhatsApp (international) |
