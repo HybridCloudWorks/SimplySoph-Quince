@@ -53,59 +53,6 @@ function validateContact(value) {
     address: value.address === null ? null : text(value.address, 500),
   };
 }
-export function validateRsvp(input, invitation, now = Date.now()) {
-  validateInvitation(invitation, now);
-  keys(input, ["previousSubmissionId", "guests", "contact", "requests"]);
-  if (
-    !Object.hasOwn(input, "previousSubmissionId") ||
-    input.previousSubmissionId !== (invitation.latestSubmissionId ?? null)
-  )
-    fail(409, "RESPONSE_CHANGED");
-  if (
-    !Array.isArray(invitation.guests) ||
-    !invitation.guests.length ||
-    invitation.guests.length > 50 ||
-    new Set(invitation.guests.map((g) => g.id)).size !==
-      invitation.guests.length
-  )
-    fail(503, "INVITATION_NOT_CONFIGURED");
-  if (
-    !Array.isArray(input.guests) ||
-    input.guests.length !== invitation.guests.length
-  )
-    fail(422, "GUEST_LIST_CHANGED");
-  const byId = new Map(invitation.guests.map((g) => [g.id, g]));
-  const seen = new Set();
-  const guests = input.guests.map((answer) => {
-    keys(answer, ["guestId", ...events]);
-    const guest = byId.get(answer.guestId);
-    if (!guest || seen.has(answer.guestId)) fail(422, "GUEST_LIST_CHANGED");
-    seen.add(answer.guestId);
-    const result = { guestId: guest.id };
-    for (const event of events) {
-      if (typeof guest.invited?.[event] !== "boolean")
-        fail(503, "INVITATION_NOT_CONFIGURED");
-      if (guest.invited[event]) {
-        if (!["yes", "no"].includes(answer[event]))
-          fail(422, "ANSWER_REQUIRED");
-        result[event] = answer[event];
-      } else {
-        if (Object.hasOwn(answer, event) && answer[event] !== "not-invited")
-          fail(422, "EVENT_NOT_INVITED");
-        result[event] = "not-invited";
-      }
-    }
-    return result;
-  });
-  const contact = validateContact(input.contact);
-  return {
-    previousSubmissionId: input.previousSubmissionId,
-    guests,
-    contact,
-    requests: text(input.requests, 1000),
-  };
-}
-
 // Existing Notion Invitations rows represent households, not a roster of people.
 // Organizer-owned capacities are independent of each event's attendance counts.
 export function validateHouseholdRsvp(input, invitation, now = Date.now()) {
