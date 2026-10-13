@@ -66,7 +66,7 @@ export async function smsComposer(root) {
       .filter((d, i) => i < 5 || d.id === review)
       .map(
         (d) =>
-          `<article class="compact-record"><h3>${esc(d.name)}</h3><p>${esc(d.to)}</p><p>${esc(d.text)}</p><p>Status: ${esc(d.delivery || d.state)}${d.error ? ` (${esc(d.error)})` : ""}</p>${d.state === "draft" ? `<button type="button" class="button outline" data-review-sms="${esc(d.id)}">Review this text</button><div class="sms-review" aria-live="polite"></div>` : ""}</article>`,
+          `<article class="compact-record"><h3>${esc(d.name)}</h3><p>${esc(d.to)}</p><p>${esc(d.text)}</p><p>Status: ${esc(d.delivery || d.state)}${d.error ? ` (${esc(d.error)}${d.providerError ? ` · Twilio ${esc(String(d.providerError))}` : ""})` : ""}</p>${d.state === "draft" ? `<button type="button" class="button outline" data-review-sms="${esc(d.id)}">Review this text</button><div class="sms-review" aria-live="polite"></div>` : ""}</article>`,
       )
       .join("") || "<p>No texts yet.</p>"
   }</div></section>`;

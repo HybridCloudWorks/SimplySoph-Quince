@@ -72,7 +72,7 @@ async function fixture(options = {}) {
       enabled: options.enabled !== false,
       send: async () => {
         sends++;
-        if (options.sendFails) throw Error("secret");
+        if (options.sendFails) throw options.sendFails === true ? Error("secret") : options.sendFails;
         return { state: "accepted", providerId: sid, provider: "twilio" };
       },
     },
@@ -150,6 +150,17 @@ test("SMS unknown delivery cannot be retried", async () => {
     (e) => e.code === "SMS_ALREADY_ATTEMPTED",
   );
   assert.equal(f.sends(), 1);
+});
+test("a Twilio refusal keeps its error code on the record, never the response body", async () => {
+  const f = await fixture({
+    sendFails: Object.assign(Error("refused"), { code: "SMS_REJECTED", providerStatus: 401, providerCode: 20003 }),
+  });
+  const p = await f.sms.review("draft");
+  await assert.rejects(() => f.sms.send("draft", p.reviewToken, "admin"), (e) => e.code === "SMS_REJECTED");
+  const s = await f.ledger.read();
+  assert.deepEqual([s.smsDrafts.draft.state, s.smsDrafts.draft.error, s.smsDrafts.draft.providerError], ["rejected", "SMS_REJECTED", 20003]);
+  assert.equal(s.eventLog.at(-1).data.providerError, 20003);
+  assert.ok(!JSON.stringify(s.eventLog).includes("refused"));
 });
 test("SMS remains disabled even when drafts and consent are valid", async () => {
   const f = await fixture({ enabled: false }),
