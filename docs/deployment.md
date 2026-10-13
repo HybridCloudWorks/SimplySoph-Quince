@@ -12,7 +12,7 @@ Related: [publishing.md](publishing.md) (static release pipeline) · [account-ac
 | API | Node 24, `server/start.mjs`, one Cloud Run service `misxv-api` in `us-central1`, reached via Hosting rewrite `/api/**` | **Manual** (see "Deploy the API") |
 | State | One JSON ledger in a private GCS bucket with generation preconditions (`server/store.mjs`, 20 MB cap); media/documents as separate private objects | — |
 | Guest roster and planning | Notion data sources via a dedicated scoped connection | — |
-| Email | Microsoft Graph, mailbox `misxv@simplysoph.com` (hard-coded sender); optional SendGrid fallback | — |
+| Email | Microsoft Graph, mailbox `misxv@simplysoph.com` (hard-coded sender); optional SendGrid fallback; see [email.md](email.md) | — |
 | SMS / WhatsApp | Twilio (off by default; see [twilio-setup.md](twilio-setup.md)) | — |
 
 With no `EVENT_BUCKET` the server runs in **preview mode**: every page is served and the API fails closed with 503. Partial live configuration stops startup. Notion failures never fall back to demo data.
@@ -57,7 +57,7 @@ Every variable `server/start.mjs` reads. Secrets come from **pinned** Secret Man
 2. Runtime service account: `objectUser` on the event bucket only; Secret Accessor on individual event secrets only. No project Editor, no downloadable keys.
 3. Google OAuth client: exact production origin plus explicitly chosen preview origins only. The owner keeps recovery codes (Guest access → Your recovery codes) away from their phone.
 4. Notion connection: read/update/insert on **only** the organizer-approved databases (Invitations, Budget, Godparents). No user profiles, comments or agents.
-5. Microsoft: Exchange application RBAC limited to `misxv@simplysoph.com`; verify another mailbox is denied. No tenant-wide `Mail.Send`. SPF authorizes Microsoft 365. DKIM selector1 signs and passes; the selector2 CNAME was restored in Cloudflare (verified Oct 9, 2026). DMARC is published at `p=none` with no report address.
+5. Microsoft: Exchange application RBAC limited to `misxv@simplysoph.com`; verify another mailbox is denied. No tenant-wide `Mail.Send`. SPF authorizes Microsoft 365. DKIM selector1 signs and passes; the selector2 CNAME was restored in Cloudflare (verified Oct 9, 2026). DMARC is published at `p=none`, with reports going to Cloudflare's DMARC Management since October 13, 2026.
 6. Twilio: see [twilio-setup.md](twilio-setup.md). Grant Messages *create* to the runtime key only at activation.
 7. Microsoft sign-in app (optional; the owner creates it in the [Microsoft Entra admin center](https://entra.microsoft.com) → App registrations → **New registration**):
    - Name `Mis XV sign-in`. Supported account types: **Accounts in any organizational directory and personal Microsoft accounts**. Redirect URI: platform **Single-page application (SPA)**, `https://misxv.simplysoph.com/admin/login/`.
@@ -186,7 +186,7 @@ Budget and Godparents edits made on the website are saved to the ledger as `pend
 
 ## Release and rollback
 
-- **Static site.** Published automatically from `main` only, after checks pass; see [publishing.md](publishing.md). To roll back, use Firebase Hosting release history for site `misxv-simplysoph`, or redeploy a reviewed commit.
+- **Static site.** Published automatically from `main` only, after checks pass; see [publishing.md](publishing.md). To roll back, use Firebase Hosting release history for site `misxv-simplysoph` (Hosting → Release history → Rollback), or merge a pull request that reverts the change; `main` only accepts pull requests, and merging publishes.
 - **API.** Route traffic back to the previous known-good revision (`gcloud run services update-traffic misxv-api --to-revisions=<rev>=100`).
 - **Order.** Restore a compatible frontend and API together.
 - **Ledger.** Never roll the live ledger back over newer RSVPs (see "Recovery").

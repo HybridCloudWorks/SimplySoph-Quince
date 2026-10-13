@@ -20,6 +20,17 @@ The API commits a response in the private durable Google ledger before acknowled
 
 The drain also compares each answered household's Notion RSVP and head counts with the website's answer. A difference is reported once in Notifications and shown on Invitations, where an admin keeps Notion's version or writes the website's answer again. Dashboard totals, seating and reminders use the answer the family goes by: the website's, or Notion's for phone answers and kept differences. Original Notion source rows are preserved.
 
+## Checking the database's columns
+
+`npm run notion:inspect` reads the database's structure (its data sources and columns, never guest rows) and saves it to `work/notion/schema.json`, which git ignores. Run it when a column may have been renamed or the website reports a schema problem, and compare the result with the columns above. It needs the website's Notion token and the database ID or URL. In PowerShell, take the token from Secret Manager rather than pasting it:
+
+```powershell
+$env:NOTION_TOKEN = gcloud secrets versions access latest --secret=misxv-notion-token --project=simplysoph-66c78
+$env:NOTION_DATABASE_ID = '<database ID or URL>'
+npm run notion:inspect
+Remove-Item Env:NOTION_TOKEN
+```
+
 ## Live validation still required
 
 Store the dedicated connection token in a new Secret Manager version, verify access to the source database and denial to unrelated pages, then test with one clearly identified disposable household. Record all schema additions and the fixture ID privately before modifying anything. Never commit real guest rows or invitation links. Archive only the disposable fixture after verifying count changes, projection, edits and retries. The unit/integration tests currently use provider fixtures; they do not prove a live Notion write occurred.

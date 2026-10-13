@@ -47,7 +47,7 @@ Administrators sign in at [misxv.simplysoph.com/admin/login/](https://misxv.simp
 
 **For whoever runs the website**
 - [Deploying and operating it](docs/deployment.md), including configuration, email and the checklist before invitations go out.
-- [Publishing the site](docs/publishing.md) · [SMS and Twilio](docs/twilio-setup.md) · [WhatsApp](docs/whatsapp-activation.md) · [Email fallback (SendGrid)](docs/sendgrid-setup.md).
+- [Publishing the site](docs/publishing.md) · [SMS and Twilio](docs/twilio-setup.md) · [WhatsApp](docs/whatsapp-activation.md) · [Email](docs/email.md).
 - [Retiring everything after the event](docs/cleanup.md).
 
 **Records:** the [decisions the family made](docs/v1/access-model.md), the [design notes](docs/v1/README.md), the [registered SMS wording](docs/sms-campaign-registration.md), and [how the project started](docs/history/) (kept for reference, not current).
