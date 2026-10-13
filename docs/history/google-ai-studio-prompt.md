@@ -1,6 +1,8 @@
 # Google AI Studio continuation prompt
 
-Continue the existing SimplySoph-Quince repository on a feature branch. Read README.md, PAGE-SCOPE.md, DEPLOYMENT.md and VALIDATION.md first. Preserve the complete multi-page English/Spanish guest site and the seven private admin routes. Do not collapse the site into a single scrolling page or restore the obsolete demo flow.
+> **History.** An early prompt for an AI coding assistant, kept for reference. Its route count and sign-in description are out of date; [page-scope.md](../page-scope.md) and [account-access.md](../account-access.md) are current.
+
+Continue the existing SimplySoph-Quince repository on a feature branch. Read [README.md](../../README.md), [page-scope.md](../page-scope.md), [deployment.md](../deployment.md) and [validation.md](validation.md) first. Preserve the complete multi-page English/Spanish guest site and the seven private admin routes. Do not collapse the site into a single scrolling page or restore the obsolete demo flow.
 
 The event is Friday, January 15, 2027, America/Chicago. RSVP deadline is November 15, 2026 at 11:59 PM Central. Keep the burgundy/gold/cream invitation theme. Missing family content remains pending until provided.
 

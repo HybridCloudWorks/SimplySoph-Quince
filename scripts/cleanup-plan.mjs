@@ -75,7 +75,7 @@ export function renderPlan(data) {
     `Inventory SHA-256: ${fingerprint}`, '',
     `Global baseline: ${data.baselineVerifiedAt ?? 'NOT YET VERIFIED — each recorded resource needs its own verified scoped baseline.'}`, '',
     'Protect: simplysoph.com registration, existing project and billing account, existing DNS zone/nameservers, existing Notion database, shared mailboxes and data.', '',
-    'Before removal: follow CLEANUP.md to stop intake/sending, export wanted data privately, review live resources and ownership, and resolve untracked resources.', '',
+    'Before removal: follow docs/cleanup.md to stop intake/sending, export wanted data privately, review live resources and ownership, and resolve untracked resources.', '',
     'This inventory is not a live cloud discovery. An empty list does not prove that the project is empty.', ''];
   if (!resources.length) lines.push('No active event resources are recorded. Nothing is proposed for removal.');
   for (const r of resources) {

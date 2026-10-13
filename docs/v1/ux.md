@@ -1,5 +1,7 @@
 # UX recommendations: invitation and RSVP
 
+> **Design record (October 8, 2026).** Kept for reference. Later owner decisions in [access-model.md](access-model.md) changed some of these recommendations; the guides listed in the [README](../../README.md) describe how the website works today.
+
 Goal: a guest RSVPs in **≤3 taps** from any invitation. An organizer sends to a whole group with **one preview and one confirm**.
 
 ## Today (measured from code)

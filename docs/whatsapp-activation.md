@@ -47,7 +47,7 @@ Routes /api/whatsapp/inbound and /api/whatsapp/status validate signatures and th
 3. Check Notion projection and local suppression.
 4. Preview one eligible international test recipient and private link.
 5. Enable restricted sending only for an authorized acceptance test; verify delivery, website RSVP, Notion and receipt email.
-6. Enable reviewed dispatch after these checks; keep SMS independently disabled until its own acceptance steps in [twilio-setup.md](twilio-setup.md) pass.
+6. Enable reviewed dispatch after these checks; SMS is switched on and off separately, as described in [twilio-setup.md](twilio-setup.md).
 
 February 1, 2027 is review/export, not automatic deletion. Inventory templates, consent records, callbacks and credentials for reviewed cleanup. Preserve shared Twilio/Meta accounts and the owner-provided number.
 
@@ -55,4 +55,4 @@ References: [WhatsApp API](https://www.twilio.com/docs/whatsapp/api), [Content A
 
 ## Status history
 
-Point-in-time deployment logs were removed from this guide. Live identifiers live in `ops/event-resources.json`; the current gap list is in [v1/twilio-gap-analysis.md](v1/twilio-gap-analysis.md). Last recorded (unverified): `reminder_es` rejected by Meta, three templates pending, both activation flags false, runtime key read-only.
+Point-in-time deployment logs were removed from this guide. Live identifiers live in `ops/event-resources.json`; the October 8 gap analysis ([v1/twilio-gap-analysis.md](v1/twilio-gap-analysis.md)) is a historical snapshot. Last recorded before SMS went live (unverified): `reminder_es` rejected by Meta, three templates pending, both activation flags false, runtime key read-only.

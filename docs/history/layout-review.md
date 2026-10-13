@@ -1,5 +1,7 @@
 # Layout review
 
+> **History.** Layout review from September 28, 2026. Some pages it mentions (such as costs and gifts) were removed later; [page-scope.md](../page-scope.md) lists the current pages.
+
 Corrected full-viewport padding inside capped containers. Admin navigation occupies a left column with a flexible content column. A full-height page shell places the footer at the viewport bottom for short pages and after content for long pages.
 
 All 58 generated documents were reviewed at 2560×1440 and 390×844 with browser screenshots of the opening view and page bottom. Every route also passed geometry checks at 1366×768 and 768×1024. All ten admin work screens and 22 English/Spanish registered-guest routes were additionally checked using local synthetic providers at 1920×1080 and 390×844. No live data, login enrollment, or email was changed during layout testing.

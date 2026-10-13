@@ -16,7 +16,7 @@ The existing Microsoft configuration is still required at startup so returning t
 
 ## Retirement Review
 
-February 1, 2027 is a review/export date, not automatic deletion. Disable fallback, reconcile in-flight messages, revoke the dedicated API key and remove its event secret/binding after approval. Remove SendGrid domain authentication/link-branding records only if no other sender uses them. Preserve shared Microsoft, Firebase, Cloudflare, the domain and the Google project.
+February 1, 2027 is a review/export date, not automatic deletion. Disable fallback, reconcile in-flight messages, downgrade the paid Email API plan so billing stops, revoke the dedicated API key and remove its event secret/binding after approval. Remove SendGrid domain authentication/link-branding records only if no other sender uses them. Preserve shared Microsoft, Firebase, Cloudflare, the domain and the Google project.
 
 Reference: [SendGrid Mail Send API](https://www.twilio.com/docs/sendgrid/api-reference/mail-send/mail-send).
 
@@ -24,7 +24,7 @@ Reference: [SendGrid Mail Send API](https://www.twilio.com/docs/sendgrid/api-ref
 
 All eight organizer-approved DNS records were saved in Cloudflare; CNAMEs are DNS-only and existing Microsoft mail routing/authentication remains intact. Authoritative DNS answers match. SendGrid confirmed domain authentication for simplysoph.com. Branded-link SSL provisioning is separate and may still be pending. Exact records and retirement decisions are in `ops/shared-domain-changes.json`.
 
-The signed-in SendGrid account displays a trial ending November 27, 2026. Review its plan before relying on fallback for the January event. No subscription was purchased and the API key was created/stored by the owner.
+The signed-in SendGrid account displays a trial ending November 27, 2026. **Owner decision (October 13, 2026): keep the fallback as a standby through the event**, and the owner upgraded the Email API to a paid plan the same day, so the standby keeps working after the trial. Marketing Campaigns is not used and was left to lapse. At setup on September 28 no subscription was purchased; the API key was created and stored by the owner.
 
 Version 1 passed SendGrid sandbox validation (HTTP 200, no delivery). One approved setup email to each organizer address (Gmail and Hotmail) was accepted with HTTP 202; the organizer confirmed receipt in both accounts. Inbox/spam placement and authentication headers have not been inspected. Attempt receipts are private in `work/sendgrid-owner-verification.json`; do not blindly repeat those tests.
 

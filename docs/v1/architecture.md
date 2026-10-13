@@ -1,5 +1,7 @@
 # Architecture and invitation/RSVP workflow
 
+> **Design record (October 8, 2026).** Kept for reference. Later owner decisions in [access-model.md](access-model.md) changed some of these recommendations; the guides listed in the [README](../../README.md) describe how the website works today.
+
 ## Recommendation in one paragraph
 
 Keep the current platform: static Firebase Hosting, one Cloud Run service, a GCS ledger with generation preconditions, Notion, and Microsoft Graph. It is correct, cheap and unusually careful about idempotency. With the RSVP deadline on Oct 31, a platform migration is the riskiest move available. The real pre-launch risks are:

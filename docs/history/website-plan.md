@@ -1,10 +1,10 @@
-> Historical planning/deployment record. The new multi-page branch is described by README.md, PAGE-SCOPE.md and DEPLOYMENT.md. Five-page/demo-only descriptions below refer to the earlier published release, not the current implementation.
+> Historical planning/deployment record. The new multi-page branch is described by [README.md](../../README.md), [page-scope.md](../page-scope.md) and [deployment.md](../deployment.md). Five-page/demo-only descriptions below refer to the earlier published release, not the current implementation.
 
 # Sophia's quinceañera website plan
 
 Prepared September 26, 2026. Scope: a lean guest site built with Google AI Studio, using Notion for private organizer records.
 
-**Updated scope:** after the family's route-list review, `PAGE-SCOPE.md` is the final authority: five guest routes plus 404, with Notion as admin. The one-page direction below records the initial research recommendation; source sections are now shared across generated static routes.
+**Updated scope:** after the family's route-list review, [page-scope.md](../page-scope.md) is the final authority: five guest routes plus 404, with Notion as admin. The one-page direction below records the initial research recommendation; source sections are now shared across generated static routes.
 
 ## Direction
 
@@ -76,7 +76,7 @@ Use optional planning databases for **Tasks** (owner, due date, status), **Vendo
 
 1. **Starter — delivered:** invitation-derived design; responsive guest sections; household RSVP demo; this research and implementation handoff.
 2. **Content completion:** date confirmed as Friday, January 15, 2027; resolve venues and add deadline, family contact, attire, language, children/plus-one policy, parking, and accessibility details. Confirm meal options only if the caterer requires them.
-3. **Notion connection:** inspect the existing database before changing it; map field IDs/types and relations; create a separate test household; implement authenticated invitation access, persistence, and edits using the contract in `NOTION-INTEGRATION.md`.
+3. **Notion connection:** inspect the existing database before changing it; map field IDs/types and relations; create a separate test household; implement authenticated invitation access, persistence, and edits using the contract in [notion-integration.md](../notion-integration.md).
 4. **Guest launch:** choose hosting/domain; verify final address pins and calendar; test on mobile and with a family member; send one test invitation and verify saved Notion results; open real RSVPs only after that passes.
 5. **Event operations:** family checks pending replies and meal counts, sends authorized reminders, finalizes the caterer count, and exports a restricted day-of list.
 6. **After the event:** optional album and thank-you tracking; close RSVPs; revoke invitation access and remove unneeded contact/accommodation data under the family's agreed retention plan.

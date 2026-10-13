@@ -1,6 +1,6 @@
 # Guest and administrator access
 
-The model, in one table. The decision record is [docs/v1/access-model.md](docs/v1/access-model.md).
+The model, in one table. The decision record is [v1/access-model.md](v1/access-model.md).
 
 | Who | How they get in | What they can do |
 |---|---|---|

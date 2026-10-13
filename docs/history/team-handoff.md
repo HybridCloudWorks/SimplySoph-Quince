@@ -1,10 +1,10 @@
 # Team handoff
 
-> History: this was the original handoff from September 2026, when the work lived on a draft branch. For how the project works today, start with [README.md](README.md).
+> History: this was the original handoff from September 2026, when the work lived on a draft branch. For how the project works today, start with [README.md](../../README.md).
 
 Repository: https://github.com/HybridCloudWorks/SimplySoph-Quince (work happens on short-lived branches merged into `main` by pull request)
 
-Use README.md, PAGE-SCOPE.md and DEPLOYMENT.md as the current implementation contract. Earlier five-page/demo proposals are superseded.
+Use [README.md](../../README.md), [page-scope.md](../page-scope.md) and [deployment.md](../deployment.md) as the current implementation contract. Earlier five-page/demo proposals are superseded.
 
 ## Collaborating
 
@@ -19,4 +19,4 @@ Give content editors the relevant Notion pages; grant deployment access separate
 - Integrations: finish restricted Notion credential, Google OAuth client, private runtime/storage and mailbox-scoped Microsoft application; complete the live acceptance checklist.
 - Operations: record every resource/grant and creation baseline; run cleanup review, never delete shared resources or original invitation data.
 
-Current tests cover the API through fixtures. Production provider setup and acceptance evidence must be added to VALIDATION.md before calling RSVP/email live.
+Current tests cover the API through fixtures. Production provider setup and acceptance evidence must be added to [validation.md](validation.md) before calling RSVP/email live.

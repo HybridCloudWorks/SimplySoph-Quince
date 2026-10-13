@@ -2,7 +2,7 @@
 
 How to configure, deploy, verify, roll back and recover the Mis XV service. This guide states what the **code** does. It does not log what was done in production. Live identifiers (secret versions, revisions, client IDs, Notion IDs, Twilio SIDs) belong in `ops/event-resources.json`. **Nothing listed under "Acceptance gate" counts as working until it is re-verified and recorded there.**
 
-Related: [PUBLISHING.md](PUBLISHING.md) (static release pipeline) · [ACCOUNT-ACCESS.md](ACCOUNT-ACCESS.md) (guest and admin sign-in) · [docs/twilio-setup.md](docs/twilio-setup.md) (SMS/WhatsApp) · [CLEANUP.md](CLEANUP.md) (retirement) · [docs/v1/](docs/v1/README.md) (v1.0 design and plan).
+Related: [publishing.md](publishing.md) (static release pipeline) · [account-access.md](account-access.md) (guest and admin sign-in) · [twilio-setup.md](twilio-setup.md) (SMS/WhatsApp) · [cleanup.md](cleanup.md) (retirement) · [v1/](v1/README.md) (v1.0 design and plan).
 
 ## Topology
 
@@ -13,7 +13,7 @@ Related: [PUBLISHING.md](PUBLISHING.md) (static release pipeline) · [ACCOUNT-AC
 | State | One JSON ledger in a private GCS bucket with generation preconditions (`server/store.mjs`, 20 MB cap); media/documents as separate private objects | — |
 | Guest roster and planning | Notion data sources via a dedicated scoped connection | — |
 | Email | Microsoft Graph, mailbox `misxv@simplysoph.com` (hard-coded sender); optional SendGrid fallback | — |
-| SMS / WhatsApp | Twilio (off by default; see [docs/twilio-setup.md](docs/twilio-setup.md)) | — |
+| SMS / WhatsApp | Twilio (off by default; see [twilio-setup.md](twilio-setup.md)) | — |
 
 With no `EVENT_BUCKET` the server runs in **preview mode**: every page is served and the API fails closed with 503. Partial live configuration stops startup. Notion failures never fall back to demo data.
 
@@ -33,7 +33,7 @@ Every variable `server/start.mjs` reads. Secrets come from **pinned** Secret Man
 | `ADMIN_GOOGLE_CLIENT_ID` | Live | No | — | Web OAuth client; authorized origin = `PUBLIC_ORIGIN`. Also used for guest Google sign-in on `/account/` |
 | `MICROSOFT_CLIENT_ID` | No | No | empty → Microsoft sign-in hidden | Application (client) ID of the **Mis XV sign-in** Entra app (single-page app, no secret; see Provisioning 7). Created Oct 9, 2026: `7a448a2b-1b47-4423-a92d-2d840d8b0df0` |
 | `MICROSOFT_TENANT_ID` | With `MICROSOFT_CLIENT_ID` | No | — | `83d9aa10-e1de-455e-a9b8-1cc73e99685a` (simplysoph.com). Work accounts from any other organization are refused; personal Microsoft accounts are always accepted |
-| `ADMIN_EMAILS` | Live | No | — | The break-glass owner (one address): the only admin outside Notion. Every other administrator is a Notion row with **Administrator Eligible** ticked ([access model](docs/v1/access-model.md)) |
+| `ADMIN_EMAILS` | Live | No | — | The break-glass owner (one address): the only admin outside Notion. Every other administrator is a Notion row with **Administrator Eligible** ticked ([access model](v1/access-model.md)) |
 | `NOTIFICATION_EMAILS` | No | No | `ADMIN_EMAILS` | All of these receive generic review notifications |
 | `M365_TENANT_ID`, `M365_CLIENT_ID` | Live | No | — | Entra app with Exchange **application RBAC** `Mail.Send` scoped to the event mailbox |
 | `M365_CLIENT_SECRET` | Live | **Yes** | — | Same app; expiry must cover the event |
@@ -58,7 +58,7 @@ Every variable `server/start.mjs` reads. Secrets come from **pinned** Secret Man
 3. Google OAuth client: exact production origin plus explicitly chosen preview origins only. The owner keeps recovery codes (Guest access → Your recovery codes) away from their phone.
 4. Notion connection: read/update/insert on **only** the organizer-approved databases (Invitations, Budget, Godparents). No user profiles, comments or agents.
 5. Microsoft: Exchange application RBAC limited to `misxv@simplysoph.com`; verify another mailbox is denied. No tenant-wide `Mail.Send`. SPF authorizes Microsoft 365. DKIM selector1 signs and passes; the selector2 CNAME was restored in Cloudflare (verified Oct 9, 2026). DMARC is published at `p=none` with no report address.
-6. Twilio: see [docs/twilio-setup.md](docs/twilio-setup.md). Grant Messages *create* to the runtime key only at activation.
+6. Twilio: see [twilio-setup.md](twilio-setup.md). Grant Messages *create* to the runtime key only at activation.
 7. Microsoft sign-in app (optional; the owner creates it in the [Microsoft Entra admin center](https://entra.microsoft.com) → App registrations → **New registration**):
    - Name `Mis XV sign-in`. Supported account types: **Accounts in any organizational directory and personal Microsoft accounts**. Redirect URI: platform **Single-page application (SPA)**, `https://misxv.simplysoph.com/admin/login/`.
    - **Authentication** → Single-page application → add `https://misxv.simplysoph.com/account/` and `https://misxv.simplysoph.com/es/account/`. Leave both implicit-grant boxes unchecked. Do not create a client secret: the browser uses PKCE.
@@ -142,22 +142,25 @@ SMS only goes to phones whose owner texted the program keyword (`SOPHIA`, `START
 
 ## Acceptance gate before any real invitation
 
-Record date, tester and evidence for each item in the inventory. Status as of this revision: **all unverified.**
+Record date, tester and evidence for each item in the inventory. Status on October 13, 2026: the owner confirmed the ticked items; anything unticked is still unverified.
 
 - [ ] `npm run check` and `npm audit --omit=dev` pass on Node 24 in CI. Desktop, mobile and Spanish navigation verified in a real browser.
-- [ ] Administrator sign-in with the real providers: an address that is not a ticked row's main Email (or an owner) is refused; the first setup works only from the emailed link (QR); Google and Microsoft work afterwards; code replay and an expired session are refused; ten wrong codes pause sign-in; an owner recovery code works.
+- [x] Administrator sign-in with the real providers: the emailed link, Google or Microsoft, then the authenticator code (owner, October 13, 2026).
+- [ ] Administrator refusals: an address that is not a ticked row's main Email (or an owner) is refused; the first setup works only from the emailed link (QR); code replay and an expired session are refused; ten wrong codes pause sign-in; an owner recovery code works.
 - [ ] Disposable Notion test household:
   - [ ] Lookup, allocation limits, decline and mixed attendance.
   - [ ] Concurrent-edit protection, replay and ledger restart.
-  - [ ] Notion projection and admin counts.
+  - [x] Notion projection and admin counts: a test household's answer reached Notion and Admin → Overview (owner, October 13, 2026).
   - [ ] Afterwards, archive only that fixture.
 - [ ] A Notion write outage keeps the answer saved and pending (if Notion cannot be read at all, the RSVP is refused with a retryable error and nothing is saved); the scheduled drain (every 10 minutes) or Retry sync then reconciles it. If the family edited the row in Notion meanwhile, the retry writes only the Website columns and the drift check reports the difference; Keep and Write both behave as described on Invitations.
 - [ ] A permanent Notion refusal (for example a missing column) marks the row failed and adds one alert to Notifications; after fixing the row, Retry sync writes it. The same holds for a refused Budget or Godparents change.
-- [ ] Media: upload a disposable image, confirm metadata is stripped and the item is private-pending, then approve and remove it.
+- [x] Media: upload a disposable image, approve it and remove it (owner, October 13, 2026).
+- [ ] Media: confirm metadata is stripped and a new upload stays private until approved.
 - [ ] One reviewed email to an organizer-chosen test recipient. Verify Sent Items (sign-in link emails are deliberately not kept there), receipt, SPF/DKIM headers, and the Spanish rendering.
-- [ ] Guest sign-in with a household's Notion Email and with an Additional Email (emailed link, Google, Microsoft); removing the email in Notion ends access on the next request; the RSVP receipt arrives at the verified address (ACCOUNT-ACCESS.md).
+- [ ] Guest sign-in with a household's Notion Email and with an Additional Email (emailed link, Google, Microsoft); removing the email in Notion ends access on the next request; the RSVP receipt arrives at the verified address ([account-access.md](account-access.md)).
 - [ ] Real content confirmed (church, dinner, dress code, retention date), invitation artwork, and that guest links never appear in logs or public artifacts.
-- [ ] Before using SMS or WhatsApp: the acceptance steps in docs/twilio-setup.md.
+- [x] SMS: accepted on October 13, 2026 (handset keywords and a delivered test text; see [twilio-setup.md](twilio-setup.md)).
+- [ ] WhatsApp: the checks in the [WhatsApp guide](whatsapp-activation.md), after Meta approves the templates.
 
 ## Reliability and limits
 
@@ -179,11 +182,11 @@ Record date, tester and evidence for each item in the inventory. Status as of th
 
 ## Notion planning sync
 
-Budget and Godparents edits made on the website are saved to the ledger as `pending`, then patched into the linked Notion row (changed fields only). New rows use a stable `Website Record ID`, and an ambiguous create is looked up, never repeated. A five-minute durable lock serializes writes to each row. Direct Notion edits do **not** flow back to the website. Rows still waiting to reach Notion after an outage are retried by the scheduled drain, oldest attempt first; errors that need a person (a schema conflict, a duplicate or missing record, an uncertain create) wait for Retry sync. A change Notion refuses outright shows "Refused by Notion", is reported once in Notifications, and is corrected by editing the record or pressing Retry sync. The recommended v1.0 ownership model is in [docs/v1/notion-strategy.md](docs/v1/notion-strategy.md).
+Budget and Godparents edits made on the website are saved to the ledger as `pending`, then patched into the linked Notion row (changed fields only). New rows use a stable `Website Record ID`, and an ambiguous create is looked up, never repeated. A five-minute durable lock serializes writes to each row. Direct Notion edits do **not** flow back to the website. Rows still waiting to reach Notion after an outage are retried by the scheduled drain, oldest attempt first; errors that need a person (a schema conflict, a duplicate or missing record, an uncertain create) wait for Retry sync. A change Notion refuses outright shows "Refused by Notion", is reported once in Notifications, and is corrected by editing the record or pressing Retry sync. The recommended v1.0 ownership model is in [v1/notion-strategy.md](v1/notion-strategy.md).
 
 ## Release and rollback
 
-- **Static site.** Published automatically from `main` only, after checks pass; see PUBLISHING.md. To roll back, use Firebase Hosting release history for site `misxv-simplysoph`, or redeploy a reviewed commit.
+- **Static site.** Published automatically from `main` only, after checks pass; see [publishing.md](publishing.md). To roll back, use Firebase Hosting release history for site `misxv-simplysoph`, or redeploy a reviewed commit.
 - **API.** Route traffic back to the previous known-good revision (`gcloud run services update-traffic misxv-api --to-revisions=<rev>=100`).
 - **Order.** Restore a compatible frontend and API together.
 - **Ledger.** Never roll the live ledger back over newer RSVPs (see "Recovery").
@@ -200,4 +203,4 @@ The bucket has object versioning, public access prevention, uniform access and 7
 
 Never restore while writes are active. A whole-ledger rollback can revive old sessions, codes or pending mail. Invalidate sessions and challenges, and reconcile invitation generations, authenticators and outbox state, before restarting. Restore media together with its moderation metadata. Preserve `APP_KEY` until every wanted export has been read.
 
-At retirement, export the approved media and guest data, verify the exports, then include **all object generations** in the reviewed cleanup (CLEANUP.md). Nothing schedules deletion automatically.
+At retirement, export the approved media and guest data, verify the exports, then include **all object generations** in the reviewed cleanup ([cleanup.md](cleanup.md)). Nothing schedules deletion automatically.

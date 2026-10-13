@@ -1,5 +1,7 @@
 # Event email using the existing Microsoft 365 tenant
 
+> **History.** Microsoft 365 setup log from September 2026. Sending through Microsoft Graph has since been configured; the current email settings are in [deployment.md](../deployment.md).
+
 The family confirmed that **Hostinger manages simplysoph.com DNS** and **Microsoft 365 already hosts its email**. This supersedes the proposed Google Workspace/Gmail sender. Keep website hosting and application secrets in Google; keep existing mail in Microsoft 365. No additional domain or Workspace purchase is needed for this architecture. The admin session and organizer Exchange Online Plan 1 assignment have now been verified. The event shared mailbox has been created without purchasing another license.
 
 ## Recommended sender
