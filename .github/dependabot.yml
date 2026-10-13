@@ -26,3 +26,8 @@ updates:
     schedule:
       interval: monthly
     labels: [dependencies]
+    # The API runs the Node major that package.json engines and CI use (24).
+    # Moving to a new major is a deliberate change, not a routine update.
+    ignore:
+      - dependency-name: node
+        update-types: [version-update:semver-major]
