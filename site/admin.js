@@ -2,6 +2,7 @@ import { planningEditor, documentWorkspace } from "./admin-planning.js";
 import { whatsappComposer } from "./admin-whatsapp.js";
 import { communicationHistory } from "./admin-history.js";
 import { audienceComposer } from "./admin-audience.js";
+import { smsComposer } from "./admin-sms.js";
 import { batchToolbar, eventNames } from "./admin-batches.js";
 import { startPulse, activityBanner } from "./admin-pulse.js";
 import { websiteEditor, notificationInbox } from "./admin-experience.js";
@@ -555,7 +556,7 @@ async function updates() {
     return;
   }
   if (selected === "sms") {
-    await audienceComposer(panel, updates, "sms");
+    await smsComposer(panel);
     return;
   }
   const d = await api("admin/updates");

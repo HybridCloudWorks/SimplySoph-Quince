@@ -23,12 +23,32 @@ const messages = {
     "Elige un archivo válido de hasta 8 MB.",
   ],
   NO_ELIGIBLE_RECIPIENTS: [
-    "Select recipients with valid contact details. SMS also requires the guest to have texted SOPHIA from that phone.",
-    "Selecciona destinatarios con datos válidos. Para SMS, el invitado debe haber enviado SOPHIA desde ese teléfono.",
+    "None of the selected households can receive this. For texts, tick households marked Subscribed.",
+    "Ninguna de las familias seleccionadas puede recibir esto. Para mensajes de texto, elige familias marcadas como Suscrita.",
   ],
   CONFIRM_COUNT_MISMATCH: [
-    "Type the exact number of emails shown to confirm. Nothing was sent.",
-    "Escribe el número exacto de correos para confirmar. No se envió nada.",
+    "Type the exact number shown to confirm. Nothing was sent.",
+    "Escribe el número exacto para confirmar. No se envió nada.",
+  ],
+  SMS_NOT_SUBSCRIBED: [
+    "That phone hasn't texted SOPHIA to the event number yet, or it texted STOP. Text SOPHIA first, then try again.",
+    "Ese teléfono aún no envió SOPHIA al número del evento, o envió STOP. Envía SOPHIA primero e inténtalo de nuevo.",
+  ],
+  SMS_NOT_ENABLED: [
+    "Text sending is switched off on the server. Ask whoever runs the website to turn it on.",
+    "El envío de mensajes de texto está apagado en el servidor.",
+  ],
+  SMS_OPTED_OUT: [
+    "This phone texted STOP. Nothing was sent.",
+    "Este teléfono envió STOP. No se envió nada.",
+  ],
+  SMS_COUNTRY_NOT_ALLOWED: [
+    "Texts can only go to US and Canadian numbers. Use WhatsApp or email for other countries.",
+    "Los mensajes de texto solo llegan a números de EE. UU. y Canadá. Usa WhatsApp o correo para otros países.",
+  ],
+  SMS_DESTINATION_INVALID: [
+    "Enter the phone with its country code, like +1 817 555 0123.",
+    "Escribe el teléfono con su código de país, como +1 817 555 0123.",
   ],
   BATCH_NOT_CONFIRMED: [
     "Confirm this batch before sending.",

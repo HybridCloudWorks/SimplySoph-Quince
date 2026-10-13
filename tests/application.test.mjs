@@ -2899,3 +2899,75 @@ test("one person signed in on two devices uploads one file at a time; the daily 
   for (let i = 0; i < 21; i++) last = await upload();
   assert.equal(last.code, "DAILY_UPLOAD_LIMIT");
 });
+
+test("the SMS page lists every household with a plain status and offers a test to the organizer's phone", async () => {
+  const sent = [];
+  const f = await fixture({
+    smsTransport: {
+      enabled: true,
+      async send(m) {
+        sent.push(m);
+        return { state: "accepted", provider: "twilio", providerId: "SM" + "f".repeat(32) };
+      },
+    },
+  });
+  f.row.phone = "+18175550100";
+  f.extraRows.push(
+    { id: "22222222-2222-4222-8222-222222222222", name: "Mexico family", phone: "+525512345678", validCapacity: true, archived: false },
+    { id: "33333333-3333-4333-8333-333333333333", name: "No phone", phone: "", validCapacity: true, archived: false },
+    { id: "44444444-4444-4444-8444-444444444444", name: "Opted out", phone: "+18175550101", smsOptOut: true, validCapacity: true, archived: false },
+  );
+  const status = async () =>
+    Object.fromEntries((await f.admin("audience", undefined, { channel: "sms" })).households.map((h) => [h.name, h.status]));
+  // Names come back as "Last, First" like the rest of the admin.
+  assert.deepEqual(await status(), { "family, Test": "waiting", "family, Mexico": "not-us-ca", "phone, No": "no-phone", "out, Opted": "opted-out" });
+  await keywordOptIn(f, f.row.phone);
+  assert.equal((await status())["family, Test"], "subscribed");
+  // The organizer's own phone: subscribed by keyword, no row anywhere.
+  const mine = "+18175550199";
+  const text = "Simply Soph Media: Test. Reply STOP to opt out.";
+  await assert.rejects(() => f.admin("sms/test", { phone: mine, text, confirm: true }), (e) => e.code === "SMS_NOT_SUBSCRIBED");
+  await f.ledger.transaction((s) => {
+    s.smsPreferences[hash(mine)] = { phone: mine, type: "START", at: 1, messageId: "SM" + "1".repeat(32) };
+  });
+  await assert.rejects(() => f.admin("sms/test", { phone: mine, text }), (e) => e.code === "CONFIRM_RECIPIENT");
+  const r = await f.admin("sms/test", { phone: mine, text, confirm: true });
+  assert.equal(r.state, "accepted");
+  assert.deepEqual(sent, [{ to: mine, text }]);
+  assert.equal((await f.admin("sms/drafts")).drafts.find((d) => d.id === r.id).name, "Test to my phone");
+});
+
+test("texts to guests: draft, type the count, send in one confirmed batch from the page", async () => {
+  const sent = [];
+  const f = await fixture({
+    smsTransport: {
+      enabled: true,
+      async send(m) {
+        sent.push(m);
+        return { state: "accepted", provider: "twilio", providerId: "SM" + String(sent.length).repeat(32) };
+      },
+    },
+  });
+  f.row.phone = "+18175550100";
+  await keywordOptIn(f, f.row.phone);
+  const id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const drafted = await f.admin("mail/batch-draft", {
+    requestId: id,
+    groups: [],
+    ids: [household],
+    subject: "Text",
+    text: "Simply Soph Media: RSVP at {link} Reply STOP to opt out.",
+    channel: "sms",
+  });
+  assert.equal(drafted.count, 1);
+  const batch = await f.admin("sms/batch", undefined, { id });
+  assert.deepEqual([batch.state, batch.total, batch.remaining, batch.recipients[0].name], ["draft", 1, 1, "family, Test"]);
+  await assert.rejects(() => f.admin("sms/batch/send", { id }), (e) => e.code === "BATCH_NOT_CONFIRMED");
+  await assert.rejects(() => f.admin("sms/batch/confirm", { id, count: 2 }), (e) => e.code === "CONFIRM_COUNT_MISMATCH");
+  await f.admin("sms/batch/confirm", { id, count: 1 });
+  const r = await f.admin("sms/batch/send", { id });
+  assert.deepEqual([r.accepted, r.done], [1, true]);
+  assert.equal(sent.length, 1);
+  assert.ok(!sent[0].text.includes("{link}"));
+  assert.equal((await f.admin("sms/drafts")).batches[0].state, "done");
+});
