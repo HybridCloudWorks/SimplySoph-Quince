@@ -34,14 +34,16 @@ npx -y firebase-tools@15.31.0 deploy --only hosting:misxv --project simplysoph-6
 
 The Hosting predeploy hook runs `npm run check`, which builds pages and runs route/asset and behavior checks. Do not use an unscoped `firebase deploy` in this shared project. Firebase CLI 15.31.0 performed the deployment. Node 24 is the CI and API runtime target; guest pages are static and the dedicated Cloud Run container handles API requests. Gemini and a new load balancer are not required. Existing shared billing still applies; this does not promise zero charges.
 
-## Hostinger records created
+Changes reach `main` only through pull requests whose `check` job passes (ruleset "Protect main"), and the publish job runs in the GitHub `production` environment, which only `main` can use. Publishing authenticates through Workload Identity Federation; its condition admits only pushes to `main` running this repository's `check.yml`.
+
+## Event DNS records
 
 | Type | Relative name | Value | TTL |
 |---|---|---|---|
 | CNAME | `misxv` | `misxv-simplysoph.web.app` | 300 |
 | TXT | `_acme-challenge.misxv` | `GgMeXlKk-yzZzIsPylLvlucbfegUX8oCxv0mSBZJamk` | 300 |
 
-These exact values came from Firebase Hosting's custom-domain API. The TXT is a public certificate-validation record, not a private integration credential. Keep it while the domain is in use unless Firebase instructs otherwise. All twelve pre-existing records, including the root website, Microsoft 365 MX/autodiscover and existing verification records, were preserved. Nameservers remain Hostinger's.
+These exact values came from Firebase Hosting's custom-domain API. The TXT is a public certificate-validation record, not a private integration credential. Keep it while the domain is in use unless Firebase instructs otherwise. All twelve pre-existing records, including the root website, Microsoft 365 MX/autodiscover and existing verification records, were preserved. They were first created at Hostinger on September 26, 2026. DNS for simplysoph.com has since moved to Cloudflare (live nameservers `june.ns.cloudflare.com` and `matt.ns.cloudflare.com`, checked October 13, 2026), so manage these records in Cloudflare.
 
 Firebase may need time to observe DNS and issue its certificate. Do not disable TLS verification or bypass a browser certificate warning. Use the working web.app URL until the custom URL passes normal HTTPS validation. [Firebase custom-domain setup](https://firebase.google.com/docs/hosting/custom-domain).
 

@@ -79,4 +79,6 @@ The pages are built from `site/` by `scripts/build-pages.mjs`; the RSVP and sign
 
 ## License
 
-This repository does not include a license, so no rights to reuse its code or content are granted. The website's footer reads "All rights reserved."
+The **code** is available under the [MIT License](LICENSE).
+
+The **family's content is not**: the photographs and artwork in `site/assets/`, the names and details of the family and guests, and the written text about the celebration are © 2026 Simply Soph Media, all rights reserved. After the event the repository will be cleaned of this content and turned into a reusable template.

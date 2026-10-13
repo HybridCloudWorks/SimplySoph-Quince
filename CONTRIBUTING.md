@@ -23,4 +23,4 @@ npm start       # http://127.0.0.1:4173/
 3. Add or update tests in `tests/` for behaviour you change. `npm run check` must pass; the same command runs on every pull request.
 4. Update the guide that describes what you changed (the README lists them).
 
-Merging to `main` publishes the website, so the owner merges once the checks pass and the change has been reviewed.
+`main` only accepts pull requests whose checks pass. Merging publishes the website, so the owner merges once the change has been reviewed.
