@@ -167,14 +167,15 @@ export function createSms({
       result = await transport.send({ to: job.to, text: render(job) });
     } catch (e) {
       await ledger.transaction((s) => {
-        s.smsDrafts[id].state =
-          e.code === "SMS_REJECTED" ? "rejected" : "unknown";
-        s.smsDrafts[id].error =
-          e.code === "SMS_REJECTED" ? "SMS_REJECTED" : "SMS_DELIVERY_UNKNOWN";
-        logEvent(s, now(), "delivery." + s.smsDrafts[id].state, {
-          householdId: s.smsDrafts[id].householdId,
+        const d = s.smsDrafts[id];
+        d.state = e.code === "SMS_REJECTED" ? "rejected" : "unknown";
+        d.error = e.code === "SMS_REJECTED" ? "SMS_REJECTED" : "SMS_DELIVERY_UNKNOWN";
+        // Twilio's error code and HTTP status, so the page can say why.
+        d.providerError = e.providerCode ?? e.providerStatus ?? null;
+        logEvent(s, now(), "delivery." + d.state, {
+          householdId: d.householdId,
           deliveryId: id,
-          data: { channel: "sms", error: s.smsDrafts[id].error },
+          data: { channel: "sms", error: d.error, providerError: d.providerError },
         });
       });
       throw error(

@@ -2,7 +2,7 @@
 
 This guide covers text messages to guests in the US and Canada. WhatsApp, for guests outside the US, has its own guide: [whatsapp-activation.md](whatsapp-activation.md). The exact wording carriers approved is in [sms-campaign-registration.md](sms-campaign-registration.md).
 
-**Where things stand (October 12, 2026):** carriers approved the SMS program (campaign `CMc4a08f…`), sending is switched on, and the owner's handset test (SOPHIA, HELP, STOP, START) reached the website correctly. Everything below happens on one page: **Admin → Communications → SMS reminders** ([misxv.simplysoph.com/admin/updates/?tab=sms](https://misxv.simplysoph.com/admin/updates/?tab=sms)).
+**Where things stand (October 13, 2026):** carriers approved the SMS program (campaign `CMc4a08f…`), sending is switched on, the owner's handset test (SOPHIA, HELP, STOP, START) reached the website correctly, and a test text from the page was delivered to the owner's phone with both Twilio status callbacks received. SMS is accepted and ready for the family's first real batch. Everything below happens on one page: **Admin → Communications → SMS reminders** ([misxv.simplysoph.com/admin/updates/?tab=sms](https://misxv.simplysoph.com/admin/updates/?tab=sms)).
 
 ## How texting works, in one paragraph
 
@@ -31,12 +31,12 @@ A guest joins by texting **SOPHIA** to **+1 682-786-8002** from their own phone.
 
 Twilio only answers an opt-in keyword after a STOP, so a brand-new subscriber would hear nothing. The website therefore replies to a first SOPHIA with the registered confirmation (owner decision, 2026-10-12). After a STOP, Twilio's own opt-in reply takes over, so nobody gets two welcomes.
 
-**Owner to do once:** in the Twilio Console open **Messaging → Services → Sole Proprietor A2P Messaging Service → Opt-Out Management** and paste the registered opt-in message (the "What is the opt-in message?" value in [sms-campaign-registration.md](sms-campaign-registration.md)) as the opt-in reply. The reply the owner received on 2026-10-12 was the older version without the Terms and Privacy links.
+The opt-in reply in Twilio's Opt-Out Management was aligned with the registered text (with the Terms and Privacy links) on 2026-10-12, so both paths send the same words.
 
 ## If something looks wrong
 
 - **Someone texted SOPHIA but shows "Hasn't texted SOPHIA yet":** the phone they texted from is not the Phone on their Notion row (or it lacks `+1`). Fix the row, then press **Match texted phones to their rows now**.
-- **A text shows "rejected":** Twilio refused it. Check the website's API key still has Messages **create** permission (Console → Settings → API keys & auth tokens) and the number's status in **Monitor → Logs → Messaging**.
+- **A text shows "rejected":** Twilio refused it; the record shows Twilio's error code. The first live test failed this way because the website's API key had Messages **read** only; it now has **create** too (Console → Settings → API keys & auth tokens, key `SK4b53d3…`). If it happens again, check that permission first, then the number's status in **Monitor → Logs → Messaging**.
 - **A text shows "unknown":** the website could not tell whether Twilio sent it. It is never retried automatically; look it up in Twilio's message logs before deciding.
 - **No reply to a guest's HELP or STOP:** those replies come from Twilio's Advanced Opt-Out settings, not the website. Check them in Opt-Out Management.
 - **Twilio error 11200:** the website answered a keyword too slowly (it writes to Notion before replying). Report it; the fix is to answer first and mirror later.

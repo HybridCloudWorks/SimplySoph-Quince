@@ -92,11 +92,17 @@ export function twilioTransport({
       } catch {
         throw error(503, "SMS_DELIVERY_UNKNOWN");
       }
-      if (response.status !== 201)
-        throw error(
-          503,
-          response.status >= 500 ? "SMS_DELIVERY_UNKNOWN" : "SMS_REJECTED",
+      if (response.status !== 201) {
+        // Twilio's numeric error code (never the body: it echoes the phone number).
+        let code = null;
+        try {
+          code = (await response.json()).code ?? null;
+        } catch {}
+        throw Object.assign(
+          error(503, response.status >= 500 ? "SMS_DELIVERY_UNKNOWN" : "SMS_REJECTED"),
+          { providerStatus: response.status, providerCode: code },
         );
+      }
       let result;
       try {
         result = await response.json();

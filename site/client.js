@@ -38,6 +38,14 @@ const messages = {
     "Text sending is switched off on the server. Ask whoever runs the website to turn it on.",
     "El envío de mensajes de texto está apagado en el servidor.",
   ],
+  SMS_REJECTED: [
+    "Twilio refused this text. The usual cause is the website's Twilio API key missing the Messages create permission. The Twilio error code is shown on the record below.",
+    "Twilio rechazó este mensaje. La causa habitual es que la clave API de Twilio del sitio no tiene permiso para crear mensajes. El código de error de Twilio aparece en el registro.",
+  ],
+  SMS_DELIVERY_UNKNOWN: [
+    "Twilio did not answer clearly. Check Twilio's message log before trying again; the text may have gone out.",
+    "Twilio no respondió con claridad. Revisa el registro de mensajes de Twilio antes de reintentar; el mensaje pudo haberse enviado.",
+  ],
   SMS_OPTED_OUT: [
     "This phone texted STOP. Nothing was sent.",
     "Este teléfono envió STOP. No se envió nada.",
