@@ -13,6 +13,10 @@ gha-creds-*.json
 # Disposable local visual review artifacts
 outputs/
 
+# Playwright output (npm run test:browser)
+test-results/
+playwright-report/
+
 # Local Claude Code settings (never commit)
 .claude/
 
