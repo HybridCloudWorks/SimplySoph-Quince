@@ -1,7 +1,7 @@
 import { createAdminRecords } from "./admin-records.mjs";
 import { audience, recipientName, validEmail } from "./audience.mjs";
 import { createWhatsapp } from "./whatsapp.mjs";
-import { createSms, smsCompliantText, smsPreview } from "./sms.mjs";
+import { createSms, smsCompliantText, smsPreview, smsStatus } from "./sms.mjs";
 import { createPlanning } from "./planning.mjs";
 import { createAdminEmail } from "./admin-email.mjs";
 import { createAdminAccess, adminRow } from "./admin-access.mjs";
@@ -2462,11 +2462,12 @@ export function createApplication({
         const rows = (await notion.list({ allowStale: true })).filter(
           (r) => !r.archived && ctx.state.invitations[r.id]?.active !== false,
         );
+        const sms = req.query?.channel === "sms";
         return {
           groups: [
             ...new Set(rows.flatMap((r) => r.distributionGroups || [])),
           ].sort(),
-          recipients: (req.query?.channel === "sms" ? audience(rows, { groups: [], ids: rows.map(r => r.id) }, ctx.state, "sms") : rows.filter(r => validEmail(r.email)))
+          recipients: (sms ? audience(rows, { groups: [], ids: rows.map(r => r.id) }, ctx.state, "sms") : rows.filter(r => validEmail(r.email)))
             .map((r) => ({
               id: r.id,
               name: recipientName(r),
@@ -2475,6 +2476,19 @@ export function createApplication({
               groups: r.distributionGroups || [],
             }))
             .sort((a, b) => a.name.localeCompare(b.name)),
+          // SMS: every household with its plain-words status, so the page can
+          // say who is textable and what the others are waiting on.
+          ...(sms && {
+            households: rows
+              .map((r) => ({
+                id: r.id,
+                name: recipientName(r),
+                phone: r.phone || "",
+                groups: r.distributionGroups || [],
+                status: smsStatus(ctx.state, r),
+              }))
+              .sort((a, b) => a.name.localeCompare(b.name)),
+          }),
         };
       }
       if (path === "/api/admin/mail/batch-draft" && method === "POST") {
@@ -2609,6 +2623,7 @@ export function createApplication({
             ...d,
             delivery: ctx.state.smsDelivery?.[d.providerId]?.status || null,
           })),
+          batches: sms.batches(ctx.state),
           sendingEnabled: sms.enabled,
           pendingOptOutSync: Object.values(
             ctx.state.smsSuppression || {},
@@ -2620,6 +2635,21 @@ export function createApplication({
         if (body.confirm !== true) throw error(422, "CONFIRM_RECIPIENT");
         return sms.send(body.id, body.reviewToken, session.actor);
       }
+      if (path === "/api/admin/sms/test" && method === "POST") {
+        if (body.confirm !== true) throw error(422, "CONFIRM_RECIPIENT");
+        return sms.sendTest({ phone: body.phone, text: safeText(body.text, 1600) }, session.actor);
+      }
+      if (path === "/api/admin/sms/batch" && method === "GET") {
+        const batch = sms.batches(ctx.state).find((b) => b.id === req.query?.id);
+        if (!batch) throw error(404, "NOT_FOUND");
+        return batch;
+      }
+      if (path === "/api/admin/sms/batch/confirm" && method === "POST")
+        return sms.confirmBatch(body.id, body.count, session.actor);
+      if (path === "/api/admin/sms/batch/send" && method === "POST")
+        return sms.sendBatch(body.id, session.actor);
+      if (path === "/api/admin/sms/batch/cancel" && method === "POST")
+        return sms.cancelBatch(body.id, session.actor);
       if (path === "/api/admin/sms/sync" && method === "POST")
         return sms.retrySync();
       if (path === "/api/admin/invitations/issue-batch" && method === "POST")

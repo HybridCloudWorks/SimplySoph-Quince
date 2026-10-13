@@ -124,12 +124,12 @@ test("concurrent SMS sends persist one attempt and never double-send", async () 
   assert.equal(f.sends(), 1);
   assert.equal((await f.ledger.read()).smsDrafts.draft.state, "accepted");
 });
-test("SMS dispatch rechecks fresh Notion consent and destination", async () => {
+test("SMS dispatch rechecks the fresh Notion row: opt-out, phone, groups, archived", async () => {
   for (const change of [
     (r) => (r.smsOptOut = true),
     (r) => (r.phone = "+14165552671"),
     (r) => (r.distributionGroups = []),
-    (r) => (r.smsConsentAt = "2027-01-01"),
+    (r) => (r.archived = true),
   ]) {
     const f = await fixture(),
       p = await f.sms.review("draft");
@@ -332,10 +332,15 @@ test("a delayed distinct START cannot undo newer STOP; HELP does not enroll", as
     "STOP",
   );
 });
-test("START fails closed during Notion outage and rejects future provider timestamps", async () => {
-  const f = await fixture({ notionFails: true });
-  await f.callback("inbound", { Body: "START", OptOutType: "START" });
-  assert.ok((await f.ledger.read()).smsSuppression[hash(f.row.phone)]);
+test("a START whose Notion mirror failed is still consent; the mirror is retried; future timestamps are refused", async () => {
+  const f = await fixture({ notionFails: true, keywordConsent: false });
+  await f.callback("inbound", { Body: "SOPHIA", OptOutType: "START" });
+  const state = await f.ledger.read();
+  assert.equal(state.smsSuppression[hash(f.row.phone)].syncState, "pending");
+  assert.equal(state.smsConsentPhones[f.row.id], f.row.phone);
+  // The guest texted the keyword: that is the consent record, Notion only mirrors it.
+  assert.ok((await f.sms.review("draft")).reviewToken);
+  assert.equal((await f.sms.retrySync()).attempted, 1);
   const future = await fixture({ inboundAt: Date.parse("2027-01-01") });
   await assert.rejects(
     () => future.callback("inbound", { Body: "START", OptOutType: "START" }),
@@ -393,4 +398,96 @@ test("keyword opt-in and opt-out are logged as consent events without the phone 
   assert.equal(log[0].data.phoneHash, hash(f.row.phone));
   const text = JSON.stringify(log);
   assert.ok(!text.includes(f.row.phone) && !text.toLowerCase().includes("please"));
+});
+
+test("the website sends the registered welcome text on a first START; Twilio covers re-subscribes", async () => {
+  const f = await fixture({ keywordConsent: false });
+  const body = (r) => r.binary.toString();
+  // First SOPHIA: Twilio stays silent, so the TwiML carries the confirmation.
+  const first = await f.callback("inbound", { Body: "SOPHIA", OptOutType: "START" });
+  assert.match(body(first), /<Message>Simply Soph Media: You&apos;re subscribed[^<]*Msg &amp; data rates[^<]*<\/Message>/);
+  // Replayed webhook for the same message: no second welcome.
+  assert.match(body(await f.callback("inbound", { Body: "SOPHIA", OptOutType: "START" })), /<Response\/>/);
+  // After a STOP, Twilio's own opt-in reply answers START, so the website stays quiet.
+  const again = await fixture({ keywordConsent: false });
+  await again.ledger.transaction((s) => {
+    s.smsPreferences = {
+      [hash(f.row.phone)]: { phone: f.row.phone, type: "STOP", at: Date.parse("2026-09-01"), messageId: "SM" + "0".repeat(32) },
+    };
+  });
+  assert.match(
+    body(await again.callback("inbound", { Body: "START", OptOutType: "START", MessageSid: "SM" + "c".repeat(32) })),
+    /<Response\/>/,
+  );
+  assert.equal((await again.ledger.read()).smsPreferences[hash(f.row.phone)].type, "START");
+  // HELP and STOP never get a website reply (Twilio answers those).
+  assert.match(body(await f.callback("inbound", { Body: "HELP", OptOutType: "HELP", MessageSid: "SM" + "d".repeat(32) })), /<Response\/>/);
+  assert.match(body(await f.callback("inbound", { Body: "STOP", OptOutType: "STOP", MessageSid: "SM" + "b".repeat(32) })), /<Response\/>/);
+});
+
+test("a test text to the organizer's phone needs only the keyword receipt, no guest row", async () => {
+  const f = await fixture({ keywordConsent: false });
+  const phone = "+18175550123";
+  const text = "Simply Soph Media: Test. Reply STOP to opt out.";
+  await assert.rejects(() => f.sms.sendTest({ phone, text }, "admin"), (e) => e.code === "SMS_NOT_SUBSCRIBED");
+  await assert.rejects(() => f.sms.sendTest({ phone: "+525512345678", text }, "admin"), (e) => e.code === "SMS_COUNTRY_NOT_ALLOWED");
+  await f.ledger.transaction((s) => {
+    s.smsPreferences = { [hash(phone)]: { phone, type: "START", at: 1, messageId: "SM" + "e".repeat(32), syncState: "pending" } };
+  });
+  await assert.rejects(() => f.sms.sendTest({ phone, text: "Test" }, "admin"), (e) => e.code === "SMS_BRAND_OR_STOP_MISSING");
+  const r = await f.sms.sendTest({ phone: "+1 (817) 555-0123", text }, "admin");
+  assert.equal(r.state, "accepted");
+  assert.equal(f.sends(), 1);
+  const draft = (await f.ledger.read()).smsDrafts[r.id];
+  assert.equal(draft.test, true);
+  assert.equal(draft.householdId, null);
+  // STOP afterwards blocks the next test to that phone.
+  await f.ledger.transaction((s) => {
+    s.smsPreferences[hash(phone)] = { phone, type: "STOP", at: 2 };
+  });
+  await assert.rejects(() => f.sms.sendTest({ phone, text }, "admin"), (e) => e.code === "SMS_OPTED_OUT");
+  assert.equal(f.sends(), 1);
+});
+
+test("a batch sends only after the typed count matches; stale drafts are set aside, not sent", async () => {
+  const f = await fixture();
+  const other = "+14155552672";
+  await f.ledger.transaction((s) => {
+    s.smsDrafts.second = { ...s.smsDrafts.draft, id: "second", householdId: "nobody", to: other };
+    s.smsDrafts.other = { ...s.smsDrafts.draft, id: "other", campaignId: "elsewhere" };
+  });
+  await assert.rejects(() => f.sms.sendBatch("campaign", "admin"), (e) => e.code === "BATCH_NOT_CONFIRMED");
+  await assert.rejects(() => f.sms.confirmBatch("campaign", 1, "admin"), (e) => e.code === "CONFIRM_COUNT_MISMATCH");
+  await assert.rejects(() => f.sms.confirmBatch("missing", 1, "admin"), (e) => e.status === 404);
+  const confirmed = await f.sms.confirmBatch("campaign", 2, "admin");
+  assert.equal(confirmed.state, "confirmed");
+  await assert.rejects(() => f.sms.confirmBatch("campaign", 2, "admin"), (e) => e.code === "BATCH_NOT_DRAFT");
+  const r = await f.sms.sendBatch("campaign", "admin");
+  // "second" has no consent binding: skipped and archived, never sent.
+  assert.deepEqual([r.accepted, r.skipped, r.remaining, r.done], [1, 1, 0, true]);
+  assert.equal(f.sends(), 1);
+  const s = await f.ledger.read();
+  assert.equal(s.smsDrafts.draft.state, "accepted");
+  assert.equal(s.smsDrafts.second.archived, true);
+  assert.equal(s.smsDrafts.other.state, "draft");
+  const list = f.sms.batches(s);
+  assert.deepEqual(
+    list.map((b) => [b.id, b.state, b.total, b.remaining]),
+    [["campaign", "done", 2, 0], ["elsewhere", "draft", 1, 1]],
+  );
+  // Nothing in a done batch can be sent twice.
+  await assert.rejects(() => f.sms.sendBatch("campaign", "admin"), (e) => e.code === "BATCH_NOT_CONFIRMED");
+  const cancelled = await f.sms.cancelBatch("elsewhere", "admin");
+  assert.equal(cancelled.state, "cancelled");
+  assert.equal((await f.ledger.read()).smsDrafts.other.archived, true);
+});
+
+test("a STOP that lands between review and send wins inside the send transaction", async () => {
+  const f = await fixture();
+  const p = await f.sms.review("draft");
+  await f.ledger.transaction((s) => {
+    s.smsPreferences[hash(f.row.phone)] = { phone: f.row.phone, type: "STOP", at: Date.parse("2026-09-27T01:00:00Z") };
+  });
+  await assert.rejects(() => f.sms.send("draft", p.reviewToken, "admin"), (e) => e.code === "SMS_OPTED_OUT");
+  assert.equal(f.sends(), 0);
 });

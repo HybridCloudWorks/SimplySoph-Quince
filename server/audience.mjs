@@ -46,10 +46,9 @@ export function audience(rows, selection, state, channel = "email") {
         smsAllowed = smsKeywordConsent(state, r.id, destination);
       } catch {}
     }
+    // SMS: the keyword receipt decides; a hand-ticked SMS Opt Out in Notion is honored.
     const eligible =
-      channel === "email"
-        ? validEmail(destination)
-        : smsAllowed && r.smsConsent && r.smsConsentAt && !r.smsOptOut;
+      channel === "email" ? validEmail(destination) : smsAllowed && !r.smsOptOut;
     if (!eligible || seen.has(destination)) continue;
     seen.add(destination);
     recipients.push({ ...r, destination, displayName: recipientName(r) });

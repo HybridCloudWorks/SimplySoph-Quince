@@ -1,6 +1,6 @@
 # WhatsApp Activation Review
 
-Treat the sender and template status below as unverified until re-checked through the Twilio API (see [twilio-setup.md](twilio-setup.md)). WhatsApp operates independently of the SMS A2P campaign, which was rejected with error 30909 and is being resubmitted. International guests receive a household-specific private website link; replying in WhatsApp does not submit an RSVP or sign into the website.
+Treat the sender and template status below as unverified until re-checked through the Twilio API (see [twilio-setup.md](twilio-setup.md)). WhatsApp operates independently of the SMS A2P campaign, which Twilio approved in October 2026 after a 30909 rejection and resubmission. International guests receive a household-specific private website link; replying in WhatsApp does not submit an RSVP or sign into the website.
 
 ## Consent And First Invitations
 
@@ -47,7 +47,7 @@ Routes /api/whatsapp/inbound and /api/whatsapp/status validate signatures and th
 3. Check Notion projection and local suppression.
 4. Preview one eligible international test recipient and private link.
 5. Enable restricted sending only for an authorized acceptance test; verify delivery, website RSVP, Notion and receipt email.
-6. Enable reviewed dispatch after these checks; keep SMS independently disabled until its campaign is approved.
+6. Enable reviewed dispatch after these checks; keep SMS independently disabled until its own acceptance steps in [twilio-setup.md](twilio-setup.md) pass.
 
 February 1, 2027 is review/export, not automatic deletion. Inventory templates, consent records, callbacks and credentials for reviewed cleanup. Preserve shared Twilio/Meta accounts and the owner-provided number.
 
