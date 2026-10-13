@@ -68,6 +68,8 @@ npm start       # http://127.0.0.1:4173/
 
 Without the production settings every page works and sign-in and RSVP are switched off. The settings are listed in [.env.example](.env.example) and explained in [docs/deployment.md](docs/deployment.md). `npm run emails:preview` shows sample emails without sending anything.
 
+`npm run test:browser` runs the guest RSVP and administrator sign-in journeys in Chromium against the built pages and the real API, with in-memory stand-ins for storage, Notion and email and only made-up guests ([tests/browser/harness.mjs](tests/browser/harness.mjs)). Install the browser once with `npx playwright install chromium`.
+
 The pages are built from `site/` by `scripts/build-pages.mjs`; the RSVP and sign-in service lives in `server/`. Pull requests run the checks. Merging to `main` publishes the static website automatically once the checks pass; the API is deployed by hand, as described in [docs/deployment.md](docs/deployment.md).
 
 ## Contributing, support and security

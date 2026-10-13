@@ -20,7 +20,7 @@ npm start       # http://127.0.0.1:4173/
 
 1. Branch from `main`.
 2. Keep each pull request to one purpose, and reference the issue it addresses (`Refs #123`, or `Closes #123` when merging completes the work).
-3. Add or update tests in `tests/` for behaviour you change. `npm run check` must pass; the same command runs on every pull request.
+3. Add or update tests in `tests/` for behaviour you change. `npm run check` must pass; the same command runs on every pull request. Changes to the RSVP or sign-in pages should also pass `npm run test:browser`, the browser journeys in `tests/browser/` (install Chromium once with `npx playwright install chromium`); they run on every pull request too.
 4. Update the guide that describes what you changed (the README lists them).
 
 `main` only accepts pull requests whose checks pass. Merging publishes the website, so the owner merges once the change has been reviewed.
