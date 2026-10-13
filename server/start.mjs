@@ -34,7 +34,7 @@ if (env.EVENT_BUCKET) {
     !Number.isFinite(Date.parse(env.DATA_RETENTION_DATE))
   )
     throw new Error(
-      "Missing required production configuration; consult DEPLOYMENT.md",
+      "Missing required production configuration; consult docs/deployment.md",
     );
   if (!/^https:\/\/[^/]+$/.test(origin))
     throw new Error("HTTPS origin required");

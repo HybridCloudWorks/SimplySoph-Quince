@@ -1,5 +1,7 @@
 # Prioritized implementation plan and production-readiness checklist
 
+> **Design record (October 8, 2026).** Kept for reference. Later owner decisions in [access-model.md](access-model.md) changed some of these recommendations; the guides listed in the [README](../../README.md) describe how the website works today.
+
 Dates assume today is **Oct 8, 2026**, the RSVP deadline is **Nov 15** (moved from Oct 31 on Oct 9), and the event is **Jan 15, 2027**. Effort: S ≤ ½ day, M ≈ 1–2 days, L ≥ 3 days.
 
 ## Phase 0: done in this change
@@ -11,7 +13,7 @@ Dates assume today is **Oct 8, 2026**, the RSVP deadline is **Nov 15** (moved fr
   - Public `/sms/` CTA with the verbatim auto-replies; separate `/sms-terms/` page.
   - Carrier-standard privacy wording.
   - Resubmission values, plus tests that keep them in sync with the code.
-- `DEPLOYMENT.md` rewritten from the code. The full set of 27 variables is documented.
+- [deployment.md](../deployment.md) rewritten from the code. The full set of 27 variables is documented.
 - Stale Twilio and WhatsApp docs removed or corrected. `.env.example` completed, with the personal email removed.
 - 144/144 tests and 66/66 document checks passed at the end of Phase 0.
 
@@ -29,7 +31,7 @@ Code items 2–8 are **done** on this branch (156/156 tests, 66/66 documents). I
 | 6 | Notion pacing (2.5 req/s), 429/Retry-After retry, no retry of page creates on 5xx, 30 s roster cache, fresh reads at decision points | **Done** |
 | 7 | Per-household status (no link, revoked, created, emailed, opened, attending, declined), status filter with counts, dashboard funnel, `openedAt` | **Done** |
 | 8 | Copy fixes: corrupted Spanish characters, stale "original code" advice, English-only links, consistent informal Spanish, no Notion/UUID shown to guests | **Done** |
-| 9 | Run the **acceptance gate** in `DEPLOYMENT.md` end to end with the disposable household | Owner |
+| 9 | Run the **acceptance gate** in [deployment.md](../deployment.md) end to end with the disposable household | Owner |
 | 10 | DMARC: published at `p=none` (verified 2026-10-09). Owner, optional: add `rua=` reports. Owner: restore the DKIM selector2 CNAME in Cloudflare | Owner |
 
 ## Phase 2, P1: before the RSVP deadline (target Oct 16–24)
@@ -43,7 +45,7 @@ Code items 2–8 are **done** on this branch (156/156 tests, 66/66 documents). I
 | 11 | **Done:** batch invitations and reminders. Preview recipients, skips and one sample per language, then a typed-count confirm; the open tab sends groups of 10 at about 28/min; Stop and Continue; bulk link creation for households without links. Owner rule: every send has a person in the loop, and single sends stay available | M | UX, Arch |
 | 12 | **Done:** open admin tabs check `/api/admin/pulse` every 30 s while visible (one ledger read, no Notion). The dashboard and inbox redraw (never over a field being typed in), the guest list shows a refresh banner so selections survive, and the Notifications link shows an unread count. RSVPs land in the inbox in the same save, **in-app only, never emailed** | S–M | Arch, UX |
 | 13 | **Done:** append-only `eventLog` written in the same transaction as each change (invitation issued/opened/revoked, RSVP, email/SMS/WhatsApp delivery, keyword consent, role changes, Notion sync), numbered by `eventSeq`, capped at 20,000 entries, and mirrored to Cloud Logging once per committed transaction. IDs and statuses only; phones appear as hashes | M | Arch |
-| 14 | **Code done:** `POST /api/internal/drain` retries pending RSVP → Notion syncs and SMS/WhatsApp consent projections, authenticated by a Google-signed OIDC token for one service account (off until configured). **Owner:** create the service account, set the two variables and the 10-minute Cloud Scheduler job (DEPLOYMENT.md "Scheduled drain") | S | Notion |
+| 14 | **Code done:** `POST /api/internal/drain` retries pending RSVP → Notion syncs and SMS/WhatsApp consent projections, authenticated by a Google-signed OIDC token for one service account (off until configured). **Owner:** create the service account, set the two variables and the 10-minute Cloud Scheduler job ([deployment.md](../deployment.md) "Scheduled drain") | S | Notion |
 | 15 | **Done:** owner-gated 24-hour authenticator setup with reset (M2); a fresh owner code to grant admin, and removal drops the authenticator (M3, L3); owner-only Notion schema and import (part of M1); append-only role history; in-app setup notices; constant-time CSRF check (L4); dead `invitation-security.mjs` removed (L5). Full permission sets deferred: owner/admin split covers the risky actions | M | Security |
 | 16 | **Done:** the confirmation page adapts to the answer. Attending households get calendar links for only the events they attend, directions and an optional WhatsApp sign-up. Declining households get a warm note and the guestbook. Both show the edit deadline (read-only after it). The SMS keyword call to action is deliberately **not** repeated here: the registered campaign names `/sms/` as the only place it appears | S–M | UX |
 | 17 | Invited-event checkboxes and `Website invitation` status in Notion | M | Notion |

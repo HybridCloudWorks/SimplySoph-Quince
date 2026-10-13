@@ -1,5 +1,7 @@
 # Validation record — complete-site branch
 
+> **History.** Evidence recorded on September 27, 2026, before the website went live. It does not describe the current site or its tests; start from the [README](../../README.md).
+
 This is implementation and local-test evidence, **not a claim that production RSVP/email is live**.
 
 Activation follow-up: 61 tests now pass, including production startup rejection for each missing Microsoft mail credential. The Docker image was built and started locally: health reported preview, Details returned 200, runtime uid was 1000, and private work/Git/skill directories were absent. The test container was stopped and removed. No real guest registration or email was attempted.
@@ -33,7 +35,7 @@ Using the actual browser against the local build:
 - Existing Microsoft shared mailbox and organizer delegation are recorded. Mailbox-scoped application authentication, email DNS authentication review and a real reviewed-recipient test are still required. No email was sent.
 - Family content and retention date remain outstanding. Routes with missing content state that it is pending. Menu choices cannot be finalized until supplied.
 
-Follow DEPLOYMENT.md’s live acceptance gate before distributing working invitations. Keep this PR draft while provider setup and these tests remain incomplete.
+Follow [deployment.md](../deployment.md)’s live acceptance gate before distributing working invitations. Keep this PR draft while provider setup and these tests remain incomplete.
 
 ## Earlier site review — September 27, 2026 (before publication)
 

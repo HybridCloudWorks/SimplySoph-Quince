@@ -1,17 +1,17 @@
-> Historical planning/deployment record. The new multi-page branch is described by README.md, PAGE-SCOPE.md and DEPLOYMENT.md. Five-page/demo-only descriptions below refer to the earlier published release, not the current implementation.
+> Historical planning/deployment record. The new multi-page branch is described by [README.md](../../README.md), [page-scope.md](../page-scope.md) and [deployment.md](../deployment.md). Five-page/demo-only descriptions below refer to the earlier published release, not the current implementation.
 
 # Google hosting, mail, and secrets
 
-The family approved Google hosting and subsequently confirmed its existing Microsoft 365 email; preserve that mail setup. This supersedes the Resend-first recommendation. The family already owns `simplysoph.com`; the event will use **misxv.simplysoph.com**. No domain purchase or transfer is needed. The static design preview is published on dedicated Firebase Hosting site `misxv-simplysoph`; the event custom-domain association and two DNS records have been created. No Workspace subscription was purchased or live email sent. See `PUBLISHING.md` for current status; the API plan below remains future work.
+The family approved Google hosting and subsequently confirmed its existing Microsoft 365 email; preserve that mail setup. This supersedes the Resend-first recommendation. The family already owns `simplysoph.com`; the event will use **misxv.simplysoph.com**. No domain purchase or transfer is needed. The static design preview is published on dedicated Firebase Hosting site `misxv-simplysoph`; the event custom-domain association and two DNS records have been created. No Workspace subscription was purchased or live email sent. See [publishing.md](../publishing.md) for current status; the API plan below remains future work.
 
 ## Confirmed target and discovery — September 26, 2026
 
-- Account: `saulpatinojr@gmail.com`. Browser sign-in refreshed successfully.
-- Existing project: **SimplySoph**, `simplysoph-66c78`, project number `424903425639`. Live reads confirm ACTIVE and billing enabled; do not create a replacement project or attach a different billing account.
-- Explicitly set both `--project=simplysoph-66c78` and `--billing-project=simplysoph-66c78` alongside the account in commands. The workstation has an unrelated inherited quota-project setting; per-command overrides resolved it without changing the global configuration.
-- Existing infrastructure includes three Cloud Run services in us-central1, two artifact repositories, ten global secrets, a default Firestore database, service identities, and six storage buckets. They predate this event and are protected. Only metadata was read, not secret values or guest records. A partial baseline is saved locally outside the repository. Full baseline and shared-resource checks remain pending.
+- Account: the project owner's Google account. Browser sign-in refreshed successfully.
+- Existing project: **SimplySoph**, `simplysoph-66c78`. Live reads confirm ACTIVE and billing enabled; do not create a replacement project or attach a different billing account.
+- Explicitly set both `--project=simplysoph-66c78` and `--billing-project=simplysoph-66c78` alongside the account in commands, rather than relying on local gcloud defaults.
+- The shared project already holds other services, secrets and storage that predate this event and are protected. Only metadata was read, not secret values or guest records.
 - Public DNS reports `ns1.dns-parking.com` and `ns2.dns-parking.com` for the root domain; the event CNAME and certificate TXT now resolve from Hostinger's authoritative nameserver. Existing DNS records were preserved.
-- **Every new resource/change must have a cleanup record.** See `CLEANUP.md` and `ops/event-resources.json`; use dedicated event resources and preserve this shared project.
+- **Every new resource/change must have a cleanup record.** See [cleanup.md](../cleanup.md) and `ops/event-resources.json`; use dedicated event resources and preserve this shared project.
 
 ## Selected direction
 
@@ -52,17 +52,17 @@ Google Vault is for Workspace retention/eDiscovery. It is not the place to store
 6. Inspect the Notion database after access is supplied. Map property types/IDs and preserve the records; test on one sample household. A website integration token and a chat connector are separate forms of access.
 7. Deploy an authenticated preview first, verify the revision and logs, then configure the guest-facing access path when real invitations are ready. Do not mistake robots/noindex for authentication. The existing source contains invitation/event details and should not acquire real guest data.
 8. Configure the selected custom-domain hosting path and only its verified DNS records for `misxv.simplysoph.com`. Record prior DNS state, exact name/type/value, certificate/mapping resources and their cleanup steps. Do not transfer the domain or change nameservers.
-9. Inspect the existing Microsoft 365 tenant/licenses; add an event shared mailbox if appropriate, preserve existing mail DNS and establish mailbox-scoped Graph sending access. See `M365-EMAIL.md`.
+9. Inspect the existing Microsoft 365 tenant/licenses; add an event shared mailbox if appropriate, preserve existing mail DNS and establish mailbox-scoped Graph sending access. See [m365-email.md](m365-email.md).
 10. Implement/test private invitation access, durable RSVP commits, Notion reconciliation, and approved email dispatch before opening live RSVPs. Verify one full end-to-end journey with an authorized test recipient.
 
 Account, project and hostname are now known. Finalize region, limits, custom-domain hosting path and sender before their respective resource commands. Do not use the CLI's active account/project as an implicit deployment target.
 
 ## Email follows the existing Microsoft 365 setup
 
-Use `M365-EMAIL.md` as the current email implementation plan. It supersedes the earlier Gmail/Workspace and Resend proposals. Hostinger manages DNS; Microsoft 365 handles mail; Google hosts the app and stores integration credentials. Reuse the provider-independent email templates and durable outbox design, with Graph-specific acceptance/retry handling.
+Use [m365-email.md](m365-email.md) as the current email implementation plan. It supersedes the earlier Gmail/Workspace and Resend proposals. Hostinger manages DNS; Microsoft 365 handles mail; Google hosts the app and stores integration credentials. Reuse the provider-independent email templates and durable outbox design, with Graph-specific acceptance/retry handling.
 
 ## Inputs still needed
 
 Monthly hosting budget for future API work; Microsoft 365 app authorization (event mailbox and organizer permissions are configured); Notion page/database URL and integration access; preferred retention window after the event. No secret value is requested in chat. Google account/project/billing/domain inputs are already resolved.
 
-Microsoft 365 mailbox discovery and creation are recorded in `M365-EMAIL.md`. This does not complete the broader Google resource baseline.
+Microsoft 365 mailbox discovery and creation are recorded in [m365-email.md](m365-email.md). This does not complete the broader Google resource baseline.

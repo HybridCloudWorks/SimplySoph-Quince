@@ -104,4 +104,4 @@ Find the live identifiers in `ops/event-resources.json`. Never put secret values
 
 ### Retirement
 
-After the family approves retirement: turn off both flags, settle in-flight messages, export approved records privately, release the event number, delete only the event Messaging Service(s), revoke the event API key, remove event secret versions and bindings, and review remaining charges. Preserve shared Twilio/Meta accounts. Follow `CLEANUP.md` and reconcile `ops/event-resources.json` before any deletion.
+After the family approves retirement: turn off both flags, settle in-flight messages, export approved records privately, release the event number, delete only the event Messaging Service(s), revoke the event API key, remove event secret versions and bindings, and review remaining charges. Preserve shared Twilio/Meta accounts. Follow [cleanup.md](cleanup.md) and reconcile `ops/event-resources.json` before any deletion.

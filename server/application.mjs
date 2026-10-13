@@ -684,7 +684,7 @@ export function createApplication({
   }
   // Sign-in link requests hold their request slot for the 0.9 s timing floor
   // (a wait that uses no CPU). Cloud Run serves 40 requests per instance
-  // (--concurrency=40, DEPLOYMENT.md); at most signInConcurrency of them may be
+  // (--concurrency=40, docs/deployment.md); at most signInConcurrency of them may be
   // sign-in requests, the rest get a retryable SIGN_IN_BUSY. Blocking sign-in
   // then takes a sustained flood (about 18 requests a second per instance), and
   // the other 24 slots stay free for RSVPs and admin pages (re-audit of SEC-8).

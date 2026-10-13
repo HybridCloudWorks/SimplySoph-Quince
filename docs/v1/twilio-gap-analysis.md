@@ -1,5 +1,7 @@
 # Twilio gap analysis
 
+> **History.** Snapshot from October 8, 2026, before carriers approved the SMS campaign. The current state of SMS is in [twilio-setup.md](../twilio-setup.md) and of WhatsApp in [whatsapp-activation.md](../whatsapp-activation.md).
+
 Trigger: Twilio rejected the A2P campaign with **30909, "Message Flow or Call to Action incomplete/unverified"**. Baseline assumption: no Twilio work is verified.
 
 - **Fixed in this change:** the code, the public pages and the docs.
@@ -45,5 +47,5 @@ Trigger: Twilio rejected the A2P campaign with **30909, "Message Flow or Call to
 - `docs/twilio-runtime-status.md`: deleted. It was a point-in-time log with two conflicting service IDs and said the campaign was "IN_PROGRESS".
 - `docs/whatsapp-setup.md`: deleted. It said the transport was "not yet implemented", which is false.
 - `docs/twilio-setup.md`: rewritten as the single runbook. The toll-free plan, the "trial account" log and the wrong secret names are gone.
-- `DEPLOYMENT.md`: rewritten. It said STOP/HELP and callbacks were "pending" and SMS sending was "disabled in code". Both were wrong.
-- `CLEANUP.md`: said "no Twilio resources have been provisioned". Corrected.
+- [deployment.md](../deployment.md): rewritten. It said STOP/HELP and callbacks were "pending" and SMS sending was "disabled in code". Both were wrong.
+- [cleanup.md](../cleanup.md): said "no Twilio resources have been provisioned". Corrected.

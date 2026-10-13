@@ -2,7 +2,7 @@
 
 The multi-page website is live at **https://misxv.simplysoph.com** and **https://misxv-simplysoph.web.app**. Each build contains every English and Spanish page plus a 404 document. Normal HTTPS validation succeeds on the custom domain.
 
-The Cloud Run RSVP and sign-in service is deployed and connected through `/api/**`, and unauthenticated private endpoints reject access. Before distributing invitations, run the live acceptance checklist in DEPLOYMENT.md: real email delivery, administrator and guest sign-in, Notion projection and media moderation. Those checks do not block publishing page improvements.
+The Cloud Run RSVP and sign-in service is deployed and connected through `/api/**`, and unauthenticated private endpoints reject access. Before distributing invitations, run the live acceptance checklist in [deployment.md](deployment.md): real email delivery, administrator and guest sign-in, Notion projection and media moderation. Those checks do not block publishing page improvements.
 
 ## Automatic publishing
 
@@ -18,7 +18,7 @@ PR #2 is merged into main and its feature branch is retired. Production publishi
 
 ## Exact hosting target
 
-- Google account: `saulpatinojr@gmail.com`
+- Google account: the project owner's Google account (shown as `<project-owner-account>` below); the HybridCloudWorks account does not have access
 - Existing project: `simplysoph-66c78`
 - Event site: `misxv-simplysoph` (USER_SITE)
 - Hosting target in `.firebaserc`: `misxv`
@@ -28,8 +28,8 @@ PR #2 is merged into main and its feature branch is retired. Production publishi
 From this repository with the intended account authenticated:
 
 ```powershell
-npx -y firebase-tools@15.31.0 deploy --only hosting:misxv --project simplysoph-66c78 --account saulpatinojr@gmail.com --non-interactive --dry-run
-npx -y firebase-tools@15.31.0 deploy --only hosting:misxv --project simplysoph-66c78 --account saulpatinojr@gmail.com --non-interactive
+npx -y firebase-tools@15.31.0 deploy --only hosting:misxv --project simplysoph-66c78 --account <project-owner-account> --non-interactive --dry-run
+npx -y firebase-tools@15.31.0 deploy --only hosting:misxv --project simplysoph-66c78 --account <project-owner-account> --non-interactive
 ```
 
 The Hosting predeploy hook runs `npm run check`, which builds pages and runs route/asset and behavior checks. Do not use an unscoped `firebase deploy` in this shared project. Firebase CLI 15.31.0 performed the deployment. Node 24 is the CI and API runtime target; guest pages are static and the dedicated Cloud Run container handles API requests. Gemini and a new load balancer are not required. Existing shared billing still applies; this does not promise zero charges.
@@ -47,10 +47,10 @@ Firebase may need time to observe DNS and issue its certificate. Do not disable 
 
 ## Verify after each release
 
-Check Home, Details, RSVP, FAQ, Spanish and Privacy over HTTPS, an unknown route for HTTP 404, loaded artwork and the Friday January 15, 2027 date. Verify `/api/config`, private/no-store cache headers, and unauthenticated rejection on private endpoints; complete the acceptance checklist in DEPLOYMENT.md before distributing invitations. Confirm X-Release-Commit matches the checked push for automatic releases. Check on a phone before guest distribution. Search-engine exclusions are not access control. No credentials or guest records belong in static output.
+Check Home, Details, RSVP, FAQ, Spanish and Privacy over HTTPS, an unknown route for HTTP 404, loaded artwork and the Friday January 15, 2027 date. Verify `/api/config`, private/no-store cache headers, and unauthenticated rejection on private endpoints; complete the acceptance checklist in [deployment.md](deployment.md) before distributing invitations. Confirm X-Release-Commit matches the checked push for automatic releases. Check on a phone before guest distribution. Search-engine exclusions are not access control. No credentials or guest records belong in static output.
 
 ## Rollback and retirement
 
 For a content rollback, select this exact event site in Firebase Hosting release history and roll back to a known working prior release, or redeploy a reviewed source revision to `hosting:misxv`. The initial release has no prior event version.
 
-For retirement, run `npm run cleanup:plan` or the manual GitHub cleanup-review workflow, export anything the family wants to retain, then review the inventory. Remove the two event DNS records, detach the event custom domain, and disable or delete only the dedicated event site as appropriate. Permanent site deletion is irreversible and its ID cannot be reused. Preserve the shared project/default site. The checklist includes the event mailbox and its delegation as separate resources. See `CLEANUP.md` for complete controls. No automatic deletion is scheduled.
+For retirement, run `npm run cleanup:plan` or the manual GitHub cleanup-review workflow, export anything the family wants to retain, then review the inventory. Remove the two event DNS records, detach the event custom domain, and disable or delete only the dedicated event site as appropriate. Permanent site deletion is irreversible and its ID cannot be reused. Preserve the shared project/default site. The checklist includes the event mailbox and its delegation as separate resources. See [cleanup.md](cleanup.md) for complete controls. No automatic deletion is scheduled.

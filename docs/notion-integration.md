@@ -8,7 +8,7 @@ The existing database contains one household per row. Organizer-controlled `Adul
 
 `RSVP` belongs to the family. When a household answers on the website, the website sets it to Yes (anyone attending) or No. A family member can also type Yes or No for an answer taken by phone; the website then counts Notion's head counts for that household. Other values, such as Not sent, are not answers.
 
-`Email` and the comma-separated `Additional Emails` decide who can sign in for a household, and `Administrator Eligible` on a row's main `Email` makes that person an administrator. See ACCOUNT-ACCESS.md.
+`Email` and the comma-separated `Additional Emails` decide who can sign in for a household, and `Administrator Eligible` on a row's main `Email` makes that person an administrator. See [account-access.md](account-access.md).
 
 Before issuing links, the family reviews each household and marks eligible ceremony, dinner and dance events in the admin portal. A private 256-bit link is generated and stored as a hash. Guests cannot change their invited capacity, household identity or event eligibility. Link rotation and revocation invalidate earlier guest sessions.
 

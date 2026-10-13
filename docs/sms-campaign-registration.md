@@ -6,7 +6,7 @@
 - **Program version:** 2026-10-09
 - **Status:** **Approved.** Twilio's approval email (registered with carriers) arrived by 2026-10-12, after the 30909 rejection and the 2026-10-09 resubmission below.
 
-These are now the registered values. Keep the `/sms/` call to action, the three replies and the keywords exactly as they are: changing them makes the live program differ from what carriers approved. The samples say Oct 31 because they were written before the RSVP deadline moved; real messages use November 15. Next steps before any guest text are the acceptance steps in [twilio-setup.md](twilio-setup.md).
+These are now the registered values. Keep the `/sms/` call to action, the three replies and the keywords exactly as they are: changing them makes the live program differ from what carriers approved. The samples say Oct 31 because they were written before the RSVP deadline moved; real messages use November 15. How the program is run and checked is in [twilio-setup.md](twilio-setup.md).
 
 ## Why it was rejected (30909)
 

@@ -1,6 +1,6 @@
 # Access model (decision record, October 10, 2026)
 
-**Status:** accepted by the owner. This supersedes the ledger-as-source-of-truth model in `admin-center.md` and the registration and page-permission model in the earlier `ACCOUNT-ACCESS.md`.
+**Status:** accepted by the owner. This supersedes the ledger-as-source-of-truth model in `admin-center.md` and the registration and page-permission model in the earlier [account-access.md](../account-access.md).
 
 ## Context
 
@@ -18,7 +18,7 @@ A seven-agent audit on October 10, 2026 counted 11 sign-in paths and 7 sources o
 
 ## Owner decisions
 
-1. Admins keep an authenticator code. Microsoft can stand in for it only after a linked sign-in that passed the code (see `ACCOUNT-ACCESS.md`).
+1. Admins keep an authenticator code. Microsoft can stand in for it only after a linked sign-in that passed the code (see [account-access.md](../account-access.md)).
 2. Keep one break-glass owner outside Notion.
 3. The admin field is the existing **Administrator Eligible** checkbox. It was not renamed, because the code reads it by that name.
 4. Guest identity is the Notion row's Email, plus an optional **Additional Emails** column.
@@ -30,6 +30,7 @@ A seven-agent audit on October 10, 2026 counted 11 sign-in paths and 7 sources o
 13. (Oct 11, 2026) WhatsApp's automatic replies to the STOP, START and HELP keywords are an approved exception to the person-in-the-loop rule. Any other inbound text gets no automatic reply. The four templates are resubmitted with the November 15 deadline before WhatsApp is switched on; the server refuses to start with WhatsApp on while an approved template shows another date.
 14. (Oct 11, 2026) The GitHub repository stays public. Guest data, invitation links, exports and credentials never go into it (they live in the ledger, Secret Manager and private storage).
 15. (Oct 11, 2026) The owner is the Notion workspace's only member and signs in with a passkey, so Notion's two-step verification (which needs a password) is not used. The Invitations database is shared with invited people only, never "Anyone on the web with link", since it holds guests' contact details and its Email and Administrator Eligible columns decide who can sign in and who is an administrator. The website reads it through its own Notion connection, which general access does not affect.
+16. (Oct 12, 2026) When someone texts SOPHIA for the first time, the website sends the registered SMS welcome text itself, because Twilio only answers an opt-in keyword after a STOP. This is an approved exception to the person-in-the-loop rule (see [twilio-setup.md](../twilio-setup.md#first-time-welcome-text)).
 
 ## Removed
 

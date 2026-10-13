@@ -1,10 +1,12 @@
 # v1.0 design set
 
+> **Design record (October 8, 2026).** Kept for reference. Later owner decisions in [access-model.md](access-model.md) changed some of these recommendations; the guides listed in the [README](../../README.md) describe how the website works today.
+
 Produced on Oct 8, 2026 from six parallel reviews: architecture, Twilio, UX, security, Notion and documentation. Each review read the code; none of them assumed the docs were correct.
 
 | # | Deliverable | Document |
 |---|---|---|
-| 1 | Updated deployment guide | [../../DEPLOYMENT.md](../../DEPLOYMENT.md) |
+| 1 | Updated deployment guide | [../deployment.md](../deployment.md) |
 | 2 | Architecture recommendations | [architecture.md](architecture.md) |
 | 3 | Twilio gap analysis (30909) | [twilio-gap-analysis.md](twilio-gap-analysis.md) · resubmission values: [../sms-campaign-registration.md](../sms-campaign-registration.md) · runbook: [../twilio-setup.md](../twilio-setup.md) |
 | 4 | Invitation/RSVP workflow design | [architecture.md#invitation-and-rsvp-workflow](architecture.md#invitation-and-rsvp-workflow) |

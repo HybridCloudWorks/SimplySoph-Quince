@@ -23,11 +23,11 @@ We evaluated three models:
 | SMS / WhatsApp consent | Guest's keyword message → ledger | `SMS Consent`, `SMS Opt Out` (read-only projection; **no longer an input**) |
 | Event details (venues, times, deadline) | Admin Center → ledger | `Event Summary` page (scheduled one-way update) |
 
-Rule: **`Website …` columns are written only by the app.** A drift check flags Notion edits to the RSVP and head counts. An admin then keeps Notion's version or writes the website's answer again, and a retry never writes over an edit made after the answer (see `NOTION-INTEGRATION.md`).
+Rule: **`Website …` columns are written only by the app.** A drift check flags Notion edits to the RSVP and head counts. An admin then keeps Notion's version or writes the website's answer again, and a retry never writes over an edit made after the answer (see [notion-integration.md](../notion-integration.md)).
 
 ## Gaps found
 
-Status since this review: 1 and 2 are fixed (the client paces requests and honors 429 Retry-After, page views use a short cache, and a scheduled drain retries pending projections every 10 minutes). See `DEPLOYMENT.md`, "Reliability and limits".
+Status since this review: 1 and 2 are fixed (the client paces requests and honors 429 Retry-After, page views use a short cache, and a scheduled drain retries pending projections every 10 minutes). See [deployment.md](../deployment.md), "Reliability and limits".
 
 1. **Rate limits.** The runtime client has no throttle and no 429/Retry-After handling; every non-2xx becomes a 503. Every guest page view reads Notion live. `notion.list()` runs on dashboard, guests and accounts views and on every consent sync.
 2. **Manual retries only.** Pending projections wait until someone clicks Retry sync (batches of 10/25).
@@ -50,7 +50,7 @@ Status since this review: 1 and 2 are fixed (the client paces requests and honor
 | 7 | Drift report: compare Notion `Website response ID`/version with the ledger and re-project | new admin view | P2 |
 | 8 | Planning read from Notion; remove the website write-back | `planning*.mjs` | P2 |
 | 9 | Remove guest CSV import (Notion has its own) or add a stable import ID | `application.mjs` | P2 |
-| 10 | Rewrite `NOTION-INTEGRATION.md` around the ownership table; delete stale `notion-templates/` | docs | P2 |
+| 10 | Rewrite [notion-integration.md](../notion-integration.md) around the ownership table; delete stale `notion-templates/` | docs | P2 |
 
 ## Tests to add
 

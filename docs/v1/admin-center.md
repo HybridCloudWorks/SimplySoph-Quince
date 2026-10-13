@@ -1,5 +1,7 @@
 # Admin Center and authorization model
 
+> **Superseded on October 10, 2026** by [access-model.md](access-model.md). Kept as a design record; see the note under "Target model".
+
 ## What already exists (verified in code)
 
 Admin Mode is largely built, and the server enforces it on every request:
