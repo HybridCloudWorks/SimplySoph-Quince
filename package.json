@@ -20,9 +20,9 @@
     "check": "node scripts/build-pages.mjs && node scripts/check.mjs && node --test tests/*.test.mjs"
   },
   "dependencies": {
-    "@google-cloud/storage": "^8.2.0",
-    "google-auth-library": "^11.1.0",
-    "libphonenumber-js": "^1.13.14",
+    "@google-cloud/storage": "^8.4.0",
+    "google-auth-library": "^11.2.0",
+    "libphonenumber-js": "^1.13.15",
     "qrcode": "^1.5.4",
     "sharp": "^0.35.5",
     "twilio": "^6.1.2"
