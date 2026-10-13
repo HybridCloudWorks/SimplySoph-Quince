@@ -174,7 +174,7 @@ test("a Spanish guest completes the same journey on /es/ and sees the Spanish co
   expect(harness.sent.map((m) => m.to)).toEqual([household.email]);
 });
 
-test("after the deadline a first answer is refused and nothing is saved", async ({
+test("after the deadline a household that never answered sees the closed note, not the form", async ({
   page,
   harness,
   setNow,
@@ -185,8 +185,63 @@ test("after the deadline a first answer is refused and nothing is saved", async 
 
   await page.goto(harness.forBrowser(link));
   await expect(
+    page.getByRole("heading", { name: "RSVPs are closed" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "RSVPs closed on November 15. To answer or change your answer now, please contact the family.",
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Contact the family" }),
+  ).toHaveAttribute("href", "/contact/");
+  await expect(page.getByRole("button", { name: "Review response" })).toHaveCount(0);
+  await expect(page.getByRole("group", { name: "Ceremony", exact: true })).toHaveCount(0);
+  expect(await responsesOf(harness, household)).toEqual([]);
+  expect(harness.notion.patches).toEqual([]);
+  expect(harness.sent).toEqual([]);
+});
+
+test("after the deadline the Spanish page shows the closed note in Spanish", async ({
+  page,
+  harness,
+  setNow,
+}) => {
+  const household = households.morales;
+  const { link } = await harness.issueInvitation(household, { locale: "es" });
+  await setNow(AFTER_DEADLINE);
+
+  await page.goto(harness.forBrowser(link));
+  await expect(
+    page.getByRole("heading", { name: "Las respuestas están cerradas" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "Las respuestas cerraron el 15 de noviembre. Para responder o cambiar tu respuesta, contacta a la familia.",
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Contacta a la familia" }),
+  ).toHaveAttribute("href", "/es/contact/");
+  await expect(page.getByRole("button", { name: "Revisar respuesta" })).toHaveCount(0);
+  expect(await responsesOf(harness, household)).toEqual([]);
+});
+
+test("a form opened before the deadline but saved after it is refused and nothing is saved", async ({
+  page,
+  harness,
+  setNow,
+}) => {
+  const household = households.rivera;
+  const { link } = await harness.issueInvitation(household);
+  await setNow(DEADLINE - 60_000);
+
+  await page.goto(harness.forBrowser(link));
+  await expect(
     page.getByRole("heading", { name: "Rivera Family" }),
   ).toBeVisible();
+  // The deadline passes while the guest is still filling in the form.
+  await setNow(AFTER_DEADLINE);
   await chooseCounts(page, {
     Ceremony: [1, 0],
     Dinner: [1, 0],
@@ -241,14 +296,17 @@ test("a household that answers just before the deadline sees the RSVP closed rig
     0,
   );
 
-  // Going back to the form directly still cannot change the saved answer.
+  // Going back to /rsvp/ directly shows the closed note with the saved answer,
+  // not a form that could be changed.
   await page.goto(harness.url("/rsvp/"));
-  await chooseCounts(page, { Dinner: [0, 0] });
-  await page.getByRole("button", { name: "Review response" }).click();
-  await page.getByRole("button", { name: "Save my RSVP" }).click();
-  await expect(page.getByRole("alert")).toHaveText(
-    "The RSVP deadline has passed. Please contact the family.",
+  await expect(
+    page.getByRole("heading", { name: "RSVPs are closed" }),
+  ).toBeVisible();
+  await expect(page.getByText("Your saved answer:")).toBeVisible();
+  await expect(page.getByRole("main").getByRole("listitem").first()).toContainText(
+    "2 adults/teens, 1 child",
   );
+  await expect(page.getByRole("button", { name: "Review response" })).toHaveCount(0);
   expect(await responsesOf(harness, household)).toEqual([before]);
   expect(harness.notion.page(household.id)["Dinner adults"].number).toBe(2);
 });
