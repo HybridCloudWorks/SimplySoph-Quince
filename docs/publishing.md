@@ -53,6 +53,7 @@ Check Home, Details, RSVP, FAQ, Spanish and Privacy over HTTPS, an unknown route
 
 ## Rollback and retirement
 
-For a content rollback, select this exact event site in Firebase Hosting release history and roll back to a known working prior release, or redeploy a reviewed source revision to `hosting:misxv`. The initial release has no prior event version.
+Each procedure is written once:
 
-For retirement, run `npm run cleanup:plan` or the manual GitHub cleanup-review workflow, export anything the family wants to retain, then review the inventory. Remove the two event DNS records, detach the event custom domain, and disable or delete only the dedicated event site as appropriate. Permanent site deletion is irreversible and its ID cannot be reused. Preserve the shared project/default site. The checklist includes the event mailbox and its delegation as separate resources. See [cleanup.md](cleanup.md) for complete controls. No automatic deletion is scheduled.
+- **Rolling back** the site, and the API with it: [deployment.md → Release and rollback](deployment.md#release-and-rollback).
+- **Retiring** the site after the event (DNS records, custom domain, the event site, the mailbox): [cleanup.md](cleanup.md). Start with `npm run cleanup:plan` or the manual **Prepare event cleanup review** workflow. Nothing is deleted automatically.
