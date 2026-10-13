@@ -24,7 +24,7 @@ Reference: [SendGrid Mail Send API](https://www.twilio.com/docs/sendgrid/api-ref
 
 All eight organizer-approved DNS records were saved in Cloudflare; CNAMEs are DNS-only and existing Microsoft mail routing/authentication remains intact. Authoritative DNS answers match. SendGrid confirmed domain authentication for simplysoph.com. Branded-link SSL provisioning is separate and may still be pending. Exact records and retirement decisions are in `ops/shared-domain-changes.json`.
 
-The signed-in SendGrid account displays a trial ending November 27, 2026. **Owner decision (October 13, 2026): keep the fallback as a standby through the event**, so a paid plan must be active before November 27; otherwise set `SENDGRID_FALLBACK_ENABLED=false` before the trial ends. No subscription was purchased and the API key was created/stored by the owner.
+The signed-in SendGrid account displays a trial ending November 27, 2026. **Owner decision (October 13, 2026): keep the fallback as a standby through the event**, and the owner upgraded the Email API to a paid plan the same day, so the standby keeps working after the trial. Marketing Campaigns is not used and was left to lapse. No subscription was purchased and the API key was created/stored by the owner.
 
 Version 1 passed SendGrid sandbox validation (HTTP 200, no delivery). One approved setup email to each organizer address (Gmail and Hotmail) was accepted with HTTP 202; the organizer confirmed receipt in both accounts. Inbox/spam placement and authentication headers have not been inspected. Attempt receipts are private in `work/sendgrid-owner-verification.json`; do not blindly repeat those tests.
 
