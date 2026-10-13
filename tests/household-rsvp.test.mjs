@@ -39,3 +39,20 @@ test('household mode fails closed on missing capacity, eligibility, deadline and
   assert.throws(()=>validateHouseholdRsvp(input(),invite,Date.parse(invite.deadline)),e=>e.code==='RSVP_CLOSED');
   assert.throws(()=>validateHouseholdRsvp(input(),{...invite,latestSubmissionId:'new'},now),e=>e.status===409);
 });
+test('inactive invitations and deadlines without a time zone fail closed', () => {
+  assert.throws(()=>validateHouseholdRsvp(input(),{...invitation(),active:false},now),e=>e.code==='INVITATION_INACTIVE');
+  assert.throws(()=>validateHouseholdRsvp(input(),{...invitation(),deadline:'2027-01-01'},now),e=>e.code==='DEADLINE_NOT_CONFIGURED');
+});
+test('contact and requests reject oversized text, control characters, bad emails, header injection and extra fields', () => {
+  for (const mutate of [d=>d.requests='x'.repeat(1001), d=>d.requests='ring\u0007', d=>d.contact.phone='5'.repeat(41),
+    d=>d.contact.email='not-an-email', d=>d.contact.email='x@example.com\r\nBcc:evil@example.com',
+    d=>d.contact.name='Someone else', d=>d.contact.address=42]) {
+    const data=input(); mutate(data);
+    assert.throws(()=>validateHouseholdRsvp(data,invitation(),now),e=>e.status===422);
+  }
+  const data=input(); data.contact={email:' Alex@Example.com ',phone:' 555-0100 ',address:null}; data.requests='  No nuts, please. ';
+  const result=validateHouseholdRsvp(data,invitation(),now);
+  assert.equal(result.contact.email,'Alex@Example.com');
+  assert.equal(result.contact.phone,'555-0100');
+  assert.equal(result.requests,'No nuts, please.');
+});
