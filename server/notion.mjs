@@ -255,7 +255,7 @@ export function notionClient({
         estimated: ["Estimated Cost", "Estimate", "Estimated total"],
         finalCost: ["Final Cost", "Cost"],
         deposit: ["Deposit"],
-        additionalPaid: ["Additional Paid", "Amount paid"],
+        additionalPaid: ["Additional Paid"],
         dueDate: ["Due Date", "Payment due"],
         status: ["Website Status", "Status"],
         notes: ["Notes"],
@@ -298,12 +298,14 @@ export function notionClient({
                   p?.status?.name ??
                   text(p));
           }
+          // Owner decision (2026-10-13, #95): Amount paid may already include
+          // the Deposit, so it is never read. An empty Additional Paid counts
+          // as 0.00 until the family fills it in.
           if (
             kind === "costs" &&
             page.properties["Additional Paid"]?.number == null
           )
-            fields.additionalPaid =
-              page.properties["Amount paid"]?.number ?? "";
+            fields.additionalPaid = 0;
           rows.push({
             id: page.id,
             websiteId: text(page.properties["Website Record ID"]),
