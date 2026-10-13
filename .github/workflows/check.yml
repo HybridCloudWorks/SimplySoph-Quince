@@ -26,6 +26,10 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    # Only main may deploy to this environment (its deployment branch policy).
+    environment:
+      name: production
+      url: https://misxv.simplysoph.com
     concurrency:
       group: misxv-production
       cancel-in-progress: false
