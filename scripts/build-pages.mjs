@@ -466,7 +466,6 @@ for (const file of [
   "upload-batch.mjs",
   "admin.js",
   "client.js",
-  "event-config.js",
   "assets/invitation.png",
   "assets/church.png",
   "assets/reception.png",

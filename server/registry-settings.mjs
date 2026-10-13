@@ -1,5 +1,4 @@
 // Public registry destinations, approved for anonymous visitors.
-// Private family notes remain in the separate permission-checked pages API.
 export const registryDefaults = [
   {
     id: "target",
