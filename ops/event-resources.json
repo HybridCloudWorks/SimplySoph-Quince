@@ -203,7 +203,7 @@
       },
       "creationEvidence": "Created 2026-09-27T05:09:12Z; generation 1790485752689878522, uniform bucket access and enforced public access prevention verified; 7-day soft delete; object versioning enabled 2026-09-27 for recoverable ledger/media revisions; prior metageneration 2 without versioning recorded in private work/media-backup-baseline.txt Synthetic generation restore verified 2026-09-28T04:23:27.964Z at private/verification/restore-check-0471cfa8-1da8-4999-af6e-e441b9b1b2d7.json; retained three small test generations for retirement; no guest ledger/media altered.",
       "verifyBeforeCleanup": "Match bucket name, project and creation timestamp; stop API and sending, export approved ledger/photos privately; verify no unrelated data",
-      "cleanupSteps": "After reviewed private export of ledger, approved photos and approved videos, remove exact event objects including all noncurrent generations and then the bucket. Versioning was enabled for event backup support on 2026-09-27; no lifecycle deletion rules or retention lock were added. Account for seven-day soft-delete retention and charges. Preserve all other buckets. Include private/migration-backups/admin-access-*.json in the event ledger export/retention review; these private backups contain guest data.",
+      "cleanupSteps": "After reviewed private export of ledger, approved photos and approved videos, remove exact event objects including all noncurrent generations and then the bucket. Versioning was enabled for event backup support on 2026-09-27. One lifecycle rule deletes noncurrent versions under private/uploads/ one day after they are replaced (confirmed in place 2026-10-15; it removes upload originals deleted after conversion and touches nothing else); no retention lock. Remove it with --clear-lifecycle only if it gets in the way of the export. Account for seven-day soft-delete retention and charges. Preserve all other buckets. Include private/migration-backups/admin-access-*.json in the event ledger export/retention review; these private backups contain guest data.",
       "verifyAfterCleanup": "Verify live bucket absent and soft-deleted versions accounted for until expiration; verify exports have family-selected retention",
       "dependsOn": [],
       "status": "active"
@@ -670,7 +670,7 @@
       },
       "creationEvidence": "Repository creation completed at 2026-09-28T04:17:30.497862Z; Docker format, event=misxv-2027 label",
       "verifyBeforeCleanup": "Confirm exact project, us-central1 location and repository; stop event Cloud Run and preserve wanted source/release evidence",
-      "cleanupSteps": "After removing dependent event service, remove this dedicated repository and its event image versions after final review; preserve all other repositories Also review and remove only event build source object gs://simplysoph-66c78_cloudbuild/source/1790653321.353426-cee7601185374f14a7e401fce12950f2.tgz after approved retention/export. Preserve the shared Cloud Build bucket. Event source archive for admin release: gs://simplysoph-66c78_cloudbuild/source/1790657425.791793-b6c20a2129844374870f5c054da19a85.tgz.",
+      "cleanupSteps": "After removing dependent event service, remove this dedicated repository and its event image versions after final review; preserve all other repositories Also review and remove only event build source object gs://simplysoph-66c78_cloudbuild/source/1790653321.353426-cee7601185374f14a7e401fce12950f2.tgz after approved retention/export. Preserve the shared Cloud Build bucket. Event source archive for admin release: gs://simplysoph-66c78_cloudbuild/source/1790657425.791793-b6c20a2129844374870f5c054da19a85.tgz. Event source archive for the PR #99 release (Cloud Build bebb9777): gs://simplysoph-66c78_cloudbuild/source/1792059077.308654-662f408ae0bd467ba0ed8087e602dda0.tgz.",
       "verifyAfterCleanup": "Verify exact repository absent and account for any retained image charges",
       "dependsOn": [],
       "status": "active"
@@ -707,7 +707,8 @@
         "2026-10-11: revision misxv-api-00027-vvg serves 100% of traffic with image us-central1-docker.pkg.dev/simplysoph-66c78/misxv-api/api@sha256:3a4e056fd34fa2a78e803f8bbd61970b851fbc4d3ab42cd458f3f8e06fa60f83 (source commit 4e15e48: final validation fixes and the WhatsApp deadline guard, merged as b9106ed). Revision misxv-api-00026-9p7 runs the same image (the deploy command was run twice) and served briefly before it. Concurrency 40; environment unchanged. Rollback target: misxv-api-00025-vsw. Verified: revision Ready with the expected image; /api/config 200; signed-out /api/admin/dashboard and /api/account 401; no ERROR logs. Owner actions confirmed in Notion (read-only): the Additional Emails column was added by Prepare RSVP columns, and Write the website's answer updated the Website RSVP columns and head counts of two family rows.",
         "2026-10-12: revision misxv-api-00028-mk8 ran the 00027 image with SMS_ENABLED=true and SMS_ACTIVATION_REVIEWED=true set by the owner on 2026-10-13T03:06Z (recorded afterwards).",
         "2026-10-12: revision misxv-api-00029-xb5 serves 100% of traffic with image us-central1-docker.pkg.dev/simplysoph-66c78/misxv-api/api@sha256:32f5106c809025a2768bebe66c1b5d55a9d684abc07afb3d57339667a29535a4 (source commit 8c71ae2 on branch claude/record-a2p-approval, deployed before PR #47 merged: SMS from one page, first-SOPHIA welcome reply; Cloud Build e2d14d5f). Environment unchanged. Rollback target: misxv-api-00028-mk8. Verified: revision Ready with the expected image; /api/config 200; signed-out /api/admin/sms/batch 401; no ERROR logs.",
-        "2026-10-13: revision misxv-api-00030-m42 serves 100% of traffic with image us-central1-docker.pkg.dev/simplysoph-66c78/misxv-api/api@sha256:2147e3f4952136f8651da5f2b153995634da99c500e8e564cabb59ebb4b9e474 (source commit b109630 on main: #48 Twilio refusal codes, #86 library updates, #87 dead validateRsvp removed, #89 Node 24 base image pinned by digest, #96 sign-in, video and budget-import fixes; Cloud Build cc753938; base image node:24-bookworm-slim@sha256:d6aa754f confirmed in the build log). Environment unchanged: the same 31 settings and secret references as 00029 (identical fingerprint), same service account, concurrency 40, timeout 120, 1 CPU, 1Gi, max 2 instances. Rollback target: misxv-api-00029-xb5. Verified: revision Ready with the expected image; /api/config 200; signed-out /api/admin/dashboard, /api/account and /api/admin/sms/batch 401; POST without Origin 403; no ERROR or WARNING logs."
+        "2026-10-13: revision misxv-api-00030-m42 serves 100% of traffic with image us-central1-docker.pkg.dev/simplysoph-66c78/misxv-api/api@sha256:2147e3f4952136f8651da5f2b153995634da99c500e8e564cabb59ebb4b9e474 (source commit b109630 on main: #48 Twilio refusal codes, #86 library updates, #87 dead validateRsvp removed, #89 Node 24 base image pinned by digest, #96 sign-in, video and budget-import fixes; Cloud Build cc753938; base image node:24-bookworm-slim@sha256:d6aa754f confirmed in the build log). Environment unchanged: the same 31 settings and secret references as 00029 (identical fingerprint), same service account, concurrency 40, timeout 120, 1 CPU, 1Gi, max 2 instances. Rollback target: misxv-api-00029-xb5. Verified: revision Ready with the expected image; /api/config 200; signed-out /api/admin/dashboard, /api/account and /api/admin/sms/batch 401; POST without Origin 403; no ERROR or WARNING logs.",
+        "2026-10-15: revision misxv-api-00031-sd7 serves 100% of traffic with image us-central1-docker.pkg.dev/simplysoph-66c78/misxv-api/api@sha256:d6c363a729ec35dbb1a1a4e6c8f94f9d7ae30ea4bd5c9554a64bddffff3afc05 (tag pr99-96ff664; source commit 96ff664, PR #99, deployed by digest before the merge as its deploy order requires; merged as b7b478a, whose only later change, ea596fa, is documentation; Cloud Build bebb9777). Memory 1Gi to 2Gi and timeout 120 to 600 s for video conversion; environment, secret references, service account, concurrency 40, 1 CPU and max 2 instances carried over. Rollback target: misxv-api-00030-m42, but only together with the site at e296717: the pages published from b7b478a need /api/uploads. Verified: revision Ready with 2Gi and 600; through the Hosting rewrite /api/config 200 with live true and the new /api/calendar/es/ceremony.ics 200 text/calendar; unsigned POST /api/internal/media 401; the first media run returned no error and logged an INFO summary with all counts 0."
       ],
       "verifyBeforeCleanup": "Close intake and sending, export wanted ledger/media and retain decryption key until exports are readable; detach Hosting API rewrite",
       "cleanupSteps": "Remove event public invoker grant, then delete only misxv-api in us-central1 and its event revisions after review; preserve project and other services",
@@ -1229,10 +1230,10 @@
         ],
         "evidence": "gcloud iam service-accounts list for simplysoph-66c78 listed no misxv-scheduler account before creation."
       },
-      "creationEvidence": "Created 2026-10-10 with display name \"Mis XV drain scheduler\"; gcloud returned unique ID 108275554602429916331. It holds no roles: it only identifies Cloud Scheduler to /api/internal/drain (SCHEDULER_SERVICE_ACCOUNT).",
-      "verifyBeforeCleanup": "Match the unique ID and email; confirm job misxv-drain is deleted or paused and no other workload uses this identity.",
-      "cleanupSteps": "Delete job misxv-drain first, remove SCHEDULER_AUDIENCE and SCHEDULER_SERVICE_ACCOUNT from the API, then delete only this service account.",
-      "verifyAfterCleanup": "The account is gone and an unsigned POST /api/internal/drain returns 404 (route off); other identities are untouched.",
+      "creationEvidence": "Created 2026-10-10 with display name \"Mis XV drain scheduler\"; gcloud returned unique ID 108275554602429916331. It holds no roles: it only identifies Cloud Scheduler to /api/internal/drain and, since 2026-10-15, /api/internal/media (SCHEDULER_SERVICE_ACCOUNT).",
+      "verifyBeforeCleanup": "Match the unique ID and email; confirm jobs misxv-drain and misxv-media are deleted or paused and no other workload uses this identity.",
+      "cleanupSteps": "Delete jobs misxv-drain and misxv-media first, remove SCHEDULER_AUDIENCE and SCHEDULER_SERVICE_ACCOUNT from the API, then delete only this service account.",
+      "verifyAfterCleanup": "The account is gone and unsigned POSTs to /api/internal/drain and /api/internal/media return 404 (routes off); other identities are untouched.",
       "dependsOn": [],
       "status": "active"
     },
@@ -1254,6 +1255,30 @@
       "verifyBeforeCleanup": "Confirm the event's Notion sync is no longer needed and nothing is pending.",
       "cleanupSteps": "gcloud scheduler jobs delete misxv-drain --location=us-central1 --project=simplysoph-66c78 (pause first if unsure).",
       "verifyAfterCleanup": "The job is not listed and no new /api/internal/drain requests appear in the API logs.",
+      "dependsOn": [
+        "misxv-scheduler-identity",
+        "misxv-api-service"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "misxv-media-job",
+      "type": "scheduler-job",
+      "projectId": "simplysoph-66c78",
+      "ownership": "created-for-event",
+      "resource": "projects/simplysoph-66c78/locations/us-central1/jobs/misxv-media",
+      "baseline": {
+        "verifiedAt": "2026-10-15T10:27:00.000Z",
+        "scope": "Cloud Scheduler jobs in us-central1",
+        "allowedTypes": [
+          "scheduler-job"
+        ],
+        "evidence": "This inventory listed misxv-drain as the only event job, and gcloud scheduler jobs create misxv-media succeeded without ALREADY_EXISTS, so the name was unused."
+      },
+      "creationEvidence": "Created 2026-10-15T10:27:57Z by the owner: every 5 minutes (America/Chicago), POST https://misxv-api-kwkuku6pgq-uc.a.run.app/api/internal/media with body {} and an OIDC token for misxv-scheduler, audience read from SCHEDULER_AUDIENCE and checked equal to misxv-drain's, 600-second deadline, no retries. The unsigned call returned 401 first. A manual run at 2026-10-15T10:28:03Z returned no error and the API logged one INFO media summary (abandoned 0, converted 0, refused 0, retrying 0). It converts waiting guest videos one at a time, cancels uploads left unfinished for a day, and only notifies the family; it never messages guests.",
+      "verifyBeforeCleanup": "Confirm no video is still processing on Admin -> Photos and that approved videos are exported.",
+      "cleanupSteps": "gcloud scheduler jobs delete misxv-media --location=us-central1 --project=simplysoph-66c78 (pause first if unsure). Delete it before the API service and the scheduler identity.",
+      "verifyAfterCleanup": "The job is not listed and no new /api/internal/media requests appear in the API logs.",
       "dependsOn": [
         "misxv-scheduler-identity",
         "misxv-api-service"
