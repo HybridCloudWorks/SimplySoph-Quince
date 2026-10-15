@@ -5,9 +5,9 @@ const previewPages = [
   ["sophia", "Meet Sophia", "Conoce a Sophia"],
   ["court", "Court of honor", "Corte de honor"],
   ["padrinos", "Padrinos", "Padrinos"],
-  ["travel", "Travel & stay", "Viaje y hospedaje"],
-  ["faq", "Good to know", "Lo que debes saber"],
-  ["gallery", "The moments", "Los momentos"],
+  ["travel", "Travel", "Viaje"],
+  ["faq", "Questions", "Preguntas"],
+  ["gallery", "Photos", "Fotos"],
   ["thank-you", "Thank you", "Gracias"],
 ];
 const previewCard = () =>

@@ -641,27 +641,6 @@ export function reloadOnNewLink(when = () => true) {
     if (linkFragment() && when()) location.reload();
   });
 }
-// Navigation menus (<details class="nav-group">) close on Escape, on a click
-// elsewhere, and when focus moves out of them (tabbing past the last item left
-// the menu open over the page). Escape from inside a menu returns focus to its
-// summary, since the focused link is hidden once the menu closes.
-document.addEventListener("keydown", (e) => {
-  if (e.key !== "Escape") return;
-  for (const el of document.querySelectorAll(".nav-group[open]")) {
-    const inside = el.contains(document.activeElement);
-    el.open = false;
-    if (inside) el.querySelector("summary").focus();
-  }
-});
-document.addEventListener("click", (e) => {
-  for (const el of document.querySelectorAll(".nav-group[open]"))
-    if (!el.contains(e.target)) el.open = false;
-});
-document.addEventListener("focusin", (e) => {
-  for (const el of document.querySelectorAll(".nav-group[open]"))
-    if (!el.contains(e.target)) el.open = false;
-});
-
 // Apply the shared action layout to dynamically rendered table cells.
 const spaceActions = () =>
   document.querySelectorAll("td").forEach((td) => {

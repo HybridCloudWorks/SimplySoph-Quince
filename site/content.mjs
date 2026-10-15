@@ -19,7 +19,8 @@ export const event = {
 //   driveMinutes: 15 — church to reception, shown on the route strip
 //   portraits: [{ album: "childhood" (a celebration album id), age, caption: { en, es }, src }]
 //     — gallery chapters, oldest first; a missing src shows the age as a placeholder
-//   parking, children: { en, es } — answers on Good to know
+//   dressCode, parking, children: { en, es } — answers on Questions and in the
+//     Schedule's "Good to know" box
 //   thanksNote: { en, es } — the thank-you page message, after the event
 export const family = {
   bio: null,
@@ -56,32 +57,58 @@ export const padrinoTraditions = {
   pastel: { es: "de Pastel", en: "Cake", meaning: { en: "The cake for the celebration.", es: "El pastel de la celebración." } },
   brindis: { es: "de Brindis", en: "Toast", meaning: { en: "The glasses for the family toast.", es: "Las copas para el brindis de la familia." } },
 };
+// One name per page: the header, section links and page titles all use these.
 export const routes = [
   ["", "Home", "Inicio"],
   ["sophia", "Meet Sophia", "Conoce a Sophia"],
-  ["details", "The celebration", "La celebración"],
+  ["details", "Schedule", "Programa"],
   ["ceremony", "Religious ceremony", "Ceremonia religiosa"],
   ["reception", "Dinner & reception", "Cena y recepción"],
-  ["rsvp", "Your invitation", "Tu invitación"],
+  ["rsvp", "RSVP", "Confirma tu asistencia"],
   ["rsvp/confirmed", "Your response", "Tu respuesta"],
   ["account", "My account", "Mi cuenta"],
   ["court", "Court of honor", "Corte de honor"],
-  ["padrinos", "With gratitude", "Con gratitud"],
-  ["gallery", "The moments", "Los momentos"],
-  ["share", "Share photos & videos", "Comparte fotos y videos"],
-  ["registry", "Registry", "Registro de regalos"],
-  ["travel", "Travel & stay", "Viaje y hospedaje"],
-  ["faq", "Good to know", "Lo que debes saber"],
+  ["padrinos", "Padrinos", "Padrinos"],
+  ["gallery", "Photos", "Fotos"],
+  ["share", "Share your photos", "Comparte tus fotos"],
+  ["registry", "Gifts", "Mesa de regalos"],
+  ["travel", "Travel", "Viaje"],
+  ["faq", "Questions", "Preguntas"],
   ["guestbook", "A note for Sophia", "Un mensaje para Sophia"],
-  ["contact", "Contact us", "Contáctanos"],
+  ["contact", "Contact", "Contacto"],
   ["privacy", "Privacy policy", "Política de privacidad"],
-  ["terms", "Media policy", "Política de medios"],
+  ["terms", "Photo & video policy", "Uso de fotos y videos"],
   ["whatsapp", "WhatsApp updates", "Mensajes WhatsApp"],
   // Title Case on purpose: the registered SMS campaign quotes these word for word.
   ["sms", "SMS Updates", "Mensajes SMS"],
   ["sms-terms", "SMS Terms", "Términos SMS"],
-  ["thank-you", "With love & thanks", "Con cariño y gratitud"],
+  ["thank-you", "Thank you", "Gracias"],
   ["404", "Page not found", "Página no encontrada"],
+];
+// Pages that wait for the family's words. Until one has content it still builds
+// for a direct visit, but nothing links to it: not the header, the home page or
+// another page. The links appear by themselves on the next build after the
+// family fills it in above.
+export const waitsFor = {
+  sophia: (f) => Boolean(f.bio || f.parentsMessage || f.moments.length),
+  court: (f) => f.court.length > 0,
+  padrinos: (f) => f.padrinos.length > 0,
+  "thank-you": (f) => Boolean(f.thanksNote || f.highlightVideo),
+};
+export const ready = (route, f = family) => !waitsFor[route] || waitsFor[route](f);
+// The header, in order: one link per section, to its first page with content.
+// A section's other pages are linked from a row under each of its page titles.
+// RSVP, sign-in and the language switch sit beside these; the policies and
+// message programs are in the footer.
+export const sections = [
+  { pages: ["thank-you"] },
+  { name: ["Sophia", "Sophia"], pages: ["sophia", "court", "padrinos"] },
+  { pages: ["details", "ceremony", "reception"] },
+  { pages: ["travel"] },
+  { pages: ["gallery", "share", "guestbook"] },
+  { pages: ["registry"] },
+  { pages: ["faq"] },
+  { pages: ["contact"] },
 ];
 export const adminRoutes = [
   ["admin/login", "Administrator sign-in"],
@@ -107,16 +134,16 @@ export const copy = {
     rsvp: "RSVP",
     all: "See the schedule",
     home: "Home",
-    details: "Celebration",
-    people: "Our people",
-    memories: "Memories",
-    help: "Guest guide",
     language: "Español",
+    languageShort: "ES",
+    signIn: "Sign in",
+    menu: "Menu",
+    site: "Sophia’s Quinceañera",
     pending: "We’ll share this here soon.",
     time: "All times are local to Fort Worth, Texas.",
     contact: "Questions? Contact us",
-    invitationCaption: "Open the full invitation in a new tab ↗",
-    deadlineLabel: "Please RSVP by",
+    invitationCaption: "Open the full invitation in a new tab",
+    newTab: "(opens in a new tab)",
     footer: "With love,",
     loading: "Loading…",
   },
@@ -128,16 +155,16 @@ export const copy = {
     rsvp: "Confirmar asistencia",
     all: "Ver el programa",
     home: "Inicio",
-    details: "Celebración",
-    people: "Nuestra gente",
-    memories: "Recuerdos",
-    help: "Guía para invitados",
     language: "English",
+    languageShort: "EN",
+    signIn: "Iniciar sesión",
+    menu: "Menú",
+    site: "Los XV de Sophia",
     pending: "Lo compartiremos aquí pronto.",
     time: "Todos los horarios son de Fort Worth, Texas.",
     contact: "¿Preguntas? Escríbenos",
-    invitationCaption: "Abre la invitación completa en otra pestaña ↗",
-    deadlineLabel: "Confirma a más tardar el",
+    invitationCaption: "Abre la invitación completa en otra pestaña",
+    newTab: "(se abre en otra pestaña)",
     footer: "Con cariño,",
     loading: "Cargando…",
   },

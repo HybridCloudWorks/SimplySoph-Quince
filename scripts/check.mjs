@@ -1,7 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { routes, adminRoutes } from "../site/content.mjs";
+import { routes, adminRoutes, family, ready, waitsFor } from "../site/content.mjs";
 import { exampleMarkers, previewRoutes } from "../site/preview-content.mjs";
 const root = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -14,14 +14,35 @@ const pages = [
   ...adminRoutes.map(([r]) => r + "/index.html"),
   "404.html",
 ];
+// Pages still waiting for the family's words: built, but linked from nowhere.
+const waiting = Object.keys(waitsFor).filter((r) => !ready(r, family));
 for (const page of pages) {
   const html = await readFile(path.join(root, page), "utf8");
-  for (const [, url] of html.matchAll(/(?:href|src)="([^"]+)"/g)) {
+  const local = [
+    ...[...html.matchAll(/(?:href|src)="([^"]+)"/g)].map((m) => m[1]),
+    // Responsive image candidates, and the absolute link-preview image.
+    ...[...html.matchAll(/srcset="([^"]+)"/g)].flatMap((m) =>
+      m[1].split(",").map((c) => c.trim().split(" ")[0]),
+    ),
+    ...[...html.matchAll(/content="https:\/\/misxv\.simplysoph\.com(\/assets\/[^"]+)"/g)].map((m) => m[1]),
+  ];
+  for (const url of local) {
     if (!url.startsWith("/")) continue;
     let target = path.join(root, url.split("#")[0]);
     const info = await stat(target);
     if (info.isDirectory()) await stat(path.join(target, "index.html"));
   }
+  for (const route of waiting)
+    if (!page.replace(/^es\//, "").startsWith(route + "/") && new RegExp(`href="(/es)?/${route}/"`).test(html))
+      throw new Error(`${page} links to /${route}/, which has no family content yet`);
+  // ↗ means "opens another site in a new tab" and nothing else.
+  for (const [mark] of html.matchAll(/<a [^>]*>(?:(?!<\/a>)[\s\S])*?↗/g))
+    if (!/^<a [^>]*target="_blank"/.test(mark))
+      throw new Error(`↗ on a link that does not open a new tab in ${page}`);
+  // The phone menu button must control the header's list.
+  const controls = html.match(/class="menu-toggle"[^>]*aria-controls="([^"]+)"/)?.[1];
+  if (!controls || !html.includes(`id="${controls}"`))
+    throw new Error(`Header menu button is missing or controls nothing in ${page}`);
   if (
     !html.includes('id="main"') ||
     !html.includes('name="referrer" content="strict-origin-when-cross-origin"')
@@ -91,6 +112,8 @@ for (const file of ["styles.css", "pages.css"]) {
     if (c === "}" && --depth < 0) break;
   }
   if (depth !== 0) throw new Error(`Unbalanced braces in ${file}`);
+  // Fonts load from the page head; an @import would chain the requests.
+  if (/@import/.test(css)) throw new Error(`@import in ${file}`);
 }
 // The admin preview exists for every approved page, says it is a preview, and
 // actually shows the examples (an empty preview would hide a broken layout).

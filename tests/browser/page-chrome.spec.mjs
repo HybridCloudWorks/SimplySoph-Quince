@@ -1,7 +1,7 @@
 // What every page shares (site/client.js): forms that check themselves in the
 // page's language, a busy button that keeps focus, honest messages when the
-// server is in trouble, navigation menus that let go of focus, and the
-// page-wide note that can be closed and never hides the focused control.
+// server is in trouble, and the page-wide note that can be closed and never
+// hides the focused control.
 import { test, expect } from "./fixtures.mjs";
 
 test("a form lists what is missing in the page’s language and moves focus to that list", async ({
@@ -50,29 +50,6 @@ test("a server error page reads as trouble on our end, and the busy button keeps
   // Disabling the focused button used to drop focus to the page.
   await expect(send).toBeFocused();
   await expect(send).toBeEnabled();
-});
-
-test("a menu closes on Escape with focus back on its button, and when focus leaves it", async ({
-  page,
-  harness,
-}) => {
-  await page.goto(harness.url("/"));
-  const menu = page.locator(".nav-group").first();
-  const summary = menu.locator("summary");
-  await summary.focus();
-  await page.keyboard.press("Enter");
-  await expect(menu).toHaveAttribute("open", "");
-  await page.keyboard.press("Tab");
-  await expect(menu.getByRole("link").first()).toBeFocused();
-  await page.keyboard.press("Escape");
-  await expect(menu).not.toHaveAttribute("open", "");
-  await expect(summary).toBeFocused();
-
-  // Tabbing past the last item closes it instead of leaving it over the page.
-  await page.keyboard.press("Enter");
-  const links = await menu.getByRole("link").count();
-  for (let i = 0; i <= links; i++) await page.keyboard.press("Tab");
-  await expect(menu).not.toHaveAttribute("open", "");
 });
 
 test("the page-wide note can be closed and does not cover the control that has focus", async ({

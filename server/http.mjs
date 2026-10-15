@@ -8,6 +8,11 @@ const types = {
   ".mjs": "text/javascript; charset=utf-8",
   ".png": "image/png",
   ".svg": "image/svg+xml",
+  // The build's responsive images and icons (scripts/images.mjs).
+  ".avif": "image/avif",
+  ".webp": "image/webp",
+  ".jpg": "image/jpeg",
+  ".ico": "image/x-icon",
   ".txt": "text/plain; charset=utf-8",
   ".ics": "text/calendar; charset=utf-8",
 };

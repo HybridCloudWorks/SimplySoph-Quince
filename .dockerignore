@@ -12,3 +12,4 @@ outputs
 skills-lock.json
 gha-creds-*.json
 .claude
+.cache

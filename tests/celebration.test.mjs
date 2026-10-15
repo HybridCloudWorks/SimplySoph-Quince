@@ -5,6 +5,11 @@ import {
   calendar,
   maps,
   calendarLink,
+  scheduleStrip,
+  scheduleList,
+  invitationAlt,
+  albumCards,
+  registryCards,
 } from "../site/celebration.mjs";
 import { validateSettings } from "../server/site-settings.mjs";
 import { normalizeVideo, mediaResponse } from "../server/video.mjs";
@@ -31,6 +36,66 @@ test("separate calendars preserve Central-time instants, addresses and unique ev
   c.ceremony.end = null;
   assert.throws(() => calendar("ceremony", c), /Confirmed end/);
   assert.ok(!calendarLink("ceremony", c).includes("href="));
+});
+test("Spanish calendars share each event's identity and hold only confirmed facts", () => {
+  const c = structuredClone(celebration);
+  const unfold = (ics) => ics.replace(/\r\n /g, "");
+  const line = (ics, field) => ics.match(new RegExp(`^${field}:.*$`, "m"))[0];
+  for (const kind of ["ceremony", "dinner", "reception"]) {
+    const place = kind === "ceremony" ? "ceremony" : "reception",
+      en = unfold(calendar(kind, c)),
+      es = unfold(calendar(kind, c, "es"));
+    for (const field of ["UID", "SEQUENCE", "DTSTART", "DTEND", "LOCATION"])
+      assert.equal(line(es, field), line(en, field), field);
+    // Venue notes can say "will be shared here"; a saved event keeps that forever.
+    for (const ics of [en, es]) {
+      assert.ok(!ics.includes(c[place].notes.en.slice(0, 30)));
+      assert.ok(!ics.includes(c[place].notes.es.slice(0, 30)));
+      assert.doesNotMatch(ics, /will be shared|Compartiremos/);
+    }
+    assert.match(en, new RegExp(`URL:https://misxv.simplysoph.com/${place}/`));
+    assert.match(es, new RegExp(`URL:https://misxv.simplysoph.com/es/${place}/`));
+  }
+  assert.match(unfold(calendar("ceremony", c, "es")), /SUMMARY:Sophia Isabel — Ceremonia religiosa/);
+  assert.match(unfold(calendar("ceremony", c, "es")), /DESCRIPTION:Quinceañera de Sophia Isabel/);
+  // A content change bumps SEQUENCE in both languages.
+  c.version = 7;
+  assert.match(calendar("dinner", c, "es"), /SEQUENCE:7/);
+});
+test("calendar and map links say what they do in the page's language", () => {
+  const es = calendarLink("ceremony", celebration, "es"),
+    live = calendarLink("dinner", celebration, "es", true);
+  assert.match(es, /href="\/calendar\/es\/ceremony\.ics" download/);
+  assert.match(live, /href="\/api\/calendar\/es\/dinner\.ics" download/);
+  assert.match(calendarLink("ceremony"), /href="\/calendar\/ceremony\.ics" download/);
+  assert.match(es, /Agregar al calendario/);
+  // A download is not a new tab: no ↗, a calendar mark instead.
+  for (const html of [es, live]) {
+    assert.doesNotMatch(html, /↗/);
+    assert.match(html, /<svg class="icon" aria-hidden="true"/);
+  }
+  // Links to other sites say they open a new tab; in-page buttons point nowhere.
+  assert.match(
+    maps(celebration.ceremony.address, "es"),
+    /↗<\/span><span class="visually-hidden"> \(se abre en otra pestaña\)/,
+  );
+  assert.doesNotMatch(albumCards(celebration), /↗/);
+  assert.match(
+    registryCards([{ name: "Store", description: { en: "Wishes", es: "Deseos" }, url: "https://example.com/" }]),
+    /target="_blank"[^>]*>See the registry<span class="ext" aria-hidden="true">↗/,
+  );
+});
+test("the schedule strip, Schedule rows and invitation text come from the event data", () => {
+  const c = structuredClone(celebration);
+  c.ceremony.name = "Example Chapel";
+  c.dinner.start = "2027-01-15T18:00:00-06:00";
+  const strip = scheduleStrip(c, "es");
+  assert.match(strip, /<a href="\/es\/ceremony\/">[\s\S]*Example Chapel/);
+  assert.match(strip, /<a href="\/es\/reception\/">[\s\S]*6:00 p\.m\.[\s\S]*The AMZ Event Center/);
+  assert.equal(scheduleList(c, "en").match(/<li class="schedule-item">/g).length, 3);
+  assert.match(scheduleList(c, "en"), /Example Chapel[\s\S]*4100 Blue Mound Rd/);
+  assert.match(invitationAlt(c, "en"), /Example Chapel; dinner 6:00 PM to 7:30 PM; reception and dance from 7:30 PM/);
+  assert.match(invitationAlt(c, "es"), /el viernes 15 de enero de 2027 a las 4:00 p\.m\. en Example Chapel/);
 });
 test("calendar injection is escaped and maps use the full encoded address", () => {
   const c = structuredClone(celebration);

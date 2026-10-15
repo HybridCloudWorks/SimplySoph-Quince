@@ -1,5 +1,7 @@
 dist/
 dist-preview/
+# Encoded images kept between builds (scripts/images.mjs)
+.cache/
 work/
 node_modules/
 .env

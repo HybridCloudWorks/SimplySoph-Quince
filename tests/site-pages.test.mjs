@@ -1,0 +1,257 @@
+// The built guest pages (dist/, made by `npm test`'s pretest build): what the
+// header links to, the home page order, the Schedule, the 404, link previews,
+// images and calendars. Family content is the approved (mostly empty) content,
+// so pages waiting for it must not be linked anywhere.
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFile, readdir, stat } from "node:fs/promises";
+import sharp from "sharp";
+import { routes, family, ready, waitsFor, sections } from "../site/content.mjs";
+
+const dist = new URL("../dist/", import.meta.url),
+  preview = new URL("../dist-preview/", import.meta.url);
+const page = (path) => readFile(new URL(path, dist), "utf8");
+const header = (html) => html.match(/<header[\s\S]*?<\/header>/)[0];
+const main = (html) => html.match(/<main[\s\S]*?<\/main>/)[0];
+const hrefs = (html) => [...html.matchAll(/href="([^"]+)"/g)].map((m) => m[1]);
+async function guestPages() {
+  const files = [];
+  for (const lang of ["", "es/"])
+    for (const [route] of routes)
+      files.push([route, lang + (route ? route + "/" : "") + "index.html"]);
+  files.push(["404", "404.html"]);
+  return files;
+}
+
+test("a page waits to be linked until the family's content exists", () => {
+  const empty = structuredClone(family);
+  for (const route of Object.keys(waitsFor)) assert.equal(ready(route, empty), false, route);
+  assert.equal(ready("details", empty), true);
+  assert.equal(ready("sophia", { ...empty, bio: { en: "Example", es: "Ejemplo" } }), true);
+  assert.equal(ready("court", { ...empty, court: [{ name: "Example", role: "dama" }] }), true);
+  assert.equal(ready("padrinos", { ...empty, padrinos: [{ gift: "misa", names: "Example" }] }), true);
+  assert.equal(ready("thank-you", { ...empty, highlightVideo: "https://example.com/" }), true);
+  // Every guest page with a header link belongs to exactly one section.
+  const listed = sections.flatMap((s) => s.pages);
+  assert.equal(new Set(listed).size, listed.length);
+  for (const route of listed) assert.ok(routes.some(([r]) => r === route), route);
+});
+
+test("nothing links to a page whose family content is still empty", async () => {
+  const waiting = Object.keys(waitsFor).filter((r) => !ready(r, family));
+  assert.ok(waiting.length, "the approved content still has empty pages");
+  for (const [route, file] of await guestPages()) {
+    const links = hrefs(await page(file));
+    for (const empty of waiting) {
+      // An empty page may switch to its own other-language version, no more.
+      if (route === empty) continue;
+      assert.ok(
+        !links.some((h) => h === `/${empty}/` || h === `/es/${empty}/`),
+        `${file} links to the empty /${empty}/ page`,
+      );
+    }
+  }
+  // Built directly, an empty page ends with the guest's next step.
+  const sophia = main(await page("sophia/index.html"));
+  assert.match(sophia, /href="\/rsvp\/"/);
+  assert.match(sophia, /href="\/details\/"/);
+  assert.doesNotMatch(sophia, /href="\/contact\/"/);
+});
+
+test("filled-in pages are linked automatically (the admin preview's example content)", async () => {
+  const court = await readFile(new URL("en/court.html", preview), "utf8");
+  const nav = header(court);
+  assert.match(nav, /<a href="\/sophia\/"[^>]*>Sophia<\/a>/);
+  assert.match(nav, /<a href="\/thank-you\/"[^>]*>Thank you<\/a>/);
+  // Sophia's section lists its pages with content under the title.
+  const sectionNav = court.match(/<nav class="section-nav"[\s\S]*?<\/nav>/)[0];
+  for (const route of ["sophia", "court", "padrinos"])
+    assert.match(sectionNav, new RegExp(`href="/${route}/"`));
+  assert.match(sectionNav, /href="\/court\/" aria-current="page"/);
+});
+
+test("the header is a flat list: sections, sign in, language pill, RSVP and a menu button", async () => {
+  for (const [lang, file, names, signIn] of [
+    ["en", "index.html", ["Schedule", "Travel", "Photos", "Gifts", "Questions", "Contact"], "Sign in"],
+    ["es", "es/index.html", ["Programa", "Viaje", "Fotos", "Mesa de regalos", "Preguntas", "Contacto"], "Iniciar sesión"],
+  ]) {
+    const nav = header(await page(file));
+    assert.doesNotMatch(nav, /<details|<summary/);
+    const labels = [...nav.matchAll(/<li[^>]*><a [^>]*>([^<]+)<\/a><\/li>/g)].map((m) => m[1]);
+    assert.deepEqual(labels, [...names, signIn], lang);
+    // The menu button controls the list it opens.
+    assert.match(nav, /<button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav">/);
+    assert.match(nav, /<nav class="site-nav" id="site-nav"/);
+    assert.match(nav, lang === "en" ? /class="lang-switch" href="\/es\/" lang="es"/ : /class="lang-switch" href="\/" lang="en"/);
+    assert.ok(nav.indexOf("lang-switch") < nav.indexOf("nav-rsvp"), "language switch before RSVP");
+  }
+  // Each page names its own section once, and the page itself.
+  const ceremony = header(await page("ceremony/index.html"));
+  assert.match(ceremony, /href="\/details\/" aria-current="true">Schedule/);
+  // Administrators sign in at /admin/login/; guests never see that link.
+  assert.doesNotMatch(main(await page("account/index.html")), /admin\/login/);
+});
+
+test("the home page puts the name, date and RSVP before the schedule, words and artwork", async () => {
+  for (const [file, deadline] of [
+    ["index.html", "Please reply by Sunday, November 15"],
+    ["es/index.html", "Por favor, confirma a más tardar el domingo 15 de noviembre"],
+  ]) {
+    const html = main(await page(file));
+    const at = (needle) => {
+      const i = html.indexOf(needle);
+      assert.ok(i >= 0, `${file}: ${needle}`);
+      return i;
+    };
+    const order = [
+      at("<h1>Sophia</h1>"),
+      at("data-event-date"),
+      at('class="button burgundy" href="' + (file.startsWith("es") ? "/es" : "") + '/rsvp/"'),
+      at(deadline),
+      at("data-countdown"),
+      at('class="schedule-strip"'),
+      at("data-home-quote"),
+      at('class="invitation"'),
+    ];
+    assert.deepEqual(order, [...order].sort((a, b) => a - b), file);
+    // The schedule strip links each venue; the old empty cards are gone.
+    assert.match(html, /<ul class="schedule-strip"><li><a href="(\/es)?\/ceremony\/">/);
+    assert.match(html, /href="(\/es)?\/reception\/"/);
+    assert.doesNotMatch(html, /home-cards|Meet Sophia|Conoce a Sophia/);
+    assert.match(html, /data-announcements/);
+  }
+  // The artwork's alt text carries the schedule it shows.
+  const alt = (await page("index.html")).match(/<img [^>]*alt="([^"]+)"/)[1];
+  for (const fact of ["Our Lady of Guadalupe Church", "4:00 PM", "6:30 PM", "7:30 PM", "The AMZ Event Center"])
+    assert.ok(alt.includes(fact), fact);
+});
+
+test("the Schedule gives each part of the day its place, map and own calendar file", async () => {
+  for (const [file, cal] of [["details/index.html", "/calendar/"], ["es/details/index.html", "/calendar/es/"]]) {
+    const html = main(await page(file));
+    const rows = html.match(/<li class="schedule-item">[\s\S]*?<\/li>/g);
+    assert.equal(rows.length, 3);
+    for (const [row, venue, kind] of [
+      [rows[0], "Our Lady of Guadalupe Church", "ceremony"],
+      [rows[1], "The AMZ Event Center", "dinner"],
+      [rows[2], "The AMZ Event Center", "reception"],
+    ]) {
+      assert.match(row, /class="schedule-time"/);
+      assert.ok(row.includes(venue), venue);
+      assert.match(row, /<address>[^<]+Fort Worth, TX/);
+      assert.match(row, /href="https:\/\/www\.google\.com\/maps\/search\/[^"]+" target="_blank"/);
+      assert.ok(row.includes(`href="${cal}${kind}.ics" download`), `${file} ${kind}`);
+    }
+    // Dress code is a small note, never a claim about the website's colors.
+    assert.doesNotMatch(html, /site theme|colores del sitio/);
+    assert.match(html, /class="good-to-know"/);
+  }
+  assert.match(main(await page("details/index.html")), /We’ll share the dress code here soon\./);
+  // The RSVP shows its own deadline (site/guest.js); the page adds none.
+  for (const file of ["rsvp/index.html", "rsvp/confirmed/index.html", "es/rsvp/index.html"])
+    assert.doesNotMatch(await page(file), /class="deadline"/);
+});
+
+test("↗ marks only links that open another site in a new tab", async () => {
+  for (const [, file] of await guestPages()) {
+    const html = await page(file);
+    const marked = [...html.matchAll(/<a ([^>]*)>(?:(?!<\/a>)[\s\S])*?↗/g)];
+    assert.equal(marked.length, (html.match(/↗/g) || []).length, `${file}: a ↗ outside a link`);
+    for (const [, attributes] of marked)
+      assert.match(attributes, /target="_blank"/, `${file}: ↗ on a link that stays here`);
+    assert.doesNotMatch(html, /class="calendar-link"[^>]*>[^<]*↗/);
+  }
+});
+
+test("one 404 file answers in English or Spanish and offers RSVP and the Schedule", async () => {
+  const html = await readFile(new URL("404.html", dist), "utf8");
+  assert.match(html, /<script type="module" src="\/not-found.js"><\/script>/);
+  assert.ok(html.indexOf("/not-found.js") < html.indexOf("/guest.js"), "runs before the page scripts");
+  const spanish = html.match(/<template data-lang="es" data-title="([^"]+)">([\s\S]*)<\/template>/);
+  assert.equal(spanish[1], "Página no encontrada · Los XV de Sophia");
+  assert.match(spanish[2], /<h1>Página no encontrada<\/h1>/);
+  assert.match(spanish[2], /href="\/es\/rsvp\/"/);
+  for (const link of ['href="/rsvp/"', 'href="/details/"', 'href="/"'])
+    assert.ok(main(html).includes(link), link);
+});
+
+test("every page has a title, link preview and icons, and stays out of search", async () => {
+  const og = (html, property) => html.match(new RegExp(`<meta property="${property}" content="([^"]+)"`))?.[1];
+  for (const [route, file] of await guestPages()) {
+    const html = await page(file),
+      es = file.startsWith("es/");
+    const site = es ? "Los XV de Sophia" : "Sophia’s Quinceañera";
+    const title = html.match(/<title>([^<]+)<\/title>/)[1];
+    if (route === "") assert.equal(title, site);
+    else assert.ok(title.endsWith(" · " + site), `${file}: ${title}`);
+    assert.equal(og(html, "og:title"), es ? "Los XV de Sophia · 15 de enero de 2027" : "Sophia’s Quinceañera · January 15, 2027");
+    assert.match(og(html, "og:description"), es ? /15 de noviembre de 2026/ : /November 15, 2026/);
+    assert.equal(og(html, "og:locale"), es ? "es_US" : "en_US");
+    assert.match(og(html, "og:image"), /^https:\/\/misxv\.simplysoph\.com\/assets\/img\/og-invitation\.[0-9a-f]{10}\.jpg$/);
+    assert.match(html, /<meta name="twitter:card" content="summary_large_image">/);
+    assert.match(html, /<meta name="theme-color" content="#360d16" media="\(prefers-color-scheme: light\)">/);
+    assert.match(html, /<meta name="theme-color" content="#070c15" media="\(prefers-color-scheme: dark\)">/);
+    assert.match(html, /<meta name="robots" content="noindex,nofollow">/);
+    assert.match(html, /<link rel="apple-touch-icon" href="\/assets\/img\/apple-touch-icon\.[0-9a-f]{10}\.png">/);
+    assert.match(html, /<link rel="icon" type="image\/svg\+xml"/);
+    // Fonts load beside the stylesheets, not from an @import inside them.
+    assert.match(html, /<link rel="preconnect" href="https:\/\/fonts\.gstatic\.com" crossorigin>/);
+    assert.match(html, /<link rel="stylesheet" href="https:\/\/fonts\.googleapis\.com\/css2\?[^"]*display=swap">/);
+  }
+  for (const css of ["styles.css", "pages.css"])
+    assert.doesNotMatch(await readFile(new URL(css, dist), "utf8"), /@import/);
+  const home = await page("index.html");
+  const image = (rel) => new URL(home.match(new RegExp(`rel="${rel}"[^>]* href="/([^"]+)"`))[1], dist);
+  assert.deepEqual(await dimensions(image("apple-touch-icon")), [180, 180]);
+  const card = new URL(og(home, "og:image").replace("https://misxv.simplysoph.com/", ""), dist);
+  assert.deepEqual(await dimensions(card), [1200, 630]);
+  assert.ok((await stat(new URL("favicon.ico", dist))).size > 100);
+});
+const dimensions = async (file) => {
+  const { width, height } = await sharp(await readFile(file)).metadata();
+  return [width, height];
+};
+
+test("images are served small, in modern formats, with hashed names", async () => {
+  const files = await readdir(new URL("assets/img/", dist));
+  for (const file of files) assert.match(file, /^[a-z0-9-]+\.[0-9a-f]{10}\.(avif|webp|jpg|png)$/);
+  const home = main(await page("index.html"));
+  const pictureTag = home.match(/<picture>[\s\S]*?<\/picture>/)[0];
+  assert.match(pictureTag, /<source type="image\/avif" srcset="[^"]+400w[^"]+730w[^"]+1024w"/);
+  assert.match(pictureTag, /<source type="image\/webp"/);
+  assert.match(pictureTag, /width="1024" height="1536"/);
+  assert.match(pictureTag, /fetchpriority="high"/);
+  // The full invitation opens as a JPEG, not the 3 MB original PNG.
+  assert.doesNotMatch(await page("index.html"), /invitation\.png/);
+  assert.match(home, /<a href="\/assets\/img\/invitation-1024\.[0-9a-f]{10}\.jpg" target="_blank"/);
+  for (const [name, limit] of [["invitation-400", 60_000], ["invitation-730", 160_000], ["church-480", 40_000], ["reception-490", 40_000]]) {
+    const avif = files.find((f) => f.startsWith(name + ".") && f.endsWith(".avif"));
+    assert.ok((await stat(new URL("assets/img/" + avif, dist))).size < limit, avif);
+  }
+  // Venue photos load lazily, below the facts on phones.
+  assert.match(main(await page("ceremony/index.html")), /<img [^>]*loading="lazy"/);
+  await assert.rejects(stat(new URL("assets/invitation.png", dist)));
+});
+
+test("calendar files exist in both languages for the same events", async () => {
+  for (const kind of ["ceremony", "dinner", "reception"]) {
+    const en = await readFile(new URL(`calendar/${kind}.ics`, dist), "utf8"),
+      es = await readFile(new URL(`calendar/es/${kind}.ics`, dist), "utf8");
+    const uid = (ics) => ics.match(/^UID:.*$/m)[0];
+    assert.equal(uid(en), uid(es));
+    for (const ics of [en, es]) assert.doesNotMatch(ics.replace(/\r\n /g, ""), /will be shared|Compartiremos/);
+    assert.match(es.replace(/\r\n /g, ""), /URL:https:\/\/misxv\.simplysoph\.com\/es\//);
+  }
+});
+
+test("the footer is a list and policy bullets are real lists", async () => {
+  for (const file of ["index.html", "es/terms/index.html"]) {
+    const footer = (await page(file)).match(/<footer[\s\S]*?<\/footer>/)[0];
+    assert.match(footer, /<nav class="footer-nav"[^>]*><ul><li>/);
+    assert.doesNotMatch(footer, /<\/a> · <a/);
+    assert.match(footer, /<p class="copyright">/);
+  }
+  const terms = main(await page("terms/index.html"));
+  assert.match(terms, /<ul><li>[^<]+<\/li>/);
+  assert.doesNotMatch(terms, /<p>• /);
+});

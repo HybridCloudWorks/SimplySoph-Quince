@@ -22,6 +22,11 @@ test('publisher preserves security headers and cannot select the protected defau
   const { permissionsPolicy } = await import('../server/http.mjs');
   assert.equal(config.headers[0].headers['Permissions-Policy'],permissionsPolicy);
   assert.equal(config.headers.at(-1).headers['X-Release-Commit'],env.GITHUB_SHA);
+  // Hashed images are cached for a year; pages, scripts and styles revalidate.
+  assert.equal(config.headers[0].headers['Cache-Control'],'public, max-age=0, must-revalidate');
+  const images = config.headers.find(rule => rule.glob === '/assets/img/**');
+  assert.equal(images.headers['Cache-Control'],'public, max-age=31536000, immutable');
+  assert.ok(config.headers.indexOf(images) > 0, 'the image rule must follow the catch-all so it overrides it');
   const apiHeaders = config.headers.filter(rule => rule.glob === '/api/**');
   assert.equal(apiHeaders.at(-1).headers['Cache-Control'],'private, no-store');
   assert.equal(apiHeaders.at(-1).headers.Vary,'Cookie');
