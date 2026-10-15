@@ -54,7 +54,7 @@ Administrators sign in at [misxv.simplysoph.com/admin/login/](https://misxv.simp
 
 ## Still to come from the family
 
-Some sections wait for the family's words and photos, and stay hidden until then: Sophia's story and portraits, the parents' message, the court of honor and padrinos, the dress code, parking and children's details, hotels and airport tips, registry links, and, after the event, the thank-you note and highlight video. Nothing is invented in the meantime.
+Some sections wait for the family's words and photos, and stay hidden until then: Sophia's story and portraits, the parents' message, the court of honor and padrinos, the dress code, parking and children's details, hotels and airport tips, registry links, and, after the event, the thank-you note and highlight video. Nothing is invented in the meantime. Their pages aren't linked from the menu or anywhere else until the content is added to `site/content.mjs`; the next build links them by itself (see [page-scope.md](docs/page-scope.md)).
 
 ## For developers
 
@@ -70,7 +70,7 @@ Without the production settings every page works and sign-in and RSVP are switch
 
 `npm run test:browser` runs the guest RSVP and administrator sign-in journeys in Chromium against the built pages and the real API, with in-memory stand-ins for storage, Notion and email and only made-up guests ([tests/browser/harness.mjs](tests/browser/harness.mjs)). Install the browser once with `npx playwright install chromium`.
 
-The pages are built from `site/` by `scripts/build-pages.mjs`; the RSVP and sign-in service lives in `server/`. Pull requests run the checks. Merging to `main` publishes the static website automatically once the checks pass; the API is deployed by hand, as described in [docs/deployment.md](docs/deployment.md).
+The pages are built from `site/` by `scripts/build-pages.mjs`, which also makes the optimized images and link-preview card with `scripts/images.mjs` (the first build takes a few seconds longer; encoded images are kept in `.cache/`); the RSVP and sign-in service lives in `server/`. Pull requests run the checks. Merging to `main` publishes the static website automatically once the checks pass; the API is deployed by hand, as described in [docs/deployment.md](docs/deployment.md).
 
 ## Contributing, support and security
 

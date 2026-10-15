@@ -16,6 +16,12 @@ The REST publisher preserves only the reviewed `/api/**` rewrite to `misxv-api` 
 
 PR #2 is merged into main and its feature branch is retired. Production publishing trusts only main.
 
+## Images and caching
+
+The build makes every published image from the originals in `site/assets/` (`scripts/images.mjs`): AVIF, WebP and JPEG at the widths the pages show, the 1200 × 630 link-preview card used by WhatsApp and iMessage, the 180px home-screen icon, a 32px favicon and `/favicon.ico`. They are published under `/assets/img/` with a hash in each name, so `firebase.json` lets browsers keep that folder for a year (`public, max-age=31536000, immutable`); a changed picture gets a new name. Everything else (pages, scripts, stylesheets, calendars) keeps `public, max-age=0, must-revalidate`, and `/api/**` stays `private, no-store`. The original PNGs are no longer published; "Open the full invitation" opens the 1024px JPEG.
+
+To replace a picture, change the file in `site/assets/` and publish; the pages pick up the new names. WhatsApp and other apps cache a link's preview, so a link shared earlier may show the old card for a while.
+
 ## Exact hosting target
 
 - Google account: the project owner's Google account (shown as `<project-owner-account>` below); the HybridCloudWorks account does not have access
