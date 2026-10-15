@@ -283,3 +283,26 @@ test("the footer is a list and policy bullets are real lists", async () => {
   assert.match(terms, /<ul><li>[^<]+<\/li>/);
   assert.doesNotMatch(terms, /<p>• /);
 });
+
+test("guests hear the hosts as “we”, never “the family” as someone else", async () => {
+  // What guests read or receive: the built pages, the guest scripts, guest
+  // emails and the SMS/WhatsApp auto-replies. Admin screens may name the family.
+  const sources = [
+    ...(await guestPages()).map(([, file]) => new URL(file, dist)),
+    ...(await readdir(new URL("../site/", import.meta.url)))
+      .filter((f) => /\.m?js$/.test(f) && !f.startsWith("admin") && f !== "preview-content.mjs")
+      .map((f) => new URL(`../site/${f}`, import.meta.url)),
+    ...["emails/templates.mjs", "server/whatsapp.mjs", "server/sms.mjs"].map(
+      (f) => new URL(`../${f}`, import.meta.url),
+    ),
+  ];
+  const thirdPerson =
+    /\bthe family (?:may|needs?|will|can|must|should|reviews?|decides?)\b|\bla familia (?:puede|debe|necesita|va a|revisa|decide|no les?)\b/i;
+  for (const url of sources) {
+    const lines = (await readFile(url, "utf8")).split("\n");
+    lines.forEach((line, i) => {
+      if (/^\s*(?:\/\/|\*)/.test(line)) return; // code comments
+      assert.doesNotMatch(line, thirdPerson, `${url.pathname.split("/").slice(-2).join("/")}:${i + 1}`);
+    });
+  }
+});

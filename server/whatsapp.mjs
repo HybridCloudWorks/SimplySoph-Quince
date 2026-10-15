@@ -498,7 +498,7 @@ export function createWhatsapp({
         return xml(
           p?.type === "START" && p.syncState === "synced"
             ? "Simply Soph Media: You are subscribed to Sophia's WhatsApp event updates. Frequency varies. Reply STOP to unsubscribe or HELP for help."
-            : "Simply Soph Media: First request WhatsApp updates in your website account or ask the family to record your consent, then send START again. HELP: misxv@simplysoph.com.",
+            : "Simply Soph Media: First request WhatsApp updates in your website account or ask us to record your consent, then send START again. HELP: misxv@simplysoph.com.",
         );
       }
       // HELP gets the support answer the program requires. Any other text gets
