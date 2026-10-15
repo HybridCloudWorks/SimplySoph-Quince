@@ -316,6 +316,12 @@ body[data-route="share"] .page > :not(.page-heading) {
   display: grid;
   gap: 8px;
 }
+/* The other language's one-line summary under the steps (the QR is English). */
+.share-steps > p {
+  margin: 16px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
 .share-steps li::marker {
   color: var(--wine);
   font-weight: 700;

@@ -212,28 +212,18 @@ function contents(route, lang) {
     body = `<div class="portal" id="portal" data-view="${route}"><p role="status">${t.loading}</p></div>`;
   if (route === "gallery")
     body =
-      '<p class="lead">' +
-      say(
-        "A lifetime of little moments. A new chapter to share.",
-        "Una vida de pequeños momentos. Un nuevo capítulo para compartir.",
-      ) +
       // Guests' photos and videos are private (signed-in guests only), so the
       // page starts with one panel that site/guest.js fills: sign in, nothing
       // yet, or the albums and sections that actually have something in them
       // (data-gallery-albums: site/experience.js fills [data-album-cards]
       // with every album, media or not).
-      '</p><div class="gallery-state" data-gallery-state><p role="status">' +
+      '<div class="gallery-state" data-gallery-state><p role="status">' +
       say("Opening the gallery…", "Abriendo la galería…") +
       '</p></div><div data-gallery-albums hidden></div><section class="gallery-section" data-photos-section hidden><h2>' +
       say("Photographs", "Fotografías") +
       '</h2><p data-album-label></p><div data-gallery class="media-grid"></div></section><section class="gallery-section" data-videos-section hidden><h2>' +
       say("The video collection", "La colección de videos") +
-      "</h2><p>" +
-      say(
-        "Relive the laughter, the music, and the moments in between.",
-        "Revive las risas, la música y los momentos especiales.",
-      ) +
-      '</p><div data-videos class="media-grid"></div></section><p data-gallery-share hidden>' +
+      '</h2><div data-videos class="media-grid"></div></section><p data-gallery-share hidden>' +
       link("share", say("Share your photos", "Comparte tus fotos")) +
       "</p>";
   // The printed table QR opens this page in English (/share/#media-upload),
