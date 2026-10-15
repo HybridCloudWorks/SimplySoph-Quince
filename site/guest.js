@@ -616,7 +616,12 @@ function review(inv, values, { push = true } = {}) {
   show(
     `<h2>${tr("Review your response", "Revisen su respuesta")}</h2>${summary(input.attendance, inv)}${details}<p class="resume-note" role="status"></p><p class="error" role="alert"></p><div class="row-actions"><button type="button" id="confirm" class="button burgundy">${tr("Save my RSVP", "Guardar mi respuesta")}</button><button type="button" id="edit" class="button outline">${tr("Change counts", "Cambiar cantidades")}</button></div>`,
   );
-  if (push) history.pushState({ rsvp: "review" }, "");
+  if (push) {
+    // The entry left behind is the form's, even when an in-page link (the
+    // skip link's #main) made it.
+    if (history.state?.rsvp !== "form") history.replaceState({ rsvp: "form" }, "");
+    history.pushState({ rsvp: "review" }, "");
+  }
   const alert = portal.querySelector("[role=alert]"),
     note = portal.querySelector(".resume-note"),
     save = portal.querySelector("#confirm");
@@ -652,11 +657,14 @@ function review(inv, values, { push = true } = {}) {
     save.removeAttribute("aria-disabled");
   };
 }
+// Only the RSVP's own entries change the step: an in-page anchor (the skip
+// link) adds an entry without one and leaves the step on screen.
 addEventListener("popstate", (e) => {
-  if (!current || portal?.dataset.view !== "rsvp") return;
+  const step = e.state?.rsvp;
+  if (!current || portal?.dataset.view !== "rsvp" || !["form", "review"].includes(step)) return;
   const { inv } = current,
     values = readDraft(inv) || current.values;
-  if (e.state?.rsvp === "review") {
+  if (step === "review") {
     if (complete(inv, values)) review(inv, values, { push: false });
   } else rsvpForm(inv, values);
 });
@@ -770,7 +778,6 @@ async function showPortal() {
       quickAnswer = null;
       keepDraft(inv, values);
       // Back from the review returns to the form, filled in the same way.
-      history.replaceState({ rsvp: "form" }, "");
       review(inv, values);
     } else if (history.state?.rsvp === "review" && draft && complete(inv, draft))
       review(inv, draft, { push: false });

@@ -49,6 +49,56 @@ test("the skip link keeps an RSVP in progress instead of reloading it", async ({
   await expect(page.getByText("This invitation link isn't working.")).toHaveCount(0);
 });
 
+// The anchor adds a history entry of its own; before the fix the RSVP read it
+// as Back and swapped the review for the form.
+test("the skip link on the RSVP review keeps the review, and Back still returns to the form", async ({
+  page,
+  harness,
+}) => {
+  const { link } = await harness.issueInvitation(households.rivera);
+  await page.goto(harness.forBrowser(link));
+  await page.getByRole("button", { name: "Everyone’s coming" }).click();
+  const review = page.getByRole("heading", { name: "Review your response" });
+  await expect(review).toBeFocused();
+  await markDocument(page);
+  await useSkipLink(page);
+
+  expect(await sameDocument(page)).toBe(true);
+  await expect(review).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Rivera Family" })).toHaveCount(0);
+  // The next Tab goes on from the main content: the review's first button.
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "Save my RSVP" })).toBeFocused();
+
+  // Back undoes the jump, then returns to the form, filled in.
+  await page.goBack();
+  await expect(page).toHaveURL(harness.url("/rsvp/"));
+  await expect(review).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole("heading", { name: "Rivera Family" })).toBeFocused();
+  await expect(
+    page.getByRole("main").getByRole("group", { name: /^Ceremony · / }).getByLabel("Adults / teens"),
+  ).toHaveValue("2");
+});
+
+// The jump made on the form is a step of the form: Back from the review
+// after it returns to the form, not to nothing.
+test("Back from a review reached after the skip link returns to the form", async ({
+  page,
+  harness,
+}) => {
+  const { link } = await harness.issueInvitation(households.rivera);
+  await page.goto(harness.forBrowser(link));
+  await expect(page.getByRole("heading", { name: "Rivera Family" })).toBeVisible();
+  await useSkipLink(page);
+  await page.getByRole("button", { name: "We can’t make it" }).click();
+  await expect(page.getByRole("heading", { name: "Review your response" })).toBeVisible();
+  await page.goBack();
+  await expect(page).toHaveURL(/\/rsvp\/#main$/);
+  await expect(page.getByRole("heading", { name: "Rivera Family" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Review your response" })).toHaveCount(0);
+});
+
 test("opening /rsvp/#main shows the invitation form without a broken-link error", async ({
   page,
   harness,
