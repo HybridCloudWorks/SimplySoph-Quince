@@ -44,7 +44,7 @@ import {
   firstSentence,
   longDate,
 } from "../emails/templates.mjs";
-import { event as eventInfo } from "../site/content.mjs";
+import { event as eventInfo, ready } from "../site/content.mjs";
 import { previewRoutes } from "../site/preview-content.mjs";
 import { notionOutage } from "./notion.mjs";
 import { attendanceOf, dinnerSeats } from "./attendance.mjs";
@@ -127,6 +127,9 @@ export function createApplication({
   origin,
   clientId = "",
   deadline = eventInfo.deadline,
+  // Whether a page that waits for the family's words has them yet
+  // (site/content.mjs, as built and deployed); tests can say either.
+  pageReady = ready,
   adminEmails = [],
   notificationEmails = adminEmails,
   now = Date.now,
@@ -636,6 +639,9 @@ export function createApplication({
     if (!mailer.configured) throw error(503, "MAIL_NOT_CONFIGURED");
     const pending = (await ledger.read()).outbox[id];
     if (!pending || pending.archived) throw error(404, "NOT_FOUND");
+    // A thank-you drafted while its page had content, emptied since.
+    if (pending.type === "thanks" && !pageReady("thank-you"))
+      throw error(409, "THANK_YOU_PAGE_EMPTY");
     const currentGuest = await notion.read(pending.householdId, { fresh: true });
     if (currentGuest.archived) throw error(409, "INVITATION_INACTIVE");
     const job = await ledger.transaction((s) => claimMail(s, id, currentGuest));
@@ -2764,6 +2770,10 @@ export function createApplication({
           )
         )
           throw error(422, "INVALID_MAIL_TYPE");
+        // Its button opens /thank-you/, which shows nothing until the family
+        // adds a thank-you note or highlight video.
+        if (body.type === "thanks" && !pageReady("thank-you"))
+          throw error(409, "THANK_YOU_PAGE_EMPTY");
         const row = await notion.read(body.id, { fresh: true }),
           s = await ledger.read(),
           invite = s.invitations[row.id];

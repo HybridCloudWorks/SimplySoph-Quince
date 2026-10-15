@@ -4,6 +4,7 @@ import { Ledger, memoryAdapter, memoryMedia } from "../server/store.mjs";
 import { createApplication } from "../server/application.mjs";
 import { hash, token, totp, base32, seal } from "../server/auth.mjs";
 import { createHmac } from "node:crypto";
+import { ready } from "../site/content.mjs";
 // The fixture owner's authenticator, for actions that need a fresh code.
 const OWNER_TOTP = base32(Buffer.alloc(20, 9));
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
@@ -992,6 +993,32 @@ test("invitation emails carry a server-minted private link with quick answers; r
     invited: { ceremony: true, dinner: true, dance: false },
   });
   await assert.rejects(open, (e) => e.code === "INVALID_INVITATION");
+});
+
+test("the after-event thank-you email is refused while the thank-you page it links to is still empty", async () => {
+  const empty = (e) => e.status === 409 && e.code === "THANK_YOU_PAGE_EMPTY";
+  const thanks = { id: household, type: "thanks" };
+  // With the site's own content (site/content.mjs), the answer follows ready().
+  const site = await fixture();
+  if (ready("thank-you")) assert.ok((await site.admin("mail/draft", thanks)).id);
+  else await assert.rejects(site.admin("mail/draft", thanks), empty);
+  let filled = false;
+  const f = await fixture({ pageReady: (route) => route !== "thank-you" || filled });
+  await assert.rejects(f.admin("mail/draft", thanks), empty);
+  assert.deepEqual(Object.values((await f.ledger.read()).outbox), [], "no draft is saved");
+  assert.ok((await f.admin("mail/draft", { id: household, type: "details" })).id, "other emails are unaffected");
+  // Once the family writes its thank-you note, the draft links to it...
+  filled = true;
+  const { id } = await f.admin("mail/draft", thanks);
+  assert.match((await f.admin("mail/preview", undefined, { id })).html, /\/thank-you\//);
+  // ...but it is not sent if the page has been emptied again since.
+  filled = false;
+  await assert.rejects(f.admin("mail/send", { id, confirm: true }), empty);
+  assert.equal(f.sends(), 0);
+  assert.equal((await f.ledger.read()).outbox[id].state, "draft", "still a draft, sent once the page is back");
+  filled = true;
+  assert.equal((await f.admin("mail/send", { id, confirm: true })).state, "accepted");
+  assert.equal(f.sends(), 1);
 });
 
 test("unknown admin emails, link tokens and MFA challenges never queue a ledger write", async () => {
