@@ -203,6 +203,66 @@ test("answers survive Back from the review, a reload and a switch to Spanish, an
   );
 });
 
+// Hosting publishes the site on merge and the API is deployed by hand, so for
+// a while the site can run against an API that sends no householdId.
+test("without a household id from the API, no answers are kept, so one household’s never fill another’s form", async ({
+  page,
+  harness,
+}) => {
+  await page.route("**/api/invitation", async (route) => {
+    const response = await route.fetch(),
+      json = await response.json();
+    delete json.householdId;
+    await route.fulfill({ response, json });
+  });
+  const rivera = await harness.issueInvitation(households.rivera),
+    morales = await harness.issueInvitation(households.morales);
+  await page.goto(harness.forBrowser(rivera.link));
+  await chooseCounts(page, { Ceremony: [2, 1] });
+  await page.getByLabel("Dietary/accessibility needs or song request (optional)").fill("Rivera’s song");
+
+  // Another household's invitation, opened in the same tab.
+  await page.goto(harness.forBrowser(morales.link));
+  await expect(page.getByRole("heading", { name: "Familia Morales" })).toBeVisible();
+  await expect(page.getByText("We kept the answers you started.")).toHaveCount(0);
+  await expect(eventGroup(page, "Ceremony").getByLabel("Adults / teens")).toHaveValue("");
+  await expect(
+    page.getByLabel("Dietary/accessibility needs or song request (optional)"),
+  ).toHaveValue("");
+  expect(
+    await page.evaluate(() => Object.keys(sessionStorage).filter((k) => k.startsWith("misxv-rsvp:"))),
+  ).toEqual([]);
+});
+
+test("answers kept in the tab that don’t fit the invitation are set aside, not restored", async ({
+  page,
+  harness,
+}) => {
+  const household = households.rivera;
+  const { link } = await harness.issueInvitation(household, {
+    invited: { ceremony: true, dinner: true, dance: false },
+  });
+  await page.goto(harness.forBrowser(link));
+  await expect(page.getByRole("heading", { name: "Rivera Family" })).toBeVisible();
+  const key = "misxv-rsvp:" + household.id;
+  for (const attendance of [
+    // More people than the invitation has seats for.
+    { ceremony: { adultsTeens: "5", kids: "0" } },
+    // An event that isn't on this invitation.
+    { ceremony: { adultsTeens: "2", kids: "1" }, dance: { adultsTeens: "2", kids: "1" } },
+  ]) {
+    await page.evaluate(
+      ([k, v]) => sessionStorage.setItem(k, JSON.stringify(v)),
+      [key, { attendance, contact: null, requests: "" }],
+    );
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Rivera Family" })).toBeVisible();
+    await expect(page.getByText("We kept the answers you started.")).toHaveCount(0);
+    await expect(eventGroup(page, "Ceremony").getByLabel("Adults / teens")).toHaveValue("");
+    expect(await page.evaluate((k) => sessionStorage.getItem(k), key)).toBeNull();
+  }
+});
+
 test("a session kept busy stays open past 30 minutes", async ({
   page,
   harness,

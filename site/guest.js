@@ -441,15 +441,41 @@ function answerFrom(inv, values) {
 // The answers being filled in stay in this tab (sessionStorage), per
 // household, so a reload, a switch to the other language or Back keeps them;
 // a successful save clears them. Only answers are kept, never a link or code.
-const draftKey = (inv) => "misxv-rsvp:" + inv.householdId;
+// Without the household's id (an API older than this page) nothing is kept,
+// so one household's answers can never fill another's form in the same tab.
+const draftKey = (inv) => (inv.householdId ? "misxv-rsvp:" + inv.householdId : null);
+// A kept draft is used only if it fits this invitation: its events, and no
+// more people than the seats saved for each.
+const seats = (n, most) => n === "" || (Number.isInteger(Number(n)) && n >= 0 && n <= most);
+function fits(inv, draft) {
+  const attendance = draft?.attendance;
+  return (
+    !!attendance &&
+    typeof attendance === "object" &&
+    Object.entries(attendance).every(
+      ([e, v]) =>
+        invitedEvents(inv).includes(e) &&
+        seats(v?.adultsTeens ?? "", inv.capacity.adultsTeens) &&
+        seats(v?.kids ?? "", inv.capacity.kids),
+    ) &&
+    typeof (draft.requests ?? "") === "string" &&
+    typeof (draft.contact ?? {}) === "object"
+  );
+}
 function readDraft(inv) {
+  const key = draftKey(inv);
+  if (!key) return null;
   try {
-    return JSON.parse(sessionStorage.getItem(draftKey(inv)));
+    const draft = JSON.parse(sessionStorage.getItem(key));
+    if (draft === null || fits(inv, draft)) return draft;
+    sessionStorage.removeItem(key);
   } catch {
-    return null;
+    /* storage is off or the draft is damaged: start from the saved answer */
   }
+  return null;
 }
 function keepDraft(inv, values) {
+  if (!draftKey(inv)) return;
   try {
     sessionStorage.setItem(draftKey(inv), JSON.stringify(values));
   } catch {
@@ -457,6 +483,7 @@ function keepDraft(inv, values) {
   }
 }
 function dropDraft(inv) {
+  if (!draftKey(inv)) return;
   try {
     sessionStorage.removeItem(draftKey(inv));
   } catch {
