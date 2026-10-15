@@ -133,3 +133,31 @@ test("My account puts the household’s RSVP first, labels contact fields for au
   );
 });
 
+test("WhatsApp takes a number written with spaces and dashes, and asks for the country code when it is missing", async ({
+  page,
+  harness,
+}) => {
+  const household = households.rivera;
+  await harness.issueInvitation(household);
+  await page.goto(harness.url("/account/"));
+  await signIn(page, harness, household.email);
+  const updates = page.locator("#whatsapp-preferences");
+  const number = updates.getByRole("textbox", { name: "WhatsApp phone" });
+  await expect(number).toHaveAccessibleDescription(
+    "Include the country code: +1 for the US and Canada, +52 for Mexico. Spaces and dashes are fine.",
+  );
+  await updates.getByRole("checkbox").check();
+
+  await number.fill("817 555 0199");
+  await updates.getByRole("button", { name: "Save and verify in WhatsApp" }).click();
+  await expect(updates.locator(".error")).toHaveText(
+    "Add the country code at the start: +1 for the US and Canada, +52 for Mexico.",
+  );
+  expect((await harness.ledger.read()).whatsappPending ?? {}).toEqual({});
+
+  await number.fill("+1 (817) 555-0199");
+  await updates.getByRole("button", { name: "Save and verify in WhatsApp" }).click();
+  await expect(updates.getByRole("link", { name: /Verify in WhatsApp/ })).toBeVisible();
+  expect((await harness.ledger.read()).whatsappPending[household.id].phone).toBe("+18175550199");
+});
+
