@@ -576,6 +576,8 @@ textarea {
   border-radius: 2px;
   background: var(--field);
   color: var(--ink);
+  /* Labels are bold; what the guest chose or typed is not. */
+  font-weight: 400;
 }
 textarea {
   min-height: 110px;
@@ -608,7 +610,7 @@ input[type="radio"][aria-invalid="true"] {
   font-weight: 600;
 }
 :is(.error, .form-error):not(:empty)::before,
-.error-summary > :first-child::before,
+.error-summary::before,
 .notice.success::before {
   content: "";
   display: inline-block;
@@ -623,27 +625,50 @@ input[type="radio"][aria-invalid="true"] {
 :is(.error, .form-error, .error-summary) {
   --mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath fill-rule='evenodd' d='M10 1a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm-1 4h2v7H9V5Zm1 8.5a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5Z'/%3E%3C/svg%3E");
 }
-/* A summary of everything to fix, above a form. */
+/* A summary of everything to fix, above a form, whatever its lines are
+   (site/client.js writes one paragraph per kind of problem). It takes focus
+   when it appears, so its focus ring always shows. */
 .error-summary {
+  position: relative;
   margin: 0 0 24px;
-  padding: 16px 20px;
+  padding: 14px 18px 14px 50px;
   border: 2px solid var(--error);
   border-radius: 2px;
   background: var(--error-tint);
   color: var(--ink);
+  font-weight: 600;
 }
-.error-summary > :first-child {
+.error-summary::before {
+  position: absolute;
+  left: 16px;
+  top: 16px;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  color: var(--error);
+}
+.error-summary:focus {
+  outline: 3px solid var(--error);
+  outline-offset: 3px;
+}
+.error-summary :is(h2, h3) {
   font: 700 1.05rem/1.4 var(--sans);
   color: var(--error);
-  margin: 0 0 8px;
+  margin: 0 0 6px;
+}
+.error-summary p,
+.error-summary ul {
+  margin: 0 0 6px;
+}
+.error-summary > :last-child {
+  margin-bottom: 0;
 }
 .error-summary ul {
-  margin: 0;
   padding-left: 1.2em;
 }
 .error-summary a {
   color: var(--error);
-  font-weight: 600;
+  text-decoration: underline;
 }
 /* Notices: information on a tint with a wine edge; success in antique gold
    with a check mark. */

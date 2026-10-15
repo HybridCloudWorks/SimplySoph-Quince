@@ -326,6 +326,86 @@ body[data-route="share"] .page > :not(.page-heading) {
   background: var(--tint);
   border-left: 4px solid var(--success);
 }
+#portal .deadline {
+  margin: 0 0 20px;
+}
+/* The RSVP form (site/guest.js): the household's seats under its name, the
+   two one-tap answers, and each event's name with its time and place. */
+.allocation {
+  font: 400 clamp(1.15rem, 2vw, 1.35rem)/1.4 var(--serif);
+  margin: -4px 0 16px;
+}
+.quick-answers {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 8px 0 16px;
+}
+.quick-answers .button {
+  width: 100%;
+  min-height: 56px;
+  font-size: 1rem;
+}
+.quick-answers .outline {
+  border-width: 2px;
+}
+@media (max-width: 600px) {
+  .quick-answers {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+legend .event-name {
+  font-weight: 700;
+}
+legend .event-when {
+  font-weight: 400;
+  color: var(--muted);
+}
+/* Small status lines: "Saved", "We kept your answers". */
+.saved-note,
+.resume-note {
+  margin: 10px 0 16px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.resume-note:empty,
+.saved-note:empty {
+  display: none;
+}
+/* My account: the household's RSVP first, signing out everywhere last. */
+.rsvp-status {
+  margin: 20px 0 24px;
+  border-left: 4px solid var(--gold);
+}
+.rsvp-status > :last-child {
+  margin-bottom: 0;
+}
+.account-sign-out {
+  margin-top: 40px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+/* Under a field, inside its label: a hint, or what to fix. */
+.field-hint,
+.field-error {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.85rem;
+  font-weight: 400;
+}
+.field-hint {
+  color: var(--muted);
+}
+.field-error {
+  color: var(--error);
+}
+/* A button busy with its request keeps focus (aria-disabled, not disabled). */
+button[aria-disabled="true"],
+.button[aria-disabled="true"] {
+  opacity: 0.6;
+  cursor: progress;
+  filter: none;
+}
 /* 4.5:1 or better on cream; the dark header uses the light gold. */
 a[aria-current="page"] {
   color: #7a5410;
@@ -590,6 +670,25 @@ blockquote {
   padding: 16px;
   z-index: 10;
   border: 1px solid var(--gold);
+}
+/* The note's close button: light on the dark note, at the end of the line. */
+#status:has(.status-close) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 16px;
+  padding-block: 8px;
+}
+#status .status-close {
+  min-height: 44px;
+  min-width: 44px;
+  margin-left: auto;
+  padding: 0 4px;
+  color: var(--gold);
+}
+#status a {
+  color: var(--gold);
 }
 @media (max-width: 850px) {
   .split,
