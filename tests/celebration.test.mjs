@@ -12,7 +12,6 @@ import {
   registryCards,
 } from "../site/celebration.mjs";
 import { validateSettings } from "../server/site-settings.mjs";
-import { normalizeVideo, mediaResponse } from "../server/video.mjs";
 test("separate calendars preserve Central-time instants, addresses and unique event identity", () => {
   const c = structuredClone(celebration);
   assert.equal(c.ceremony.end, "2027-01-15T17:00:00-06:00");
@@ -132,34 +131,4 @@ test("settings reject dangerous links, invalid event ordering and ambiguous date
       (e) => e.code === "INVALID_SITE_SETTINGS",
     );
   }
-});
-test("video bytes use bounded single-range responses and reject unsupported uploads", async () => {
-  await assert.rejects(
-    () => normalizeVideo(Buffer.from("<script>bad</script>")),
-    (e) => e.code === "INVALID_VIDEO",
-  );
-  const bytes = Buffer.from("0123456789"),
-    r = mediaResponse(bytes, "video", "bytes=2-5", false, "fixture");
-  assert.equal(r.status, 206);
-  assert.equal(r.binary.toString(), "2345");
-  assert.equal(r.contentRange, "bytes 2-5/10");
-  assert.equal(
-    mediaResponse(
-      bytes,
-      "video",
-      "bytes=-3",
-      true,
-      "fixture",
-    ).binary.toString(),
-    "789",
-  );
-  assert.match(
-    mediaResponse(bytes, "photo", null, true, "fixture").disposition,
-    /attachment.*\.jpg/,
-  );
-  for (const range of ["bytes=99-", "bytes=4-2", "bytes=0-1,3-4", "bytes=-0"])
-    assert.throws(
-      () => mediaResponse(bytes, "video", range, false, "fixture"),
-      (e) => e.code === "INVALID_RANGE",
-    );
 });

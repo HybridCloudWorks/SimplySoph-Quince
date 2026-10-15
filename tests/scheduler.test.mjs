@@ -32,7 +32,7 @@ test("scheduler verifier accepts only a verified token for the exact service acc
   assert.equal(await wrongAudience("Bearer " + token), false);
 });
 
-test("the drain route accepts a JSON POST without a browser Origin; other routes still require it", async (t) => {
+test("the drain and media routes accept a JSON POST without a browser Origin; other routes still require it", async (t) => {
   const origin = "https://example.com";
   const seen = [];
   const server = createHttpServer({
@@ -46,6 +46,7 @@ test("the drain route accepts a JSON POST without a browser Origin; other routes
   const post = (path) =>
     fetch(base + path, { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer x" }, body: "{}" });
   assert.equal((await post("/api/internal/drain")).status, 200);
+  assert.equal((await post("/api/internal/media")).status, 200);
   assert.equal((await post("/api/admin/sync")).status, 403);
-  assert.deepEqual(seen, ["/api/internal/drain"]);
+  assert.deepEqual(seen, ["/api/internal/drain", "/api/internal/media"]);
 });
