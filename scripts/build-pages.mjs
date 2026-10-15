@@ -406,8 +406,12 @@ function contents(route, lang) {
             : "";
         })
         .join("");
-    // After the page's opening line, before the album cards.
-    body = body.replace(/^<p class="lead">[\s\S]*?<\/p>/, (lead) => lead + chapters);
+    // Above the guests' gallery panel: the family's portraits need no sign-in.
+    // A gallery without that panel stops the build rather than drop them.
+    const panel = '<div class="gallery-state"';
+    if (!body.includes(panel))
+      throw new Error("The gallery has no place for the family's portraits");
+    body = body.replace(panel, chapters + panel);
   }
 
   if (route === "privacy")

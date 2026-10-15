@@ -138,6 +138,7 @@ for (const [route, marker] of [
   ["padrinos", "The Example Family"],
   ["travel", "Example Hotel North"],
   ["court", "Andrés G."],
+  ["gallery", "first trip to the beach"],
 ])
   if (!(await readFile(path.join(previewDir, "en", route + ".html"), "utf8")).includes(marker))
     throw new Error(`The ${route} preview does not show the example "${marker}"`);

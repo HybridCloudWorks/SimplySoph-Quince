@@ -70,6 +70,23 @@ test("filled-in pages are linked automatically (the admin preview's example cont
   assert.match(sectionNav, /href="\/court\/" aria-current="page"/);
 });
 
+test("the family's portraits open the gallery, one album at a time, in both languages", async () => {
+  // The admin preview is /gallery/ and /es/gallery/ built with the idea-book
+  // portraits; the family's own fill the same chapters.
+  for (const [lang, album, caption] of [
+    ["en", "Childhood memories", "Age 3, first trip to the beach"],
+    ["es", "Recuerdos de la infancia", "A los 3 años, su primer viaje a la playa"],
+  ]) {
+    const html = main(await readFile(new URL(lang + "/gallery.html", preview), "utf8"));
+    const chapters = html.match(/<section class="chapter">[\s\S]*?<\/section>/g) || [];
+    assert.equal(chapters.length, 2, lang);
+    assert.ok(chapters[0].includes(`<h2>${album}</h2>`), lang);
+    assert.ok(chapters[0].includes(`<figcaption>${caption}</figcaption>`), lang);
+    // Above the guests' gallery, which waits for a sign-in.
+    assert.ok(html.indexOf('class="chapter"') < html.indexOf("data-gallery-state"), lang);
+  }
+});
+
 test("the header is a flat list: sections, sign in, language pill, RSVP and a menu button", async () => {
   for (const [lang, file, names, signIn] of [
     ["en", "index.html", ["Schedule", "Travel", "Photos", "Gifts", "Questions", "Contact"], "Sign in"],
