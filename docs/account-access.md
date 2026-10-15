@@ -43,7 +43,7 @@ The model, in one table. The decision record is [v1/access-model.md](v1/access-m
   - Administrator sessions last 30 minutes.
   - **Sign out on all devices** (My account) ends every guest sign-in of that person. **Sign out everywhere** (admin menu) ends their admin and guest sign-ins alike.
   - The cookie is HttpOnly, Secure, SameSite=Strict and scoped to `/api`.
-  - Every write needs the CSRF header and the site's Origin. Uploads without a current session are refused before they are read, and each server handles at most 3 uploads at once.
+  - Every write needs the CSRF header and the site's Origin. Uploads without a current session are refused before they are read, and each server handles at most 8 uploads at once (pieces of guests' photos and videos, and admin documents); more get a retryable `UPLOAD_BUSY`.
 
 ## Data
 

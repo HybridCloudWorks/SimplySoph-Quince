@@ -133,6 +133,11 @@ const linked = [
 ].map((m) => m[1]);
 if (linked.join() !== previewRoutes.join())
   throw new Error(`Admin preview links (${linked}) differ from the built previews (${previewRoutes})`);
+// The access guide gives the server's limit on uploads at once (server/http.mjs);
+// it once said 3 after the server moved to 8.
+const maxUploads = (await readFile(path.resolve(root, "../server/http.mjs"), "utf8")).match(/\bmaxUploads = (\d+)/)?.[1];
+if (!maxUploads || !(await readFile(path.resolve(root, "../docs/account-access.md"), "utf8")).includes(`at most ${maxUploads} uploads at once`))
+  throw new Error(`docs/account-access.md does not give the server's upload limit (${maxUploads})`);
 for (const [route, marker] of [
   ["sophia", "Example High School"],
   ["padrinos", "The Example Family"],
