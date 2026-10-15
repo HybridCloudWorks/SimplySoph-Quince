@@ -1520,6 +1520,62 @@ test("guests sign in with the email on their Notion row, including Additional Em
   assert.ok(accounts.some((a) => a.email === "grandma@example.com" && a.householdId === household));
 });
 
+test("the emailed sign-in link brings the guest back to the page they asked from", async () => {
+  const f = await fixture();
+  const signIn = async (body) => {
+    f.advance(900001); // past the 3-links-per-15-minutes limit
+    await f.publicPost("auth/email/request", { email: "test@example.com", ...body });
+    const mail = f.sent.at(-1);
+    return { mail, result: await f.publicPost("auth/email/verify", { token: linkOf(mail) }) };
+  };
+  // From the Spanish photo page: a Spanish email whose link confirms on
+  // /es/account/, then returns to /es/share/.
+  const share = await signIn({ return: "es/share" });
+  assert.match(share.mail.html, /\/es\/account\/#[A-Za-z0-9_-]{43}"/);
+  assert.equal(share.result.returnTo, "es/share");
+  assert.equal((await signIn({ return: "guestbook" })).result.returnTo, "guestbook");
+  // Only page names from the list are kept, never an address from the request.
+  for (const value of ["https://evil.example/", "//evil.example", "admin", "es/admin/login", "share/../admin", 42]) {
+    const { mail, result } = await signIn({ return: value });
+    assert.equal(result.returnTo, null, String(value));
+    assert.match(mail.html, /"https:\/\/misxv\.simplysoph\.com\/account\/#[A-Za-z0-9_-]{43}"/);
+  }
+  const s = await f.ledger.read();
+  assert.ok(Object.values(s.emailLinks || {}).every((l) => !l.returnTo || /^(es\/)?[a-z]+$/.test(l.returnTo)));
+});
+
+test("the sign-in email greets the household in its language and says what the link does", async () => {
+  const f = await fixture();
+  await f.publicPost("auth/email/request", { email: "test@example.com", return: "account" });
+  const en = f.sent.at(-1);
+  assert.equal(en.subject, "Your sign-in link · Sophia’s Mis XV");
+  assert.equal(en.secret, true, "kept out of Sent Items");
+  for (const words of [
+    "Hello Test family,",
+    "Sophia’s Mis XV",
+    "Friday, January 15, 2027",
+    "share photos and videos",
+    "works once",
+    "15 minutes",
+    "Didn’t ask for this? Ignore this email",
+    "Sophia’s family",
+  ])
+    assert.ok(en.html.includes(words), words);
+  assert.ok(!/Inicia sesión|Continuar/.test(en.html), "one language only");
+  // A Spanish household, or a guest asking from a Spanish page, reads Spanish.
+  await f.ledger.transaction((s) => {
+    s.invitations[household].locale = "es";
+  });
+  await f.publicPost("auth/email/request", { email: "test@example.com" });
+  const es = f.sent.at(-1);
+  assert.equal(es.subject, "Tu enlace para entrar · Los XV de Sophia");
+  for (const words of ["Hola Test family,", "viernes 15 de enero de 2027", "una sola vez", "15 minutos", "¿No lo pediste? Ignora este correo", "la familia de Sophia"])
+    assert.ok(es.html.includes(words), words);
+  assert.match(es.html, /\/es\/account\/#[A-Za-z0-9_-]{43}"/);
+  assert.ok(!/Sign in|works once/.test(es.html), "one language only");
+  assert.ok(!/[ �]/.test(en.html + es.html), "no characters the mail server cannot carry");
+});
+
 test("an email removed from Notion can no longer use an issued sign-in link", async () => {
   const f = await fixture();
   await f.publicPost("auth/email/request", { email: "test@example.com" });

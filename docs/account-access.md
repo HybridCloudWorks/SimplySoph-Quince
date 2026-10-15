@@ -27,6 +27,8 @@ The model, in one table. The decision record is [v1/access-model.md](v1/access-m
   - Expire after 15 minutes and work once.
   - Sent only to an email on the guest list. Unknown addresses get the same response, after the same delay, and no email.
   - At most 3 links per address every 15 minutes. Only links actually sent count, so nobody can lock someone else out.
+  - Written in the language of the page the guest asked from (else the household's), greeting the household and saying what the link opens, that it works once for 15 minutes, and to ignore it if they didn't ask.
+  - After confirming, the guest goes back to the page they started from: My account, the RSVP, Share photos, the guestbook, Contact or the gallery (English or Spanish). Only a page name from that list is stored with the link, never an address from the request.
 - **Google and Microsoft:**
   - Sign-ins use a one-time, purpose-bound ticket.
   - A guest sign-in never creates an admin session; admins sign in at `/admin/login/`.

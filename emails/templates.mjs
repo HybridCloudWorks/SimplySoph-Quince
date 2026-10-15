@@ -189,6 +189,54 @@ export function emailSchedule(site, invited, locale = "en") {
   }
   return rows;
 }
+// Every email shares one frame: the burgundy "Sophia · Mis XV" band and a card.
+function layout(locale, subject, preheader, body) {
+  return `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(subject)}</title></head><body style="margin:0;background:#fbf5e9;color:#351e21;font:16px/1.6 Arial,sans-serif">${preheader ? `<div style="display:none;max-height:0;overflow:hidden">${escape(preheader)}</div>` : ""}<table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td align="center" style="padding:24px 12px"><table role="presentation" width="560" style="width:100%;max-width:560px;background:#fffdf8;border:1px solid #d9c6a5" cellspacing="0" cellpadding="0"><tr><td style="background:#651625;color:#e9c77b;padding:28px;text-align:center;font:36px Georgia,serif">Sophia · Mis XV</td></tr><tr><td style="padding:28px">${body}</td></tr></table></td></tr></table></body></html>`;
+}
+const button = (href, label) =>
+  `<p style="margin:28px 0"><a href="${escape(href)}" style="display:inline-block;background:#651625;color:#fff;padding:14px 22px;text-decoration:none">${escape(label)}</a></p>`;
+// The sign-in link, in the guest's language. It says who it is from, which
+// celebration, what the link opens and how long it lasts, instead of a lone
+// link (the shape of phishing mail).
+const signInCopy = {
+  en: {
+    subject: "Your sign-in link · Sophia’s Mis XV",
+    greeting: "Hello",
+    intro: (date) =>
+      `You asked to sign in to the website for Sophia’s Mis XV${date ? ` (${date})` : ""}. Once you’re in, you can share photos and videos, write in the guestbook, message the family and update your contact details.`,
+    cta: "Sign in to the website",
+    once: "This link works once, within 15 minutes. No password needed.",
+    ignore: "Didn’t ask for this? Ignore this email; nobody can sign in without the link.",
+    sign: "With love, Sophia’s family",
+  },
+  es: {
+    subject: "Tu enlace para entrar · Los XV de Sophia",
+    greeting: "Hola",
+    intro: (date) =>
+      `Pediste entrar al sitio de los XV de Sophia${date ? ` (${date})` : ""}. Ya adentro, puedes compartir fotos y videos, escribir en el libro de visitas, enviar mensajes a la familia y actualizar tus datos de contacto.`,
+    cta: "Entrar al sitio",
+    once: "Este enlace funciona una sola vez, durante 15 minutos. No necesitas contraseña.",
+    ignore: "¿No lo pediste? Ignora este correo; nadie puede entrar sin el enlace.",
+    sign: "Con cariño, la familia de Sophia",
+  },
+};
+export function renderSignInEmail({ locale = "en", household = "", url, eventDate = "" }) {
+  const c = signInCopy[locale];
+  if (!c) throw new Error("Unsupported locale");
+  const target = new URL(url);
+  if (target.protocol !== "https:" || target.username || target.password)
+    throw new Error("An HTTPS URL without embedded credentials is required");
+  const greeting = household ? `${c.greeting} ${household},` : `${c.greeting},`,
+    intro = c.intro(eventDate);
+  const html = layout(
+    locale,
+    c.subject,
+    intro,
+    `<p>${escape(greeting)}</p><p>${escape(intro)}</p>${button(target.href, c.cta)}<p>${escape(c.once)}</p><p style="font-size:14px">${escape(c.ignore)}</p><p style="font-family:Georgia,serif">${escape(c.sign)}</p>`,
+  );
+  const text = [greeting, intro, `${c.cta}: ${target.href}`, c.once, c.ignore, c.sign].join("\n\n");
+  return { subject: c.subject, html, text };
+}
 // The opening sentence of Sophia's own message, when it is short enough to quote.
 export function firstSentence(text) {
   const m = String(text || "")
@@ -271,6 +319,11 @@ export function renderEmail({
     c.help,
     c.sign,
   ].filter(Boolean);
-  const html = `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(subject)}</title></head><body style="margin:0;background:#fbf5e9;color:#351e21;font:16px/1.6 Arial,sans-serif">${preheader ? `<div style="display:none;max-height:0;overflow:hidden">${escape(preheader)}</div>` : ""}<table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td align="center" style="padding:24px 12px"><table role="presentation" width="560" style="width:100%;max-width:560px;background:#fffdf8;border:1px solid #d9c6a5" cellspacing="0" cellpadding="0"><tr><td style="background:#651625;color:#e9c77b;padding:28px;text-align:center;font:36px Georgia,serif">Sophia · Mis XV</td></tr><tr><td style="padding:28px">${preview ? `<p style="font-size:13px;color:#651625">${c.preview}</p>` : ""}<p>${escape(c.greeting)} ${escape(household)},</p>${title ? `<h1 style="font:30px/1.2 Georgia,serif;color:#651625">${escape(title)}</h1>` : ""}<p>${escape(intro)}</p>${quote ? `<p style="margin:0 0 16px;border-left:3px solid #e9c77b;padding:4px 0 4px 14px;font:italic 18px/1.5 Georgia,serif;color:#4a2a2e">“${escape(quote)}” <span style="font-style:normal;color:#651625">Sophia</span></p>` : ""}${rows.length ? `${eventDate ? `<p style="margin:0 0 6px"><strong>${escape(eventDate)}</strong></p>` : ""}<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin:0 0 16px">${rows.map((r) => `<tr><td style="padding:8px 12px 8px 0;border-top:1px solid #ecdfc8;font-weight:bold;color:#651625;white-space:nowrap;vertical-align:top">${escape(r.time)}</td><td style="padding:8px 0;border-top:1px solid #ecdfc8;vertical-align:top">${escape(r.text)}</td></tr>`).join("")}</table>` : eventDate ? `<p><strong>${c.date}:</strong> ${escape(eventDate)}</p>` : ""}${reply ? `<p>${c.replyBy(`<strong>${escape(rsvpDeadline)}</strong>`)}</p>` : ""}${updateText ? `<p>${escape(updateText)}</p>` : ""}<p style="margin:28px 0"><a href="${escape(target.href)}" style="display:inline-block;background:#651625;color:#fff;padding:14px 22px;text-decoration:none">${escape(cta)}</a></p>${quick ? `<p style="margin:0 0 24px">${escape(c.quick[0])}: <a href="${escape(quick.yes)}" style="color:#651625;font-weight:bold">${escape(c.quick[1])}</a> · <a href="${escape(quick.no)}" style="color:#651625;font-weight:bold">${escape(c.quick[2])}</a></p>` : ""}<p style="font-size:14px">${escape(privacyNote)}</p><p>${escape(c.help)}</p><p style="font-family:Georgia,serif">${escape(c.sign)}</p></td></tr></table></td></tr></table></body></html>`;
+  const html = layout(
+    locale,
+    subject,
+    preheader,
+    `${preview ? `<p style="font-size:13px;color:#651625">${c.preview}</p>` : ""}<p>${escape(c.greeting)} ${escape(household)},</p>${title ? `<h1 style="font:30px/1.2 Georgia,serif;color:#651625">${escape(title)}</h1>` : ""}<p>${escape(intro)}</p>${quote ? `<p style="margin:0 0 16px;border-left:3px solid #e9c77b;padding:4px 0 4px 14px;font:italic 18px/1.5 Georgia,serif;color:#4a2a2e">“${escape(quote)}” <span style="font-style:normal;color:#651625">Sophia</span></p>` : ""}${rows.length ? `${eventDate ? `<p style="margin:0 0 6px"><strong>${escape(eventDate)}</strong></p>` : ""}<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin:0 0 16px">${rows.map((r) => `<tr><td style="padding:8px 12px 8px 0;border-top:1px solid #ecdfc8;font-weight:bold;color:#651625;white-space:nowrap;vertical-align:top">${escape(r.time)}</td><td style="padding:8px 0;border-top:1px solid #ecdfc8;vertical-align:top">${escape(r.text)}</td></tr>`).join("")}</table>` : eventDate ? `<p><strong>${c.date}:</strong> ${escape(eventDate)}</p>` : ""}${reply ? `<p>${c.replyBy(`<strong>${escape(rsvpDeadline)}</strong>`)}</p>` : ""}${updateText ? `<p>${escape(updateText)}</p>` : ""}${button(target.href, cta)}${quick ? `<p style="margin:0 0 24px">${escape(c.quick[0])}: <a href="${escape(quick.yes)}" style="color:#651625;font-weight:bold">${escape(c.quick[1])}</a> · <a href="${escape(quick.no)}" style="color:#651625;font-weight:bold">${escape(c.quick[2])}</a></p>` : ""}<p style="font-size:14px">${escape(privacyNote)}</p><p>${escape(c.help)}</p><p style="font-family:Georgia,serif">${escape(c.sign)}</p>`,
+  );
   return { subject, html, text: lines.join("\n\n") };
 }
