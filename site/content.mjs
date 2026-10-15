@@ -166,10 +166,10 @@ export const textContent = {
     ],
   ],
   padrinos: [
-    ["For every act of love", "Por cada muestra de cariño"],
+    ["Padrinos and madrinas", "Padrinos y madrinas"],
     [
-      "Padrinos and madrinas help make a quinceañera possible, each with a special part of the day.",
-      "Los padrinos y las madrinas ayudan a hacer posibles los XV, y cada uno tiene una parte especial del día.",
+      "They help make a quinceañera possible, each with a special part of the day.",
+      "Ayudan a hacer posibles los XV, y cada uno tiene una parte especial del día.",
     ],
     [
       "Soon we’ll thank Sophia’s padrinos and madrinas here by name.",
