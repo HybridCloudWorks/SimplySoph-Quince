@@ -24,13 +24,17 @@ const mp4 = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from("ftypisom")
 const mov = Buffer.concat([Buffer.from([0, 0, 0, 0x14]), Buffer.from("ftypqt  "), Buffer.alloc(20)]);
 const webm = Buffer.concat([Buffer.from([0x1a, 0x45, 0xdf, 0xa3]), Buffer.alloc(28)]);
 
-const fakeVars = ["FAKE_VIDEO_LOG", "FAKE_FFPROBE_JSON", "FAKE_FFPROBE_EXIT", "FAKE_FFPROBE_SLEEP", "FAKE_FFMPEG_BYTES", "FAKE_FFMPEG_EXIT", "FAKE_FFMPEG_SLEEP", "FAKE_POSTER_EXIT"];
+const fakeVars = ["FAKE_VIDEO_LOG", "FAKE_FFPROBE_JSON", "FAKE_FFPROBE_EXIT", "FAKE_FFPROBE_SLEEP", "FAKE_FFPROBE_NOISE", "FAKE_FFPROBE_PAD", "FAKE_FFMPEG_BYTES", "FAKE_FFMPEG_EXIT", "FAKE_FFMPEG_SLEEP", "FAKE_FFMPEG_NOISE", "FAKE_POSTER_EXIT"];
+// *_NOISE writes that many bytes of log to stderr; FAKE_FFPROBE_PAD puts that
+// many spaces before the JSON (still valid JSON, just a longer answer).
 const fakeFfprobe = `#!/bin/sh
 { echo ffprobe; for a in "$@"; do printf '%s\\n' "$a"; done; echo --end; } >> "$FAKE_VIDEO_LOG"
 for last in "$@"; do :; done
 cp "$last" "$FAKE_VIDEO_LOG.input"
 if [ -n "$FAKE_FFPROBE_SLEEP" ]; then sleep "$FAKE_FFPROBE_SLEEP"; fi
+if [ -n "$FAKE_FFPROBE_NOISE" ]; then head -c "$FAKE_FFPROBE_NOISE" /dev/zero | tr '\\000' w >&2; fi
 if [ -n "$FAKE_FFPROBE_EXIT" ]; then exit "$FAKE_FFPROBE_EXIT"; fi
+if [ -n "$FAKE_FFPROBE_PAD" ]; then head -c "$FAKE_FFPROBE_PAD" /dev/zero | tr '\\000' ' '; fi
 printf '%s' "$FAKE_FFPROBE_JSON"
 `;
 // The conversion writes output.mp4 and the poster call poster.jpg.
@@ -41,6 +45,7 @@ case "$last" in
   *.jpg) if [ -n "$FAKE_POSTER_EXIT" ]; then exit "$FAKE_POSTER_EXIT"; fi; head -c 100 /dev/zero > "$last"; exit 0 ;;
 esac
 if [ -n "$FAKE_FFMPEG_SLEEP" ]; then sleep "$FAKE_FFMPEG_SLEEP"; fi
+if [ -n "$FAKE_FFMPEG_NOISE" ]; then head -c "$FAKE_FFMPEG_NOISE" /dev/zero | tr '\\000' w >&2; fi
 if [ -n "$FAKE_FFMPEG_EXIT" ]; then exit "$FAKE_FFMPEG_EXIT"; fi
 head -c "$FAKE_FFMPEG_BYTES" /dev/zero > "$last"
 `;
@@ -286,6 +291,27 @@ test("ffprobe and both ffmpeg runs decode only phone codecs and frames of at mos
     for (const codec of ["png", "tiff", "mjpeg", "gif", "exr", "dxv"])
       assert.ok(!args[allowed + 1].split(",").includes(codec), `${tool} #${i} never decodes ${codec}`);
   }
+});
+
+test("a video whose decoding logs pages of warnings still converts; ffprobe's answer is read up to 1 MB, and beyond that it is retried later", { skip: noShell }, async (t) => {
+  const s = await sandbox(t, { fakes: true });
+  const ok = meta({ duration: "8" }, [video(1920, 1080), { codec_type: "audio" }]);
+  // ffmpeg logs a line for every damaged frame, and a phone video with
+  // thousands of them still plays: the log once filled a 200 KB buffer and
+  // the video was refused as unreadable.
+  await s.reset({ FAKE_FFPROBE_JSON: ok, FAKE_FFPROBE_NOISE: "300000", FAKE_FFMPEG_NOISE: "1000000", FAKE_FFMPEG_BYTES: "64" });
+  const out = await s.convert(mp4);
+  assert.equal(out.videoBytes, 64);
+  assert.equal(out.duration, 8);
+  // A long answer is read whole (an iPhone video's is a few KB)...
+  await s.reset({ FAKE_FFPROBE_JSON: ok, FAKE_FFPROBE_PAD: "300000", FAKE_FFMPEG_BYTES: "64" });
+  assert.equal((await s.convert(mp4)).videoBytes, 64);
+  // ...and one over 1 MB is this server's limit, not proof the file is bad:
+  // a 503 the media job tries again (3 times in all).
+  await s.reset({ FAKE_FFPROBE_JSON: ok, FAKE_FFPROBE_PAD: "1100000", FAKE_FFMPEG_BYTES: "64" });
+  await assert.rejects(s.convert(mp4), (e) => e.status === 503 && e.code === "VIDEO_PROBE_TOO_LARGE");
+  assert.deepEqual((await s.calls()).map((c) => c.tool), ["ffprobe"]);
+  assert.deepEqual(await readdir(s.tmp), []);
 });
 
 test("stored media is served whole or as one byte range, streamed rather than held in memory", async () => {

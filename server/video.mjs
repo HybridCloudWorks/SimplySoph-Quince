@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { spawn } from "node:child_process";
 import { mkdtemp, open, rm, stat } from "node:fs/promises";
 import { setPriority, tmpdir } from "node:os";
 import path from "node:path";
@@ -65,17 +65,46 @@ const DECODE_LIMITS = [
     "webvtt",
   ].join(","),
 ];
+// ffprobe's answer for a phone video is a few KB.
+const PROBE_ANSWER = 1_000_000;
 let busy = false;
 // Runs ffprobe/ffmpeg below the API's own priority, so pages, uploads and
 // sign-ins on the same instance stay responsive while a video converts.
-function run(tool, args, timeout) {
+// Their log (stderr) is never read: ffmpeg logs a line for every damaged
+// frame, and a phone video with thousands of them still converts (the log
+// used to share a 200 KB buffer with ffprobe's answer, and overflowing it
+// refused the video as unreadable). Only ffprobe's answer, on stdout, is
+// kept, up to `keep` bytes; ffmpeg writes to files.
+function run(tool, args, timeout, keep = 0) {
   return new Promise((resolve, reject) => {
-    const child = execFile(
-      tool,
-      args,
-      { timeout, killSignal: "SIGKILL", maxBuffer: 200000, windowsHide: true },
-      (e, stdout) => (e ? reject(e) : resolve(stdout)),
-    );
+    const child = spawn(tool, args, {
+        stdio: ["ignore", keep ? "pipe" : "ignore", "ignore"],
+        windowsHide: true,
+      }),
+      chunks = [];
+    let size = 0,
+      failure = null;
+    const stop = (reason) => {
+      failure ??= reason;
+      child.kill("SIGKILL");
+      child.stdout?.destroy();
+    };
+    // Over its time budget: too heavy for this run, not the guest's fault.
+    const timer = setTimeout(() => stop(error(503, "VIDEO_TIMEOUT")), timeout);
+    // A longer answer is this server's limit, not proof the file is bad.
+    child.stdout?.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > keep) stop(error(503, "VIDEO_PROBE_TOO_LARGE"));
+      else chunks.push(chunk);
+    });
+    // No such program (ENOENT); "close" follows.
+    child.on("error", (e) => (failure ??= e));
+    child.on("close", (code, signal) => {
+      clearTimeout(timer);
+      if (failure) reject(failure);
+      else if (code !== 0) reject(new Error(`${tool} ended with ${code ?? signal}`));
+      else resolve(Buffer.concat(chunks).toString());
+    });
     try {
       setPriority(child.pid, 10);
     } catch {
@@ -107,8 +136,9 @@ async function containerOf(file) {
 // Converts the original at `input` (a file in `directory`, which belongs to
 // the caller) into directory/output.mp4 and, when it can, a poster frame
 // directory/poster.jpg. Refusals that are about the guest's file are 422
-// (VIDEO_TOO_LONG, INVALID_VIDEO); a missing ffmpeg, a busy instance or a
-// conversion over its time budget are 503 and can be tried again.
+// (VIDEO_TOO_LONG, INVALID_VIDEO); a missing ffmpeg, a busy instance, an
+// ffprobe answer over 1 MB or a conversion over its time budget are 503 and
+// can be tried again.
 // The default time budget fits the worst accepted file on one vCPU: 300 MB
 // of 4K HEVC (measured about 3 minutes for 60 s of 10-bit 4K, most of it
 // decoding) with room to spare; docs/deployment.md sets the request timeout.
@@ -138,6 +168,7 @@ export async function convertVideo(input, directory, { timeoutMs = 420000 } = {}
           input,
         ],
         15000,
+        PROBE_ANSWER,
       ),
     );
     const video = metadata.streams?.find((s) => s.codec_type === "video"),
@@ -259,9 +290,9 @@ export async function convertVideo(input, directory, { timeoutMs = 420000 } = {}
     };
   } catch (e) {
     if (e.code === "ENOENT") throw error(503, "VIDEO_UNAVAILABLE");
+    // Already decided: the file is refused (VIDEO_TOO_LONG, INVALID_VIDEO), or
+    // this run cannot finish it (VIDEO_TIMEOUT, VIDEO_PROBE_TOO_LARGE).
     if (e.status) throw e;
-    // Killed at the time limit: too heavy for this run, not the guest's fault.
-    if (e.killed) throw error(503, "VIDEO_TIMEOUT");
     throw error(422, "INVALID_VIDEO");
   } finally {
     busy = false;
