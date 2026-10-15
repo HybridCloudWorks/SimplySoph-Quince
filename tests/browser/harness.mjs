@@ -16,7 +16,9 @@ import http from "node:http";
 import path from "node:path";
 import { stat } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { Ledger, memoryAdapter } from "../../server/store.mjs";
+import { writeFile } from "node:fs/promises";
+import sharp from "sharp";
+import { Ledger, memoryAdapter, memoryMedia } from "../../server/store.mjs";
 import { createApplication } from "../../server/application.mjs";
 import { createHttpServer } from "../../server/http.mjs";
 import { notionClient } from "../../server/notion.mjs";
@@ -163,6 +165,22 @@ async function verifyGoogle(credential, expectedNonce) {
   return { id: p.sub, email: p.email.toLowerCase() };
 }
 
+// Stands in for convertVideo (server/video.mjs) when the media job runs: the
+// same files in the working directory, a few bytes of "video" and a real JPEG
+// poster, so the gallery shows a still.
+async function convertedVideo(input, directory) {
+  const video = path.join(directory, "output.mp4"),
+    poster = path.join(directory, "poster.jpg");
+  await writeFile(video, Buffer.from("harness video"));
+  await writeFile(
+    poster,
+    await sharp({ create: { width: 64, height: 36, channels: 3, background: "#651625" } })
+      .jpeg()
+      .toBuffer(),
+  );
+  return { video, poster, duration: 8 };
+}
+
 export async function startHarness({ now = BEFORE_DEADLINE } = {}) {
   try {
     await stat(path.join(dist, "rsvp", "index.html"));
@@ -180,7 +198,8 @@ export async function startHarness({ now = BEFORE_DEADLINE } = {}) {
       return { provider: "harness" };
     },
   };
-  const ledger = new Ledger(memoryAdapter());
+  const ledger = new Ledger(memoryAdapter()),
+    media = memoryMedia();
   // The API compares each POST's Origin with its configured origin, so the port
   // must be known before the application is built: this server takes the port,
   // and the production handler from createHttpServer answers every request.
@@ -217,7 +236,10 @@ export async function startHarness({ now = BEFORE_DEADLINE } = {}) {
     // Shows the Microsoft button; its sign-in is not exercised.
     microsoftClientId: "00000000-0000-4000-8000-00000000c1d0",
     clientId: "harness-client.apps.googleusercontent.com",
-    media: { put: async () => {}, get: async () => Buffer.alloc(0) },
+    // Photos really go through sharp; video conversion (ffmpeg, which CI does
+    // not install) is stood in for by convertedVideo below.
+    media,
+    videoProcessor: convertedVideo,
     key: Buffer.alloc(32, 7),
     origin: siteOrigin,
     adminEmails: [OWNER_EMAIL],
@@ -254,6 +276,23 @@ export async function startHarness({ now = BEFORE_DEADLINE } = {}) {
       return origin + link.slice(siteOrigin.length);
     },
     ledger,
+    media,
+    // One run of the scheduled media job (Cloud Scheduler in production).
+    processMedia: () => app.processMedia(),
+    // The family's review on Admin → Photos & videos.
+    async moderate(id, state) {
+      return app.dispatch({
+        path: "/api/admin/moderation",
+        method: "POST",
+        headers: {
+          origin: siteOrigin,
+          cookie: "__session=" + ownerToken,
+          "x-csrf-token": ownerCsrf,
+        },
+        body: { id, collection: "photos", state },
+        ip: "harness",
+      });
+    },
     notion: notionApi,
     sent,
     logs,

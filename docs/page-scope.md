@@ -20,8 +20,8 @@ Pages that wait for the family's words are built but not linked from anywhere un
 | `/account/` | Sign-in with the email where the household got its invitation (emailed link, Google or Microsoft), returning to the page the guest started from; the household's RSVP and a way to change it, contact details, WhatsApp updates, private family replies, and sign-out on all devices |
 | `/court/` | Approved court names, roles and portraits. Linked once it has content |
 | `/padrinos/` | Public thank-you to the padrinos, once the family approves it. Linked once it has content |
-| `/gallery/` | **Photos**: approved photos and videos, for signed-in guests |
-| `/share/` | Photo and video upload for signed-in guests; printable generic QR for tables |
+| `/gallery/` | **Photos**: approved photos and videos, for signed-in guests. Signed out: one sign-in panel that returns here; nothing approved yet: a "Share your photos" empty state; album cards and the photo and video sections appear only when they have media |
+| `/share/` | **Share your photos**: photo and video upload for signed-in guests, straight from a phone (photos up to 40 MB, videos up to 300 MB and 60 s, sent in resumable pieces with progress). The printable generic QR for tables opens `/share/#media-upload`; signed out, the page explains the steps with a line in the other language, and the sign-in returns to it |
 | `/registry/` | **Gifts**: registry links the family adds |
 | `/travel/` | Travel guidance and approved hotel links |
 | `/faq/` | **Questions**: invitation allocation, deadline, editing, photos and pending attire |

@@ -5,7 +5,6 @@ import {
   celebration,
   timeRange,
   venueSection,
-  albumCards,
   registryCards,
   calendar,
   pageHref,
@@ -218,21 +217,36 @@ function contents(route, lang) {
         "A lifetime of little moments. A new chapter to share.",
         "Una vida de pequeños momentos. Un nuevo capítulo para compartir.",
       ) +
-      "</p><div data-album-cards>" +
-      albumCards(celebration, lang) +
-      '</div><section class="gallery-section"><h2>' +
+      // Guests' photos and videos are private (signed-in guests only), so the
+      // page starts with one panel that site/guest.js fills: sign in, nothing
+      // yet, or the albums and sections that actually have something in them
+      // (data-gallery-albums: site/experience.js fills [data-album-cards]
+      // with every album, media or not).
+      '</p><div class="gallery-state" data-gallery-state><p role="status">' +
+      say("Opening the gallery…", "Abriendo la galería…") +
+      '</p></div><div data-gallery-albums hidden></div><section class="gallery-section" data-photos-section hidden><h2>' +
       say("Photographs", "Fotografías") +
-      '</h2><p data-album-label></p><div data-gallery class="media-grid"></div></section><section class="gallery-section"><h2>' +
+      '</h2><p data-album-label></p><div data-gallery class="media-grid"></div></section><section class="gallery-section" data-videos-section hidden><h2>' +
       say("The video collection", "La colección de videos") +
       "</h2><p>" +
       say(
-        "Relive the laughter, the music, and the moments in between. Approved videos will appear here.",
-        "Revive las risas, la música y los momentos especiales. Aquí aparecerán los videos aprobados.",
+        "Relive the laughter, the music, and the moments in between.",
+        "Revive las risas, la música y los momentos especiales.",
       ) +
-      '</p><div data-videos class="media-grid"></div></section>' +
-      link("share", say("Share photos & videos", "Comparte fotos y videos"));
-  if (route === "share")
-    body = `<div class="share-intro"><p class="lead">${say("Share the celebration through your eyes.", "Comparte la celebración desde tu mirada.")}</p><p>${say("Choose your favorite photos and videos. The family reviews every upload before sharing it in the guest gallery.", "Elige tus fotos y videos favoritos. La familia revisa cada archivo antes de compartirlo en la galería de invitados.")}</p></div><div id="media-upload" tabindex="-1"></div><div class="portal share-portal" id="portal" data-view="share"></div><aside class="media-reminder"><strong>${say("A little reminder", "Un pequeño recordatorio")}</strong><p>${say("Only share media you have permission to upload, including permission from a parent or guardian for children. Approved uploads are visible to signed-in guests.", "Comparte solo archivos que tengas permiso de subir, incluido el permiso de un padre o tutor para los menores. Los archivos aprobados son visibles para los invitados que inician sesión.")} <a href="${href("terms", lang)}">${say("Read the media policy", "Lee la política de medios")}</a></p></aside>`;
+      '</p><div data-videos class="media-grid"></div></section><p data-gallery-share hidden>' +
+      link("share", say("Share your photos", "Comparte tus fotos")) +
+      "</p>";
+  // The printed table QR opens this page in English (/share/#media-upload),
+  // so before sign-in it explains itself in both languages on one screen.
+  // #media-upload sits above that explanation, so the QR lands on it.
+  if (route === "share") {
+    const other = es ? "en" : "es";
+    body = `<div class="share-intro"><p class="lead">${say("Share the celebration through your eyes.", "Comparte la celebración desde tu mirada.")}</p><p>${say("Send us your favorite photos and videos straight from your phone. We review each one before it appears in the gallery for our guests.", "Envíanos tus fotos y videos favoritos directamente desde tu teléfono. Revisamos cada uno antes de que aparezca en la galería para nuestros invitados.")}</p></div><div id="media-upload" tabindex="-1"></div><section class="share-steps" data-share-steps aria-labelledby="share-steps-title"><h2 id="share-steps-title">${say("How to share", "Cómo compartir")}</h2><ol><li>${say("Sign in below with the email where you received your invitation. We email you a link; no password needed.", "Entra abajo con el correo donde recibiste tu invitación. Te enviamos un enlace; no necesitas contraseña.")}</li><li>${say("Choose photos and videos of up to 60 seconds, straight from your phone.", "Elige fotos y videos de hasta 60 segundos, directamente de tu teléfono.")}</li><li>${say("We review them, and then they appear in the gallery for our guests.", "Los revisamos y luego aparecen en la galería para nuestros invitados.")}</li></ol><p lang="${other}">${
+      es
+        ? `<strong>In English:</strong> sign in with the email where you received your invitation, then choose your photos and videos. <a href="${href("share", "en")}" hreflang="en">Open this page in English</a>`
+        : `<strong>En español:</strong> entra con el correo donde recibiste tu invitación y luego elige tus fotos y videos. <a href="${href("share", "es")}" hreflang="es">Ver esta página en español</a>`
+    }</p></section><div class="portal share-portal" id="portal" data-view="share"></div><div class="media-reminder" role="note"><p><strong>${say("A little reminder", "Un pequeño recordatorio")}</strong></p><p>${say("Only share photos and videos you have permission to share, including a parent’s or guardian’s permission for children. Once we approve them, they are visible to our signed-in guests.", "Comparte solo fotos y videos que tengas permiso de compartir, incluido el permiso de un padre, madre o tutor para los menores. Cuando los aprobamos, los pueden ver nuestros invitados que inician sesión.")} <a href="${href("terms", lang)}">${say("Photo & video policy", "Uso de fotos y videos")}</a></p></div>`;
+  }
   if (route === "guestbook" || route === "contact")
     body = `<p class="lead">${route === "guestbook" ? say("Leave Sophia a wish for the years ahead.", "Deja a Sophia un deseo para los años que vienen.") : say("Questions about your invitation, your RSVP or the day? Write to us and we’ll get back to you.", "¿Tienes preguntas sobre tu invitación, tu respuesta o el día de la fiesta? Escríbenos y te contestamos.")}</p>${route === "contact" ? `<p><a href="mailto:${event.sender}">${event.sender}</a></p>` : ""}<div class="portal" id="portal" data-view="${route}"></div>${route === "guestbook" ? '<div data-guestbook class="cards"></div>' : ""}`;
   if (route === "faq")

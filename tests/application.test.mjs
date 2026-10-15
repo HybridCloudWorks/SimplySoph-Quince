@@ -1,12 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { Ledger, memoryAdapter } from "../server/store.mjs";
+import { Ledger, memoryAdapter, memoryMedia } from "../server/store.mjs";
 import { createApplication } from "../server/application.mjs";
 import { hash, token, totp, base32, seal } from "../server/auth.mjs";
 import { createHmac } from "node:crypto";
 // The fixture owner's authenticator, for actions that need a fresh code.
 const OWNER_TOTP = base32(Buffer.alloc(20, 9));
-import sharp from "sharp";
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -24,6 +23,7 @@ const adminTicket = async (app) =>
     })
   ).ticket;
 async function fixture(options = {}) {
+  const media = options.media || memoryMedia();
   const ledger = new Ledger(memoryAdapter()),
     adminToken = token(),
     guestToken = token(),
@@ -81,7 +81,7 @@ async function fixture(options = {}) {
       id: "organizer",
       email: "organizer@gmail.com",
     }),
-    media: { put: async () => {}, get: async () => Buffer.from("image") },
+    media,
     key: Buffer.alloc(32, 4),
     origin,
     adminEmails: ["organizer@gmail.com"],
@@ -194,6 +194,7 @@ async function fixture(options = {}) {
   return {
     app,
     ledger,
+    media,
     admin,
     guest,
     linkGuest,
@@ -494,20 +495,6 @@ test("prototype property names cannot address admin records", async () => {
   assert.equal(Object.prototype.state, undefined);
 });
 
-test("photo submissions reject SVG and noncanonical base64 before storage", async () => {
-  const f = await fixture();
-  for (const base64 of [
-    Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>').toString("base64"),
-    "!!!!",
-  ]) {
-    await assert.rejects(
-      () => f.guest("photos", { base64, consent: true, caption: "" }),
-      (e) => e.code === "INVALID_PHOTO",
-    );
-  }
-  assert.equal(Object.keys((await f.ledger.read()).photos).length, 0);
-});
-
 test("CSV import requires explicit zero for child count", async () => {
   const f = await fixture();
   await assert.rejects(
@@ -518,45 +505,6 @@ test("CSV import requires explicit zero for child count", async () => {
         ],
       }),
     (e) => e.code === "INVALID_CAPACITY",
-  );
-});
-
-test("a valid photo remains private until a family administrator approves it", async () => {
-  const f = await registeredFixture();
-  const bytes = await sharp({
-    create: { width: 4, height: 4, channels: 3, background: "#651625" },
-  })
-    .png()
-    .toBuffer();
-  const photo = await f.verified("photos", {
-    base64: bytes.toString("base64"),
-    caption: "Synthetic test image",
-    consent: true,
-  });
-  const visible = () => f.app.dispatch({ path: "/api/public" });
-  assert.equal((await visible()).photos.length, 0);
-  await f.admin("moderation", {
-    id: photo.id,
-    collection: "photos",
-    state: "approved",
-  });
-  assert.equal((await visible()).photos.length, 0);
-  assert.equal((await f.verified("gallery")).media.length, 1);
-  assert.ok((await f.verified("photo/" + photo.id)).binary);
-  await assert.rejects(
-    () => f.app.dispatch({ path: "/api/photo/" + photo.id }),
-    (e) => e.code === "SIGN_IN_REQUIRED",
-  );
-  await f.admin("moderation", {
-    id: photo.id,
-    collection: "photos",
-    state: "rejected",
-  });
-  assert.equal((await visible()).photos.length, 0);
-  assert.equal((await f.verified("gallery")).media.length, 0);
-  await assert.rejects(
-    () => f.verified("photo/" + photo.id),
-    (e) => e.code === "NOT_FOUND",
   );
 });
 
@@ -633,57 +581,6 @@ test("contact fields stay private, create a durable notification, and email only
         email: "g@example.com",
       }),
     (e) => e.code === "INVALID_TOPIC",
-  );
-});
-
-test("video uploads are normalized before storage, moderated, album-aware, and access revocation blocks playback", async () => {
-  let normalized = false,
-    stored;
-  const f = await registeredFixture({
-    videoProcessor: async (bytes) => {
-      assert.equal(bytes.toString(), "synthetic-video");
-      normalized = true;
-      return Buffer.from("normalized");
-    },
-    media: {
-      put: async (id, bytes, kind) => {
-        stored = { id, bytes, kind };
-      },
-      get: async () => Buffer.from("normalized"),
-    },
-  });
-  const row = await f.verified("videos", {
-    base64: Buffer.from("synthetic-video").toString("base64"),
-    consent: true,
-    album: "friends",
-    caption: "A test clip",
-  });
-  assert.ok(normalized);
-  assert.equal(stored.kind, "video");
-  assert.equal(stored.bytes.toString(), "normalized");
-  assert.equal((await f.verified("gallery")).media.length, 0);
-  await assert.rejects(
-    () => f.verified("photo/" + row.id),
-    (e) => e.code === "NOT_FOUND",
-  );
-  await f.admin("moderation", {
-    id: row.id,
-    collection: "photos",
-    state: "approved",
-    album: "event",
-  });
-  assert.equal((await f.verified("gallery")).media[0].album, "event");
-  assert.equal((await f.verified("photo/" + row.id)).contentType, "video/mp4");
-  const { site } = await f.admin("site");
-  site.albums = site.albums.filter((a) => a.id !== "event");
-  await assert.rejects(
-    () => f.admin("site", site),
-    (e) => e.code === "ALBUM_HAS_MEDIA",
-  );
-  await f.admin("revoke", { id: household });
-  await assert.rejects(
-    () => f.verified("photo/" + row.id),
-    (e) => e.code === "SIGN_IN_REQUIRED",
   );
 });
 
@@ -1917,21 +1814,6 @@ test("sign-in requests take the full floor and only a few run at once (SEC-8)", 
   assert.equal(outcomes.find((o) => o.status === "rejected").reason.code, "SIGN_IN_BUSY");
 });
 
-test("a busy photo gate answers PHOTO_BUSY, not an invalid photo (SEC-13)", async () => {
-  const f = await fixture({
-    photoGate: async () => {
-      throw Object.assign(new Error(), { status: 503, code: "PHOTO_BUSY" });
-    },
-  });
-  const base64 = (
-    await sharp({ create: { width: 4, height: 4, channels: 3, background: "#fff" } }).jpeg().toBuffer()
-  ).toString("base64");
-  await assert.rejects(
-    () => f.guest("photos", { base64, consent: true, caption: "" }),
-    (e) => e.code === "PHOTO_BUSY",
-  );
-});
-
 test("a newer RSVP saved while an older sync fails stays pending, not failed (NOTION-7)", async () => {
   let f,
     first = true;
@@ -1961,6 +1843,7 @@ test("a renewal is saved only with a response that carries the cookie, photos in
   await f.ledger.transaction((s) => {
     s.photos[pid] = { id: pid, state: "approved", kind: "photo" };
   });
+  await f.media.put(pid, Buffer.from("image"), "photo");
   await f.publicPost("auth/email/request", { email: "test@example.com" });
   const signed = await f.publicPost("auth/email/verify", { token: linkOf(f.sent.at(-1)) });
   const cookie = signed.setCookie.split(";")[0];
@@ -1970,7 +1853,7 @@ test("a renewal is saved only with a response that carries the cookie, photos in
   await assert.rejects(() => f.app.dispatch({ path: "/api/nothing-here", headers: { cookie } }), (e) => e.status === 404);
   assert.equal(await expiresAt(), before, "a failed request renews nothing");
   const photo = await f.app.dispatch({ path: "/api/photo/" + pid, headers: { cookie } });
-  assert.ok(photo.binary);
+  assert.ok(photo.stream);
   assert.match(photo.setCookie, /^__session=/, "the photo response carries the renewed cookie");
   assert.ok((await expiresAt()) > before);
 });
@@ -3021,7 +2904,9 @@ test("one person signed in on two devices uploads one file at a time; the daily 
     for (const v of Object.values(st.sessions)) if (v.accountId) v.expiresAt = at + 86400000;
   });
   const upload = () =>
-    f.guest("photos", { album: "event", caption: "", base64: "x", consent: true }).catch((e) => e);
+    f
+      .guest("uploads", { kind: "photo", type: "image/jpeg", size: 1000, album: "event", caption: "", consent: true })
+      .catch((e) => e);
   let last;
   for (let i = 0; i < 21; i++) last = await upload();
   assert.equal(last.code, "DAILY_UPLOAD_LIMIT");

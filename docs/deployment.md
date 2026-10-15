@@ -75,13 +75,14 @@ gcloud run deploy misxv-api \
   --image=<repository>/misxv-api@sha256:<digest> \
   --service-account=<runtime-sa> \
   --min-instances=0 --max-instances=2 --concurrency=40 \
-  --cpu=1 --memory=1Gi --timeout=120 --cpu-throttling \
+  --cpu=1 --memory=2Gi --timeout=600 --cpu-throttling \
   --set-env-vars=<non-secret settings from the table> \
   --set-secrets=APP_KEY=<secret>:<version>,NOTION_TOKEN=<secret>:<version>,M365_CLIENT_SECRET=<secret>:<version>,TWILIO_API_KEY_SECRET=<secret>:<version>,TWILIO_AUTH_TOKEN=<secret>:<version>
 ```
 
 - These limits are a starting point, not a spending cap. Configure a billing budget alert.
-- Public invocation is required for the Hosting rewrite. Every private route still enforces application authentication and an exact `Origin` match. The two exceptions authenticate differently: Twilio callbacks by signature, and `/api/internal/drain` by a Google-signed OIDC token.
+- **Why 2 GiB and 600 s** (changed from 1 GiB and 120 s for guest videos; see "Media job"). Converting one video holds the guest's original in `/tmp`, which on Cloud Run is memory (up to 300 MB), plus the converted file (under 80 MB) and ffmpeg itself (measured at 440 MB for 4K HEVC). Add the API (~250 MB), up to 8 upload pieces in flight (~130 MB) and 2 photo decodes, and the worst case is about 1.5 GB: over 1 GiB, inside 2 GiB. A 60-second clip took 106–204 s on one core (1080p H.264 to 4K HEVC), so the media job's request needs more than 120 s; guest requests still end within Hosting's own 60-second limit. Billing stays request-based (`--cpu-throttling`): the conversion runs inside the job's request, never in the background.
+- Public invocation is required for the Hosting rewrite. Every private route still enforces application authentication and an exact `Origin` match. The exceptions authenticate differently: Twilio callbacks by signature, and `/api/internal/drain` and `/api/internal/media` by a Google-signed OIDC token.
 - Deploy a backward-compatible API **before** publishing a frontend that depends on it. Record the revision and digest in the inventory.
 - Hosting validates the `/api/**` rewrite with a service-scoped `run.services.get` grant. `scripts/deploy-hosting.mjs` refuses any other routing.
 
@@ -110,6 +111,34 @@ gcloud scheduler jobs create http misxv-drain --project=simplysoph-66c78 \
 - Verify: `gcloud scheduler jobs run misxv-drain --location=us-central1 --project=simplysoph-66c78`, then in the request logs find `POST /api/internal/drain` with status 200. An unsigned `curl -X POST $URL/api/internal/drain -H "Content-Type: application/json" -d "{}"` must return 401.
 - Record the service account and the job in `ops/event-resources.json`. Cloud Scheduler includes 3 free jobs per billing account.
 - Pause with `gcloud scheduler jobs pause misxv-drain …`. Removing the two variables turns the route off again.
+
+## Media job (video conversion)
+
+Guests' photos and videos reach the API in pieces of at most 8 MiB (`POST /api/uploads`, then `POST /api/uploads/<id>?offset=N`, `server/application.mjs`), each a short request through the Hosting rewrite. The API writes the pieces to a Cloud Storage **resumable session** for `private/uploads/<id>` that it opened itself; the session URI stays sealed in the ledger, so browsers never talk to the bucket (no bucket CORS, no signed URLs, no CSP change, no new IAM role: `objectUser` covers it). A photo is converted to JPEG as its last piece arrives. A video waits in "processing" for `POST /api/internal/media`, which converts waiting videos one at a time (H.264/AAC MP4, at most 1080p and 30 fps, with a poster frame) and starts no new one after 60 s. Only then does the family get the "New video awaiting review" email and see it on Admin → Photos. The job also cancels uploads left unfinished for a day. Without this job, videos stay "processing" (photos are unaffected).
+
+One-time setup, after the drain's setup above (same caller identity, so no new service account or role):
+
+```sh
+URL=$(gcloud run services describe misxv-api --project=simplysoph-66c78 \
+  --region=us-central1 --format="value(status.url)")
+gcloud scheduler jobs create http misxv-media --project=simplysoph-66c78 \
+  --location=us-central1 --schedule="*/5 * * * *" --time-zone="America/Chicago" \
+  --uri="$URL/api/internal/media" --http-method=POST \
+  --headers=Content-Type=application/json --message-body="{}" \
+  --oidc-service-account-email=misxv-scheduler@simplysoph-66c78.iam.gserviceaccount.com \
+  --oidc-token-audience="$URL" --attempt-deadline=600s
+```
+
+- Deploy the API with `--memory=2Gi --timeout=600` first ("Deploy the API"). The attempt deadline matches the request timeout: one conversion may take up to 7 minutes (ffmpeg's own limit) after the 60 s in which it may start.
+- Verify: `gcloud scheduler jobs run misxv-media --location=us-central1 --project=simplysoph-66c78`, then find `POST /api/internal/media` with status 200 and one `"message":"media"` log line with its counts. An unsigned POST must return 401.
+- A conversion that failed for a server reason logs `video conversion will be retried` (WARNING) and is tried by the next runs, 3 times in all; a file that can never play (over 60 s, unreadable) is marked with its reason on Admin → Photos.
+- Optional but recommended: the bucket keeps old object versions, so every deleted original (up to 300 MB each) would stay as a noncurrent version until retirement. This lifecycle rule removes noncurrent versions under `private/uploads/` after a day (7-day soft delete still applies; ledger and gallery objects are untouched). It replaces the bucket's lifecycle configuration, which is empty today:
+
+  ```sh
+  printf '%s' '{"rule":[{"action":{"type":"Delete"},"condition":{"matchesPrefix":["private/uploads/"],"isLive":false,"daysSinceNoncurrentTime":1}}]}' > misxv-lifecycle.json
+  gcloud storage buckets update gs://<EVENT_BUCKET> --lifecycle-file=misxv-lifecycle.json
+  ```
+- Record the job (and the rule, if added) in `ops/event-resources.json`. Pause with `gcloud scheduler jobs pause misxv-media …`.
 
 ## Channel activation
 
@@ -156,6 +185,7 @@ Record date, tester and evidence for each item in the inventory. Status on Octob
 - [ ] A permanent Notion refusal (for example a missing column) marks the row failed and adds one alert to Notifications; after fixing the row, Retry sync writes it. The same holds for a refused Budget or Godparents change.
 - [x] Media: upload a disposable image, approve it and remove it (owner, October 13, 2026).
 - [ ] Media: confirm metadata is stripped and a new upload stays private until approved.
+- [ ] Media from real phones over cellular data: a 60-second iPhone video (Safari) and a 60-second Android video (Chrome) arrive with progress, the media job converts both (Admin → Photos shows them playing), and they play in Safari and Chrome after approval; a 61-second clip is refused with the trim message; the table QR opens `/share/` and the emailed sign-in comes back to it.
 - [ ] One reviewed email to an organizer-chosen test recipient. Verify Sent Items (sign-in link emails are deliberately not kept there), receipt, SPF/DKIM headers, and the Spanish rendering.
 - [ ] Guest sign-in with a household's Notion Email and with an Additional Email (emailed link, Google, Microsoft); removing the email in Notion ends access on the next request; the RSVP receipt arrives at the verified address ([account-access.md](account-access.md)).
 - [ ] Real content confirmed (church, dinner, dress code, retention date), invitation artwork, and that guest links never appear in logs or public artifacts.
@@ -174,9 +204,10 @@ Record date, tester and evidence for each item in the inventory. Status on Octob
 - **Event log.** Each state change appends an entry to `eventLog` in the same save (IDs, statuses and channel; never phone numbers or message text). After the save commits, each entry is also written as one log line, with email addresses and phone hashes replaced by keyed tags (`email:…`, `phone:…`) that correlate but cannot be read or reversed: in Logs Explorer filter `jsonPayload.event.type="rsvp.submitted"` (or `delivery.`, `consent.`, `role.`, `invitation.`, `notion.`). The ledger keeps the newest 20,000 entries; the log copy follows Cloud Logging retention (30 days by default).
 - **Ledger writes.** Transactions on one instance run one at a time. Conflicts with the other instance and GCS 429 throttling are retried with jittered backoff (up to 8 attempts) before returning `BUSY`. Each GCS load or save times out after 5 s: one slow load is retried, a timed-out save is never re-run (it may still have landed) and is logged at ERROR, and more than 32 queued transactions on one instance return `BUSY` immediately.
 - **Media.**
-  - Limits: 8 MB per file, 25 MP per image, video 60 s and 4096 px per side.
-  - One video conversion per instance at a time.
-  - Images are re-encoded to JPEG and videos to MP4/H.264/AAC, with metadata removed.
+  - Limits (`site/upload-batch.mjs`, shared by the page and the API): 10 files chosen at once and 20 a day per household; photos JPEG, PNG or WebP up to 40 MB and 64 MP; videos MP4, MOV or WebM up to 300 MB, 60 s (60.9 s is cut to 60) and 4096 px per side. HEIC is not decoded (sharp's prebuilt libvips has no HEVC decoder); the chooser leaves it out, so iPhones send JPEG.
+  - Uploads travel in pieces of whole 256 KiB units, at most 8 MiB, one request at a time per person and 8 per instance (more get a retryable `UPLOAD_BUSY`); a person has at most 1,500 pieces an hour and 10 unfinished uploads; unfinished uploads are given up after a day.
+  - Photos are re-encoded to JPEG of at most 2000 px; videos to MP4/H.264/AAC of at most 1080p and 30 fps, with a JPEG poster; metadata (including location) is removed and originals are deleted once converted. One video conversion per instance at a time, by the media job, at a lower CPU priority than the API.
+  - Media is streamed from storage by byte range, never read whole into memory.
   - Approved media is only visible to signed-in guests. Rejection removes access immediately.
 - **Documents.** Stored under `private/documents/`, admin only, 8 MB limit. Delete marks them as trash; it does not purge.
 

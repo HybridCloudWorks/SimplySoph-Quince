@@ -16,6 +16,7 @@ The bilingual website for **Sophia Isabel's quinceañera**, on **Friday, January
 - **Read about the celebration:** the schedule, the church and reception, travel, and answers to common questions, all in English and Spanish.
 - **RSVP:** open the private link from their invitation (or paste it, or type its code) and answer for their household by **November 15, 2026**: one tap for **Everyone's coming** or **We can't make it** (or the matching links in the invitation email), or event by event. Nothing is saved until they confirm, and answers in progress survive a reload. They can change the answer until the deadline, get a receipt that repeats it, and add the events to their calendar.
 - **Sign in with their email:** the address where they received their invitation, with a one-time emailed link (in their language), Google or Microsoft. No password; the link brings them back to the page they started from. Signed in, they can see their RSVP, share photos and videos, write in the guestbook, message the family and update their contact details.
+- **Share photos and videos** straight from their phone, on the Share page or from the QR code on the tables: up to 10 at a time, videos up to 60 seconds (iPhone and Android videos alike), with progress for each file and a retry that picks up where it stopped. The family reviews everything first; approved photos and videos appear in the gallery for signed-in guests only, with videos converted to play in every browser.
 - **Get text updates** (US and Canada): text SOPHIA to the number on the [SMS page](https://misxv.simplysoph.com/sms/).
 - **Get updates on WhatsApp** (guests outside the US), once the family turns it on.
 
@@ -58,7 +59,7 @@ Some sections wait for the family's words and photos, and stay hidden until then
 
 ## For developers
 
-You need **Node 24**. To process uploaded videos locally you also need `ffmpeg` on your path (the production image installs it).
+You need **Node 24**. To convert uploaded videos locally you also need `ffmpeg` on your path (the production image installs it); in production a Cloud Scheduler job runs the conversion ([deployment guide](docs/deployment.md#media-job-video-conversion)).
 
 ```powershell
 npm ci

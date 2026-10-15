@@ -9,7 +9,8 @@ import { enrollment } from "./mfa-enrollment.mjs";
 import { createNotifications } from "./notifications.mjs";
 import { createMailBatches } from "./mail-batches.mjs";
 import { logEvent } from "./event-log.mjs";
-import { normalizeVideo, mediaResponse } from "./video.mjs";
+import { convertVideo, mediaResponse, withVideoDirectory } from "./video.mjs";
+import { uploadLimits, classify } from "../site/upload-batch.mjs";
 import { calendar, contactTopics, escapeHtml } from "../site/celebration.mjs";
 import { siteSettings, validateSettings } from "./site-settings.mjs";
 import { randomUUID, randomBytes, createHmac, timingSafeEqual } from "node:crypto";
@@ -63,6 +64,8 @@ const email = (s) => {
   return s;
 };
 const uuid = (s) => typeof s === "string" && /^[a-zA-Z0-9_-]{8,128}$/.test(s);
+// One guest upload: POST sends a piece of the file, GET says how it is going.
+const uploadPiece = /^\/api\/uploads\/([a-f0-9-]{36})$/;
 const audit = (s, actor, action, id, now) => {
   s.audit.push({ actor, action, id, at: new Date(now).toISOString() });
   s.audit = s.audit.slice(-5000);
@@ -112,7 +115,8 @@ export function createApplication({
   whatsappTransport,
   whatsappWebhook,
   whatsappTemplates = [],
-  videoProcessor = normalizeVideo,
+  // (input file, working directory) => { video, poster, duration }; see video.mjs.
+  videoProcessor = convertVideo,
   key,
   origin,
   clientId = "",
@@ -969,6 +973,15 @@ export function createApplication({
         throw error(401, "UNAUTHORIZED");
       return drainPending();
     }
+    // Converts waiting guest videos; its own Cloud Scheduler job, with the same
+    // caller identity as the drain and a longer deadline (docs/deployment.md).
+    if (path === "/api/internal/media") {
+      if (method !== "POST") throw error(405, "METHOD_NOT_ALLOWED");
+      if (!verifyScheduler) throw error(404, "NOT_FOUND");
+      if (!(await verifyScheduler(headers.authorization)))
+        throw error(401, "UNAUTHORIZED");
+      return processMedia();
+    }
     if (["/api/whatsapp/status", "/api/whatsapp/inbound"].includes(path)) {
       if (method !== "POST") throw error(405, "METHOD_NOT_ALLOWED");
       return whatsapp.callback(
@@ -1425,7 +1438,8 @@ export function createApplication({
       if (renew)
         refresh.renew = { sessionHash: ctx.sessionHash, startedAt, until, raw: ctx.raw };
     }
-    if (session && method !== "GET")
+    // Pieces of a photo or video upload have their own, larger budget below.
+    if (session && method !== "GET" && !uploadPiece.test(path))
       await rateLimit(
         ledger,
         hash("actor:" + (session.actor || session.householdId)),
@@ -1461,6 +1475,9 @@ export function createApplication({
             album: r.album || "event",
             caption: r.caption,
             url: "/api/photo/" + r.id,
+            // A still for the video's tile; videos converted before posters
+            // existed have none.
+            poster: r.poster ? "/api/photo/" + r.id + "?poster=1" : null,
           })),
       };
     }
@@ -1824,85 +1841,98 @@ export function createApplication({
       await sendNotification(id);
       return { id, state: "pending" };
     }
-    if (["/api/photos", "/api/videos"].includes(path) && method === "POST") {
+    // Guest photos and videos travel in pieces (site/upload-batch.mjs):
+    // POST /api/uploads opens an upload, POST /api/uploads/<id>?offset=N
+    // sends raw bytes from there, and GET /api/uploads/<id> says how it is
+    // going. Nothing is visible to anyone until the family approves it.
+    if (path === "/api/uploads" && method === "POST") {
       requireAuth("guest");
+      if (!session.accountId) throw error(403, "VERIFIED_ACCOUNT_REQUIRED");
       await guestInvitation(session);
       if (body.consent !== true) throw error(422, "CONSENT_REQUIRED");
-      // 20 photos and videos per household a day, said plainly to the guest.
-      await rateLimit(ledger, hash("photo:" + session.householdId), 20, 86400000, now()).catch(
-        (e) => {
-          throw e.status === 429 ? error(429, "DAILY_UPLOAD_LIMIT") : e;
-        },
-      );
-      if (typeof body.base64 !== "string" || body.base64.length > 11_200_000)
-        throw error(413, "PHOTO_TOO_LARGE");
-      const bytes = Buffer.from(body.base64, "base64");
-      if (
-        !bytes.length ||
-        bytes.length > 8 * 1024 * 1024 ||
-        bytes.toString("base64") !== body.base64
-      )
-        throw error(422, "INVALID_PHOTO");
-      const isVideo = path === "/api/videos";
+      const type = typeof body.type === "string" ? body.type.toLowerCase() : "",
+        kind = classify({ type, name: "" }).kind,
+        size = body.size;
+      if (!kind || kind !== body.kind || !Number.isSafeInteger(size) || size < 1)
+        throw error(422, "INVALID_UPLOAD");
+      if (size > uploadLimits[kind === "video" ? "videoBytes" : "photoBytes"])
+        throw error(413, kind === "video" ? "VIDEO_TOO_LARGE" : "PHOTO_TOO_LARGE");
       const album = safeText(body.album || "event", 40);
-      if (!siteSettings(await ledger.read()).albums.some((a) => a.id === album))
+      if (!siteSettings(ctx.state).albums.some((a) => a.id === album))
         throw error(422, "INVALID_ALBUM");
-      const jpeg = bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
-      const png = bytes
-        .subarray(0, 8)
-        .equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
-      const webp =
-        bytes.toString("ascii", 0, 4) === "RIFF" &&
-        bytes.toString("ascii", 8, 12) === "WEBP";
-      if (!isVideo && !jpeg && !png && !webp) throw error(422, "INVALID_PHOTO");
       const caption = safeText(body.caption || "", 200);
-      let image;
-      try {
-        image = isVideo
-          ? await videoProcessor(bytes)
-          : await photoGate(() =>
-              sharp(bytes, {
-                limitInputPixels: 25000000,
-                animated: false,
-              })
-                .rotate()
-                .resize({
-                  width: 2000,
-                  height: 2000,
-                  fit: "inside",
-                  withoutEnlargement: true,
-                })
-                .jpeg({ quality: 85 })
-                .toBuffer(),
-            );
-      } catch (e) {
-        if (isVideo || e.code === "PHOTO_BUSY") throw e;
-        throw error(422, "INVALID_PHOTO");
-      }
-      const id = randomUUID();
-      await media.put(id, image, isVideo ? "video" : "photo");
-      await ledger.transaction((s) => {
-        s.notifications ??= {};
-        s.notifications[id] = {
+      // 20 photos and videos per household a day, said plainly to the guest.
+      await rateLimit(
+        ledger,
+        hash("photo:" + session.householdId),
+        uploadLimits.perDay,
+        86400000,
+        now(),
+      ).catch((e) => {
+        throw e.status === 429 ? error(429, "DAILY_UPLOAD_LIMIT") : e;
+      });
+      const id = randomUUID(),
+        uri = await media.begin(id, type).catch(storageTrouble);
+      const dropped = await ledger.transaction((s) => {
+        s.uploads ??= {};
+        const gone = expireUploads(s);
+        // At most one batch of unfinished uploads per person: opening one
+        // more gives up the oldest (its pieces then find nothing).
+        const open = Object.values(s.uploads)
+          .filter((u) => u.accountId === session.accountId && u.state === "receiving")
+          .sort((a, b) => a.createdAt - b.createdAt);
+        for (const u of open.slice(0, Math.max(0, open.length - uploadLimits.files + 1))) {
+          delete s.uploads[u.id];
+          gone.push(u);
+        }
+        s.uploads[id] = {
           id,
-          kind: isVideo ? "video" : "photo",
-          at: now(),
-          read: false,
-        };
-        if (!siteSettings(s).albums.some((a) => a.id === album))
-          throw error(422, "INVALID_ALBUM");
-        s.photos[id] = {
-          id,
-          kind: isVideo ? "video" : "photo",
+          kind,
+          type,
+          size,
           album,
-          householdId: session.householdId,
           caption,
-          state: "pending",
+          householdId: session.householdId,
+          accountId: session.accountId,
+          // The storage session URI lets whoever holds it write this upload.
+          session: seal(uri, key),
+          state: "receiving",
+          createdAt: now(),
           consentAt: now(),
         };
+        return gone;
       });
-      await sendNotification(id);
-      return { id, state: "pending" };
+      await discardUploads(dropped);
+      return { id };
+    }
+    const piece = uploadPiece.exec(path);
+    if (piece && method === "POST") {
+      requireAuth("guest");
+      const upload = ctx.state.uploads?.[piece[1]];
+      if (!session.accountId || upload?.accountId !== session.accountId)
+        throw error(404, "NOT_FOUND");
+      // About 2.4 GB an hour in the largest pieces; a page sends one at a time.
+      await rateLimit(ledger, hash("pieces:" + session.accountId), 1500, 3600000, now());
+      return receivePiece(upload, Number(req.query?.offset), req.bytes);
+    }
+    if (piece && method === "GET") {
+      requireAuth("guest");
+      const upload = ctx.state.uploads?.[piece[1]],
+        row = ctx.state.photos[piece[1]];
+      if (!session.accountId || (upload || row)?.accountId !== session.accountId)
+        throw error(404, "NOT_FOUND");
+      if (upload?.state === "receiving") {
+        const stored = await media
+          .offset(unseal(upload.session, key))
+          .catch(storageTrouble);
+        return { state: "receiving", received: stored.received, size: upload.size };
+      }
+      if (upload?.state === "failed")
+        return { state: "failed", problem: upload.problem };
+      // What the guest needs to know; the family's decision stays with them.
+      return ["processing", "failed"].includes(row?.state)
+        ? { state: row.state, problem: row.problem || null }
+        : { state: "review" };
     }
     if (path.startsWith("/api/photo/") && method === "GET") {
       requireAuth();
@@ -1911,12 +1941,23 @@ export function createApplication({
       if (session.kind !== "admin") await stillListed(session);
       const id = path.slice(11);
       if (!/^[a-f0-9-]{36}$/.test(id)) throw error(404, "NOT_FOUND");
-      const row = ctx.state.photos[id];
-      if (!row || (row.state !== "approved" && session?.kind !== "admin"))
+      const row = ctx.state.photos[id],
+        kind = req.query?.poster === "1" ? "poster" : row?.kind || "photo";
+      if (
+        !row ||
+        (row.state !== "approved" && session?.kind !== "admin") ||
+        // A video still converting (or that could not be) has nothing to show.
+        ["processing", "failed"].includes(row.state) ||
+        (kind === "poster" && !row.poster)
+      )
         throw error(404, "NOT_FOUND");
+      const size = await media.size(id, kind).catch((e) => {
+        throw e.code === 404 ? error(404, "NOT_FOUND") : e;
+      });
       return mediaResponse(
-        await media.get(id, row.kind || "photo"),
-        row.kind,
+        size,
+        (start, end) => media.stream(id, kind, start, end),
+        kind,
         headers.range,
         req.query?.download === "1",
         id,
@@ -2371,11 +2412,19 @@ export function createApplication({
           !["approved", "rejected"].includes(body.state)
         )
           throw error(422, "INVALID_FIELDS");
-        return ledger.transaction((s) => {
+        const moderated = await ledger.transaction((s) => {
           const row = s[body.collection][body.id];
           if (!row) throw error(404, "NOT_FOUND");
           if (row.kind === "contact" && body.state === "approved")
             throw error(422, "CONTACT_IS_PRIVATE");
+          // A video can be approved once it plays: not while it is still
+          // converting, nor after a conversion that failed.
+          const waiting = body.collection === "photos" && row.state === "processing";
+          if (
+            body.state === "approved" &&
+            (waiting || (body.collection === "photos" && row.state === "failed"))
+          )
+            throw error(409, "MEDIA_NOT_READY");
           if (body.collection === "photos" && body.album) {
             if (!siteSettings(s).albums.some((a) => a.id === body.album))
               throw error(422, "INVALID_ALBUM");
@@ -2383,8 +2432,11 @@ export function createApplication({
           }
           row.state = body.state;
           audit(s, session.actor, "moderation", body.id, now());
-          return { state: row.state };
+          return { state: row.state, discard: waiting };
         });
+        // Removed before it was converted: the original is no longer needed.
+        if (moderated.discard) await media.remove(body.id, "upload").catch(() => {});
+        return { state: moderated.state };
       }
       // Households with an issued link, plus phone RSVPs typed into Notion;
       // dinner seats follow attendanceOf (re-audit N2).
@@ -2756,6 +2808,266 @@ export function createApplication({
     }
     throw error(404, "NOT_FOUND");
   }
+  // Guest media: receiving uploads piece by piece, converting photos as they
+  // finish, and converting videos later in the scheduled media job.
+  //
+  // Storage trouble while receiving is worth another try from the page, except
+  // a storage session that no longer exists (expired, or replaced).
+  const storageTrouble = (e) => {
+    if (e.status) throw e;
+    log({ severity: "WARNING", message: "media storage", code: e.code ?? null });
+    throw e.code === 410
+      ? error(410, "UPLOAD_EXPIRED")
+      : error(503, "UPLOAD_STORAGE_BUSY");
+  };
+  // Uploads are kept a day: long enough to resume one or repeat its last
+  // piece, short enough that abandoned ones never pile up. Returns the
+  // unfinished ones, whose storage session and stray file are then discarded.
+  function expireUploads(s) {
+    const gone = [];
+    for (const u of Object.values(s.uploads || {}))
+      if (u.createdAt <= now() - 86400000) {
+        delete s.uploads[u.id];
+        if (u.state === "receiving") gone.push(u);
+      }
+    return gone;
+  }
+  async function discardUploads(list) {
+    for (const u of list) {
+      await media.cancel(unseal(u.session, key));
+      await media.remove(u.id, "upload").catch(() => {});
+    }
+  }
+  // One piece of an upload, at byte `offset`. Only bytes storage does not have
+  // yet are written, so a piece sent again (its answer was lost) is harmless;
+  // the answer always says how much is stored, and the page continues there.
+  async function receivePiece(upload, offset, bytes) {
+    if (upload.state !== "receiving") return uploadAnswer(upload);
+    const size = upload.size,
+      length = Buffer.isBuffer(bytes) ? bytes.length : 0,
+      last = offset + length === size;
+    if (
+      !length ||
+      length > uploadLimits.maxPiece ||
+      !Number.isSafeInteger(offset) ||
+      offset < 0 ||
+      offset + length > size ||
+      offset % uploadLimits.unit ||
+      (!last && length % uploadLimits.unit)
+    )
+      throw error(422, "INVALID_PIECE");
+    const uri = unseal(upload.session, key);
+    let stored = await media.offset(uri).catch(storageTrouble);
+    if (!stored.complete && offset <= stored.received && offset + length > stored.received)
+      stored = await media
+        .write(uri, stored.received, bytes.subarray(stored.received - offset), last ? size : null)
+        .catch(storageTrouble);
+    if (!stored.complete) return { received: stored.received, complete: false };
+    return finishUpload(upload.id);
+  }
+  // Runs when the last byte is stored, and again for a repeated last piece:
+  // the upload's state makes the second answer the same as the first.
+  async function finishUpload(id) {
+    let upload = (await ledger.read()).uploads?.[id];
+    if (!upload) throw error(404, "NOT_FOUND");
+    if (upload.state !== "receiving") return uploadAnswer(upload);
+    let problem = null;
+    if (upload.kind === "photo")
+      try {
+        await media
+          .put(id, await convertPhoto(id), "photo")
+          // Already stored by an earlier run whose answer was lost.
+          .catch((e) => {
+            if (e.code !== 412) throw e;
+          });
+      } catch (e) {
+        // Busy or storage trouble: the page sends the last piece again.
+        if (e.status !== 422) throw e;
+        problem = e.code;
+      }
+    upload = await ledger.transaction((s) => {
+      const u = s.uploads?.[id];
+      if (!u || u.state !== "receiving") return u;
+      if (problem) {
+        u.state = "failed";
+        u.problem = problem;
+        return u;
+      }
+      u.state = "received";
+      const albums = siteSettings(s).albums;
+      s.photos[id] = {
+        id,
+        kind: u.kind,
+        // The album chosen at the start, unless the family removed it since.
+        album: albums.some((a) => a.id === u.album) ? u.album : albums[0]?.id || "event",
+        householdId: u.householdId,
+        accountId: u.accountId,
+        caption: u.caption,
+        // A video waits for its conversion before the family can review it.
+        state: u.kind === "video" ? "processing" : "pending",
+        consentAt: u.consentAt,
+        receivedAt: now(),
+      };
+      if (u.kind === "photo") {
+        s.notifications ??= {};
+        s.notifications[id] = { id, kind: "photo", at: now(), read: false };
+      }
+      return u;
+    });
+    if (!upload) throw error(404, "NOT_FOUND");
+    if (upload.kind === "photo" || upload.state === "failed")
+      await media.remove(id, "upload").catch(() => {});
+    if (upload.kind === "photo" && upload.state === "received")
+      await sendNotification(id);
+    return uploadAnswer(upload);
+  }
+  function uploadAnswer(upload) {
+    if (upload.state === "failed") throw error(422, upload.problem);
+    return {
+      received: upload.size,
+      complete: true,
+      state: upload.kind === "video" ? "processing" : "review",
+    };
+  }
+  // A photo becomes a JPEG of at most 2000 px with its rotation applied and
+  // its metadata (such as location) dropped. 64 MP covers the 48 and 50 MP
+  // phone cameras at full resolution. Reading the file happens inside the
+  // shared sharp gate, so waiting photos do not hold their bytes in memory.
+  const heifBrands = /^(heic|heix|hevc|hevx|heim|heis|mif1|msf1)$/;
+  function convertPhoto(id) {
+    return photoGate(async () => {
+      const bytes = await media.get(id, "upload").catch(storageTrouble);
+      if (
+        bytes.toString("ascii", 4, 8) === "ftyp" &&
+        heifBrands.test(bytes.toString("ascii", 8, 12))
+      )
+        throw error(422, "HEIC_NOT_SUPPORTED");
+      const jpeg = bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+      const png = bytes
+        .subarray(0, 8)
+        .equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+      const webp =
+        bytes.toString("ascii", 0, 4) === "RIFF" &&
+        bytes.toString("ascii", 8, 12) === "WEBP";
+      if (!jpeg && !png && !webp) throw error(422, "INVALID_PHOTO");
+      try {
+        return await sharp(bytes, {
+          limitInputPixels: 64_000_000,
+          animated: false,
+        })
+          .rotate()
+          .resize({
+            width: 2000,
+            height: 2000,
+            fit: "inside",
+            withoutEnlargement: true,
+          })
+          .jpeg({ quality: 85 })
+          .toBuffer();
+      } catch {
+        throw error(422, "INVALID_PHOTO");
+      }
+    });
+  }
+  // The scheduled media job (POST /api/internal/media, every 5 minutes):
+  // gives up uploads abandoned for a day, then converts waiting videos, oldest
+  // first, one at a time. It starts no new video after `budgetMs`, so a run
+  // ends within the request timeout. A claimed video carries a lease, so two
+  // instances never convert the same one; a run that dies leaves the lease to
+  // expire and the next run tries again, up to 3 times.
+  async function processMedia({ budgetMs = 60000 } = {}) {
+    const started = Date.now(),
+      result = { converted: 0, refused: 0, retrying: 0, abandoned: 0 },
+      // A video that failed for a server reason waits for the next run.
+      tried = new Set();
+    const expired = (await ledger.read()).uploads || {};
+    if (Object.values(expired).some((u) => u.createdAt <= now() - 86400000)) {
+      const gone = await ledger.transaction(expireUploads);
+      await discardUploads(gone);
+      result.abandoned = gone.length;
+    }
+    while (Date.now() - started < budgetMs) {
+      const waiting = Object.values((await ledger.read()).photos)
+        .filter((r) => r.state === "processing" && !(r.lease > now()) && !tried.has(r.id))
+        .sort((a, b) => (a.receivedAt || 0) - (b.receivedAt || 0))[0];
+      if (!waiting) break;
+      tried.add(waiting.id);
+      const job = await ledger.transaction((s) => {
+        const r = s.photos[waiting.id];
+        if (r?.state !== "processing" || r.lease > now()) return null;
+        r.lease = now() + 600000;
+        r.attempts = (r.attempts || 0) + 1;
+        return { id: r.id, attempts: r.attempts };
+      });
+      if (!job) continue;
+      let done, failure;
+      try {
+        done = await withVideoDirectory(async (directory) => {
+          const input = join(directory, "input");
+          await media.download(job.id, "upload", input);
+          const out = await videoProcessor(input, directory);
+          const stored = (e) => {
+            if (e.code !== 412) throw e;
+          };
+          await media.put(job.id, { path: out.video }, "video").catch(stored);
+          if (out.poster)
+            await media.put(job.id, { path: out.poster }, "poster").catch(stored);
+          return { poster: !!out.poster, duration: Math.round(out.duration) };
+        });
+      } catch (e) {
+        failure = e;
+      }
+      if (failure?.code === "VIDEO_BUSY") {
+        // Another conversion is running on this instance: hand it back.
+        await ledger.transaction((s) => {
+          const r = s.photos[job.id];
+          if (r?.state === "processing") {
+            delete r.lease;
+            r.attempts--;
+          }
+        });
+        break;
+      }
+      // The guest's file can never work (422), or its original is gone, or it
+      // failed 3 times; anything else is tried again by a later run.
+      const refused =
+        failure &&
+        (failure.status === 422 || failure.code === 404 || job.attempts >= 3);
+      await ledger.transaction((s) => {
+        const r = s.photos[job.id];
+        if (r?.state !== "processing") return;
+        delete r.lease;
+        if (done) {
+          r.state = "pending";
+          r.poster = done.poster;
+          r.duration = done.duration;
+          s.notifications ??= {};
+          s.notifications[job.id] = { id: job.id, kind: "video", at: now(), read: false };
+        } else if (refused) {
+          r.state = "failed";
+          r.problem = failure.status === 422 ? failure.code : "PROCESSING_FAILED";
+        }
+      });
+      if (done || refused) await media.remove(job.id, "upload").catch(() => {});
+      if (done) {
+        await sendNotification(job.id);
+        result.converted++;
+      } else if (refused) result.refused++;
+      else {
+        result.retrying++;
+        log({
+          severity: "WARNING",
+          message: "video conversion will be retried",
+          code: failure.code ?? null,
+          attempts: job.attempts,
+        });
+        // Without ffmpeg every video would fail the same way.
+        if (failure.code === "VIDEO_UNAVAILABLE") break;
+      }
+    }
+    log({ severity: "INFO", message: "media", media: result });
+    return result;
+  }
   // For the HTTP layer, before an upload body is read (http.mjs): who is
   // uploading, if this cookie is a current email sign-in or admin session,
   // otherwise null. Invitation-link sessions are RSVP-only and never upload,
@@ -2768,5 +3080,5 @@ export function createApplication({
     if (session.kind === "admin") return "admin:" + session.email;
     return session.accountId ? "account:" + session.accountId : null;
   };
-  return { dispatch, syncOne, canUpload };
+  return { dispatch, syncOne, canUpload, processMedia };
 }
