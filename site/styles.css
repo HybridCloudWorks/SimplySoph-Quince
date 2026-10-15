@@ -674,6 +674,9 @@ input[type="radio"][aria-invalid="true"] {
 .notice > :last-child {
   margin-bottom: 0;
 }
+.notice:not(:last-child) {
+  margin-bottom: 16px;
+}
 
 /* Questions and other disclosures: a chevron at the end of the line that
    turns when open, a 44px target, and wrapped lines aligned with the first. */
