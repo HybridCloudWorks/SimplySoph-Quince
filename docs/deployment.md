@@ -175,7 +175,7 @@ SMS only goes to phones whose owner texted the program keyword (`SOPHIA`, `START
 
 Record date, tester and evidence for each item in the inventory. Status on October 13, 2026: the owner confirmed the ticked items; anything unticked is still unverified.
 
-- [ ] `npm run check` and `npm audit --omit=dev` pass on Node 24 in CI. Desktop, mobile and Spanish navigation verified in a real browser.
+- [x] `npm run check` and `npm audit --omit=dev` pass on Node 24 in CI. Desktop, mobile and Spanish navigation verified in a real browser (CI on main at e33010e and Chromium at 390 and 1440 px in English and Spanish with no axe WCAG 2.2 AA violations, October 15, 2026).
 - [x] Administrator sign-in with the real providers: the emailed link, Google or Microsoft, then the authenticator code (owner, October 13, 2026).
 - [ ] Administrator refusals: an address that is not a ticked row's main Email (or an owner) is refused; the first setup works only from the emailed link (QR); code replay and an expired session are refused; ten wrong codes pause sign-in; an owner recovery code works.
 - [ ] Disposable Notion test household:
@@ -187,7 +187,7 @@ Record date, tester and evidence for each item in the inventory. Status on Octob
 - [ ] A permanent Notion refusal (for example a missing column) marks the row failed and adds one alert to Notifications; after fixing the row, Retry sync writes it. The same holds for a refused Budget or Godparents change.
 - [x] Media: upload a disposable image, approve it and remove it (owner, October 13, 2026).
 - [ ] Media: confirm metadata is stripped and a new upload stays private until approved.
-- [ ] Media from real phones over cellular data: a 60-second iPhone video (Safari) and a 60-second Android video (Chrome) arrive with progress, the media job converts both (Admin → Photos shows them playing), and they play in Safari and Chrome after approval; a 61-second clip is refused with the trim message; the table QR opens `/share/` and the emailed sign-in comes back to it.
+- [x] Media from real phones over cellular data: a 60-second iPhone video (Safari) and a 60-second Android video (Chrome) arrive with progress, the media job converts both (Admin → Photos shows them playing), and they play in Safari and Chrome after approval; a 61-second clip is refused with the trim message; the table QR opens `/share/` and the emailed sign-in comes back to it (owner, October 15, 2026).
 - [ ] One reviewed email to an organizer-chosen test recipient. Verify Sent Items (sign-in link emails are deliberately not kept there), receipt, SPF/DKIM headers, and the Spanish rendering.
 - [ ] Guest sign-in with a household's Notion Email and with an Additional Email (emailed link, Google, Microsoft); removing the email in Notion ends access on the next request; the RSVP receipt arrives at the verified address ([account-access.md](account-access.md)).
 - [ ] Real content confirmed (church, dinner, dress code, retention date), invitation artwork, and that guest links never appear in logs or public artifacts.
