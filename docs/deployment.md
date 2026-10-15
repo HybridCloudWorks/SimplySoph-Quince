@@ -116,17 +116,18 @@ gcloud scheduler jobs create http misxv-drain --project=simplysoph-66c78 \
 
 Guests' photos and videos reach the API in pieces of at most 8 MiB (`POST /api/uploads`, then `POST /api/uploads/<id>?offset=N`, `server/application.mjs`), each a short request through the Hosting rewrite. The API writes the pieces to a Cloud Storage **resumable session** for `private/uploads/<id>` that it opened itself; the session URI stays sealed in the ledger, so browsers never talk to the bucket (no bucket CORS, no signed URLs, no CSP change, no new IAM role: `objectUser` covers it). A photo is converted to JPEG as its last piece arrives. A video waits in "processing" for `POST /api/internal/media`, which converts waiting videos one at a time (H.264/AAC MP4, at most 1080p and 30 fps, with a poster frame) and starts no new one after 60 s. Only then does the family get the "New video awaiting review" email and see it on Admin → Photos. The job also cancels uploads left unfinished for a day. Without this job, videos stay "processing" (photos are unaffected).
 
-One-time setup, after the drain's setup above (same caller identity, so no new service account or role):
+One-time setup, after the drain's setup above (same caller identity, so no new service account or role). Take the audience from the working drain job, not from `status.url`: a service now has two URLs (`misxv-api-<hash>-uc.a.run.app` and `misxv-api-<project number>.us-central1.run.app`), `gcloud` may print either, and a token minted for any value other than `SCHEDULER_AUDIENCE` is refused with 401.
 
 ```sh
-URL=$(gcloud run services describe misxv-api --project=simplysoph-66c78 \
-  --region=us-central1 --format="value(status.url)")
+AUD=$(gcloud scheduler jobs describe misxv-drain --project=simplysoph-66c78 \
+  --location=us-central1 --format="value(httpTarget.oidcToken.audience)")
+echo "$AUD"   # must equal SCHEDULER_AUDIENCE on misxv-api
 gcloud scheduler jobs create http misxv-media --project=simplysoph-66c78 \
   --location=us-central1 --schedule="*/5 * * * *" --time-zone="America/Chicago" \
-  --uri="$URL/api/internal/media" --http-method=POST \
+  --uri="$AUD/api/internal/media" --http-method=POST \
   --headers=Content-Type=application/json --message-body="{}" \
   --oidc-service-account-email=misxv-scheduler@simplysoph-66c78.iam.gserviceaccount.com \
-  --oidc-token-audience="$URL" --attempt-deadline=600s
+  --oidc-token-audience="$AUD" --attempt-deadline=600s
 ```
 
 - Deploy the API with `--memory=2Gi --timeout=600` first ("Deploy the API"). The attempt deadline matches the request timeout: one conversion may take up to 7 minutes (ffmpeg's own limit) after the 60 s in which it may start.
