@@ -1932,6 +1932,28 @@ test("an invitation-link session stays open while the guest is answering, up to 
   await assert.rejects(() => f.linkGuest("invitation"), (e) => e.code === "SIGN_IN_REQUIRED");
 });
 
+test("an invitation-link session is not renewed once its household is archived in Notion or its RSVP is closed to it", async () => {
+  const f = await fixture();
+  const expiresAt = async () =>
+    Object.values((await f.ledger.read()).sessions).find((s) => s.scope === "rsvp")?.expiresAt;
+  f.advance(20 * 60000);
+  f.row.archived = true;
+  // Every other route already refuses it; the page's check-in must not keep it alive.
+  await assert.rejects(() => f.linkGuest("invitation"), (e) => e.code === "INVITATION_INACTIVE");
+  const r = await f.linkGuest("session");
+  assert.equal(r.setCookie, undefined, "not renewed");
+  assert.equal(await expiresAt(), at + 1800000);
+  f.advance(11 * 60000);
+  assert.equal((await f.linkGuest("session")).kind, null, "it ends at its first 30 minutes");
+  // Likewise when the family must first fix its seats in Notion.
+  const g = await fixture();
+  g.advance(20 * 60000);
+  g.row.validCapacity = false;
+  assert.equal((await g.linkGuest("session")).setCookie, undefined);
+  g.row.validCapacity = true;
+  assert.match((await g.linkGuest("session")).setCookie, /^__session=/, "renewed once it is fixed");
+});
+
 test("an idle invitation-link session still ends after 30 minutes, and only RSVP routes renew it", async () => {
   const f = await fixture();
   f.advance(31 * 60000);

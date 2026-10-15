@@ -1433,20 +1433,24 @@ export function createApplication({
         );
       // Renew an email sign-in only while that email is still on the
       // household's Notion row, so removing it still ends access within about
-      // 15 minutes. A Notion error, or no answer within 2 seconds, skips the
-      // renewal; it never fails or noticeably delays the request. A link
-      // session was already checked against its link (sessionValid) and only
-      // reaches RSVP routes, so it needs no Notion read.
+      // 15 minutes. A link session (checked against its link already, by
+      // sessionValid) renews only while its invitation would still open: the
+      // household not archived in Notion, its capacity valid. Otherwise the
+      // page's check-ins kept a session alive for up to 2 hours that every
+      // other route refused. Like the invitation view, that check may use
+      // Notion's last good answer during an outage. A Notion error, or no
+      // answer within 2 seconds, skips the renewal; it never fails or
+      // noticeably delays the request.
+      const current = session.accountId
+        ? async () =>
+            rosterMatch(await notion.list(), session.email)?.id === session.householdId
+        : async () => !!(await guestInvitation(session, { allowStale: true }));
       const renew =
         until > session.expiresAt &&
-        (!session.accountId ||
-          (await Promise.race([
-            notion.list().then(
-              (rows) => rosterMatch(rows, session.email)?.id === session.householdId,
-              () => false,
-            ),
-            new Promise((resolve) => setTimeout(() => resolve(false), 2000).unref?.()),
-          ])));
+        (await Promise.race([
+          current().catch(() => false),
+          new Promise((resolve) => setTimeout(() => resolve(false), 2000).unref?.()),
+        ]));
       if (renew)
         refresh.renew = { sessionHash: ctx.sessionHash, startedAt, until, raw: ctx.raw };
     }
