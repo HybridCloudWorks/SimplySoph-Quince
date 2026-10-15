@@ -104,6 +104,12 @@ function returnPage() {
         : "account";
   return (es ? "es/" : "") + page;
 }
+// My account opened for another page keeps it when the language changes, so
+// the sign-in still brings the guest back there.
+const returnAsked = new URLSearchParams(location.search).get("return"),
+  languageSwitch = document.querySelector(".lang-switch");
+if (portal?.dataset.view === "account" && returnPages.includes(returnAsked) && languageSwitch)
+  languageSwitch.setAttribute("href", languageSwitch.getAttribute("href") + "?return=" + returnAsked);
 // Opens the page a sign-in started from ("es/share"), unless it is this one.
 function goBack(name) {
   const m = /^(es\/)?([a-z]+)$/.exec(name || "");

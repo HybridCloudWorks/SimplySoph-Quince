@@ -47,6 +47,26 @@ test("the emailed sign-in link is in the guest’s language and brings them back
   await expect(page.getByLabel("Nombre para mostrar")).toBeVisible();
 });
 
+test("switching language on My account keeps the page the sign-in was asked from", async ({
+  page,
+  harness,
+}) => {
+  await harness.issueInvitation(households.morales);
+  await page.goto(harness.url("/gallery/"));
+  await page.getByRole("link", { name: "Sign in to see the gallery" }).click();
+  await expect(page).toHaveURL(harness.url("/account/?return=gallery"));
+  await page.getByRole("link", { name: "Español" }).click();
+  await expect(page).toHaveURL(harness.url("/es/account/?return=gallery"));
+  await signIn(page, harness, households.morales.email, {
+    button: "Enviar enlace de acceso",
+    proceed: "Continuar",
+  });
+  await expect(page).toHaveURL(harness.url("/es/gallery/"));
+  // Only the pages a sign-in may return to are carried over.
+  await page.goto(harness.url("/account/?return=admin"));
+  await expect(page.getByRole("link", { name: "Español" })).toHaveAttribute("href", "/es/account/");
+});
+
 test("the sign-in form says which email to use, and a provider’s error shows next to its buttons", async ({
   page,
   harness,
