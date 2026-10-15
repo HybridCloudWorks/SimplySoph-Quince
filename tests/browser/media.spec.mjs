@@ -118,7 +118,7 @@ test("the gallery shows one clear state: sign in, nothing yet, then only albums 
   await signIn(page, harness, household.email);
   await expect(page).toHaveURL(harness.url("/gallery/"));
   await expect(page.getByRole("heading", { name: "Nothing here yet" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Share your photos" })).toHaveAttribute("href", "/share/");
+  await expect(page.locator("[data-gallery-state]").getByRole("link", { name: "Share your photos" })).toHaveAttribute("href", "/share/");
   await expect(page.locator(".album-card")).toHaveCount(0);
 
   // The family approved a photo for one album and a video for another.
