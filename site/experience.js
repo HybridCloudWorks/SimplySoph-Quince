@@ -57,7 +57,7 @@ function countdown() {
       now < deadline
         ? lang === "es" ? "Tiempo para confirmar" : "Left to reply"
         : lang === "es" ? "Falta para la celebración" : "Until the celebration";
-    node.innerHTML = `<p class="countdown-label">${label}</p><p class="countdown-values">${values
+    node.innerHTML = `<p class="countdown-label">${label}</p> <p class="countdown-values">${values
       .map((v, i) => `<span><strong>${v}</strong> ${units[lang][i][v === 1 ? 0 : 1]}</span>`)
       .join(" ")}</p>`;
   }
