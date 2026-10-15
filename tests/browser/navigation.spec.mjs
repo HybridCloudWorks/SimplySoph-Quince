@@ -100,7 +100,7 @@ test.describe("on a phone", () => {
     harness,
   }) => {
     await page.goto(harness.url("/"));
-    const rsvp = page.getByRole("main").getByRole("link", { name: "Respond to your invitation" });
+    const rsvp = page.getByRole("main").getByRole("link", { name: "RSVP", exact: true });
     const box = await rsvp.boundingBox();
     expect(box.y + box.height).toBeLessThan(844);
     await expect(page.getByText("Please reply by Sunday, November 15")).toBeVisible();
@@ -136,7 +136,7 @@ test("a missing page under /es/ answers 404 in Spanish, with ways back", async (
   await expect(page.locator("html")).toHaveAttribute("lang", "es");
   await expect(page).toHaveTitle("Página no encontrada · Los XV de Sophia");
   const main = page.getByRole("main");
-  await expect(main.getByRole("link", { name: "Responde a tu invitación" })).toHaveAttribute("href", "/es/rsvp/");
+  await expect(main.getByRole("link", { name: "Confirmar asistencia" })).toHaveAttribute("href", "/es/rsvp/");
   await expect(main.getByRole("link", { name: "Programa" })).toHaveAttribute("href", "/es/details/");
   // The address the guest typed stays in the address bar.
   await expect(page).toHaveURL(/\/es\/no-existe\/$/);

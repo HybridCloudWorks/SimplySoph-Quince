@@ -55,7 +55,7 @@ test("nothing links to a page whose family content is still empty", async () => 
   const sophia = main(await page("sophia/index.html"));
   assert.match(sophia, /href="\/rsvp\/"/);
   assert.match(sophia, /href="\/details\/"/);
-  assert.doesNotMatch(sophia, /Contact the family/);
+  assert.doesNotMatch(sophia, /href="\/contact\/"/);
 });
 
 test("filled-in pages are linked automatically (the admin preview's example content)", async () => {
@@ -146,7 +146,7 @@ test("the Schedule gives each part of the day its place, map and own calendar fi
     assert.doesNotMatch(html, /site theme|colores del sitio/);
     assert.match(html, /class="good-to-know"/);
   }
-  assert.match(main(await page("details/index.html")), /The family will share the dress code here\./);
+  assert.match(main(await page("details/index.html")), /We’ll share the dress code here soon\./);
   // The RSVP shows its own deadline (site/guest.js); the page adds none.
   for (const file of ["rsvp/index.html", "rsvp/confirmed/index.html", "es/rsvp/index.html"])
     assert.doesNotMatch(await page(file), /class="deadline"/);

@@ -82,7 +82,7 @@ test("calendar and map links say what they do in the page's language", () => {
   assert.doesNotMatch(albumCards(celebration), /↗/);
   assert.match(
     registryCards([{ name: "Store", description: { en: "Wishes", es: "Deseos" }, url: "https://example.com/" }]),
-    /target="_blank"[^>]*>Visit registry<span class="ext" aria-hidden="true">↗/,
+    /target="_blank"[^>]*>See the registry<span class="ext" aria-hidden="true">↗/,
   );
 });
 test("the schedule strip, Schedule rows and invitation text come from the event data", () => {
