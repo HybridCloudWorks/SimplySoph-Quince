@@ -145,8 +145,8 @@ const messages = {
     "Esta foto pesa más de 40 MB. Guarda una copia más pequeña y elige esa.",
   ],
   EMAIL_SIGN_IN_UNAVAILABLE: [
-    "Email sign-in is not open yet. Please contact the family.",
-    "El acceso por correo aún no está disponible. Contacta a la familia.",
+    "Email sign-in is not open yet. Please contact us.",
+    "El acceso por correo aún no está disponible. Escríbenos.",
   ],
   EMAIL_LINK_INVALID: [
     "This link is expired or already used. Request a new sign-in link.",
@@ -165,8 +165,8 @@ const messages = {
     "Todavía no tenemos este correo. Prueba con el correo donde recibiste tu invitación, o escríbenos a misxv@simplysoph.com y lo agregamos.",
   ],
   SSO_ACCOUNT_CHANGED: [
-    "This email is linked to a different Microsoft or Google account. Use the emailed sign-in link instead, or contact the family.",
-    "Este correo está vinculado a otra cuenta de Microsoft o Google. Usa el enlace de acceso por correo o contacta a la familia.",
+    "This email is linked to a different Microsoft or Google account. Use the emailed sign-in link instead, or contact us.",
+    "Este correo está vinculado a otra cuenta de Microsoft o Google. Usa el enlace de acceso por correo o escríbenos.",
   ],
   SSO_TENANT_NOT_ALLOWED: [
     "Use a personal Microsoft account (Outlook, Hotmail, Live) or a Simply Soph work account.",
@@ -197,12 +197,12 @@ const messages = {
     "Esta cuenta no es de administrador. Si esperas tener acceso, comunícate con Saul o Diana.",
   ],
   INVITATION_INACTIVE: [
-    "This invitation isn't active right now. Please contact the family.",
-    "Esta invitación no está activa en este momento. Comunícate con la familia.",
+    "This invitation isn't active right now. Please contact us.",
+    "Esta invitación no está activa en este momento. Escríbenos.",
   ],
   INVITATION_NOT_READY: [
-    "Your invitation hasn't been sent yet. The RSVP opens once the family sends it.",
-    "Tu invitación aún no se ha enviado. La respuesta se abrirá cuando la familia la envíe.",
+    "Your invitation hasn't been sent yet. The RSVP opens once we send it.",
+    "Tu invitación aún no se ha enviado. Podrás responder cuando te la enviemos.",
   ],
   ADMIN_SIGN_IN_PAUSED: [
     "Too many wrong authenticator codes. Administrator sign-in is paused for an hour; the family has been told.",
@@ -285,16 +285,16 @@ const messages = {
     "Inicia sesión de nuevo: abre tu enlace de invitación para confirmar, o inicia sesión con tu correo en Mi cuenta.",
   ],
   INVALID_INVITATION: [
-    "That invitation could not be opened. Check the link or contact the family.",
-    "No pudimos abrir la invitación. Revisa el enlace o contacta a la familia.",
+    "That invitation could not be opened. Check the link or contact us.",
+    "No pudimos abrir la invitación. Revisa el enlace o escríbenos.",
   ],
   RESPONSE_CHANGED: [
     "Your response changed in another window. Reload to review the latest saved response.",
     "Tu respuesta cambió en otra ventana. Recarga para revisar la última respuesta guardada.",
   ],
   RSVP_CLOSED: [
-    "The RSVP deadline has passed. Please contact the family.",
-    "La fecha límite ha pasado. Contacta a la familia.",
+    "The RSVP deadline has passed. Please contact us.",
+    "La fecha límite ya pasó. Escríbenos.",
   ],
   CAPACITY_NEEDS_REVIEW: [
     "The family needs to review the spaces on this invitation. Please contact them.",
@@ -309,8 +309,8 @@ const messages = {
     "Tu hogar ya compartió 20 fotos y videos hoy, el límite diario. Puedes compartir más mañana.",
   ],
   API_NOT_CONFIGURED: [
-    "Online submissions are not open yet. Please contact the family.",
-    "Los envíos en línea aún no están disponibles. Contacta a la familia.",
+    "Online submissions are not open yet. Please contact us.",
+    "Los envíos en línea aún no están disponibles. Escríbenos.",
   ],
   INVALID_MFA: [
     "The authenticator code is invalid or already used. Try the next code.",
@@ -383,8 +383,8 @@ export async function api(path, body, options = {}) {
           : res.status >= 500
             ? trouble(body !== undefined, false)
             : tr(
-                "Unable to complete this request. Please retry or contact the family.",
-                "No pudimos completar la solicitud. Inténtalo de nuevo o contacta a la familia.",
+                "We couldn’t finish that. Please try again, or contact us.",
+                "No pudimos completar la solicitud. Inténtalo de nuevo o escríbenos.",
               ),
       ),
       { code: data?.error, status: res.status },

@@ -190,11 +190,11 @@ test("after the deadline a household that never answered sees the closed note, n
   ).toBeVisible();
   await expect(
     page.getByText(
-      "RSVPs closed on November 15. To answer or change your answer now, please contact the family.",
+      "RSVPs closed on November 15. To answer or change your answer now, please contact us.",
     ),
   ).toBeVisible();
   await expect(
-    page.getByRole("link", { name: "Contact the family" }),
+    page.getByRole("link", { name: "Contact us" }),
   ).toHaveAttribute("href", "/contact/");
   await expect(page.getByRole("button", { name: "Review response" })).toHaveCount(0);
   await expect(page.getByRole("main").getByRole("group")).toHaveCount(0);
@@ -220,11 +220,11 @@ test("after the deadline the Spanish page shows the closed note in Spanish", asy
   ).toBeVisible();
   await expect(
     page.getByText(
-      "Las respuestas cerraron el 15 de noviembre. Para responder o cambiar su respuesta, contacten a la familia.",
+      "Las respuestas cerraron el 15 de noviembre. Para responder o cambiar su respuesta, escríbannos.",
     ),
   ).toBeVisible();
   await expect(
-    page.getByRole("link", { name: "Contactar a la familia" }),
+    page.getByRole("link", { name: "Escríbannos" }),
   ).toHaveAttribute("href", "/es/contact/");
   await expect(page.getByRole("button", { name: "Revisar respuesta" })).toHaveCount(0);
   expect(await responsesOf(harness, household)).toEqual([]);
@@ -254,7 +254,7 @@ test("a form opened before the deadline but saved after it is refused and nothin
   await page.getByRole("button", { name: "Save my RSVP" }).click();
 
   await expect(page.getByRole("alert")).toHaveText(
-    "The RSVP deadline has passed. Please contact the family.",
+    "The RSVP deadline has passed. Please contact us.",
   );
   await expect(page).toHaveURL(harness.url("/rsvp/"));
   await expect(
@@ -289,11 +289,11 @@ test("a household that answers just before the deadline sees the RSVP closed rig
   await page.reload();
   await expect(
     page.getByText(
-      "The RSVP deadline has passed. To change your answer, please contact the family.",
+      "The RSVP deadline has passed. To change your answer, please contact us.",
     ),
   ).toBeVisible();
   await expect(
-    page.getByRole("link", { name: "Contact the family" }),
+    page.getByRole("link", { name: "Contact us" }),
   ).toBeVisible();
   await expect(page.getByRole("link", { name: "Edit response" })).toHaveCount(
     0,
@@ -331,7 +331,7 @@ for (const [kind, fragment] of [
         .getByRole("alert")
         .filter({ hasText: "This invitation link isn't working." }),
     ).toHaveText(
-      "This invitation link isn't working. It may be incomplete or replaced by a newer link; open your most recent invitation email or contact the family.",
+      "This invitation link isn't working. It may be incomplete or replaced by a newer link; open your most recent invitation email or contact us.",
     );
     await expect(
       page.getByRole("heading", { name: "Open your invitation" }),

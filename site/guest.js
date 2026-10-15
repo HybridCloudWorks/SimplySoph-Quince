@@ -52,7 +52,7 @@ function show(html, { focus = settled } = {}) {
     );
 }
 const statusError = (message) =>
-  `<p class="notice" role="alert">${esc(message)}</p><a href="${route("contact")}">${tr("Contact the family", "Contacta a la familia")}</a>`;
+  `<p class="notice" role="alert">${esc(message)}</p><a href="${route("contact")}">${tr("Contact us", "Escríbenos")}</a>`;
 let configured = null;
 const config = () =>
   (configured ??= api("config").catch((e) => {
@@ -192,8 +192,8 @@ function signedOut(view) {
     `<p class="notice">${
       view === "contact"
         ? tr(
-            "You can email the family at the address above. To send a message here, sign in with your email.",
-            "Puedes escribirle a la familia al correo de arriba. Para enviar un mensaje aquí, entra con tu correo.",
+            "You can email us at the address above. To send a message here, sign in with your email.",
+            "Puedes escribirnos al correo de arriba. Para enviar un mensaje aquí, entra con tu correo.",
           )
         : tr("Sign in with your email to continue.", "Entra con tu correo para continuar.")
     }</p>${emailSignInHtml()}`,
@@ -264,11 +264,11 @@ function rsvpStatus(inv) {
     title = `<h3>${tr("Your RSVP", "Tu respuesta")}</h3>`;
   let body;
   if (!inv.invitationReady)
-    body = `<p>${tr("Your invitation hasn’t been sent yet. The RSVP opens here once the family sends it.", "Tu invitación aún no se ha enviado. La respuesta se abrirá aquí cuando la familia la envíe.")}</p>`;
+    body = `<p>${tr("Your invitation hasn’t been sent yet. The RSVP opens here once we send it.", "Tu invitación aún no se ha enviado. Podrás responder aquí cuando te la enviemos.")}</p>`;
   else if (!r)
     body = open
       ? `<p>${tr("You haven’t replied yet.", "Aún no has respondido.")}</p>${replyBy(inv.deadline)}<p><a class="button burgundy" href="${route("rsvp")}">${tr("RSVP now", "Responder ahora")}</a></p>`
-      : `<p>${tr("You didn’t reply before the deadline. To answer now, please contact the family.", "No respondiste antes de la fecha límite. Para responder ahora, contacta a la familia.")}</p>`;
+      : `<p>${tr("You didn’t reply before the deadline. To answer now, please contact us.", "No respondiste antes de la fecha límite. Para responder ahora, escríbenos.")}</p>`;
   else {
     const coming = invitedEvents(inv).filter(
         (e) => r.attendance[e].adultsTeens + r.attendance[e].kids > 0,
@@ -280,7 +280,7 @@ function rsvpStatus(inv) {
     body = `<p>${answer} — ${tr(`saved ${saved}`, `guardada el ${saved}`)}</p>${
       open
         ? `<p><a class="button outline" href="${route("rsvp")}">${tr("Change your RSVP", "Cambiar tu respuesta")}</a></p>`
-        : `<p>${tr("The RSVP deadline has passed. To change your answer, please contact the family.", "La fecha límite ya pasó. Para cambiar tu respuesta, contacta a la familia.")}</p>`
+        : `<p>${tr("The RSVP deadline has passed. To change your answer, please contact us.", "La fecha límite ya pasó. Para cambiar tu respuesta, escríbenos.")}</p>`
     }`;
   }
   return `<section class="card rsvp-status">${title}${body}</section>`;
@@ -327,7 +327,7 @@ async function accountPage(inv) {
   // The last markup drawn: the browser normalizes innerHTML (quotes, entities),
   // so comparing with it would redraw, and re-announce, the thread every minute.
   let shown = messagesHtml(await api("messages"));
-  box.innerHTML = `<h3>${tr("Messages with the family", "Mensajes con la familia")}</h3><div id="thread" aria-live="polite">${shown}</div><p class="hint">${tr("New replies appear here while this page is open.", "Las respuestas nuevas aparecen aquí mientras esta página esté abierta.")}</p><form id="family-message"><label>${tr("Your message", "Tu mensaje")}<textarea name="text" required maxlength="2000"></textarea></label><p role="alert" class="error"></p><button type="submit" class="button burgundy">${tr("Send to the family", "Enviar a la familia")}</button><p class="saved-note" role="status"></p></form>`;
+  box.innerHTML = `<h3>${tr("Messages with us", "Mensajes con nosotros")}</h3><div id="thread" aria-live="polite">${shown}</div><p class="hint">${tr("New replies appear here while this page is open.", "Las respuestas nuevas aparecen aquí mientras esta página esté abierta.")}</p><form id="family-message"><label>${tr("Your message", "Tu mensaje")}<textarea name="text" required maxlength="2000"></textarea></label><p role="alert" class="error"></p><button type="submit" class="button burgundy">${tr("Send message", "Enviar mensaje")}</button><p class="saved-note" role="status"></p></form>`;
   const messageForm = document.querySelector("#family-message"),
     messageNote = messageForm.querySelector(".saved-note");
   submit(messageForm, async (f) => {
@@ -341,8 +341,8 @@ async function accountPage(inv) {
     document.querySelector("#thread").innerHTML = shown = messagesHtml(await api("messages"));
     messageForm.reset();
     messageNote.textContent = tr(
-      "Sent to the family. Their reply will appear here.",
-      "Enviado a la familia. Su respuesta aparecerá aquí.",
+      "Sent. Our reply will appear here.",
+      "Enviado. Nuestra respuesta aparecerá aquí.",
     );
     focusOn(messageNote);
   });
@@ -665,7 +665,7 @@ function rsvpClosed(inv) {
   const answered = inv.response
     ? `<p>${tr("Your saved answer:", "Su respuesta guardada:")}</p>${summary(inv.response.attendance, inv)}`
     : "";
-  return `<div class="notice"><h2>${tr("RSVPs are closed", "Las respuestas están cerradas")}</h2><p>${tr(`RSVPs closed on ${until}. To answer or change your answer now, please contact the family.`, `Las respuestas cerraron el ${until}. Para responder o cambiar su respuesta, contacten a la familia.`)}</p>${answered}<p><a class="button burgundy" href="${route("contact")}">${tr("Contact the family", "Contactar a la familia")}</a></p></div>`;
+  return `<div class="notice"><h2>${tr("RSVPs are closed", "Las respuestas están cerradas")}</h2><p>${tr(`RSVPs closed on ${until}. To answer or change your answer now, please contact us.`, `Las respuestas cerraron el ${until}. Para responder o cambiar su respuesta, escríbannos.`)}</p>${answered}<p><a class="button burgundy" href="${route("contact")}">${tr("Contact us", "Escríbannos")}</a></p></div>`;
 }
 // The page after saving adapts to the answer: attending households get only
 // the calendars and directions they need; declining households get a warm note.
@@ -688,14 +688,14 @@ function confirmation(inv, session) {
   }</p>`;
   const edit = open
     ? `<p><a class="button outline" href="${route("rsvp")}">${tr("Edit response", "Editar respuesta")}</a></p>`
-    : `<p>${tr("The RSVP deadline has passed. To change your answer, please contact the family.", "La fecha límite ya pasó. Para cambiar su respuesta, contacten a la familia.")}</p><p><a href="${route("contact")}">${tr("Contact the family", "Contactar a la familia")}</a></p>`;
+    : `<p>${tr("The RSVP deadline has passed. To change your answer, please contact us.", "La fecha límite ya pasó. Para cambiar su respuesta, escríbannos.")}</p><p><a href="${route("contact")}">${tr("Contact us", "Escríbannos")}</a></p>`;
   if (!attending.length)
     return `<div class="notice success"><h2>${tr("Thank you for letting us know.", "Gracias por avisarnos.")}</h2><p>${tr("We’ll miss you, and thank you for your love.", "Los vamos a extrañar; gracias por su cariño.")}</p></div>${saved}<p>${tr("Would you like to leave Sophia a note?", "¿Les gustaría dejarle un mensaje a Sophia?")}</p>${
       // The guestbook is for signed-in guests; an invitation link only answers the RSVP.
       session.verified
         ? ""
-        : `<p class="hint">${tr("Writing in the guestbook needs a quick sign-in with your email. The link we send brings you right back to the guestbook.", "Para escribir en el libro de visitas hay que entrar con su correo. El enlace que les enviamos los lleva directo al libro de visitas.")}</p>`
-    }<p><a class="button burgundy" href="${route("guestbook")}">${tr("Write in the guestbook", "Escribir en el libro de visitas")}</a></p>${edit}`;
+        : `<p class="hint">${tr("Writing in the guestbook needs a quick sign-in with your email. The link we send brings you right back to the guestbook.", "Para escribir en el libro de firmas hay que entrar con su correo. El enlace que les enviamos los lleva directo al libro de firmas.")}</p>`
+    }<p><a class="button burgundy" href="${route("guestbook")}">${tr("Write in the guestbook", "Escribir en el libro de firmas")}</a></p>${edit}`;
   const calendars = attending
     .map(
       (e) =>
@@ -753,7 +753,7 @@ async function showPortal() {
   // Signed in before the family issued this household's invitation link.
   if (view.startsWith("rsvp") && !inv.invitationReady) {
     show(
-      `<p class="notice">${tr("Your invitation hasn’t been sent yet. The RSVP opens here once the family sends it. You can already share photos and write to the family from My account.", "Tu invitación aún no se ha enviado. La respuesta se abrirá aquí cuando la familia la envíe. Ya puedes compartir fotos y escribir a la familia desde Mi cuenta.")}</p><a href="${route("account")}">${tr("My account", "Mi cuenta")}</a>`,
+      `<p class="notice">${tr("Your invitation hasn’t been sent yet. The RSVP opens here once we send it. You can already share photos and write to us from My account.", "Tu invitación aún no se ha enviado. Podrás responder aquí cuando te la enviemos. Ya puedes compartir fotos y escribirnos desde Mi cuenta.")}</p><a href="${route("account")}">${tr("My account", "Mi cuenta")}</a>`,
     );
     return;
   }
@@ -807,7 +807,7 @@ async function showPortal() {
         consent: data.has("consent"),
       });
       show(
-        `<p class="notice success" role="status">${tr("Your message was saved for the family.", "Tu mensaje se guardó para la familia.")}</p>`,
+        `<p class="notice success" role="status">${view === "guestbook" ? tr("Thank you! Your note will appear here once we’ve read it.", "¡Gracias! Tu mensaje aparecerá aquí cuando lo hayamos leído.") : tr("Thank you. We got your message and will reply soon.", "Gracias. Recibimos tu mensaje y te responderemos pronto.")}</p>`,
       );
     });
   }
@@ -891,8 +891,8 @@ if (microsoft) {
       "",
       e.code === "INVALID_INVITATION"
         ? tr(
-            "This invitation link isn't working. It may be incomplete or replaced by a newer link; open your most recent invitation email or contact the family.",
-            "Este enlace de invitación no funciona. Puede estar incompleto o haber sido reemplazado por uno más reciente; abre tu correo de invitación más reciente o contacta a la familia.",
+            "This invitation link isn't working. It may be incomplete or replaced by a newer link; open your most recent invitation email or contact us.",
+            "Este enlace de invitación no funciona. Puede estar incompleto o haber sido reemplazado por uno más reciente; abre tu correo de invitación más reciente o escríbenos.",
           )
         : e.message,
     );
