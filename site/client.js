@@ -158,10 +158,6 @@ const messages = {
     "This link is expired or already used. Request a new sign-in link.",
     "Este enlace venció o ya se utilizó. Solicita uno nuevo.",
   ],
-  PAGE_NOT_ALLOWED: [
-    "The family has not granted your account access to this page.",
-    "La familia no le ha dado acceso a esta página a tu cuenta.",
-  ],
   OWNER_REQUIRED: [
     "Only the site owner can do this.",
     "Solo el propietario del sitio puede hacer esto.",
@@ -305,8 +301,8 @@ const messages = {
     "La fecha límite ya pasó. Por favor, escríbannos.",
   ],
   CAPACITY_NEEDS_REVIEW: [
-    "The family needs to review the spaces on this invitation. Please contact them.",
-    "La familia debe revisar los lugares de esta invitación. Contáctalos.",
+    "We need to review the spaces on this invitation. Please contact us.",
+    "Necesitamos revisar los lugares de esta invitación. Por favor, escríbannos.",
   ],
   TOO_MANY_REQUESTS: [
     "Please wait before trying again.",
