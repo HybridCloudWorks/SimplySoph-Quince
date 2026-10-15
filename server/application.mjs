@@ -990,14 +990,17 @@ export function createApplication({
     if (path === "/api/site" && method === "GET") {
       return { site: siteSettings(await ledger.read()) };
     }
+    // /api/calendar/ceremony.ics in English, /api/calendar/es/ceremony.ics in
+    // Spanish (the /es/ pages link there); same event UID in both.
     if (path.startsWith("/api/calendar/") && method === "GET") {
-      const kind = path.slice(14).replace(/\.ics$/, "");
+      const es = path.startsWith("/api/calendar/es/"),
+        kind = path.slice(es ? 17 : 14).replace(/\.ics$/, "");
       if (!["ceremony", "dinner", "reception"].includes(kind))
         throw error(404, "NOT_FOUND");
       const site = siteSettings(await ledger.read());
       if (!site[kind].end) throw error(409, "END_TIME_PENDING");
       return {
-        binary: Buffer.from(calendar(kind, site)),
+        binary: Buffer.from(calendar(kind, site, es ? "es" : "en")),
         contentType: "text/calendar; charset=utf-8",
         disposition: 'attachment; filename="sophia-' + kind + '.ics"',
       };

@@ -583,6 +583,16 @@ test("site settings require admin, prevent stale saves, and publish registry edi
   );
   const ics = await f.app.dispatch({ path: "/api/calendar/ceremony.ics" });
   assert.match(ics.binary.toString(), /DTEND:20270115T230000Z/);
+  // The Spanish pages' calendar: Spanish words, the same event and version.
+  const es = (await f.app.dispatch({ path: "/api/calendar/es/ceremony.ics" })).binary.toString();
+  assert.match(es, /SUMMARY:Sophia Isabel — Ceremonia religiosa/);
+  assert.match(es, /UID:misxv-ceremony@simplysoph.com/);
+  assert.match(es, new RegExp(`SEQUENCE:${site.version + 1}`));
+  assert.match(es, /DTEND:20270115T230000Z/);
+  await assert.rejects(
+    () => f.app.dispatch({ path: "/api/calendar/es/gifts.ics" }),
+    (e) => e.code === "NOT_FOUND",
+  );
   await assert.rejects(
     () => f.app.dispatch({ path: "/api/calendar/reception.ics" }),
     (e) => e.code === "END_TIME_PENDING",
