@@ -519,13 +519,15 @@ export function checkForm(form) {
         control.dataset.check ||
         (control.type === "checkbox"
           ? tr("Tick the box:", "Marca la casilla:")
-          : control.tagName === "SELECT"
-            ? tr("Choose an answer for:", "Elige una respuesta para:")
-            : v.valueMissing
-              ? tr("Fill in:", "Completa:")
-              : control.type === "email"
-                ? tr("Check the email address:", "Revisa el correo:")
-                : tr("Check:", "Revisa:"));
+          : control.type === "file"
+            ? tr("Choose:", "Elige:")
+            : control.tagName === "SELECT"
+              ? tr("Choose an answer for:", "Elige una respuesta para:")
+              : v.valueMissing
+                ? tr("Fill in:", "Completa:")
+                : control.type === "email"
+                  ? tr("Check the email address:", "Revisa el correo:")
+                  : tr("Check:", "Revisa:"));
     if (!lines.has(opening)) lines.set(opening, []);
     lines.get(opening).push(control);
     if (!document.getElementById(control.id + "-error")) {
@@ -536,7 +538,9 @@ export function checkForm(form) {
         v.valueMissing && control.type !== "checkbox"
           ? control.tagName === "SELECT"
             ? tr("Choose one.", "Elige una opción.")
-            : tr("Fill this in.", "Completa este campo.")
+            : control.type === "file"
+              ? tr("Choose at least one file.", "Elige al menos un archivo.")
+              : tr("Fill this in.", "Completa este campo.")
           : control.type === "checkbox"
             ? tr("Tick this box to continue.", "Marca esta casilla para continuar.")
             : control.type === "email"

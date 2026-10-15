@@ -108,6 +108,66 @@ test("the table QR opens a two-language explanation, and after sign-in a guest s
     .toContainEqual(expect.stringMatching(/New video awaiting review/));
 });
 
+// The upload form follows the site's form conventions (site/client.js): what
+// is missing is listed in the page's language, not in browser bubbles, and
+// the Send button keeps focus while it is busy.
+test("the upload form lists what is missing and keeps focus on Send while sending", async ({
+  page,
+  harness,
+}) => {
+  const household = households.rivera;
+  await harness.issueInvitation(household);
+  await page.goto(harness.url("/share/"));
+  await signIn(page, harness, household.email);
+  await expect(page.getByRole("heading", { name: "Add your photos & videos" })).toBeVisible();
+  const form = page.locator("#photo"),
+    send = page.getByRole("button", { name: "Send my photos & videos" });
+  await expect(form).toHaveAttribute("novalidate", "");
+  await expect(send).toBeEnabled();
+  await send.click();
+  const summary = form.locator(".error-summary");
+  await expect(summary).toBeFocused();
+  await expect(summary).toHaveText(
+    "Choose: Photos & videosTick the box: Permission from the people pictured",
+  );
+  const chooser = page.getByLabel("Choose photos & videos");
+  await expect(chooser).toHaveAttribute("aria-invalid", "true");
+  await expect(chooser).toHaveAccessibleDescription(/Choose at least one file\./);
+  // Chosen, but nothing that can be sent: said next to the button.
+  await chooser.setInputFiles([{ name: "IMG_0200.HEIC", mimeType: "image/heic", buffer: Buffer.from("not really a photo") }]);
+  await page.getByLabel(/I have permission from the people pictured/).check();
+  await send.click();
+  await expect(form.locator("p.error")).toHaveText(
+    "None of the files you chose can be sent. See the note next to each one, then choose others.",
+  );
+  await expect(send).toBeFocused();
+
+  const photo = await sharp({ create: { width: 40, height: 30, channels: 3, background: "#d7b779" } })
+    .jpeg()
+    .toBuffer();
+  await chooser.setInputFiles([{ name: "IMG_0201.JPG", mimeType: "image/jpeg", buffer: photo }]);
+  await page.getByLabel(/I have permission from the people pictured/).check();
+  // Hold the file on its way, to see the form while it is busy.
+  let release;
+  const held = new Promise((resolve) => (release = resolve));
+  await page.route(/\/api\/uploads\/[a-f0-9-]{36}\?offset=0$/, async (route) => {
+    await held;
+    await route.continue();
+  });
+  await send.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#upload-summary")).toContainText("Sending your files");
+  await expect(summary).toHaveCount(0);
+  await expect(send).toHaveAttribute("aria-disabled", "true");
+  await expect(send).toBeFocused();
+  await expect(chooser).toBeDisabled();
+  release();
+  await expect(page.locator("#upload-summary")).toContainText("1 of 1 arrived. Thank you!");
+  await expect(send).not.toHaveAttribute("aria-disabled");
+  await expect(send).toBeFocused();
+  await expect(chooser).toBeEnabled();
+});
+
 test("the gallery shows one clear state: sign in, nothing yet, then only albums and sections that have something", async ({
   page,
   harness,

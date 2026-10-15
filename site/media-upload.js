@@ -1,4 +1,4 @@
-import { api, esc, es, tr, route, field } from "./client.js";
+import { api, esc, es, tr, route, field, submit } from "./client.js";
 import {
   createUploadBatch,
   sendUploadBatch,
@@ -137,7 +137,7 @@ export function mediaUpload(portal, albums) {
   portal.innerHTML = `<form id="photo"><h2>${tr("Add your photos & videos", "Agrega tus fotos y videos")}</h2><p id="upload-help">${tr(
     "Choose photos and short videos straight from your phone, up to 10 at a time. Videos can be up to 60 seconds long. Each photo can be up to 40 MB and each video up to 300 MB. Your household can share up to 20 files a day.",
     "Elige fotos y videos cortos directamente de tu teléfono, hasta 10 a la vez. Los videos pueden durar hasta 60 segundos. Cada foto puede pesar hasta 40 MB y cada video hasta 300 MB. Tu hogar puede compartir hasta 20 archivos al día.",
-  )}</p><label>${tr("Choose photos & videos", "Elige fotos y videos")}<input type="file" name="file" accept="${esc(uploadAccept)}" multiple required aria-describedby="upload-help"></label><div class="upload-fields"><label>${tr("Album", "Álbum")}<select name="album">${albums.map((a) => `<option value="${esc(a.id)}"${a.id === "event" ? " selected" : ""}>${esc(es ? a.es : a.en)}</option>`).join("")}</select></label>${field(tr("Caption for these files (optional)", "Descripción para estos archivos (opcional)"), "caption", { max: 200 })}</div><label class="check upload-consent"><input type="checkbox" name="consent" required><span>${tr("I have permission from the people pictured and agree to the", "Tengo permiso de las personas que aparecen y acepto lo indicado en")} <a href="${route("terms")}" target="_blank" rel="noopener">${tr("Photo & video policy", "Uso de fotos y videos")}</a>.</span></label><p class="error" role="alert"></p><div class="upload-actions"><button type="submit" class="button burgundy" disabled>${tr("Send my photos & videos", "Enviar mis fotos y videos")}</button><a href="${route("gallery")}">${tr("View the gallery", "Ver la galería")}</a></div><div id="upload-summary" role="status" aria-live="polite"></div><ol id="upload-results" aria-label="${tr("Your files", "Tus archivos")}"></ol></form>`;
+  )}</p><label>${tr("Choose photos & videos", "Elige fotos y videos")}<input type="file" name="file" accept="${esc(uploadAccept)}" multiple required aria-describedby="upload-help" data-label="${tr("Photos & videos", "Fotos y videos")}"></label><div class="upload-fields"><label>${tr("Album", "Álbum")}<select name="album">${albums.map((a) => `<option value="${esc(a.id)}"${a.id === "event" ? " selected" : ""}>${esc(es ? a.es : a.en)}</option>`).join("")}</select></label>${field(tr("Caption for these files (optional)", "Descripción para estos archivos (opcional)"), "caption", { max: 200 })}</div><label class="check upload-consent"><input type="checkbox" name="consent" required data-label="${tr("Permission from the people pictured", "Permiso de las personas que aparecen")}"><span>${tr("I have permission from the people pictured and agree to the", "Tengo permiso de las personas que aparecen y acepto lo indicado en")} <a href="${route("terms")}" target="_blank" rel="noopener">${tr("Photo & video policy", "Uso de fotos y videos")}</a>.</span></label><p class="error" role="alert"></p><div class="upload-actions"><button type="submit" class="button burgundy">${tr("Send my photos & videos", "Enviar mis fotos y videos")}</button><a href="${route("gallery")}">${tr("View the gallery", "Ver la galería")}</a></div><div id="upload-summary" role="status" aria-live="polite"></div><ol id="upload-results" aria-label="${tr("Your files", "Tus archivos")}"></ol></form>`;
   // Signed in: the page's "How to share" steps (for the QR's signed-out
   // visitors, scripts/build-pages.mjs) have done their job.
   document.querySelector("[data-share-steps]")?.setAttribute("hidden", "");
@@ -150,6 +150,8 @@ export function mediaUpload(portal, albums) {
   let entries = [],
     busy = false,
     checking = false,
+    // The length check of the videos chosen last; Send waits for it.
+    checked = Promise.resolve(),
     choice = 0,
     shown = "";
   const status = (e) => {
@@ -222,8 +224,6 @@ export function mediaUpload(portal, albums) {
     summary.className = summary.textContent
       ? `notice${!busy && !paused && arrived === sendable ? " success" : ""}`
       : "";
-    button.disabled =
-      busy || checking || !entries.some((e) => e.state === "queued" && !e.problem);
   };
   input.addEventListener("change", async () => {
     error.textContent = "";
@@ -240,7 +240,7 @@ export function mediaUpload(portal, albums) {
     checking = true;
     render();
     const chosen = entries;
-    await checkVideoLengths(chosen);
+    await (checked = checkVideoLengths(chosen));
     if (mine !== choice) return;
     checking = false;
     render();
@@ -270,7 +270,12 @@ export function mediaUpload(portal, albums) {
       caption = form.elements.caption.value;
     error.textContent = "";
     busy = true;
-    const controls = Array.from(form.querySelectorAll("input,select,button"));
+    // Nothing can change while files are on their way. Send (and whatever has
+    // focus) is only marked busy: disabling it would drop focus to the page.
+    button.setAttribute("aria-disabled", "true");
+    const controls = Array.from(form.querySelectorAll("input,select,button")).filter(
+      (el) => el !== button && el !== document.activeElement,
+    );
     controls.forEach((el) => (el.disabled = true));
     render();
     try {
@@ -289,6 +294,7 @@ export function mediaUpload(portal, albums) {
       error.textContent = e.message;
     } finally {
       busy = false;
+      button.removeAttribute("aria-disabled");
       controls.forEach((el) => (el.disabled = false));
       // Clear the chooser, so picking the same file again (after "Not
       // sent") counts as a new choice; the results stay listed below.
@@ -300,9 +306,18 @@ export function mediaUpload(portal, albums) {
       }
     }
   }
-  form.addEventListener("submit", (event) => {
-    event.preventDefault();
-    if (!busy && form.reportValidity()) send();
+  // Checked like every form on the site (site/client.js): what is missing is
+  // listed in the page's language, and Send keeps focus while it is busy.
+  submit(form, async () => {
+    await checked;
+    if (!entries.some((e) => e.state === "queued" && !e.problem))
+      throw new Error(
+        tr(
+          "None of the files you chose can be sent. See the note next to each one, then choose others.",
+          "No se puede enviar ninguno de los archivos que elegiste. Revisa la nota junto a cada uno y elige otros.",
+        ),
+      );
+    await send();
   });
   results.addEventListener("click", (event) => {
     if (event.target.closest("[data-retry]")) send();
