@@ -19,6 +19,52 @@ export const VIDEO_SECONDS = 60;
 const LONGEST = VIDEO_SECONDS + 1;
 // The converted file: bitrate-capped CRF, so 60 s stays under about 50 MB.
 const OUTPUT_LIMIT = 80_000_000;
+// What ffprobe and ffmpeg may decode from a guest's file. ffprobe reports only
+// the first frame's size and the container chooses the codec, so a 3 MB MOV of
+// PNG frames, the first 64×64 and the next 16000×16000, passed the checks below
+// and took ffmpeg past 2 GB, the whole instance (a 16000×16000 first frame did
+// the same to ffprobe). Every frame is now held to 4096×2176 pixels (DCI 4K
+// and UHD either way up: ffmpeg pads a frame's width to 64 before checking)
+// and the decoders to what phones record; anything else fails before a frame
+// is decoded. The names are ffmpeg's decoders, not codecs: MP3 is read by
+// mp3float, AV1 by libdav1d (ffmpeg's own av1 decoder needs a GPU).
+const DECODE_LIMITS = [
+  "-max_pixels",
+  String(4096 * 2176),
+  "-codec_whitelist",
+  [
+    // H.264 and HEVC (every phone; iPhones use HEVC), VP8/VP9/AV1 (WebM and
+    // newer Android), MPEG-4 Part 2 (older Android), ProRes (iPhone Pro).
+    "h264",
+    "hevc",
+    "vp8",
+    "vp9",
+    "libdav1d",
+    "libaom-av1",
+    "mpeg4",
+    "prores",
+    // AAC (nearly all), Opus and Vorbis (WebM), ALAC and PCM (iPhone and
+    // screen recordings), AMR (older Android), MP3.
+    "aac",
+    "opus",
+    "vorbis",
+    "alac",
+    "pcm_s16le",
+    "pcm_s16be",
+    "pcm_s24le",
+    "pcm_s24be",
+    "amrnb",
+    "amrwb",
+    "mp3float",
+    "mp3",
+    // Text captions an editing app may add. ffmpeg never reads them, but
+    // ffprobe opens every stream it can decode and refuses the file if one is
+    // not on this list. Data tracks (iPhone and Pixel metadata, timecode) have
+    // no decoder at all, so they need no name here.
+    "mov_text",
+    "webvtt",
+  ].join(","),
+];
 let busy = false;
 // Runs ffprobe/ffmpeg below the API's own priority, so pages, uploads and
 // sign-ins on the same instance stay responsive while a video converts.
@@ -80,6 +126,7 @@ export async function convertVideo(input, directory, { timeoutMs = 420000 } = {}
         [
           "-v",
           "error",
+          ...DECODE_LIMITS,
           "-protocol_whitelist",
           "file,pipe",
           "-f",
@@ -117,6 +164,7 @@ export async function convertVideo(input, directory, { timeoutMs = 420000 } = {}
         "error",
         "-threads",
         "1",
+        ...DECODE_LIMITS,
         "-protocol_whitelist",
         "file,pipe",
         "-f",
@@ -180,6 +228,8 @@ export async function convertVideo(input, directory, { timeoutMs = 420000 } = {}
           "error",
           "-threads",
           "1",
+          // Its own H.264 output, read with the same limits anyway.
+          ...DECODE_LIMITS,
           "-protocol_whitelist",
           "file,pipe",
           "-ss",

@@ -113,6 +113,14 @@ const tooLong = (e) => e.status === 422 && e.code === "VIDEO_TOO_LONG";
 const unavailable = (e) => e.status === 503 && e.code === "VIDEO_UNAVAILABLE";
 const meta = (format, streams) => JSON.stringify({ format, streams });
 const video = (width, height) => ({ codec_type: "video", width, height });
+// What every ffprobe and ffmpeg run may decode: frames of at most 4096×2176
+// pixels and the decoders for what phones record.
+const phoneDecoders = [
+  "h264", "hevc", "vp8", "vp9", "libdav1d", "libaom-av1", "mpeg4", "prores",
+  "aac", "opus", "vorbis", "alac", "pcm_s16le", "pcm_s16be", "pcm_s24le", "pcm_s24be",
+  "amrnb", "amrwb", "mp3float", "mp3", "mov_text", "webvtt",
+];
+const decodeLimits = ["-max_pixels", "8912896", "-codec_whitelist", phoneDecoders.join(",")];
 
 test("only MP4/MOV and Matroska/WebM files get past the format check; without ffprobe the server answers 503 (#74)", async (t) => {
   const s = await sandbox(t);
@@ -202,7 +210,7 @@ test("ffmpeg reads the original single-threaded, keeps at most 1080p and 30 fps,
   const [probe, encode, poster] = await s.calls();
   assert.deepEqual(await readFile(s.log + ".input"), mov, "ffprobe reads exactly the uploaded bytes");
   assert.deepEqual(probe.args, [
-    "-v", "error", "-protocol_whitelist", "file,pipe", "-f", "mov",
+    "-v", "error", ...decodeLimits, "-protocol_whitelist", "file,pipe", "-f", "mov",
     "-show_format", "-show_streams", "-of", "json", out.input,
   ]);
   const a = encode.args,
@@ -251,6 +259,33 @@ test("ffmpeg reads the original single-threaded, keeps at most 1080p and 30 fps,
   await s.reset({ FAKE_FFPROBE_JSON: ok, FAKE_FFMPEG_BYTES: "16", FAKE_FFMPEG_SLEEP: "2" });
   await assert.rejects(s.convert(mp4, { timeoutMs: 200 }), (e) => e.status === 503 && e.code === "VIDEO_TIMEOUT");
   assert.deepEqual(await readdir(s.tmp), [], "every conversion removed its working directory");
+});
+
+test("ffprobe and both ffmpeg runs decode only phone codecs and frames of at most 4096×2176 pixels", { skip: noShell }, async (t) => {
+  // ffprobe sees only the first frame's size, and the container picks the
+  // codec: a 3 MB MOV of PNG frames growing to 16000×16000 took ffmpeg past
+  // 2 GB (the whole instance) before these limits.
+  const s = await sandbox(t, { fakes: true });
+  await s.reset({ FAKE_FFPROBE_JSON: meta({ duration: "3" }, [video(64, 64)]), FAKE_FFMPEG_BYTES: "16" });
+  const out = await s.convert(mov);
+  const calls = await s.calls();
+  assert.deepEqual(calls.map((c) => c.tool), ["ffprobe", "ffmpeg", "ffmpeg"]);
+  for (const [i, { tool, args }] of calls.entries()) {
+    const read = i === 2 ? out.video : out.input,
+      // Input options: they must come before the file they apply to.
+      at = tool === "ffprobe" ? args.lastIndexOf(read) : args.indexOf("-i");
+    assert.equal(args[at + (tool === "ffprobe" ? 0 : 1)], read, `${tool} #${i} reads ${read}`);
+    const limit = args.indexOf("-max_pixels"),
+      allowed = args.indexOf("-codec_whitelist");
+    assert.ok(limit >= 0 && limit < at, `${tool} #${i}: -max_pixels before its input`);
+    assert.ok(allowed >= 0 && allowed < at, `${tool} #${i}: -codec_whitelist before its input`);
+    // DCI 4K (4096×2160) and UHD fit either way up: ffmpeg pads a frame's
+    // width to 64 before checking, so portrait DCI 4K counts as 2176×4096.
+    assert.equal(Number(args[limit + 1]), 4096 * 2176);
+    assert.deepEqual(args[allowed + 1].split(","), phoneDecoders, `${tool} #${i}`);
+    for (const codec of ["png", "tiff", "mjpeg", "gif", "exr", "dxv"])
+      assert.ok(!args[allowed + 1].split(",").includes(codec), `${tool} #${i} never decodes ${codec}`);
+  }
 });
 
 test("stored media is served whole or as one byte range, streamed rather than held in memory", async () => {
@@ -364,4 +399,34 @@ test("with the real ffmpeg, an iPhone-style HEVC .mov plays everywhere afterward
     }),
     tooLong,
   );
+});
+
+test("with the real ffmpeg, PNG frames in a MOV and a frame over 4096×2176 pixels are refused, and portrait DCI 4K still converts", { skip: noRealTools }, async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), "video-real-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const convert = (bytes) =>
+    withVideoDirectory(async (work) => {
+      const input = path.join(work, "input");
+      await writeFile(input, bytes);
+      return probe((await convertVideo(input, work)).video).streams[0];
+    });
+  // The shape that took the instance down, kept small here: a MOV whose PNG
+  // frames start at 64×64 (all ffprobe looks at) and then grow.
+  await clip(dir, "frame1.png", ["-f", "lavfi", "-i", "color=c=black:s=64x64", "-frames:v", "1"]);
+  await clip(dir, "frame2.png", ["-f", "lavfi", "-i", "color=c=black:s=3008x3008", "-frames:v", "1"]);
+  const frames = await clip(dir, "frames.mov", ["-framerate", "1", "-i", path.join(dir, "frame%d.png"), "-c:v", "copy", "-f", "mov"]);
+  await assert.rejects(convert(frames), invalid, "PNG is not a codec phones record");
+  // H.264, but each frame 4096×2304: inside 4096 px a side, over the pixel limit.
+  const wide = await clip(dir, "wide.mp4", [
+    "-f", "lavfi", "-i", "color=c=gray:s=4096x2304:d=0.2:r=10",
+    "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+  ]);
+  await assert.rejects(convert(wide), invalid, "over 4096×2176 pixels a frame");
+  // DCI 4K filmed upright is the largest frame allowed.
+  const upright = await clip(dir, "upright.mp4", [
+    "-f", "lavfi", "-i", "color=c=gray:s=2160x4096:d=0.2:r=10",
+    "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+  ]);
+  const v = await convert(upright);
+  assert.deepEqual([v.codec_name, v.width, v.height], ["h264", 1012, 1920]);
 });
