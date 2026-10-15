@@ -1516,6 +1516,8 @@ export function createApplication({
       const row = await guestInvitation(session, { allowStale: true }),
         s = await ledger.read();
       return {
+        // The page keeps a half-filled RSVP per household under this id.
+        householdId: row.id,
         name: row.name,
         capacity: row.capacity,
         invited: row.invited,

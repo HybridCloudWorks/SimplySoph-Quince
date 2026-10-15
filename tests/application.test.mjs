@@ -1492,6 +1492,8 @@ async function adminSignIn(f, email) {
 test("an invitation link or code opens the RSVP only; everything else needs the email sign-in", async () => {
   const f = await fixture();
   assert.equal((await f.linkGuest("invitation")).contactHidden, true);
+  // The page keeps a half-filled RSVP in the tab under the household's id.
+  assert.equal((await f.linkGuest("invitation")).householdId, household);
   await f.linkGuest("rsvp", f.input(), { "idempotency-key": "11111111-1111-4111-8111-111111111111" });
   for (const [path, body] of [
     ["messages", { kind: "guestbook", name: "A", text: "Hi", consent: true }],

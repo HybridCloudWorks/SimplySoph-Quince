@@ -19,7 +19,9 @@ const again = () =>
       "El acceso con Microsoft no terminó. Vuelve a intentarlo.",
     ),
   );
-export async function startMicrosoft(clientId, purpose) {
+// `back` is the page name to return to after a guest sign-in (the caller
+// checks it against its list again when Microsoft sends the guest back).
+export async function startMicrosoft(clientId, purpose, back = "") {
   const { nonce, ticket } = await api("auth/sso/start", { purpose }),
     state = random(),
     verifier = random(),
@@ -30,7 +32,7 @@ export async function startMicrosoft(clientId, purpose) {
   try {
     sessionStorage.setItem(
       KEY,
-      JSON.stringify({ state, verifier, ticket, purpose, redirect }),
+      JSON.stringify({ state, verifier, ticket, purpose, redirect, back }),
     );
   } catch {
     throw new Error(
@@ -98,7 +100,11 @@ export async function finishMicrosoft(clientId, purpose, params) {
     throw again();
   }
   if (!data.id_token) throw again();
-  return { credential: data.id_token, ticket: saved.ticket };
+  return {
+    credential: data.id_token,
+    ticket: saved.ticket,
+    ...(typeof saved.back === "string" && saved.back ? { back: saved.back } : {}),
+  };
 }
 // Both buttons share one width so they line up side by side.
 const WIDTH = 260;

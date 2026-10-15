@@ -14,8 +14,8 @@ The bilingual website for **Sophia Isabel's quinceañera**, on **Friday, January
 ## What guests can do
 
 - **Read about the celebration:** the schedule, the church and reception, travel, and answers to common questions, all in English and Spanish.
-- **RSVP:** open the private link from their invitation (or type its code) and answer for their household, event by event, by **November 15, 2026**. They can change the answer until then and add the events to their calendar.
-- **Sign in with their email:** the address the family has for their household, with a one-time emailed link, Google or Microsoft. No password. Signed in, they can share photos and videos, write in the guestbook, message the family and update their contact details.
+- **RSVP:** open the private link from their invitation (or paste it, or type its code) and answer for their household by **November 15, 2026**: one tap for **Everyone's coming** or **We can't make it** (or the matching links in the invitation email), or event by event. Nothing is saved until they confirm, and answers in progress survive a reload. They can change the answer until the deadline, get a receipt that repeats it, and add the events to their calendar.
+- **Sign in with their email:** the address where they received their invitation, with a one-time emailed link (in their language), Google or Microsoft. No password; the link brings them back to the page they started from. Signed in, they can see their RSVP, share photos and videos, write in the guestbook, message the family and update their contact details.
 - **Get text updates** (US and Canada): text SOPHIA to the number on the [SMS page](https://misxv.simplysoph.com/sms/).
 - **Get updates on WhatsApp** (guests outside the US), once the family turns it on.
 
