@@ -1478,7 +1478,7 @@ test("the sign-in email greets the household in its language and says what the l
   await f.publicPost("auth/email/request", { email: "test@example.com" });
   const es = f.sent.at(-1);
   assert.equal(es.subject, "Tu enlace para entrar · Los XV de Sophia");
-  for (const words of ["Hola Test family,", "viernes 15 de enero de 2027", "una sola vez", "15 minutos", "¿No lo pediste? Ignora este correo", "la familia de Sophia"])
+  for (const words of ["Hola, Test family:", "viernes 15 de enero de 2027", "una sola vez", "15 minutos", "¿No lo pediste? Ignora este correo", "la familia de Sophia"])
     assert.ok(es.html.includes(words), words);
   assert.match(es.html, /\/es\/account\/#[A-Za-z0-9_-]{43}"/);
   assert.ok(!/Sign in|works once/.test(es.html), "one language only");
