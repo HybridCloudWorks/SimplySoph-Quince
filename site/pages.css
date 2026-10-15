@@ -13,37 +13,69 @@ body > main {
   width: 100%;
   min-width: 0;
 }
-.page {
-  width: 100%;
-  max-width: 1440px;
-  margin: 0 auto;
+/* Every page shares the header's left edge (--inline in styles.css). */
+.page.section {
+  padding-block: 48px 72px;
 }
-/* Capped containers need bounded gutters, not full-viewport centering padding. */
-.page.section,
+/* Admin tables use the full width, with the same gutter. */
 .admin-shell.section {
-  padding-inline: clamp(24px, 4vw, 64px);
+  padding-inline: var(--gutter);
 }
 .page-heading {
   border-bottom: 1px solid var(--line);
-  margin-bottom: 40px;
-  padding-bottom: 24px;
+  margin-bottom: 32px;
+  padding-bottom: 20px;
 }
 .page h1,
 .page-title {
-  font: 500 clamp(2.7rem, 5vw, 4.7rem)/1.12 var(--serif);
+  font: 500 var(--step-h1)/1.1 var(--serif);
   color: var(--wine);
-  margin: 0 0 16px;
+  margin: 0;
 }
 .page-heading .eyebrow {
-  margin: 0 0 12px;
+  margin: 0 0 6px;
+}
+/* A section's other pages, under the title (Schedule, Photos, Sophia). */
+.section-nav ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 24px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.section-nav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--wine);
+  text-decoration-thickness: 1px;
+}
+.section-nav a[aria-current="page"] {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--wine);
+  text-decoration-thickness: 3px;
+  text-underline-offset: 10px;
 }
 .lead {
-  font: 400 1.65rem/1.4 var(--serif);
-  max-width: 780px;
+  font: 400 clamp(1.3rem, 2.4vw, 1.6rem)/1.4 var(--serif);
+  max-width: 48ch;
 }
+/* Long-form text keeps the page's left edge and a readable line length. */
 .editorial {
-  max-width: 760px;
-  margin: 35px auto;
+  max-width: 68ch;
+  margin: 32px 0;
+}
+.next-steps {
+  margin-top: 28px;
+}
+/* A link on its own line at the end of a text block gets a 44px target. */
+.editorial > a {
+  display: inline-block;
+  padding-block: 9px;
 }
 .nowrap {
   white-space: nowrap;
@@ -51,14 +83,19 @@ body > main {
 /* SMS program pages (/sms/, /sms-terms/). Markup text must stay word-for-word
    with the registered campaign, so readability is handled here, not in copy. */
 .sms-page h2 {
-  font-size: clamp(2rem, 6vw, 3.2rem);
   overflow-wrap: break-word;
+}
+.editorial ul {
+  padding-left: 1.3em;
+}
+.editorial li + li {
+  margin-top: 0.5rem;
 }
 .sms-page h3 {
   margin-top: 2rem;
 }
 .sms-cta {
-  background: #fffcf5;
+  background: var(--surface);
   border: 1px solid var(--line);
   border-left: 4px solid var(--gold);
   padding: 18px 20px;
@@ -121,16 +158,11 @@ body > main {
     padding-left: 1.2em;
   }
 }
-/* Footer labels (e.g. "SMS Updates") wrap between links, never inside one. */
-footer a {
-  white-space: nowrap;
-}
 .ornament {
   display: block;
-  text-align: center;
   color: #977131;
   font-size: 2rem;
-  margin: 30px;
+  margin: 0 0 12px;
 }
 .cards {
   display: grid;
@@ -139,15 +171,26 @@ footer a {
   margin: 28px 0;
 }
 .card {
-  background: #fffcf5;
+  background: var(--surface);
   border: 1px solid var(--line);
   padding: 28px;
   text-decoration: none;
   min-width: 0;
   overflow-wrap: anywhere;
 }
-.card h2 {
-  font-size: 2rem;
+/* Headings inside panels sit one step below the page's section headings. */
+.card h2,
+.portal h2,
+.notice h2,
+.registry-card h2,
+.schedule-item h2,
+.good-to-know h2 {
+  font-size: var(--step-card);
+}
+.portal h3,
+.card h3,
+.notice h3 {
+  font-size: var(--step-h3);
 }
 .card img {
   width: 100%;
@@ -159,22 +202,18 @@ footer a {
   grid-template-columns: 1fr 1fr;
   gap: 40px;
 }
+/* Sign-in, RSVP and message panels, aligned with the page title. */
 .portal {
-  max-width: 850px;
-  padding: 30px;
-  background: #fffcf5;
+  max-width: 760px;
+  padding: clamp(20px, 3vw, 32px);
+  background: var(--surface);
   border: 1px solid var(--line);
-  margin: 28px auto;
+  margin: 24px 0;
 }
-/* Keep the sharing heading, form, results and reminder on one compact grid. */
-body[data-route="share"] .page {
+/* Keep the sharing form, results and reminder to a compact column on the
+   page's left edge. */
+body[data-route="share"] .page > :not(.page-heading) {
   max-width: 1040px;
-}
-body[data-route="share"] .page h1 {
-  font-size: clamp(2.4rem, 4.2vw, 3.6rem);
-}
-body[data-route="share"] .page-heading {
-  margin-bottom: 28px;
 }
 .share-intro .lead {
   margin: 0 0 12px;
@@ -187,7 +226,6 @@ body[data-route="share"] .page-heading {
 }
 .share-portal h2 {
   margin: 0 0 12px;
-  font-size: 1.8rem;
 }
 .share-portal #upload-help {
   margin: 0;
@@ -245,6 +283,65 @@ body[data-route="share"] .page-heading {
 .upload-result small {
   display: block;
 }
+/* Each file's state, its progress bar while sending, and "Try again" when a
+   piece could not be delivered. */
+.upload-status {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+.upload-progress {
+  display: block;
+  width: 100%;
+  height: 8px;
+  accent-color: var(--wine);
+}
+.upload-status .plain-button {
+  justify-self: start;
+  min-height: 44px;
+}
+/* /share/ before sign-in: three numbered steps, then the sign-in form. */
+.share-steps {
+  margin: 24px 0;
+  padding: 20px 22px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.share-steps h2 {
+  margin-top: 0;
+}
+.share-steps ol {
+  margin: 0;
+  padding-left: 1.3em;
+  display: grid;
+  gap: 8px;
+}
+/* The other language's one-line summary under the steps (the QR is English). */
+.share-steps > p {
+  margin: 16px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.share-steps li::marker {
+  color: var(--wine);
+  font-weight: 700;
+}
+/* The gallery's single state (signed out, nothing approved yet). */
+.gallery-panel {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+  max-width: 640px;
+}
+.gallery-panel h2,
+.gallery-panel p {
+  margin: 0;
+}
+.album-title small {
+  display: block;
+  font-size: 0.8em;
+  color: var(--muted);
+}
 .media-reminder {
   padding: 20px 0 0;
   margin-top: 24px;
@@ -282,61 +379,102 @@ body[data-route="share"] .page-heading {
     font-size: 0.8rem;
   }
 }
+/* The RSVP deadline, wherever the RSVP shows it (site/guest.js). */
 .deadline {
-  padding: 15px 20px;
-  background: #eee0c5;
-  border-left: 3px solid #9d7139;
+  padding: 14px 18px;
+  background: var(--tint);
+  border-left: 4px solid var(--success);
 }
-.countdown {
-  margin-top: 30px;
-  font: 1.3rem var(--serif);
-  color: var(--gold);
+#portal .deadline {
+  margin: 0 0 20px;
 }
-header {
-  position: relative;
-  z-index: 3;
+/* The RSVP form (site/guest.js): the household's seats under its name, the
+   two one-tap answers, and each event's name with its time and place. */
+.allocation {
+  font: 400 clamp(1.15rem, 2vw, 1.35rem)/1.4 var(--serif);
+  margin: -4px 0 16px;
 }
-nav {
-  gap: 19px;
-  flex-wrap: wrap;
+.quick-answers {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 8px 0 16px;
 }
-.nav-group {
-  border: 0 !important;
-  padding: 0;
-  position: relative;
-  font-size: 0.85rem;
+.quick-answers .button {
+  width: 100%;
+  min-height: 56px;
+  font-size: 1rem;
 }
-.nav-group summary {
+.quick-answers .outline {
+  border-width: 2px;
+}
+@media (max-width: 600px) {
+  .quick-answers {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+legend .event-name {
+  font-weight: 700;
+}
+legend .event-when {
   font-weight: 400;
-  padding: 4px 0;
-  min-height: 0;
+  color: var(--muted);
 }
-.nav-group > div {
-  position: absolute;
-  top: 34px;
-  left: -12px;
-  background: var(--dark);
-  padding: 12px;
-  min-width: 210px;
-  box-shadow: 0 6px 12px #0003;
-  border: 1px solid #a98345;
+/* Small status lines: "Saved", "We kept your answers". */
+.saved-note,
+.resume-note {
+  margin: 10px 0 16px;
+  font-size: 0.85rem;
+  color: var(--muted);
 }
-.nav-group a {
+.resume-note:empty,
+.saved-note:empty {
+  display: none;
+}
+/* My account: the household's RSVP first, signing out everywhere last. */
+.rsvp-status {
+  margin: 20px 0 24px;
+  border-left: 4px solid var(--gold);
+}
+.rsvp-status > :last-child {
+  margin-bottom: 0;
+}
+.account-sign-out {
+  margin-top: 40px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+/* Under a field, inside its label: a hint, or what to fix. */
+.field-hint,
+.field-error {
   display: block;
-  padding: 8px;
+  margin-top: 6px;
+  font-size: 0.85rem;
+  font-weight: 400;
 }
-.language {
-  font-size: 0.75rem !important;
-  text-decoration: underline !important;
+.field-hint {
+  color: var(--muted);
 }
-/* 4.5:1 or better on cream; the dark header and menus use the light gold. */
+.field-error {
+  color: var(--error);
+}
+/* A button busy with its request keeps focus (aria-disabled, not disabled). */
+button[aria-disabled="true"],
+.button[aria-disabled="true"] {
+  opacity: 0.6;
+  cursor: progress;
+  filter: none;
+}
+/* 4.5:1 or better on cream; the dark header uses the light gold. */
 a[aria-current="page"] {
   color: #7a5410;
   font-weight: 700;
 }
-header a[aria-current="page"],
-.nav-group a[aria-current="page"] {
+.site-header a[aria-current] {
   color: var(--gold);
+}
+.site-header .nav-rsvp[aria-current] {
+  color: var(--dark);
 }
 /* A focus ring that shows in both themes (--wine becomes gold in dark mode),
    and gold on the dark header, hero and RSVP band. */
@@ -344,20 +482,16 @@ header a[aria-current="page"],
   outline: 2px solid var(--wine);
   outline-offset: 3px;
 }
-header :focus-visible,
+.site-header :focus-visible,
 .hero :focus-visible,
-.rsvp :focus-visible,
 .route-strip :focus-visible {
   outline-color: var(--gold);
 }
-.invitation figcaption {
-  font-size: 0.73rem;
-  letter-spacing: 0;
-  line-height: 1.5;
-}
-.hero .burgundy {
-  background: var(--gold);
-  color: var(--dark);
+/* focusOn() (client.js) gives a new step's heading or a saved/error message
+   tabindex="-1" only so screen readers announce it; it is not a control, so it
+   draws no ring. The error summary keeps its ring: guests tab through it. */
+[tabindex="-1"]:not(.error-summary):focus {
+  outline: none;
 }
 .field-grid {
   display: grid;
@@ -388,18 +522,6 @@ input[type="checkbox"] {
 .hint {
   font-size: 0.85rem;
   color: var(--muted);
-}
-.notice {
-  border-left: 3px solid var(--wine);
-  padding: 15px;
-  background: #efdfcf;
-}
-.success {
-  border-color: #426444;
-  background: #e5eee2;
-}
-.error {
-  color: #951d2c;
 }
 .admin-shell {
   display: grid;
@@ -599,12 +721,6 @@ blockquote {
   margin: 0;
   font: 1.5rem var(--serif);
 }
-footer {
-  flex-wrap: wrap;
-}
-textarea {
-  min-height: 110px;
-}
 #status:empty {
   display: none;
 }
@@ -619,6 +735,25 @@ textarea {
   padding: 16px;
   z-index: 10;
   border: 1px solid var(--gold);
+}
+/* The note's close button: light on the dark note, at the end of the line. */
+#status:has(.status-close) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 16px;
+  padding-block: 8px;
+}
+#status .status-close {
+  min-height: 44px;
+  min-width: 44px;
+  margin-left: auto;
+  padding: 0 4px;
+  color: var(--gold);
+}
+#status a {
+  color: var(--gold);
 }
 @media (max-width: 850px) {
   .split,
@@ -636,43 +771,17 @@ textarea {
   .admin-shell {
     padding: 30px 18px;
   }
-  .nav-group > div {
-    right: 0;
-    left: 0;
-    top: 100%;
-    width: 100%;
-    min-width: 0;
-  }
-  .nav-group {
-    position: static;
-  }
   .field-grid {
     grid-template-columns: 1fr;
   }
-  header {
-    flex-direction: column;
-    gap: 10px;
-  }
-  nav {
-    position: relative;
-    width: 100%;
-    justify-content: flex-start;
-    gap: 15px;
-  }
-  .portal {
-    padding: 22px 16px;
-  }
   .page-heading {
-    margin-bottom: 25px;
+    margin-bottom: 24px;
   }
   .cards {
     gap: 14px;
   }
   .card {
     padding: 22px;
-  }
-  .invitation {
-    transform: none;
   }
 }
 .private-copy {
@@ -682,49 +791,18 @@ textarea {
 [hidden] {
   display: none !important;
 }
-.sophia-quote {
-  margin: 26px 0;
-  padding-left: 20px;
-  border-left: 1px solid var(--gold);
-  max-width: 620px;
-  font: 400 clamp(1.15rem, 1.6vw, 1.4rem)/1.5 var(--serif);
-}
-.sophia-quote cite {
-  font:
-    400 2rem "Great Vibes",
-    cursive;
-  color: var(--gold);
-}
-.countdown {
-  display: flex;
-  gap: clamp(16px, 3vw, 32px);
-  margin-top: 30px;
-  font-variant-numeric: tabular-nums;
-}
-.countdown span {
-  display: grid;
-  min-width: 48px;
-}
-.countdown strong {
-  font: 500 2rem var(--serif);
-  color: var(--gold);
-}
-.countdown small {
-  font-size: 0.68rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-.home-cards {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-.home-cards .card {
-  min-height: 185px;
-}
+/* Venue pages: the facts first on phones; on wide screens the church photo
+   sits left of them and the reception photo right. */
 .venue-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: clamp(28px, 5vw, 72px);
   align-items: start;
+}
+@media (min-width: 761px) {
+  .venue-ceremony .venue-image {
+    order: -1;
+  }
 }
 .venue-image {
   margin: 0;
@@ -737,12 +815,9 @@ textarea {
   border: 1px solid var(--line);
 }
 .venue-image figcaption {
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   margin-top: 12px;
   color: var(--muted);
-}
-.venue-details h2 {
-  font-size: clamp(2.3rem, 3.4vw, 3.5rem);
 }
 .venue-actions {
   display: flex;
@@ -760,6 +835,12 @@ textarea {
   border-color: var(--wine);
   background: transparent;
   color: inherit;
+}
+/* A chosen option in a pair or group of buttons. */
+.button[aria-pressed="true"] {
+  background: var(--wine);
+  border-color: var(--wine);
+  color: white;
 }
 .venue-schedule {
   display: grid;
@@ -784,17 +865,97 @@ textarea {
   border-top: 1px solid var(--line);
   padding-top: 12px;
 }
-.calendar-actions strong,
-.calendar-link {
+.calendar-actions strong {
   display: block;
 }
 .calendar-link {
-  margin-top: 12px;
-  font-size: 0.9rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  font-weight: 600;
 }
 .calendar-actions .hint {
   font-size: 0.8rem;
   margin-top: 12px;
+}
+/* Schedule: one row per part of the day, its time beside its place, map and
+   calendar file. */
+.schedule-list {
+  margin: 28px 0 40px;
+  padding: 0;
+  list-style: none;
+  max-width: 900px;
+  border-top: 1px solid var(--line);
+}
+.schedule-item {
+  display: grid;
+  grid-template-columns: minmax(9rem, 13rem) minmax(0, 1fr);
+  gap: 4px 32px;
+  padding: 24px 0;
+  border-bottom: 1px solid var(--line);
+}
+.schedule-time {
+  margin: 0;
+  font: 600 1.25rem/1.4 var(--serif);
+  color: var(--wine);
+}
+.schedule-item h2 {
+  margin-bottom: 4px;
+}
+.schedule-venue {
+  margin: 0;
+  font-weight: 600;
+}
+.schedule-venue a,
+.schedule-actions a:not(.calendar-link),
+.good-to-know a {
+  display: inline-block;
+  padding-block: 9px;
+}
+.schedule-item address {
+  margin: 0;
+  color: var(--muted);
+}
+.schedule-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 28px;
+  margin: 4px 0 0;
+}
+.schedule-actions a {
+  font-weight: 600;
+}
+.good-to-know {
+  max-width: 900px;
+  padding: 20px 24px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--gold);
+}
+.good-to-know dl {
+  margin: 0;
+}
+.good-to-know dt {
+  font-weight: 700;
+}
+.good-to-know dd {
+  margin: 0 0 12px;
+}
+.good-to-know p {
+  margin: 0;
+}
+.faq-list {
+  max-width: 820px;
+}
+/* The title's rule already sits above the first question. */
+.faq-list details:first-child {
+  border-top: 0;
+}
+@media (max-width: 600px) {
+  .schedule-item {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 .album-grid {
   display: grid;
@@ -877,23 +1038,21 @@ textarea {
 .media-grid > p {
   grid-column: 1/-1;
 }
+/* Cards stay card-sized however few registries there are. */
 .registry-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 420px));
   gap: 24px;
 }
 .registry-card {
   padding: 32px;
   border: 1px solid var(--line);
-  background: #fffaf1;
+  background: var(--surface);
 }
 .registry-card img {
   display: block;
   object-fit: contain;
   margin-bottom: 20px;
-}
-.registry-card h2 {
-  font-size: 2.5rem;
 }
 .gallery-section a {
   display: inline-block;
@@ -927,15 +1086,8 @@ textarea {
   }
 }
 @media (max-width: 760px) {
-  .venue-layout,
-  .home-cards {
+  .venue-layout {
     grid-template-columns: 1fr;
-  }
-  .countdown {
-    justify-content: center;
-  }
-  .sophia-quote {
-    text-align: left;
   }
   .venue-schedule {
     font-size: 0.9rem;
@@ -1227,25 +1379,32 @@ td .table-actions a {
     --night-tint: #1c2940;
     --night-ink: #121826;
     --gold-ink: #e0c07c;
+    /* The shared tokens (styles.css) on the night palette; each passes the
+       same contrast as in light mode. */
+    --surface: var(--night-raised);
+    --tint: var(--night-tint);
+    --footer: var(--night-tint);
+    --field: #101a2a;
+    --field-border: #7086ad;
+    --error: #ff8f87;
+    --error-tint: #2b1a22;
+    --success: var(--gold-ink);
+    --success-tint: var(--night-tint);
   }
   body { background: var(--night); }
-  .preview { background: var(--night-tint); color: var(--gold); }
   .skip { background: var(--night-raised); color: var(--ink); }
   .hero { background: radial-gradient(ellipse at 65% 35%, #22324f 0, #141e31 55%, #070c15 100%); }
-  .rsvp { background: linear-gradient(160deg, #1a2740, #101a2a); }
-  .rsvp-panel, dialog, .card, .portal, .sms-cta, .registry-card, table,
-  .planning-table td:last-child { background: var(--night-raised); }
-  .directions, footer, .deadline, .notice, .badge, th, .sms-replies dd, .album-card,
+  dialog, table, .planning-table td:last-child { background: var(--night-raised); }
+  .badge, th, .sms-replies dd, .album-card,
   .planning-table th:last-child { background: var(--night-tint); }
-  .number, .ornament, a[aria-current="page"] { color: var(--gold-ink); }
-  .deadline { border-left-color: var(--gold-ink); }
-  .venues article + article { border-top-color: var(--line); }
-  input, select, textarea { background: #101a2a; border-color: #3b4d6b; }
-  .form-error, .error { color: #f2a0a8; }
-  .success { background: #16302a; border-color: #6fbf8a; }
-  .burgundy, .hero .burgundy, .communication-tabs button[aria-selected="true"] { color: var(--night-ink); }
+  .ornament, a[aria-current="page"] { color: var(--gold-ink); }
+  /* The field icon is an image, so it carries the dark-mode red itself. */
+  [aria-invalid="true"]:is(input, select, textarea) {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Ccircle cx='10' cy='10' r='9' fill='%23ff8f87'/%3E%3Cpath d='M10 5v6' stroke='%23121826' stroke-width='2' stroke-linecap='round'/%3E%3Ccircle cx='10' cy='14.5' r='1.2' fill='%23121826'/%3E%3C/svg%3E");
+  }
+  .burgundy, .hero .burgundy, .button[aria-pressed="true"], .communication-tabs button[aria-selected="true"] { color: var(--night-ink); }
   /* Unstyled buttons would fall back to the browser's dark gray. */
-  button.button:not(.burgundy):not(.gold):not(.sso-button) { background: var(--night-tint); color: var(--ink); border-color: #3b4d6b; }
+  button.button:not(.burgundy):not(.gold):not(.sso-button):not([aria-pressed="true"]) { background: var(--night-tint); color: var(--ink); border-color: var(--field-border); }
   dialog::backdrop { background: #03060caa; }
   .album-art { background: radial-gradient(ellipse at center, #2c3b54, transparent 65%), linear-gradient(135deg, #1c2940, #2c3b54); }
   .album-2 .album-art { background: radial-gradient(ellipse at center, #22324f, #101a2a); }
@@ -1285,6 +1444,7 @@ td .table-actions a {
 .route-strip > div { background: var(--dark); color: var(--cream); padding: 1.2rem 1.4rem; }
 .route-strip b { display: block; font: 500 1.4rem/1.2 var(--serif); color: var(--gold); margin-bottom: .3rem; }
 .route-strip span { font-size: .88rem; }
+.route-strip a { display: inline-block; padding: 4px 0; font-weight: 600; }
 .thanks-note { text-align: center; display: grid; justify-items: center; gap: 1rem; max-width: 720px; margin: 0 auto; }
 .thanks-script { font: clamp(3.5rem, 9vw, 5.5rem)/1 'Great Vibes', cursive; color: var(--wine); margin: 0; }
 .thanks-note p { font: italic 1.3rem/1.5 var(--serif); }
@@ -1325,23 +1485,13 @@ td .table-actions a {
   .pair .person:last-child:not(:first-child) { flex-direction: row; text-align: left; }
   .amp { text-align: center; }
 }
-/* UI-12 spacing: a block that follows cards (or Travel's route strip) lines up
-   with them; the divider in sign-in forms and the FAQ's contact button get room
-   to breathe. */
-.cards + .editorial,
-.route-strip + .editorial {
-  margin-left: 0;
-}
-/* Details: the calendar heading belongs to the links below it, not the dress
-   code paragraph above. */
-.calendar-heading {
-  margin-top: 32px;
-}
+/* UI-12 spacing: the divider in sign-in forms and the FAQ's contact button get
+   room to breathe. */
 .portal hr {
   border: 0;
   border-top: 1px solid var(--line);
   margin: 1.6rem 0;
 }
-details + p {
+.faq-list + p {
   margin-top: 1.6rem;
 }

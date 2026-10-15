@@ -1,6 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { Ledger, cloudAdapter } from "./store.mjs";
+import { Ledger, cloudAdapter, cloudMedia } from "./store.mjs";
 import {
   googleVerifier,
   googleIdentityVerifier,
@@ -163,32 +163,8 @@ if (env.EVENT_BUCKET) {
         )[0];
       },
     },
-    media: {
-      async put(id, bytes, kind = "photo") {
-        await adapter.bucket
-          .file(
-            (kind === "video" ? "private/videos/" : "private/photos/") +
-              id +
-              (kind === "video" ? ".mp4" : ".jpg"),
-          )
-          .save(bytes, {
-            resumable: false,
-            contentType: kind === "video" ? "video/mp4" : "image/jpeg",
-            preconditionOpts: { ifGenerationMatch: 0 },
-          });
-      },
-      async get(id, kind = "photo") {
-        return (
-          await adapter.bucket
-            .file(
-              (kind === "video" ? "private/videos/" : "private/photos/") +
-                id +
-                (kind === "video" ? ".mp4" : ".jpg"),
-            )
-            .download()
-        )[0];
-      },
-    },
+    // Guest photos, videos, posters and uploads in progress (store.mjs).
+    media: cloudMedia(adapter.bucket),
     key,
     origin,
     clientId: env.ADMIN_GOOGLE_CLIENT_ID,

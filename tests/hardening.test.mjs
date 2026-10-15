@@ -226,12 +226,13 @@ test("an upload without a session cookie is refused before its body is read (re-
     origin: "https://misxv.simplysoph.com",
   });
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
-  const url = "http://127.0.0.1:" + server.address().port + "/api/photos";
+  const url =
+    "http://127.0.0.1:" + server.address().port + "/api/uploads/12345678-1234-4234-8234-123456789012?offset=0";
   try {
     const r = await fetch(url, {
       method: "POST",
-      headers: { origin: "https://misxv.simplysoph.com", "content-type": "application/json" },
-      body: JSON.stringify({ base64: "x".repeat(2_000_000) }),
+      headers: { origin: "https://misxv.simplysoph.com", "content-type": "application/octet-stream" },
+      body: Buffer.alloc(2_000_000),
     });
     assert.equal(r.status, 401);
     assert.equal((await r.json()).error, "SIGN_IN_REQUIRED");
@@ -242,17 +243,18 @@ test("an upload without a session cookie is refused before its body is read (re-
   }
 });
 
-test("a made-up or RSVP-only session is refused before an upload is read; 3 uploads at once, 1 per session (re-audit)", async () => {
+test("a made-up or RSVP-only session is refused before an upload is read; 8 uploads at once, 1 per session (re-audit)", async () => {
   const { createHttpServer } = await import("../server/http.mjs");
   let dispatched = 0,
     release;
   const held = new Promise((r) => (release = r));
+  const people = Array.from({ length: 9 }, (_, i) => "good" + i);
   const server = createHttpServer({
     app: {
       // Like the app: the resolved session's key, whatever the spacing.
       canUpload: async (cookie) => {
         const value = cookie.split("=")[1].split(";")[0].trim();
-        return ["good", "good2", "good3", "good4"].includes(value) ? "key-" + value : null;
+        return people.includes(value) ? "key-" + value : null;
       },
       dispatch: async () => (dispatched++, await held, { ok: true }),
     },
@@ -261,28 +263,31 @@ test("a made-up or RSVP-only session is refused before an upload is read; 3 uplo
   });
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
   const upload = (cookie) =>
-    fetch("http://127.0.0.1:" + server.address().port + "/api/photos", {
-      method: "POST",
-      headers: { origin: "https://misxv.simplysoph.com", "content-type": "application/json", cookie },
-      body: JSON.stringify({ base64: "x".repeat(100_000) }),
-    });
+    fetch(
+      "http://127.0.0.1:" + server.address().port + "/api/uploads/12345678-1234-4234-8234-123456789012?offset=0",
+      {
+        method: "POST",
+        headers: { origin: "https://misxv.simplysoph.com", "content-type": "application/octet-stream", cookie },
+        body: Buffer.alloc(100_000),
+      },
+    );
   try {
     const forged = await upload("__session=made-up");
     assert.equal(forged.status, 401);
     assert.equal(dispatched, 0);
-    const running = [upload("__session=good")];
+    const running = [upload("__session=good0")];
     while (dispatched < 1) await new Promise((r) => setTimeout(r, 5));
-    const same = await upload("__session=good  ;a=1");
+    const same = await upload("__session=good0  ;a=1");
     assert.equal(same.status, 503, "one upload at a time per session, however the cookie is spelled");
     assert.equal((await same.json()).error, "UPLOAD_BUSY");
-    running.push(upload("__session=good2"), upload("__session=good3"));
-    while (dispatched < 3) await new Promise((r) => setTimeout(r, 5));
-    const busy = await upload("__session=good4");
-    assert.equal(busy.status, 503, "at most 3 per server");
+    for (const person of people.slice(1, 8)) running.push(upload("__session=" + person));
+    while (dispatched < 8) await new Promise((r) => setTimeout(r, 5));
+    const busy = await upload("__session=good8");
+    assert.equal(busy.status, 503, "at most 8 per server");
     assert.equal((await busy.json()).error, "UPLOAD_BUSY");
     release();
-    assert.deepEqual((await Promise.all(running)).map((r) => r.status), [200, 200, 200]);
-    assert.equal((await upload("__session=good")).status, 200, "slots are released after each upload");
+    assert.deepEqual((await Promise.all(running)).map((r) => r.status), Array(8).fill(200));
+    assert.equal((await upload("__session=good0")).status, 200, "slots are released after each upload");
   } finally {
     release();
     server.close();

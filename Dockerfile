@@ -5,7 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -r
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
-COPY scripts/build-pages.mjs ./scripts/build-pages.mjs
+COPY scripts/build-pages.mjs scripts/images.mjs ./scripts/
 COPY site ./site
 COPY server ./server
 COPY emails ./emails

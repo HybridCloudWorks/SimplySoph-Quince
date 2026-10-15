@@ -1,12 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { Ledger, memoryAdapter } from "../server/store.mjs";
+import { Ledger, memoryAdapter, memoryMedia } from "../server/store.mjs";
 import { createApplication } from "../server/application.mjs";
 import { hash, token, totp, base32, seal } from "../server/auth.mjs";
 import { createHmac } from "node:crypto";
+import { ready } from "../site/content.mjs";
 // The fixture owner's authenticator, for actions that need a fresh code.
 const OWNER_TOTP = base32(Buffer.alloc(20, 9));
-import sharp from "sharp";
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -24,6 +24,7 @@ const adminTicket = async (app) =>
     })
   ).ticket;
 async function fixture(options = {}) {
+  const media = options.media || memoryMedia();
   const ledger = new Ledger(memoryAdapter()),
     adminToken = token(),
     guestToken = token(),
@@ -81,7 +82,7 @@ async function fixture(options = {}) {
       id: "organizer",
       email: "organizer@gmail.com",
     }),
-    media: { put: async () => {}, get: async () => Buffer.from("image") },
+    media,
     key: Buffer.alloc(32, 4),
     origin,
     adminEmails: ["organizer@gmail.com"],
@@ -194,6 +195,7 @@ async function fixture(options = {}) {
   return {
     app,
     ledger,
+    media,
     admin,
     guest,
     linkGuest,
@@ -494,20 +496,6 @@ test("prototype property names cannot address admin records", async () => {
   assert.equal(Object.prototype.state, undefined);
 });
 
-test("photo submissions reject SVG and noncanonical base64 before storage", async () => {
-  const f = await fixture();
-  for (const base64 of [
-    Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>').toString("base64"),
-    "!!!!",
-  ]) {
-    await assert.rejects(
-      () => f.guest("photos", { base64, consent: true, caption: "" }),
-      (e) => e.code === "INVALID_PHOTO",
-    );
-  }
-  assert.equal(Object.keys((await f.ledger.read()).photos).length, 0);
-});
-
 test("CSV import requires explicit zero for child count", async () => {
   const f = await fixture();
   await assert.rejects(
@@ -518,45 +506,6 @@ test("CSV import requires explicit zero for child count", async () => {
         ],
       }),
     (e) => e.code === "INVALID_CAPACITY",
-  );
-});
-
-test("a valid photo remains private until a family administrator approves it", async () => {
-  const f = await registeredFixture();
-  const bytes = await sharp({
-    create: { width: 4, height: 4, channels: 3, background: "#651625" },
-  })
-    .png()
-    .toBuffer();
-  const photo = await f.verified("photos", {
-    base64: bytes.toString("base64"),
-    caption: "Synthetic test image",
-    consent: true,
-  });
-  const visible = () => f.app.dispatch({ path: "/api/public" });
-  assert.equal((await visible()).photos.length, 0);
-  await f.admin("moderation", {
-    id: photo.id,
-    collection: "photos",
-    state: "approved",
-  });
-  assert.equal((await visible()).photos.length, 0);
-  assert.equal((await f.verified("gallery")).media.length, 1);
-  assert.ok((await f.verified("photo/" + photo.id)).binary);
-  await assert.rejects(
-    () => f.app.dispatch({ path: "/api/photo/" + photo.id }),
-    (e) => e.code === "SIGN_IN_REQUIRED",
-  );
-  await f.admin("moderation", {
-    id: photo.id,
-    collection: "photos",
-    state: "rejected",
-  });
-  assert.equal((await visible()).photos.length, 0);
-  assert.equal((await f.verified("gallery")).media.length, 0);
-  await assert.rejects(
-    () => f.verified("photo/" + photo.id),
-    (e) => e.code === "NOT_FOUND",
   );
 });
 
@@ -583,6 +532,16 @@ test("site settings require admin, prevent stale saves, and publish registry edi
   );
   const ics = await f.app.dispatch({ path: "/api/calendar/ceremony.ics" });
   assert.match(ics.binary.toString(), /DTEND:20270115T230000Z/);
+  // The Spanish pages' calendar: Spanish words, the same event and version.
+  const es = (await f.app.dispatch({ path: "/api/calendar/es/ceremony.ics" })).binary.toString();
+  assert.match(es, /SUMMARY:Sophia Isabel — Ceremonia religiosa/);
+  assert.match(es, /UID:misxv-ceremony@simplysoph.com/);
+  assert.match(es, new RegExp(`SEQUENCE:${site.version + 1}`));
+  assert.match(es, /DTEND:20270115T230000Z/);
+  await assert.rejects(
+    () => f.app.dispatch({ path: "/api/calendar/es/gifts.ics" }),
+    (e) => e.code === "NOT_FOUND",
+  );
   await assert.rejects(
     () => f.app.dispatch({ path: "/api/calendar/reception.ics" }),
     (e) => e.code === "END_TIME_PENDING",
@@ -623,57 +582,6 @@ test("contact fields stay private, create a durable notification, and email only
         email: "g@example.com",
       }),
     (e) => e.code === "INVALID_TOPIC",
-  );
-});
-
-test("video uploads are normalized before storage, moderated, album-aware, and access revocation blocks playback", async () => {
-  let normalized = false,
-    stored;
-  const f = await registeredFixture({
-    videoProcessor: async (bytes) => {
-      assert.equal(bytes.toString(), "synthetic-video");
-      normalized = true;
-      return Buffer.from("normalized");
-    },
-    media: {
-      put: async (id, bytes, kind) => {
-        stored = { id, bytes, kind };
-      },
-      get: async () => Buffer.from("normalized"),
-    },
-  });
-  const row = await f.verified("videos", {
-    base64: Buffer.from("synthetic-video").toString("base64"),
-    consent: true,
-    album: "friends",
-    caption: "A test clip",
-  });
-  assert.ok(normalized);
-  assert.equal(stored.kind, "video");
-  assert.equal(stored.bytes.toString(), "normalized");
-  assert.equal((await f.verified("gallery")).media.length, 0);
-  await assert.rejects(
-    () => f.verified("photo/" + row.id),
-    (e) => e.code === "NOT_FOUND",
-  );
-  await f.admin("moderation", {
-    id: row.id,
-    collection: "photos",
-    state: "approved",
-    album: "event",
-  });
-  assert.equal((await f.verified("gallery")).media[0].album, "event");
-  assert.equal((await f.verified("photo/" + row.id)).contentType, "video/mp4");
-  const { site } = await f.admin("site");
-  site.albums = site.albums.filter((a) => a.id !== "event");
-  await assert.rejects(
-    () => f.admin("site", site),
-    (e) => e.code === "ALBUM_HAS_MEDIA",
-  );
-  await f.admin("revoke", { id: household });
-  await assert.rejects(
-    () => f.verified("photo/" + row.id),
-    (e) => e.code === "SIGN_IN_REQUIRED",
   );
 });
 
@@ -1087,6 +995,32 @@ test("invitation emails carry a server-minted private link with quick answers; r
   await assert.rejects(open, (e) => e.code === "INVALID_INVITATION");
 });
 
+test("the after-event thank-you email is refused while the thank-you page it links to is still empty", async () => {
+  const empty = (e) => e.status === 409 && e.code === "THANK_YOU_PAGE_EMPTY";
+  const thanks = { id: household, type: "thanks" };
+  // With the site's own content (site/content.mjs), the answer follows ready().
+  const site = await fixture();
+  if (ready("thank-you")) assert.ok((await site.admin("mail/draft", thanks)).id);
+  else await assert.rejects(site.admin("mail/draft", thanks), empty);
+  let filled = false;
+  const f = await fixture({ pageReady: (route) => route !== "thank-you" || filled });
+  await assert.rejects(f.admin("mail/draft", thanks), empty);
+  assert.deepEqual(Object.values((await f.ledger.read()).outbox), [], "no draft is saved");
+  assert.ok((await f.admin("mail/draft", { id: household, type: "details" })).id, "other emails are unaffected");
+  // Once the family writes its thank-you note, the draft links to it...
+  filled = true;
+  const { id } = await f.admin("mail/draft", thanks);
+  assert.match((await f.admin("mail/preview", undefined, { id })).html, /\/thank-you\//);
+  // ...but it is not sent if the page has been emptied again since.
+  filled = false;
+  await assert.rejects(f.admin("mail/send", { id, confirm: true }), empty);
+  assert.equal(f.sends(), 0);
+  assert.equal((await f.ledger.read()).outbox[id].state, "draft", "still a draft, sent once the page is back");
+  filled = true;
+  assert.equal((await f.admin("mail/send", { id, confirm: true })).state, "accepted");
+  assert.equal(f.sends(), 1);
+});
+
 test("unknown admin emails, link tokens and MFA challenges never queue a ledger write", async () => {
   const f = await fixture();
   const original = f.ledger.transaction.bind(f.ledger);
@@ -1492,6 +1426,8 @@ async function adminSignIn(f, email) {
 test("an invitation link or code opens the RSVP only; everything else needs the email sign-in", async () => {
   const f = await fixture();
   assert.equal((await f.linkGuest("invitation")).contactHidden, true);
+  // The page keeps a half-filled RSVP in the tab under the household's id.
+  assert.equal((await f.linkGuest("invitation")).householdId, household);
   await f.linkGuest("rsvp", f.input(), { "idempotency-key": "11111111-1111-4111-8111-111111111111" });
   for (const [path, body] of [
     ["messages", { kind: "guestbook", name: "A", text: "Hi", consent: true }],
@@ -1518,6 +1454,62 @@ test("guests sign in with the email on their Notion row, including Additional Em
   await f.publicPost("auth/email/verify", { token: linkOf(f.sent.at(-1)) });
   const accounts = Object.values((await f.ledger.read()).accounts);
   assert.ok(accounts.some((a) => a.email === "grandma@example.com" && a.householdId === household));
+});
+
+test("the emailed sign-in link brings the guest back to the page they asked from", async () => {
+  const f = await fixture();
+  const signIn = async (body) => {
+    f.advance(900001); // past the 3-links-per-15-minutes limit
+    await f.publicPost("auth/email/request", { email: "test@example.com", ...body });
+    const mail = f.sent.at(-1);
+    return { mail, result: await f.publicPost("auth/email/verify", { token: linkOf(mail) }) };
+  };
+  // From the Spanish photo page: a Spanish email whose link confirms on
+  // /es/account/, then returns to /es/share/.
+  const share = await signIn({ return: "es/share" });
+  assert.match(share.mail.html, /\/es\/account\/#[A-Za-z0-9_-]{43}"/);
+  assert.equal(share.result.returnTo, "es/share");
+  assert.equal((await signIn({ return: "guestbook" })).result.returnTo, "guestbook");
+  // Only page names from the list are kept, never an address from the request.
+  for (const value of ["https://evil.example/", "//evil.example", "admin", "es/admin/login", "share/../admin", 42]) {
+    const { mail, result } = await signIn({ return: value });
+    assert.equal(result.returnTo, null, String(value));
+    assert.match(mail.html, /"https:\/\/misxv\.simplysoph\.com\/account\/#[A-Za-z0-9_-]{43}"/);
+  }
+  const s = await f.ledger.read();
+  assert.ok(Object.values(s.emailLinks || {}).every((l) => !l.returnTo || /^(es\/)?[a-z]+$/.test(l.returnTo)));
+});
+
+test("the sign-in email greets the household in its language and says what the link does", async () => {
+  const f = await fixture();
+  await f.publicPost("auth/email/request", { email: "test@example.com", return: "account" });
+  const en = f.sent.at(-1);
+  assert.equal(en.subject, "Your sign-in link · Sophia’s quinceañera");
+  assert.equal(en.secret, true, "kept out of Sent Items");
+  for (const words of [
+    "Hello Test family,",
+    "Sophia’s quinceañera",
+    "Friday, January 15, 2027",
+    "share photos and videos",
+    "works once",
+    "15 minutes",
+    "Didn’t ask for this? Ignore this email",
+    "Sophia’s family",
+  ])
+    assert.ok(en.html.includes(words), words);
+  assert.ok(!/Inicia sesión|Continuar/.test(en.html), "one language only");
+  // A Spanish household, or a guest asking from a Spanish page, reads Spanish.
+  await f.ledger.transaction((s) => {
+    s.invitations[household].locale = "es";
+  });
+  await f.publicPost("auth/email/request", { email: "test@example.com" });
+  const es = f.sent.at(-1);
+  assert.equal(es.subject, "Tu enlace para entrar · Los XV de Sophia");
+  for (const words of ["Hola, Test family:", "viernes 15 de enero de 2027", "una sola vez", "15 minutos", "¿No lo pediste? Ignora este correo", "la familia de Sophia"])
+    assert.ok(es.html.includes(words), words);
+  assert.match(es.html, /\/es\/account\/#[A-Za-z0-9_-]{43}"/);
+  assert.ok(!/Sign in|works once/.test(es.html), "one language only");
+  assert.ok(!/[ �]/.test(en.html + es.html), "no characters the mail server cannot carry");
 });
 
 test("an email removed from Notion can no longer use an issued sign-in link", async () => {
@@ -1849,21 +1841,6 @@ test("sign-in requests take the full floor and only a few run at once (SEC-8)", 
   assert.equal(outcomes.find((o) => o.status === "rejected").reason.code, "SIGN_IN_BUSY");
 });
 
-test("a busy photo gate answers PHOTO_BUSY, not an invalid photo (SEC-13)", async () => {
-  const f = await fixture({
-    photoGate: async () => {
-      throw Object.assign(new Error(), { status: 503, code: "PHOTO_BUSY" });
-    },
-  });
-  const base64 = (
-    await sharp({ create: { width: 4, height: 4, channels: 3, background: "#fff" } }).jpeg().toBuffer()
-  ).toString("base64");
-  await assert.rejects(
-    () => f.guest("photos", { base64, consent: true, caption: "" }),
-    (e) => e.code === "PHOTO_BUSY",
-  );
-});
-
 test("a newer RSVP saved while an older sync fails stays pending, not failed (NOTION-7)", async () => {
   let f,
     first = true;
@@ -1893,6 +1870,7 @@ test("a renewal is saved only with a response that carries the cookie, photos in
   await f.ledger.transaction((s) => {
     s.photos[pid] = { id: pid, state: "approved", kind: "photo" };
   });
+  await f.media.put(pid, Buffer.from("image"), "photo");
   await f.publicPost("auth/email/request", { email: "test@example.com" });
   const signed = await f.publicPost("auth/email/verify", { token: linkOf(f.sent.at(-1)) });
   const cookie = signed.setCookie.split(";")[0];
@@ -1902,12 +1880,12 @@ test("a renewal is saved only with a response that carries the cookie, photos in
   await assert.rejects(() => f.app.dispatch({ path: "/api/nothing-here", headers: { cookie } }), (e) => e.status === 404);
   assert.equal(await expiresAt(), before, "a failed request renews nothing");
   const photo = await f.app.dispatch({ path: "/api/photo/" + pid, headers: { cookie } });
-  assert.ok(photo.binary);
+  assert.ok(photo.stream);
   assert.match(photo.setCookie, /^__session=/, "the photo response carries the renewed cookie");
   assert.ok((await expiresAt()) > before);
 });
 
-test("only email sign-in sessions renew; link, admin and Notion-outage cases do not (AUTHN-7)", async () => {
+test("admin sessions and email sign-ins during a Notion outage do not renew (AUTHN-7)", async () => {
   let down = false,
     f;
   f = await fixture({
@@ -1918,8 +1896,7 @@ test("only email sign-in sessions renew; link, admin and Notion-outage cases do 
       },
     },
   });
-  // The seeded link and admin sessions are both in their last 15 minutes.
-  assert.equal((await f.linkGuest("session")).setCookie, undefined, "invitation links are RSVP-only");
+  // The seeded admin session is in its last 15 minutes.
   assert.equal((await f.admin("dashboard")).setCookie, undefined, "admin sessions keep 30 minutes");
   await f.publicPost("auth/email/request", { email: "test@example.com" });
   const signed = await f.publicPost("auth/email/verify", { token: linkOf(f.sent.at(-1)) });
@@ -1928,6 +1905,73 @@ test("only email sign-in sessions renew; link, admin and Notion-outage cases do 
   const r = await f.app.dispatch({ path: "/api/session", headers: { cookie: signed.setCookie.split(";")[0] } });
   assert.equal(r.verified, true, "a Notion outage never fails the request");
   assert.equal(r.setCookie, undefined, "but it skips the renewal");
+});
+
+test("an invitation-link session stays open while the guest is answering, up to 2 hours", async () => {
+  const f = await fixture();
+  const expiresAt = async () =>
+    Object.values((await f.ledger.read()).sessions).find((s) => s.scope === "rsvp").expiresAt;
+  // Twenty minutes into the form, the page checks in: the session runs 30
+  // minutes from now instead of ending ten minutes later.
+  f.advance(20 * 60000);
+  const touched = await f.linkGuest("session");
+  assert.match(touched.setCookie, /^__session=.*Max-Age=1800/, "the renewed cookie is sent again");
+  assert.equal(await expiresAt(), f.now() + 1800000);
+  // A save 45 minutes after opening the link still works.
+  f.advance(25 * 60000);
+  const saved = await f.linkGuest("rsvp", f.input(), { "idempotency-key": "41414141-4141-4141-8141-414141414141" });
+  assert.equal(saved.saved, true);
+  // Kept busy, it still ends 2 hours after the link was opened.
+  for (let i = 0; i < 6; i++) {
+    f.advance(20 * 60000);
+    await f.linkGuest("session").catch(() => {});
+  }
+  assert.equal(await expiresAt(), at + 7200000, "never past 2 hours");
+  f.advance(at + 7200000 - f.now());
+  assert.equal((await f.linkGuest("session")).kind, null);
+  await assert.rejects(() => f.linkGuest("invitation"), (e) => e.code === "SIGN_IN_REQUIRED");
+});
+
+test("an invitation-link session is not renewed once its household is archived in Notion or its RSVP is closed to it", async () => {
+  const f = await fixture();
+  const expiresAt = async () =>
+    Object.values((await f.ledger.read()).sessions).find((s) => s.scope === "rsvp")?.expiresAt;
+  f.advance(20 * 60000);
+  f.row.archived = true;
+  // Every other route already refuses it; the page's check-in must not keep it alive.
+  await assert.rejects(() => f.linkGuest("invitation"), (e) => e.code === "INVITATION_INACTIVE");
+  const r = await f.linkGuest("session");
+  assert.equal(r.setCookie, undefined, "not renewed");
+  assert.equal(await expiresAt(), at + 1800000);
+  f.advance(11 * 60000);
+  assert.equal((await f.linkGuest("session")).kind, null, "it ends at its first 30 minutes");
+  // Likewise when the family must first fix its seats in Notion.
+  const g = await fixture();
+  g.advance(20 * 60000);
+  g.row.validCapacity = false;
+  assert.equal((await g.linkGuest("session")).setCookie, undefined);
+  g.row.validCapacity = true;
+  assert.match((await g.linkGuest("session")).setCookie, /^__session=/, "renewed once it is fixed");
+});
+
+test("an idle invitation-link session still ends after 30 minutes, and only RSVP routes renew it", async () => {
+  const f = await fixture();
+  f.advance(31 * 60000);
+  await assert.rejects(
+    () => f.linkGuest("rsvp", f.input(), { "idempotency-key": "42424242-4242-4242-8242-424242424242" }),
+    (e) => e.code === "SIGN_IN_REQUIRED",
+  );
+  const g = await fixture();
+  g.advance(20 * 60000);
+  // My account is outside an RSVP-only session: refused, and nothing renewed.
+  await assert.rejects(() => g.linkGuest("account"), (e) => e.code === "SIGN_IN_REQUIRED");
+  const session = Object.values((await g.ledger.read()).sessions).find((s) => s.scope === "rsvp");
+  assert.equal(session.expiresAt, at + 1800000);
+  // A reissued link ends the session instead of renewing it.
+  await g.ledger.transaction((s) => {
+    s.invitations[household].generation = 2;
+  });
+  assert.equal((await g.linkGuest("session")).kind, null);
 });
 
 test("an administrator's sign out everywhere leaves other administrators alone (AUTHN-10)", async () => {
@@ -2498,6 +2542,21 @@ test("an invitation-link RSVP receipt follows the household's current Notion Ema
   assert.equal(receipt.state, "accepted");
 });
 
+test("an RSVP receipt repeats the answer for the invited events and how to change it", async () => {
+  const f = await fixture();
+  await f.linkGuest("rsvp", f.input(), { "idempotency-key": "24242424-2424-4424-8424-242424242424" });
+  const { html, subject } = f.sent.at(-1);
+  assert.equal(subject, "We received your RSVP · Sophia’s quinceañera");
+  // The fixture's invitation covers the ceremony and dinner, not the reception.
+  assert.ok(html.includes(">Ceremony</td>") && html.includes(">1 adult/teen</td>"));
+  assert.ok(html.includes(">Dinner</td>") && html.includes(">2 adults/teens, 1 child</td>"));
+  assert.ok(!html.includes("Reception"));
+  assert.ok(html.includes("You can change it until Sunday, November 15, 2026"));
+  assert.ok(html.includes("open your invitation email again"));
+  // The private link is not stored, so there is no button to the bare code form.
+  assert.ok(!html.includes(origin + "/rsvp/") && html.includes(origin + "/details/"));
+});
+
 test("at most 5 automatic receipts per household a day; later ones wait as drafts for a person (re-audit)", async () => {
   const f = await fixture();
   let previous = null;
@@ -2894,7 +2953,9 @@ test("one person signed in on two devices uploads one file at a time; the daily 
     for (const v of Object.values(st.sessions)) if (v.accountId) v.expiresAt = at + 86400000;
   });
   const upload = () =>
-    f.guest("photos", { album: "event", caption: "", base64: "x", consent: true }).catch((e) => e);
+    f
+      .guest("uploads", { kind: "photo", type: "image/jpeg", size: 1000, album: "event", caption: "", consent: true })
+      .catch((e) => e);
   let last;
   for (let i = 0; i < 21; i++) last = await upload();
   assert.equal(last.code, "DAILY_UPLOAD_LIMIT");

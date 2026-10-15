@@ -1,61 +1,62 @@
 import {
   celebration,
   venueSection,
-  albumCards,
   registryCards,
-  calendarLink,
-  localTime,
-  timeRange,
+  scheduleStrip,
+  scheduleList,
   localDate,
   escapeHtml as esc,
 } from "./celebration.mjs";
 const lang = document.documentElement.lang === "es" ? "es" : "en";
 export let eventContent = celebration;
 export let liveContent = false;
-export function calendars(c = eventContent, live = liveContent) {
-  const names =
-    lang === "es"
-      ? ["Ceremonia", "Cena", "Recepción"]
-      : ["Ceremony", "Dinner", "Reception"];
-  return ["ceremony", "dinner", "reception"]
-    .map(
-      (kind, i) =>
-        `<div><strong>${names[i]}</strong>${calendarLink(kind, c, lang, live)}</div>`,
-    )
-    .join("");
-}
+// The home page's countdown counts what a guest can act on: the time left to
+// reply until the RSVP deadline, then the time until the celebration. It reads
+// as plain text under a visible label, changes once a minute (never seconds),
+// and stops for good once the celebration is over. With reduced motion asked
+// for, it is set once per visit and does not tick. The "Please reply by" line
+// above it goes away at the deadline; the RSVP button stays, for the closed
+// note and the household's saved answer.
+const units = {
+  en: [["day", "days"], ["hour", "hours"], ["minute", "minutes"]],
+  es: [["día", "días"], ["hora", "horas"], ["minuto", "minutos"]],
+};
+let ticking = 0;
 function countdown() {
   const node = document.querySelector("[data-countdown]");
   if (!node) return;
-  let seconds = Math.max(
-    0,
-    Math.floor((Date.parse(node.dataset.start) - Date.now()) / 1000),
-  );
-  if (!Number.isFinite(seconds)) return;
-  if (!seconds) {
-    node.textContent =
-      lang === "es" ? "¡Llegó el gran día!" : "The special day has arrived!";
+  clearTimeout(ticking);
+  const now = Date.now(),
+    deadline = Date.parse(node.dataset.deadline),
+    start = Date.parse(node.dataset.start),
+    end = Date.parse(node.dataset.end);
+  const replyBy = document.querySelector("[data-reply-by]");
+  if (replyBy) replyBy.hidden = now >= deadline;
+  if (![deadline, start, end].every(Number.isFinite) || now >= Math.max(start, end)) {
+    node.hidden = true;
     return;
   }
-  const values = [
-    Math.floor(seconds / 86400),
-    Math.floor(seconds / 3600) % 24,
-    Math.floor(seconds / 60) % 60,
-    seconds % 60,
-  ];
-  const labels =
-    lang === "es"
-      ? ["días", "horas", "minutos", "segundos"]
-      : ["days", "hours", "minutes", "seconds"];
-  node.innerHTML = values
-    .map(
-      (v, i) =>
-        `<span><strong>${String(v).padStart(2, "0")}</strong><small>${labels[i]}</small></span>`,
-    )
-    .join("");
+  node.hidden = false;
+  if (now >= start) {
+    node.innerHTML = `<p class="countdown-label">${lang === "es" ? "¡Hoy es el gran día!" : "Today is the day!"}</p>`;
+  } else {
+    const target = now < deadline ? deadline : start,
+      minutes = Math.ceil((target - now) / 60000),
+      values = [Math.floor(minutes / 1440), Math.floor(minutes / 60) % 24, minutes % 60];
+    const label =
+      now < deadline
+        ? lang === "es" ? "Tiempo para confirmar" : "Left to reply"
+        : lang === "es" ? "Falta para la celebración" : "Until the celebration";
+    node.innerHTML = `<p class="countdown-label">${label}</p> <p class="countdown-values">${values
+      .map((v, i) => `<span><strong>${v}</strong> ${units[lang][i][v === 1 ? 0 : 1]}</span>`)
+      .join(" ")}</p>`;
+  }
+  // Next change at the top of the next minute.
+  if (!matchMedia("(prefers-reduced-motion: reduce)").matches)
+    ticking = setTimeout(countdown, 60000 - (now % 60000) + 50);
 }
 countdown();
-setInterval(countdown, 1000);
+document.addEventListener("visibilitychange", () => !document.hidden && countdown());
 document.addEventListener("click", async (e) => {
   const button = e.target.closest("[data-copy-address]");
   if (!button) return;
@@ -87,20 +88,19 @@ export const experienceReady = (async () => {
     const node = document.querySelector("[data-countdown]");
     if (node) {
       node.dataset.start = c.countdownAt;
+      node.dataset.end = c.reception.end || c.countdownAt;
       countdown();
     }
     for (const el of document.querySelectorAll("[data-venue]"))
       el.innerHTML = venueSection(el.dataset.venue, c, lang, true);
-    const albums = document.querySelector("[data-album-cards]");
-    if (albums) albums.innerHTML = albumCards(c, lang);
-    for (const el of document.querySelectorAll("[data-calendar-links]"))
-      el.innerHTML = calendars();
+    for (const el of document.querySelectorAll("[data-schedule-strip]"))
+      el.innerHTML = scheduleStrip(c, lang);
+    for (const el of document.querySelectorAll("[data-schedule]"))
+      el.innerHTML = scheduleList(c, lang, true);
+    // "viernes, 15 de enero de 2027" starts a line, so it takes a capital.
+    const day = localDate(c.ceremony.start, lang);
     for (const el of document.querySelectorAll("[data-event-date]"))
-      el.textContent = localDate(c.ceremony.start, lang);
-    for (const el of document.querySelectorAll("[data-event-time]")) {
-      const v = c[el.dataset.eventTime];
-      el.textContent = timeRange(v, lang);
-    }
+      el.textContent = day.charAt(0).toUpperCase() + day.slice(1);
   } catch {
     /* The checked-in event details remain available during service outages. */
   }

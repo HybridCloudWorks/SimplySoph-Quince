@@ -30,7 +30,7 @@ test('dates and times stay in Windows-1252 and read naturally',()=>{
 });
 test('invitation reads like a letter: date subject, places, Sophia’s words, contacts line',()=>{
   const r=renderEmail({...base,eventDate:'Friday, January 15, 2027',rsvpDeadline:'Sunday, November 15, 2026',schedule:emailSchedule(celebration,{ceremony:true,dinner:true,dance:true}),note:firstSentence(celebration.quote.en)});
-  assert.equal(r.subject,'Sophia’s Mis XV · Friday, January 15, 2027');
+  assert.equal(r.subject,'Sophia’s quinceañera · Friday, January 15, 2027');
   assert.ok(r.html.includes('Our Lady of Guadalupe Church')&&r.html.includes('4:00 PM'));
   assert.ok(r.html.includes('Turning 15 is such a special moment in my life'));
   assert.ok(r.html.includes('Please let us know by <strong>Sunday, November 15, 2026</strong>.'));
@@ -38,8 +38,40 @@ test('invitation reads like a letter: date subject, places, Sophia’s words, co
   assert.ok(!/view your invitation|keep it private/i.test(r.html));
   assert.ok(!renderEmail({...base,type:'receipt'}).html.includes('Our Lady of Guadalupe'));
 });
+test('a receipt lists the answer for the invited events, until when it can change and how',()=>{
+  const attendance={ceremony:{adultsTeens:2,kids:1},dinner:{adultsTeens:2,kids:0},dance:{adultsTeens:0,kids:0}};
+  const invited={ceremony:true,dinner:true,dance:false};
+  const en=renderEmail({...base,type:'receipt',url:'https://misxv.example/details/',attendance,invited,rsvpDeadline:'Sunday, November 15, 2026'});
+  assert.ok(en.text.includes('Ceremony: 2 adults/teens, 1 child')&&en.text.includes('Dinner: 2 adults/teens'));
+  assert.ok(en.html.includes('>Ceremony</td>')&&en.html.includes('>2 adults/teens, 1 child</td>'));
+  for(const out of [en.text,en.html]){
+    assert.ok(!/Reception/.test(out),'only the events on the invitation');
+    assert.ok(out.includes('You can change it until Sunday, November 15, 2026')&&out.includes('open your invitation email again'));
+    assert.ok(!/permitted|Review your response/.test(out));
+  }
+  assert.ok(!en.html.includes('/rsvp/'),'no button to the generic code form');
+  const es=renderEmail({...base,type:'update',locale:'es',url:'https://misxv.example/es/details/',attendance,invited,rsvpDeadline:'domingo 15 de noviembre de 2026'});
+  assert.ok(es.text.includes('Ceremonia: 2 adultos/jóvenes, 1 niño')&&es.text.includes('Cena: 2 adultos/jóvenes'));
+  assert.ok(es.text.includes('Pueden cambiarla hasta el domingo 15 de noviembre de 2026')&&!/Recepción/.test(es.text));
+  const none={ceremony:{adultsTeens:0,kids:0},dinner:{adultsTeens:0,kids:0},dance:{adultsTeens:0,kids:0}};
+  const declined=renderEmail({...base,type:'receipt',url:'https://misxv.example/details/',attendance:none,invited,rsvpDeadline:'Sunday, November 15, 2026'});
+  assert.ok(declined.text.includes('no one in your family can attend')&&!declined.text.includes('Ceremony:'));
+});
 test('first sentence quotes only a short opening line',()=>{
   assert.equal(firstSentence('One line. Two lines.'),'One line.');
   assert.equal(firstSentence('x'.repeat(300)+'.'),'');
   assert.equal(firstSentence(undefined),'');
+});
+import {renderSignInEmail} from '../emails/templates.mjs';
+test('the sign-in email greets the household the way the other emails do',()=>{
+  const greeting=(html)=>html.match(/<p>((?:Hello|Hola)[^<]*)<\/p>/)[1],url='https://misxv.example/account/#sample';
+  for(const [locale,expected] of [['en','Hello Familia Morales,'],['es','Hola, Familia Morales:']]){
+    const signIn=renderSignInEmail({locale,household:'Familia Morales',url});
+    assert.equal(greeting(signIn.html),expected);
+    assert.equal(greeting(renderEmail({...base,locale,household:'Familia Morales'}).html),expected);
+    assert.equal(signIn.text.split('\n\n')[0],expected);
+  }
+  // Without a name, still a greeting with its punctuation.
+  assert.equal(renderSignInEmail({locale:'en',url}).text.split('\n\n')[0],'Hello,');
+  assert.equal(renderSignInEmail({locale:'es',url}).text.split('\n\n')[0],'Hola:');
 });

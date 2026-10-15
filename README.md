@@ -14,8 +14,9 @@ The bilingual website for **Sophia Isabel's quinceañera**, on **Friday, January
 ## What guests can do
 
 - **Read about the celebration:** the schedule, the church and reception, travel, and answers to common questions, all in English and Spanish.
-- **RSVP:** open the private link from their invitation (or type its code) and answer for their household, event by event, by **November 15, 2026**. They can change the answer until then and add the events to their calendar.
-- **Sign in with their email:** the address the family has for their household, with a one-time emailed link, Google or Microsoft. No password. Signed in, they can share photos and videos, write in the guestbook, message the family and update their contact details.
+- **RSVP:** open the private link from their invitation (or paste it, or type its code) and answer for their household by **November 15, 2026**: one tap for **Everyone's coming** or **We can't make it** (or the matching links in the invitation email), or event by event. Nothing is saved until they confirm, and answers in progress survive a reload. They can change the answer until the deadline, get a receipt that repeats it, and add the events to their calendar.
+- **Sign in with their email:** the address where they received their invitation, with a one-time emailed link (in their language), Google or Microsoft. No password; the link brings them back to the page they started from. Signed in, they can see their RSVP, share photos and videos, write in the guestbook, message the family and update their contact details.
+- **Share photos and videos** straight from their phone, on the Share page or from the QR code on the tables: up to 10 at a time, videos up to 60 seconds (iPhone and Android videos alike), with progress for each file and a retry that picks up where it stopped. The family reviews everything first; approved photos and videos appear in the gallery for signed-in guests only, with videos converted to play in every browser.
 - **Get text updates** (US and Canada): text SOPHIA to the number on the [SMS page](https://misxv.simplysoph.com/sms/).
 - **Get updates on WhatsApp** (guests outside the US), once the family turns it on.
 
@@ -54,11 +55,11 @@ Administrators sign in at [misxv.simplysoph.com/admin/login/](https://misxv.simp
 
 ## Still to come from the family
 
-Some sections wait for the family's words and photos, and stay hidden until then: Sophia's story and portraits, the parents' message, the court of honor and padrinos, the dress code, parking and children's details, hotels and airport tips, registry links, and, after the event, the thank-you note and highlight video. Nothing is invented in the meantime.
+Some sections wait for the family's words and photos, and stay hidden until then: Sophia's story and portraits, the parents' message, the court of honor and padrinos, the dress code, parking and children's details, hotels and airport tips, registry links, and, after the event, the thank-you note and highlight video. Nothing is invented in the meantime. Their pages aren't linked from the menu or anywhere else until the content is added to `site/content.mjs`; the next build links them by itself (see [page-scope.md](docs/page-scope.md)).
 
 ## For developers
 
-You need **Node 24**. To process uploaded videos locally you also need `ffmpeg` on your path (the production image installs it).
+You need **Node 24**. To convert uploaded videos locally you also need `ffmpeg` on your path (the production image installs it); in production a Cloud Scheduler job runs the conversion ([deployment guide](docs/deployment.md#media-job-video-conversion)).
 
 ```powershell
 npm ci
@@ -70,7 +71,7 @@ Without the production settings every page works and sign-in and RSVP are switch
 
 `npm run test:browser` runs the guest RSVP and administrator sign-in journeys in Chromium against the built pages and the real API, with in-memory stand-ins for storage, Notion and email and only made-up guests ([tests/browser/harness.mjs](tests/browser/harness.mjs)). Install the browser once with `npx playwright install chromium`.
 
-The pages are built from `site/` by `scripts/build-pages.mjs`; the RSVP and sign-in service lives in `server/`. Pull requests run the checks. Merging to `main` publishes the static website automatically once the checks pass; the API is deployed by hand, as described in [docs/deployment.md](docs/deployment.md).
+The pages are built from `site/` by `scripts/build-pages.mjs`, which also makes the optimized images and link-preview card with `scripts/images.mjs` (the first build takes a few seconds longer; encoded images are kept in `.cache/`); the RSVP and sign-in service lives in `server/`. Pull requests run the checks. Merging to `main` publishes the static website automatically once the checks pass; the API is deployed by hand, as described in [docs/deployment.md](docs/deployment.md).
 
 ## Contributing, support and security
 

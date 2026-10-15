@@ -9,6 +9,8 @@ import {
   atLeast,
   pruneSessions,
 } from "./auth.mjs";
+import { renderSignInEmail, longDate } from "../emails/templates.mjs";
+import { siteSettings } from "./site-settings.mjs";
 
 const normalizeEmail = (value) => {
   if (
@@ -35,6 +37,14 @@ export function rosterMatch(rows, address) {
   );
   return found.length === 1 ? found[0] : null;
 }
+// The pages an emailed sign-in link may bring a guest back to, in English or
+// Spanish ("share", "es/share"). Only a name from this list is kept with the
+// link; anything else, a URL included, falls back to My account.
+const returnPages = ["account", "rsvp", "share", "guestbook", "contact", "gallery"];
+export function returnRoute(value) {
+  const m = typeof value === "string" ? /^(es\/)?([a-z]+)$/.exec(value) : null;
+  return m && returnPages.includes(m[2]) ? value : null;
+}
 
 // Guests sign in with the email on their household's Notion row: an emailed
 // link, Google or Microsoft. There is no separate registration. An "account" is
@@ -55,10 +65,10 @@ export function createAccounts({
     createHmac("sha256", key)
       .update("email:" + value)
       .digest("hex");
-  async function issue({ address, householdId, generation }) {
+  async function issue({ address, householdId, generation, household, returnTo }) {
     const raw = token(),
       id = randomUUID();
-    const locale = await ledger.transaction((s) => {
+    const { locale, eventDate } = await ledger.transaction((s) => {
       s.emailLinks ??= {};
       for (const [k, link] of Object.entries(s.emailLinks))
         if (link.expiresAt <= now()) delete s.emailLinks[k];
@@ -72,20 +82,24 @@ export function createAccounts({
         emailKey: emailKey(address),
         householdId,
         generation,
+        returnTo,
         expiresAt: now() + 900000,
       };
-      return invite?.locale || "en";
+      // The language of the page the guest asked from, else the household's.
+      const locale = returnTo ? (returnTo.startsWith("es/") ? "es" : "en") : invite?.locale || "en";
+      return { locale, eventDate: longDate(siteSettings(s).ceremony.start, locale) };
     });
     // Token is a fragment, never an access-log query parameter. GET/scanners do not
     // consume it: the page requires an explicit user click and a same-origin POST.
     const url = `${origin}${locale === "es" ? "/es" : ""}/account/#${raw}`;
+    const mail = renderSignInEmail({ locale, household, url, eventDate });
     try {
       await mailer.send({
         id,
         to: address,
-        subject: "Sophia · Your sign-in link / Tu enlace de acceso",
+        subject: mail.subject,
         secret: true,
-        html: `<p>Sign in to Sophia’s celebration website.</p><p>Inicia sesión en el sitio de la celebración de Sophia.</p><p><a href="${url}">Continue / Continuar</a></p><p>This link expires in 15 minutes and works once. If you did not request it, ignore this email.</p><p>Este enlace vence en 15 minutos y funciona una sola vez. Si no lo solicitaste, ignora este correo.</p>`,
+        html: mail.html,
       });
     } catch {
       // Retain a possibly delivered link until expiry. Do not retry an ambiguous send.
@@ -153,7 +167,8 @@ export function createAccounts({
     emailKey,
     async request(body) {
       if (!mailer.configured) throw error(503, "EMAIL_SIGN_IN_UNAVAILABLE");
-      const address = normalizeEmail(body.email);
+      const address = normalizeEmail(body.email),
+        returnTo = returnRoute(body.return);
       return signInGate(() => atLeast(signInFloorMs, async () => {
         const row = rosterMatch(await notion.list(), address),
           invite = row && (await ledger.read()).invitations[row.id];
@@ -173,6 +188,8 @@ export function createAccounts({
               address,
               householdId: row.id,
               generation: invite?.generation ?? null,
+              household: row.name,
+              returnTo,
             });
           } catch {
             // Only listed addresses reach this step, so a save error here must
@@ -197,7 +214,7 @@ export function createAccounts({
         throw error(401, "EMAIL_LINK_INVALID");
       const value = token(),
         csrf = token();
-      await ledger.transaction((s) => {
+      const returnTo = await ledger.transaction((s) => {
         const link = s.emailLinks?.[hash(raw)],
           invite = s.invitations[pending.householdId];
         if (
@@ -208,8 +225,11 @@ export function createAccounts({
           throw error(401, "EMAIL_LINK_INVALID");
         delete s.emailLinks[hash(raw)];
         signIn(s, row, link.email, csrf, value);
+        return returnRoute(link.returnTo);
       });
-      return { csrf, setCookie: cookie(value) };
+      // The page to go back to comes from the link's own record; the page checks
+      // the name against the same list before going there.
+      return { csrf, setCookie: cookie(value), returnTo };
     },
     // A Microsoft or Google identity already verified by the caller. Always a
     // guest session, whatever the person's admin status: administration goes

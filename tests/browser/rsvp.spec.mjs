@@ -3,25 +3,7 @@
 // broken link. The RSVP runs through the real API (see harness.mjs).
 import { test, expect } from "./fixtures.mjs";
 import { households, AFTER_DEADLINE, DEADLINE } from "./harness.mjs";
-
-// Chooses the counts for each event fieldset: { legend: [adultsTeens, kids] }.
-async function chooseCounts(
-  page,
-  counts,
-  labels = ["Adults / teens", "Children"],
-) {
-  for (const [legend, [adultsTeens, kids]] of Object.entries(counts)) {
-    const event = page
-      .getByRole("main")
-      .getByRole("group", { name: legend, exact: true });
-    await event.getByLabel(labels[0]).selectOption(String(adultsTeens));
-    await event.getByLabel(labels[1]).selectOption(String(kids));
-  }
-}
-const responsesOf = async (harness, household) =>
-  Object.values((await harness.ledger.read()).responses).filter(
-    (r) => r.householdId === household.id,
-  );
+import { chooseCounts, responsesOf } from "./rsvp-helpers.mjs";
 
 test("an English guest answers for each event from the invitation link and sees the confirmation", async ({
   page,
@@ -39,11 +21,19 @@ test("an English guest answers for each event from the invitation link and sees 
   ).toBeVisible();
   // The private token leaves the address bar once it has been exchanged.
   await expect(page).toHaveURL(harness.url("/rsvp/"));
+  // What the invitation includes, by when to answer, and each event's time and place.
+  await expect(
+    page.getByText("Your invitation includes up to 2 adults/teens and 1 child."),
+  ).toBeVisible();
+  await expect(page.locator("#portal .deadline")).toHaveText(
+    "Please reply by Sunday, November 15.",
+  );
   await expect(page.getByRole("main").getByRole("group")).toHaveText([
-    /^Ceremony/,
-    /^Dinner/,
-    /^Reception & dance/,
+    /^Ceremony · 4:00\sPM · Our Lady of Guadalupe Church/,
+    /^Dinner · 6:30\sPM · The AMZ Event Center/,
+    /^Reception & dance · 7:30\sPM · The AMZ Event Center/,
   ]);
+  await expect(page.getByText(/Meal selections/)).toHaveCount(0);
   await chooseCounts(page, {
     Ceremony: [2, 1],
     Dinner: [2, 0],
@@ -59,25 +49,28 @@ test("an English guest answers for each event from the invitation link and sees 
   ).toBeVisible();
   await expect(page.getByRole("main").getByRole("listitem")).toHaveText([
     "Ceremony: 2 adults/teens, 1 child",
-    "Dinner: 2 adults/teens, 0 children",
-    "Reception & dance: 0 adults/teens, 0 children",
+    "Dinner: 2 adults/teens",
+    "Reception & dance: not attending",
   ]);
   await page.getByRole("button", { name: "Save my RSVP" }).click();
 
   await expect(page).toHaveURL(harness.url("/rsvp/confirmed/"));
-  await expect(
-    page.getByRole("heading", { name: "We can’t wait to celebrate with you!" }),
-  ).toBeVisible();
+  const thanks = page.getByRole("heading", {
+    name: "We can’t wait to celebrate with you!",
+  });
+  await expect(thanks).toBeVisible();
+  await expect(thanks).toBeFocused();
+  await expect(page).toHaveTitle(/^We can’t wait to celebrate with you! · /);
   await expect(page.getByText("Thank you, Rivera Family.")).toBeVisible();
   await expect(
-    page.getByText("You can change your answer until November 15."),
+    page.getByText("Saved Oct 1 · you can change it until November 15"),
   ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Edit response" }),
-  ).toHaveAttribute("href", "/rsvp/");
-  await expect(
-    page.getByText("The family’s guest list has been updated."),
-  ).toBeVisible();
+  const edit = page.getByRole("link", { name: "Edit response" });
+  await expect(edit).toHaveAttribute("href", "/rsvp/");
+  await expect(edit).toHaveClass(/\boutline\b/);
+  // Internal sync status and the deadline banner stay off the confirmation.
+  await expect(page.getByText(/guest list/)).toHaveCount(0);
+  await expect(page.locator("#portal .deadline")).toHaveCount(0);
 
   // The answer reached the ledger and the household's Notion row.
   const [saved] = await responsesOf(harness, household);
@@ -127,12 +120,17 @@ test("a Spanish guest completes the same journey on /es/ and sees the Spanish co
   await expect(
     page.getByRole("heading", { name: "Familia Morales" }),
   ).toBeVisible();
+  // The reception is not on this invitation, so it is not mentioned at all.
+  await expect(page.getByRole("main").getByText(/Recepción|no incluid/)).toHaveCount(0);
   await expect(
-    page.getByText("Recepción y baile: no incluido en esta invitación"),
+    page.getByText("Su invitación incluye hasta 2 adultos/jóvenes y 2 niños."),
   ).toBeVisible();
+  await expect(page.locator("#portal .deadline")).toHaveText(
+    "Fecha límite para responder: domingo 15 de noviembre.",
+  );
   await expect(page.getByRole("main").getByRole("group")).toHaveText([
-    /^Ceremonia/,
-    /^Cena/,
+    /^Ceremonia · 4:00\sp\.\s?m\. · Our Lady of Guadalupe Church/,
+    /^Cena · 6:30\sp\.\s?m\. · The AMZ Event Center/,
   ]);
   await chooseCounts(page, { Ceremonia: [2, 2], Cena: [1, 2] }, [
     "Adultos / jóvenes",
@@ -141,23 +139,26 @@ test("a Spanish guest completes the same journey on /es/ and sees the Spanish co
   await page.getByRole("button", { name: "Revisar respuesta" }).click();
 
   await expect(
-    page.getByRole("heading", { name: "Revisa tu respuesta" }),
+    page.getByRole("heading", { name: "Revisen su respuesta" }),
   ).toBeVisible();
   await expect(page.getByRole("main").getByRole("listitem")).toHaveText([
     "Ceremonia: 2 adultos/jóvenes, 2 niños",
     "Cena: 1 adulto/joven, 2 niños",
-    "Recepción y baile: 0 adultos/jóvenes, 0 niños",
   ]);
   await page.getByRole("button", { name: "Guardar mi respuesta" }).click();
 
   await expect(page).toHaveURL(harness.url("/es/rsvp/confirmed/"));
   await expect(
-    page.getByRole("heading", { name: "¡Te esperamos con mucha ilusión!" }),
+    page.getByRole("heading", { name: "¡Los esperamos con mucha ilusión!" }),
   ).toBeVisible();
   await expect(page.getByText("Gracias, Familia Morales.")).toBeVisible();
   await expect(
-    page.getByText("Puedes cambiar tu respuesta hasta el 15 de noviembre."),
+    page.getByText("Guardada el 1 oct · pueden cambiarla hasta el 15 de noviembre"),
   ).toBeVisible();
+  await expect(page.getByRole("main").getByRole("listitem")).toHaveText([
+    "Ceremonia: 2 adultos/jóvenes, 2 niños",
+    "Cena: 1 adulto/joven, 2 niños",
+  ]);
   await expect(
     page.getByRole("link", { name: "Editar respuesta" }),
   ).toHaveAttribute("href", "/es/rsvp/");
@@ -189,14 +190,16 @@ test("after the deadline a household that never answered sees the closed note, n
   ).toBeVisible();
   await expect(
     page.getByText(
-      "RSVPs closed on November 15. To answer or change your answer now, please contact the family.",
+      "RSVPs closed on November 15. To answer or change your answer now, please contact us.",
     ),
   ).toBeVisible();
   await expect(
-    page.getByRole("link", { name: "Contact the family" }),
+    page.getByRole("link", { name: "Contact us" }),
   ).toHaveAttribute("href", "/contact/");
   await expect(page.getByRole("button", { name: "Review response" })).toHaveCount(0);
-  await expect(page.getByRole("group", { name: "Ceremony", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("main").getByRole("group")).toHaveCount(0);
+  // No "Please reply by" once answers are closed.
+  await expect(page.locator("#portal .deadline")).toHaveCount(0);
   expect(await responsesOf(harness, household)).toEqual([]);
   expect(harness.notion.patches).toEqual([]);
   expect(harness.sent).toEqual([]);
@@ -217,11 +220,11 @@ test("after the deadline the Spanish page shows the closed note in Spanish", asy
   ).toBeVisible();
   await expect(
     page.getByText(
-      "Las respuestas cerraron el 15 de noviembre. Para responder o cambiar tu respuesta, contacta a la familia.",
+      "Las respuestas cerraron el 15 de noviembre. Para responder o cambiar su respuesta, escríbannos.",
     ),
   ).toBeVisible();
   await expect(
-    page.getByRole("link", { name: "Contacta a la familia" }),
+    page.getByRole("link", { name: "Escríbannos" }),
   ).toHaveAttribute("href", "/es/contact/");
   await expect(page.getByRole("button", { name: "Revisar respuesta" })).toHaveCount(0);
   expect(await responsesOf(harness, household)).toEqual([]);
@@ -251,7 +254,7 @@ test("a form opened before the deadline but saved after it is refused and nothin
   await page.getByRole("button", { name: "Save my RSVP" }).click();
 
   await expect(page.getByRole("alert")).toHaveText(
-    "The RSVP deadline has passed. Please contact the family.",
+    "The RSVP deadline has passed. Please contact us.",
   );
   await expect(page).toHaveURL(harness.url("/rsvp/"));
   await expect(
@@ -260,6 +263,36 @@ test("a form opened before the deadline but saved after it is refused and nothin
   expect(await responsesOf(harness, household)).toEqual([]);
   expect(harness.notion.patches).toEqual([]);
   expect(harness.sent).toEqual([]);
+});
+
+// The review speaks to the household (ustedes: "Revisen su respuesta"), and
+// so do the refusals that only a save from it can get.
+test("in Spanish, a refused save speaks to the household the way the review does", async ({
+  page,
+  harness,
+  setNow,
+}) => {
+  const household = households.morales;
+  const { link } = await harness.issueInvitation(household, { locale: "es" });
+  await setNow(DEADLINE - 60_000);
+  await page.goto(harness.forBrowser(link));
+  await page.getByRole("button", { name: "Vamos todos" }).click();
+  await expect(page.getByRole("heading", { name: "Revisen su respuesta" })).toBeVisible();
+  const save = page.getByRole("button", { name: "Guardar mi respuesta" }),
+    alert = page.locator("#portal .error");
+  // Answered in another window in the meantime.
+  await page.route("**/api/rsvp", (route) =>
+    route.fulfill({ status: 409, json: { error: "RESPONSE_CHANGED" } }),
+  );
+  await save.click();
+  await expect(alert).toHaveText(
+    "Su respuesta cambió en otra ventana. Recarguen la página para revisar la última respuesta guardada.",
+  );
+  await page.unroute("**/api/rsvp");
+  await setNow(AFTER_DEADLINE);
+  await save.click();
+  await expect(alert).toHaveText("La fecha límite ya pasó. Por favor, escríbannos.");
+  expect(await responsesOf(harness, household)).toEqual([]);
 });
 
 test("a household that answers just before the deadline sees the RSVP closed right after it and cannot change it", async ({
@@ -286,11 +319,11 @@ test("a household that answers just before the deadline sees the RSVP closed rig
   await page.reload();
   await expect(
     page.getByText(
-      "The RSVP deadline has passed. To change your answer, please contact the family.",
+      "The RSVP deadline has passed. To change your answer, please contact us.",
     ),
   ).toBeVisible();
   await expect(
-    page.getByRole("link", { name: "Contact the family" }),
+    page.getByRole("link", { name: "Contact us" }),
   ).toBeVisible();
   await expect(page.getByRole("link", { name: "Edit response" })).toHaveCount(
     0,
@@ -328,14 +361,14 @@ for (const [kind, fragment] of [
         .getByRole("alert")
         .filter({ hasText: "This invitation link isn't working." }),
     ).toHaveText(
-      "This invitation link isn't working. It may be incomplete or replaced by a newer link; open your most recent invitation email or contact the family.",
+      "This invitation link isn't working. It may be incomplete or replaced by a newer link; open your most recent invitation email or contact us.",
     );
     await expect(
       page.getByRole("heading", { name: "Open your invitation" }),
     ).toBeVisible();
     // The broken link is neither kept in the address bar nor copied into the form.
     await expect(page).toHaveURL(harness.url("/rsvp/"));
-    await expect(page.getByLabel("Invitation code")).toHaveValue("");
+    await expect(page.getByLabel("Invitation link or code")).toHaveValue("");
     await expect(page.getByRole("button", { name: "Continue" })).toBeEnabled();
     const sessions = Object.values((await harness.ledger.read()).sessions);
     expect(sessions.filter((s) => s.kind === "guest")).toEqual([]);

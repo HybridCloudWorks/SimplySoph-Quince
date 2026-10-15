@@ -19,7 +19,8 @@ export const event = {
 //   driveMinutes: 15 — church to reception, shown on the route strip
 //   portraits: [{ album: "childhood" (a celebration album id), age, caption: { en, es }, src }]
 //     — gallery chapters, oldest first; a missing src shows the age as a placeholder
-//   parking, children: { en, es } — answers on Good to know
+//   dressCode, parking, children: { en, es } — answers on Questions and in the
+//     Schedule's "Good to know" box
 //   thanksNote: { en, es } — the thank-you page message, after the event
 export const family = {
   bio: null,
@@ -43,12 +44,12 @@ export const family = {
 // Padrino traditions for the public thank-you cards: the Spanish name in script,
 // the English name underneath, and a one-line meaning (from the approved idea book).
 export const padrinoTraditions = {
-  misa: { es: "de Misa", en: "Mass", meaning: { en: "Sponsor the Mass of thanksgiving that opens the day.", es: "Patrocinan la Misa de acción de gracias que abre el día." } },
-  vestido: { es: "de Vestido", en: "Gown", meaning: { en: "Give the gown Sophia wears into her new chapter.", es: "Regalan el vestido con el que Sophia entra a su nuevo capítulo." } },
+  misa: { es: "de Misa", en: "Mass", meaning: { en: "The Mass of thanksgiving that opens the day.", es: "La Misa de acción de gracias con la que empieza el día." } },
+  vestido: { es: "de Vestido", en: "Gown", meaning: { en: "The gown Sophia wears into her new chapter.", es: "El vestido con el que Sophia empieza su nueva etapa." } },
   corona: { es: "de Corona", en: "Tiara", meaning: { en: "A sign that she is a princess before God and her family.", es: "Señal de que es una princesa ante Dios y su familia." } },
-  zapatos: { es: "de Zapatos", en: "Shoes", meaning: { en: "Flats become heels at the reception: the step into young womanhood.", es: "Las zapatillas se cambian por tacones en la recepción: el paso a ser una joven mujer." } },
+  zapatos: { es: "de Zapatos", en: "Shoes", meaning: { en: "Flats become heels at the reception: the step into young womanhood.", es: "En la recepción, sus zapatos de piso se cambian por sus primeras zapatillas: el paso de niña a señorita." } },
   medalla: { es: "de Medalla", en: "Medal", meaning: { en: "A religious medal blessed during the ceremony, a sign of her faith.", es: "Una medalla bendecida durante la ceremonia, señal de su fe." } },
-  biblia: { es: "de Biblia y Rosario", en: "Bible & rosary", meaning: { en: "To keep God’s word and prayer close as she grows.", es: "Para mantener cerca la palabra de Dios y la oración mientras crece." } },
+  biblia: { es: "de Biblia y Rosario", en: "Bible & rosary", meaning: { en: "To keep God’s word and prayer close as she grows.", es: "Para que la palabra de Dios y la oración la acompañen mientras crece." } },
   anillo: { es: "de Anillo", en: "Ring", meaning: { en: "A circle with no end: her commitment to God, family and community.", es: "Un círculo sin fin: su compromiso con Dios, su familia y su comunidad." } },
   cojin: { es: "de Cojín", en: "Kneeler", meaning: { en: "The cushion Sophia kneels on at the altar.", es: "El cojín en el que Sophia se arrodilla ante el altar." } },
   ramo: { es: "de Ramo", en: "Bouquet", meaning: { en: "The flowers Sophia offers to Our Lady of Guadalupe.", es: "Las flores que Sophia ofrece a la Virgen de Guadalupe." } },
@@ -56,32 +57,58 @@ export const padrinoTraditions = {
   pastel: { es: "de Pastel", en: "Cake", meaning: { en: "The cake for the celebration.", es: "El pastel de la celebración." } },
   brindis: { es: "de Brindis", en: "Toast", meaning: { en: "The glasses for the family toast.", es: "Las copas para el brindis de la familia." } },
 };
+// One name per page: the header, section links and page titles all use these.
 export const routes = [
   ["", "Home", "Inicio"],
   ["sophia", "Meet Sophia", "Conoce a Sophia"],
-  ["details", "The celebration", "La celebración"],
+  ["details", "Schedule", "Programa"],
   ["ceremony", "Religious ceremony", "Ceremonia religiosa"],
   ["reception", "Dinner & reception", "Cena y recepción"],
-  ["rsvp", "Your invitation", "Tu invitación"],
+  ["rsvp", "RSVP", "Confirma tu asistencia"],
   ["rsvp/confirmed", "Your response", "Tu respuesta"],
   ["account", "My account", "Mi cuenta"],
   ["court", "Court of honor", "Corte de honor"],
-  ["padrinos", "With gratitude", "Con gratitud"],
-  ["gallery", "The moments", "Los momentos"],
-  ["share", "Share photos & videos", "Comparte fotos y videos"],
-  ["registry", "Registry", "Registro de regalos"],
-  ["travel", "Travel & stay", "Viaje y hospedaje"],
-  ["faq", "Good to know", "Lo que debes saber"],
+  ["padrinos", "Padrinos", "Padrinos"],
+  ["gallery", "Photos", "Fotos"],
+  ["share", "Share your photos", "Comparte tus fotos"],
+  ["registry", "Gifts", "Mesa de regalos"],
+  ["travel", "Travel", "Viaje"],
+  ["faq", "Questions", "Preguntas"],
   ["guestbook", "A note for Sophia", "Un mensaje para Sophia"],
-  ["contact", "Contact us", "Contáctanos"],
+  ["contact", "Contact", "Contacto"],
   ["privacy", "Privacy policy", "Política de privacidad"],
-  ["terms", "Media policy", "Política de medios"],
+  ["terms", "Photo & video policy", "Uso de fotos y videos"],
   ["whatsapp", "WhatsApp updates", "Mensajes WhatsApp"],
   // Title Case on purpose: the registered SMS campaign quotes these word for word.
   ["sms", "SMS Updates", "Mensajes SMS"],
   ["sms-terms", "SMS Terms", "Términos SMS"],
-  ["thank-you", "With love & thanks", "Con cariño y gratitud"],
+  ["thank-you", "Thank you", "Gracias"],
   ["404", "Page not found", "Página no encontrada"],
+];
+// Pages that wait for the family's words. Until one has content it still builds
+// for a direct visit, but nothing links to it: not the header, the home page or
+// another page. The links appear by themselves on the next build after the
+// family fills it in above.
+export const waitsFor = {
+  sophia: (f) => Boolean(f.bio || f.parentsMessage || f.moments.length),
+  court: (f) => f.court.length > 0,
+  padrinos: (f) => f.padrinos.length > 0,
+  "thank-you": (f) => Boolean(f.thanksNote || f.highlightVideo),
+};
+export const ready = (route, f = family) => !waitsFor[route] || waitsFor[route](f);
+// The header, in order: one link per section, to its first page with content.
+// A section's other pages are linked from a row under each of its page titles.
+// RSVP, sign-in and the language switch sit beside these; the policies and
+// message programs are in the footer.
+export const sections = [
+  { pages: ["thank-you"] },
+  { name: ["Sophia", "Sophia"], pages: ["sophia", "court", "padrinos"] },
+  { pages: ["details", "ceremony", "reception"] },
+  { pages: ["travel"] },
+  { pages: ["gallery", "share", "guestbook"] },
+  { pages: ["registry"] },
+  { pages: ["faq"] },
+  { pages: ["contact"] },
 ];
 export const adminRoutes = [
   ["admin/login", "Administrator sign-in"],
@@ -101,43 +128,43 @@ export const adminRoutes = [
 export const copy = {
   en: {
     date: "Friday, January 15, 2027",
-    deadline: "November 15, 2026 · 11:59 PM Central",
-    tagline: "A celebration of grace and golden dreams.",
+    deadline: "Sunday, November 15, 2026",
+    tagline: "Please join us as Sophia celebrates her fifteenth birthday.",
     intro: "Today begins a new chapter… join me to celebrate it.",
-    rsvp: "Respond to your invitation",
-    all: "Explore the celebration",
+    rsvp: "RSVP",
+    all: "See the schedule",
     home: "Home",
-    details: "Celebration",
-    people: "Our people",
-    memories: "Memories",
-    help: "Guest guide",
     language: "Español",
-    pending: "The family will share this detail here soon.",
+    languageShort: "ES",
+    signIn: "Sign in",
+    menu: "Menu",
+    site: "Sophia’s Quinceañera",
+    pending: "We’ll share this here soon.",
     time: "All times are local to Fort Worth, Texas.",
-    contact: "Questions? Contact the family",
-    invitationCaption: "Open the full invitation in a new tab ↗",
-    deadlineLabel: "Please RSVP by",
+    contact: "Questions? Contact us",
+    invitationCaption: "Open the full invitation in a new tab",
+    newTab: "(opens in a new tab)",
     footer: "With love,",
     loading: "Loading…",
   },
   es: {
     date: "Viernes, 15 de enero de 2027",
-    deadline: "15 de noviembre de 2026 · 11:59 p. m. (hora central)",
-    tagline: "Una celebración de gracia y sueños dorados.",
+    deadline: "domingo 15 de noviembre de 2026",
+    tagline: "Acompáñennos a celebrar los quince años de Sophia.",
     intro: "Hoy comienza un nuevo capítulo… acompáñame a celebrarlo.",
-    rsvp: "Responde a tu invitación",
-    all: "Explora la celebración",
+    rsvp: "Confirmar asistencia",
+    all: "Ver el programa",
     home: "Inicio",
-    details: "Celebración",
-    people: "Nuestra gente",
-    memories: "Recuerdos",
-    help: "Guía para invitados",
     language: "English",
-    pending: "La familia compartirá este detalle aquí pronto.",
+    languageShort: "EN",
+    signIn: "Iniciar sesión",
+    menu: "Menú",
+    site: "Los XV de Sophia",
+    pending: "Lo compartiremos aquí pronto.",
     time: "Todos los horarios son de Fort Worth, Texas.",
-    contact: "¿Preguntas? Contacta a la familia",
-    invitationCaption: "Abre la invitación completa en otra pestaña ↗",
-    deadlineLabel: "Confirma antes del",
+    contact: "¿Preguntas? Escríbenos",
+    invitationCaption: "Abre la invitación completa en otra pestaña",
+    newTab: "(se abre en otra pestaña)",
     footer: "Con cariño,",
     loading: "Cargando…",
   },
@@ -146,53 +173,53 @@ export const textContent = {
   sophia: [
     ["A new chapter", "Un nuevo capítulo"],
     [
-      "Turning fifteen is a moment to celebrate family, friendship, faith and the dreams ahead. Join Sophia for this special day.",
-      "Cumplir quince años es una ocasión para celebrar la familia, la amistad, la fe y los sueños por venir. Acompaña a Sophia en este día especial.",
+      "Sophia is turning fifteen. We’ll celebrate with a religious ceremony, then dinner and a dance, on Friday, January 15, 2027, in Fort Worth, Texas.",
+      "Sophia cumple quince años. Lo celebraremos con una ceremonia religiosa y después una cena con baile, el viernes 15 de enero de 2027, en Fort Worth, Texas.",
     ],
     [
-      "A message from Sophia and her parents will be added after the family shares it.",
-      "Agregaremos un mensaje de Sophia y sus padres cuando la familia lo comparta.",
+      "We’ll add a message from Sophia and her parents here soon.",
+      "Pronto agregaremos aquí un mensaje de Sophia y sus papás.",
     ],
   ],
   court: [
     ["By her side", "A su lado"],
     [
-      "The court of honor will join Sophia in celebrating this milestone.",
-      "La corte de honor acompañará a Sophia en esta celebración.",
+      "Sophia’s court of honor will be by her side on her big day.",
+      "La corte de honor acompañará a Sophia en su gran día.",
     ],
     [
-      "The family is preparing the names, roles and portraits.",
-      "La familia está preparando los nombres, los roles y los retratos.",
+      "We’ll share their names and photos here soon.",
+      "Pronto compartiremos aquí sus nombres y fotos.",
     ],
   ],
   padrinos: [
-    ["For every act of love", "Por cada muestra de cariño"],
+    ["Padrinos and madrinas", "Padrinos y madrinas"],
     [
-      "This celebration brings together the love and support of family and friends.",
-      "Esta celebración reúne el cariño y el apoyo de familiares y amigos.",
+      "They help make a quinceañera possible, each with a special part of the day.",
+      "Ayudan a hacer posibles los XV, y cada uno tiene una parte especial del día.",
     ],
     [
-      "Acknowledgements and padrino roles will be shared with the family’s approval.",
-      "Compartiremos los agradecimientos y los roles de los padrinos con la aprobación de la familia.",
+      "Soon we’ll thank Sophia’s padrinos and madrinas here by name.",
+      "Pronto daremos aquí las gracias, por nombre, a los padrinos y madrinas de Sophia.",
     ],
   ],
   travel: [
     ["Make yourself at home", "Siéntete como en casa"],
     [
-      "The celebration takes place in Fort Worth, Texas. Use the reception address to plan your route and allow time between venues.",
-      "La celebración será en Fort Worth, Texas. Usa la dirección de la recepción para planear tu ruta y deja tiempo para trasladarte entre los lugares.",
+      "The celebration is in Fort Worth, Texas. The ceremony and the reception are in different places, so plan time to drive from one to the other.",
+      "La celebración será en Fort Worth, Texas. La ceremonia y la recepción son en lugares distintos, así que calcula tiempo para manejar de uno a otro.",
     ],
     [
-      "Hotel suggestions, airport transportation and any room blocks will be shared once confirmed. Contact the family before making plans that depend on an unconfirmed detail.",
-      "Compartiremos sugerencias de hoteles, transporte y tarifas de grupo cuando estén confirmados. Consulta con la familia antes de reservar algo que dependa de un detalle pendiente.",
+      "We’ll share hotel and airport suggestions here soon.",
+      "Pronto compartiremos aquí sugerencias de hoteles y de cómo llegar desde el aeropuerto.",
     ],
   ],
   "thank-you": [
     ["A chapter to remember", "Un capítulo para recordar"],
     ["We look forward to celebrating together.", "Esperamos celebrar juntos."],
     [
-      "After January 15, this page will hold Sophia’s thank-you message and any approved highlights from the celebration.",
-      "Después del 15 de enero, aquí encontrarás el mensaje de agradecimiento de Sophia y los recuerdos aprobados de la celebración.",
+      "After the celebration, we’ll share Sophia’s thank-you message and favorite moments here.",
+      "Después de la celebración, compartiremos aquí el mensaje de agradecimiento de Sophia y los mejores momentos.",
     ],
   ],
 };

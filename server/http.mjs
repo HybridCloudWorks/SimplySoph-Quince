@@ -1,6 +1,8 @@
 import http from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
+import { pipeline } from "node:stream/promises";
+import { uploadLimits } from "../site/upload-batch.mjs";
 const types = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
@@ -8,6 +10,11 @@ const types = {
   ".mjs": "text/javascript; charset=utf-8",
   ".png": "image/png",
   ".svg": "image/svg+xml",
+  // The build's responsive images and icons (scripts/images.mjs).
+  ".avif": "image/avif",
+  ".webp": "image/webp",
+  ".jpg": "image/jpeg",
+  ".ico": "image/x-icon",
   ".txt": "text/plain; charset=utf-8",
   ".ics": "text/calendar; charset=utf-8",
 };
@@ -40,12 +47,15 @@ function apiLog(log, req, res, started, error) {
 // Kept identical to the Hosting header in firebase.json.
 export const permissionsPolicy =
   "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=(), browsing-topics=()";
+// One piece of a guest's photo or video upload: raw bytes, not JSON.
+const uploadPiece = /^\/api\/uploads\/[a-f0-9-]{36}$/;
 export function createHttpServer({ app = null, root, origin, log = null }) {
-  // Upload bodies (up to 12 MB, held several times over while read and
-  // parsed) being handled at once on this instance; more get a retryable
-  // UPLOAD_BUSY, so parallel uploads cannot exhaust memory (re-audit).
+  // Upload bodies being handled at once on this instance: pieces of a guest's
+  // file (up to 8 MiB, held about twice while read) and admin documents (up
+  // to 12 MB of JSON). More get a retryable UPLOAD_BUSY, so parallel uploads
+  // cannot exhaust memory (re-audit); the page tries the piece again.
   let uploads = 0;
-  const maxUploads = 3,
+  const maxUploads = 8,
     uploading = new Set();
   return http.createServer(async (req, res) => {
     const started = performance.now();
@@ -83,7 +93,7 @@ export function createHttpServer({ app = null, root, origin, log = null }) {
             status: 405,
             code: "METHOD_NOT_ALLOWED",
           });
-        let body;
+        let body, bytes;
         const webhook = [
           "/api/twilio/status",
           "/api/twilio/inbound",
@@ -92,7 +102,10 @@ export function createHttpServer({ app = null, root, origin, log = null }) {
         ].includes(url.pathname);
         // Cloud Scheduler sends no browser Origin; the app authenticates it
         // with a Google-signed OIDC token instead (server/scheduler.mjs).
-        const internal = url.pathname === "/api/internal/drain";
+        const internal = ["/api/internal/drain", "/api/internal/media"].includes(
+          url.pathname,
+        );
+        const piece = uploadPiece.test(url.pathname);
         if (req.method === "POST") {
           if (!webhook && !internal && req.headers.origin !== origin)
             throw Object.assign(new Error(), {
@@ -103,18 +116,16 @@ export function createHttpServer({ app = null, root, origin, log = null }) {
             !(
               webhook
                 ? /^application\/x-www-form-urlencoded(?:;|$)/i
-                : /^application\/json(?:;|$)/i
+                : piece
+                  ? /^application\/octet-stream(?:;|$)/i
+                  : /^application\/json(?:;|$)/i
             ).test(req.headers["content-type"] || "")
           )
             throw Object.assign(new Error(), {
               status: 415,
               code: "JSON_REQUIRED",
             });
-          const upload = [
-            "/api/photos",
-            "/api/videos",
-            "/api/admin/documents/upload",
-          ].includes(url.pathname);
+          const upload = piece || url.pathname === "/api/admin/documents/upload";
           // Uploads are only for signed-in visitors: without a current session
           // the body is refused before it is read, so strangers cannot hold
           // request slots or memory with large or slow uploads (re-audit).
@@ -152,7 +163,7 @@ export function createHttpServer({ app = null, root, origin, log = null }) {
               const elapsed = Date.now() - begun;
               if (upload && elapsed > 15000 && size / elapsed < 16)
                 throw Object.assign(new Error(), { status: 408, code: "UPLOAD_TOO_SLOW" });
-              if (size > (upload ? 12_000_000 : 120_000))
+              if (size > (piece ? uploadLimits.maxPiece : upload ? 12_000_000 : 120_000))
                 throw Object.assign(new Error(), {
                   status: 413,
                   code: "BODY_TOO_LARGE",
@@ -162,29 +173,35 @@ export function createHttpServer({ app = null, root, origin, log = null }) {
           } finally {
             clearTimeout(timer);
           }
-          try {
-            const raw = Buffer.concat(chunks).toString();
-            if (webhook) {
-              if (size > 16000 || url.search) throw new Error();
-              const fields = new URLSearchParams(raw);
-              body = Object.fromEntries(fields);
-              if ([...fields].length !== Object.keys(body).length)
+          if (piece) {
+            // The bytes go to the app as they came; the route checks them.
+            bytes = Buffer.concat(chunks);
+            body = {};
+          } else
+            try {
+              const raw = Buffer.concat(chunks).toString();
+              if (webhook) {
+                if (size > 16000 || url.search) throw new Error();
+                const fields = new URLSearchParams(raw);
+                body = Object.fromEntries(fields);
+                if ([...fields].length !== Object.keys(body).length)
+                  throw new Error();
+              } else body = JSON.parse(raw);
+              if (!body || typeof body !== "object" || Array.isArray(body))
                 throw new Error();
-            } else body = JSON.parse(raw);
-            if (!body || typeof body !== "object" || Array.isArray(body))
-              throw new Error();
-          } catch {
-            throw Object.assign(new Error(), {
-              status: 400,
-              code: "INVALID_JSON",
-            });
-          }
+            } catch {
+              throw Object.assign(new Error(), {
+                status: 400,
+                code: "INVALID_JSON",
+              });
+            }
         }
         const result = await app.dispatch({
           path: url.pathname,
           query: Object.fromEntries(url.searchParams),
           method: req.method,
           body,
+          bytes,
           headers: req.headers,
           ip: req.socket.remoteAddress || "unknown",
         });
@@ -201,6 +218,28 @@ export function createHttpServer({ app = null, root, origin, log = null }) {
             res.setHeader("Content-Range", result.contentRange);
           if (result.acceptRanges) res.setHeader("Accept-Ranges", "bytes");
           res.end(result.binary);
+          return;
+        }
+        // Stored media, streamed from storage a range at a time.
+        if (result.stream !== undefined) {
+          res.setHeader("Content-Type", result.contentType);
+          res.setHeader("Content-Length", String(result.length));
+          if (result.disposition)
+            res.setHeader("Content-Disposition", result.disposition);
+          if (result.status) res.statusCode = result.status;
+          if (result.contentRange)
+            res.setHeader("Content-Range", result.contentRange);
+          if (result.acceptRanges) res.setHeader("Accept-Ranges", "bytes");
+          if (!result.stream) {
+            res.end();
+            return;
+          }
+          // Headers are already sent, so a storage failure mid-way can only
+          // cut the response short; the player or download sees that.
+          await pipeline(result.stream, res).catch((e) => {
+            failure = e;
+            res.destroy();
+          });
           return;
         }
         res.setHeader("Content-Type", "application/json");
