@@ -283,6 +283,59 @@ body[data-route="share"] .page > :not(.page-heading) {
 .upload-result small {
   display: block;
 }
+/* Each file's state, its progress bar while sending, and "Try again" when a
+   piece could not be delivered. */
+.upload-status {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+.upload-progress {
+  display: block;
+  width: 100%;
+  height: 8px;
+  accent-color: var(--wine);
+}
+.upload-status .plain-button {
+  justify-self: start;
+  min-height: 44px;
+}
+/* /share/ before sign-in: three numbered steps, then the sign-in form. */
+.share-steps {
+  margin: 24px 0;
+  padding: 20px 22px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.share-steps h2 {
+  margin-top: 0;
+}
+.share-steps ol {
+  margin: 0;
+  padding-left: 1.3em;
+  display: grid;
+  gap: 8px;
+}
+.share-steps li::marker {
+  color: var(--wine);
+  font-weight: 700;
+}
+/* The gallery's single state (signed out, nothing approved yet). */
+.gallery-panel {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+  max-width: 640px;
+}
+.gallery-panel h2,
+.gallery-panel p {
+  margin: 0;
+}
+.album-title small {
+  display: block;
+  font-size: 0.8em;
+  color: var(--muted);
+}
 .media-reminder {
   padding: 20px 0 0;
   margin-top: 24px;
