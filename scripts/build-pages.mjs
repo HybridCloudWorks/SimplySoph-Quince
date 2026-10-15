@@ -206,7 +206,7 @@ function contents(route, lang) {
   // The photo is built here once; live settings re-render only the facts.
   if (route === "ceremony" || route === "reception") {
     const v = celebration[route];
-    body = `<div class="venue-layout venue-${route}"><div data-venue="${route}">${venueSection(route, celebration, lang)}</div><figure class="venue-image">${picture(images[route === "ceremony" ? "church" : "reception"], { alt: esc(v.name), sizes: "(max-width: 760px) calc(100vw - 32px), 600px" })}<figcaption>${esc(v.name)}</figcaption></figure></div>`;
+    body = `<div class="venue-layout venue-${route}"><div data-venue="${route}">${venueSection(route, celebration, lang)}</div><figure class="venue-image">${picture(images[route === "ceremony" ? "church" : "reception"], { alt: esc((route === "ceremony" ? say("Front of ", "Fachada de ") : say("Entrance of ", "Entrada de ")) + v.name), sizes: "(max-width: 760px) calc(100vw - 32px), 600px" })}<figcaption>${esc(v.name)}</figcaption></figure></div>`;
   }
   // The deadline is shown inside the RSVP itself (site/guest.js).
   if (route === "rsvp" || route === "rsvp/confirmed")
