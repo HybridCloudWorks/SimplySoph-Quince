@@ -465,11 +465,27 @@ async function seating() {
         })),
   );
 }
+// A guest video is converted by the scheduled media job before it can play;
+// until then (or when it could not be) its card says so instead of a player.
+const conversionProblems = {
+  VIDEO_TOO_LONG: "it is longer than 60 seconds",
+  INVALID_VIDEO: "the file could not be read as a video",
+  PROCESSING_FAILED: "conversion failed 3 times; see the API logs",
+};
+function mediaPreview(r) {
+  if (r.state === "processing")
+    return `<p class="notice">Converting this video for the gallery. It is usually ready within 10 minutes; approve it once it plays here.</p>`;
+  if (r.state === "failed")
+    return `<p class="notice">This video could not be converted: ${esc(conversionProblems[r.problem] || r.problem || "unknown reason")}. The guest was told on the upload page if it was still open. Remove it from display, or ask them to send it again.</p>`;
+  return r.kind === "video"
+    ? `<video controls playsinline preload="${r.poster ? "none" : "metadata"}"${r.poster ? ` poster="/api/photo/${esc(r.id)}?poster=1"` : ""} src="/api/photo/${esc(r.id)}"></video>`
+    : `<img src="/api/photo/${esc(r.id)}" alt="Pending photo">`;
+}
 async function moderation() {
   const d = await api("admin/moderation"),
     photos = view === "admin/photos",
     rows = photos ? d.photos : d.messages;
-  root.innerHTML = `<p>${photos ? "Photos and videos are visible only to signed-in guests after approval. Rejected items remain hidden." : "Contact messages always remain private. Guestbook messages require approval before publication."}</p><div class="cards">${rows.map((r) => `<article class="card">${photos ? `${r.kind === "video" ? `<video controls playsinline preload="metadata" src="/api/photo/${esc(r.id)}"></video>` : `<img src="/api/photo/${esc(r.id)}" alt="Pending photo">`}<p>${esc(r.caption)}</p>` : `<h3>${esc(r.name)}</h3><p>${esc(topicLabel(r.topic))}</p><p>${esc(r.email || "")}</p><p>${esc(r.text)}</p><span class="badge">${esc(r.kind)}</span>`}<p>Status: ${esc(r.state)}</p>${photos ? `<label>Album<select data-media-album="${esc(r.id)}">${(d.albums || []).map((a) => `<option value="${esc(a.id)}"${a.id === (r.album || "event") ? " selected" : ""}>${esc(a.en)}</option>`).join("")}</select></label>` : ""}<div class="row-actions">${r.kind !== "contact" ? button("Approve", "approve", r.id) : ""}${button("Remove from display", "reject", r.id)}</div></article>`).join("") || "<p>No submissions yet.</p>"}</div>`;
+  root.innerHTML = `<p>${photos ? "Photos and videos are visible only to signed-in guests after approval. Rejected items remain hidden." : "Contact messages always remain private. Guestbook messages require approval before publication."}</p><div class="cards">${rows.map((r) => `<article class="card">${photos ? `${mediaPreview(r)}<p>${esc(r.caption)}</p>` : `<h3>${esc(r.name)}</h3><p>${esc(topicLabel(r.topic))}</p><p>${esc(r.email || "")}</p><p>${esc(r.text)}</p><span class="badge">${esc(r.kind)}</span>`}<p>Status: ${esc(r.state)}</p>${photos ? `<label>Album<select data-media-album="${esc(r.id)}">${(d.albums || []).map((a) => `<option value="${esc(a.id)}"${a.id === (r.album || "event") ? " selected" : ""}>${esc(a.en)}</option>`).join("")}</select></label>` : ""}<div class="row-actions">${r.kind !== "contact" && !["processing", "failed"].includes(r.state) ? button("Approve", "approve", r.id) : ""}${button("Remove from display", "reject", r.id)}</div></article>`).join("") || "<p>No submissions yet.</p>"}</div>`;
   if (photos)
     root.insertAdjacentHTML(
       "afterbegin",
