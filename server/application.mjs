@@ -1868,20 +1868,21 @@ export function createApplication({
         throw error(422, "INVALID_ALBUM");
       const caption = safeText(body.caption || "", 200);
       // 20 photos and videos per household a day, said plainly to the guest.
-      await rateLimit(
-        ledger,
-        hash("photo:" + session.householdId),
-        uploadLimits.perDay,
-        86400000,
-        now(),
-      ).catch((e) => {
-        throw e.status === 429 ? error(429, "DAILY_UPLOAD_LIMIT") : e;
-      });
+      // Checked here before storage opens a session, and again when saving.
+      const full = (s) =>
+        begunToday(s, session.householdId).length >= uploadLimits.perDay;
+      if (full(ctx.state)) throw error(429, "DAILY_UPLOAD_LIMIT");
       const id = randomUUID(),
         uri = await media.begin(id, type).catch(storageTrouble);
       const dropped = await ledger.transaction((s) => {
         s.uploads ??= {};
+        s.uploadsBegun ??= {};
         const gone = expireUploads(s);
+        if (full(s)) throw error(429, "DAILY_UPLOAD_LIMIT");
+        s.uploadsBegun[session.householdId] = [
+          ...begunToday(s, session.householdId),
+          now(),
+        ];
         // At most one batch of unfinished uploads per person: opening one
         // more gives up the oldest (its pieces then find nothing).
         const open = Object.values(s.uploads)
@@ -1907,6 +1908,10 @@ export function createApplication({
           consentAt: now(),
         };
         return gone;
+      }).catch(async (e) => {
+        // Another upload took the last place meanwhile.
+        if (e.code === "DAILY_UPLOAD_LIMIT") await media.cancel(uri);
+        throw e;
       });
       await discardUploads(dropped);
       return { id };
@@ -2836,7 +2841,20 @@ export function createApplication({
         delete s.uploads[u.id];
         if (u.state === "receiving") gone.push(u);
       }
+    for (const householdId of Object.keys(s.uploadsBegun || {}))
+      if (!begunToday(s, householdId).length) delete s.uploadsBegun[householdId];
     return gone;
+  }
+  // The 20 a day: when each of a household's uploads in the last 24 hours
+  // began. Kept in the ledger, so a restart, scaling to zero or the second
+  // instance cannot start the day over (as the in-memory counter did), and
+  // counted as each upload begins, so one given up for a newer batch (its
+  // record is deleted), refused or never finished still counts: each may
+  // bring up to 300 MB.
+  function begunToday(s, householdId) {
+    return (s.uploadsBegun?.[householdId] || []).filter(
+      (at) => at > now() - 86400000,
+    );
   }
   async function discardUploads(list) {
     for (const u of list) {

@@ -21,7 +21,8 @@ const origin = "https://misxv.simplysoph.com",
 const MiB = 1024 * 1024;
 
 async function fixture(options = {}) {
-  const ledger = new Ledger(memoryAdapter()),
+  const saved = memoryAdapter(),
+    ledger = new Ledger(saved),
     media = options.media || memoryMedia(),
     sent = [],
     logs = [];
@@ -34,22 +35,25 @@ async function fixture(options = {}) {
     validCapacity: true,
     archived: false,
   };
-  const app = createApplication({
-    ledger,
-    notion: {
-      read: async () => structuredClone(row),
-      list: async () => [structuredClone(row)],
-    },
-    mailer: { configured: true, send: async (m) => sent.push(m) },
-    verifyGoogle: async () => ({ id: "x", email: "owner@example.com" }),
-    media,
-    key,
-    origin,
-    adminEmails: ["owner@example.com"],
-    now: () => clock,
-    log: (entry) => logs.push(entry),
-    ...options,
-  });
+  // One API instance. Rate-limit counters live in memory per ledger object.
+  const launch = (ledger) =>
+    createApplication({
+      ledger,
+      notion: {
+        read: async () => structuredClone(row),
+        list: async () => [structuredClone(row)],
+      },
+      mailer: { configured: true, send: async (m) => sent.push(m) },
+      verifyGoogle: async () => ({ id: "x", email: "owner@example.com" }),
+      media,
+      key,
+      origin,
+      adminEmails: ["owner@example.com"],
+      now: () => clock,
+      log: (entry) => logs.push(entry),
+      ...options,
+    });
+  let app = launch(ledger);
   // A signed-in guest (their email on the household's row), a second person
   // from another household, a link-only session, and the owner.
   const sessions = {};
@@ -131,7 +135,12 @@ async function fixture(options = {}) {
     }
   }
   return {
-    app,
+    get app() {
+      return app;
+    },
+    // The API restarts (or the second instance answers): the same ledger and
+    // storage, nothing that was kept in memory.
+    restart: () => (app = launch(new Ledger(saved))),
     ledger,
     media,
     sent,
@@ -282,6 +291,50 @@ test("uploads are refused up front when too large, of an unknown or HEIC type, o
   assert.ok((await ask({ kind: "photo", type: "image/jpeg", size: 40 * MiB })).id);
   for (let i = 2; i < 20; i++) await ask({ kind: "photo", type: "image/png", size: 10 });
   await assert.rejects(ask({ kind: "photo", type: "image/webp", size: 10 }), (e) => e.status === 429 && e.code === "DAILY_UPLOAD_LIMIT");
+});
+
+test("the 20 a day per household is counted in the ledger: a restart or a second instance does not reset it", async () => {
+  const f = await fixture();
+  const ask = () => f.guest("uploads", { kind: "video", type: "video/mp4", size: 300 * MiB, album: "event", caption: "", consent: true });
+  const full = (e) => e.status === 429 && e.code === "DAILY_UPLOAD_LIMIT";
+  const records = async () => Object.keys((await f.state()).uploads).length;
+  // One finished photo and 11 begun (opening the 11th gives up the oldest
+  // unfinished one, which still counts), then the instance restarts.
+  const photo = await f.upload(await photoBytes(200, 100));
+  for (let i = 0; i < 11; i++) await ask();
+  f.advance(3600000);
+  f.restart();
+  for (let i = 0; i < 8; i++) await ask();
+  const before = await records();
+  await assert.rejects(ask(), full);
+  // Nor does another restart, or the other instance, start the day over.
+  f.restart();
+  await assert.rejects(ask(), full);
+  assert.equal(await records(), before, "a refused upload leaves no record");
+  // A day after the first 12 began, there is room for 12 more.
+  f.advance(23 * 3600000 + 1000);
+  f.restart();
+  for (let i = 0; i < 12; i++) await ask();
+  await assert.rejects(ask(), full);
+  assert.equal((await f.state()).photos[photo.id].state, "pending", "the photo itself stays");
+});
+
+test("two uploads at once for the household's last place today: one is refused as it is saved, and its storage session is cancelled", async () => {
+  const f = await fixture();
+  await f.ledger.transaction((s) => (s.uploadsBegun = { [household]: Array(19).fill(at - 3600000) }));
+  const cancelled = [],
+    cancel = f.media.cancel.bind(f.media);
+  f.media.cancel = (uri) => (cancelled.push(uri), cancel(uri));
+  const ask = () => f.guest("uploads", { kind: "photo", type: "image/jpeg", size: 10, album: "event", caption: "", consent: true });
+  const both = await Promise.allSettled([ask(), ask()]);
+  assert.deepEqual(both.map((r) => r.status).sort(), ["fulfilled", "rejected"]);
+  const { reason } = both.find((r) => r.status === "rejected");
+  assert.equal(reason.code, "DAILY_UPLOAD_LIMIT");
+  assert.equal(Object.keys((await f.state()).uploads).length, 1);
+  assert.equal(cancelled.length, 1, "nothing is left open in storage");
+  // The page can then tell the guest plainly, without opening anything more.
+  await assert.rejects(ask(), (e) => e.code === "DAILY_UPLOAD_LIMIT");
+  assert.equal(cancelled.length, 1);
 });
 
 test("a HEIC photo, or a file that is not a photo, is refused after its last piece with a reason, and nothing is kept", async () => {
@@ -521,6 +574,7 @@ test("unfinished uploads are given up after a day, and a person keeps at most on
   const result = await f.app.processMedia();
   assert.equal(result.abandoned, 9);
   assert.deepEqual((await f.state()).uploads, {}, "finished and abandoned records are both gone");
+  assert.deepEqual((await f.state()).uploadsBegun, {}, "and so is the day's count");
   assert.equal((await f.state()).photos[done.id].state, "pending", "the photo itself stays");
   // Nothing is left in storage from the abandoned ones.
   assert.deepEqual([...f.media.objects.keys()].filter((k) => k.startsWith("private/uploads/")), []);
