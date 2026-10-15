@@ -30,7 +30,7 @@ test('dates and times stay in Windows-1252 and read naturally',()=>{
 });
 test('invitation reads like a letter: date subject, places, Sophia’s words, contacts line',()=>{
   const r=renderEmail({...base,eventDate:'Friday, January 15, 2027',rsvpDeadline:'Sunday, November 15, 2026',schedule:emailSchedule(celebration,{ceremony:true,dinner:true,dance:true}),note:firstSentence(celebration.quote.en)});
-  assert.equal(r.subject,'Sophia’s Mis XV · Friday, January 15, 2027');
+  assert.equal(r.subject,'Sophia’s quinceañera · Friday, January 15, 2027');
   assert.ok(r.html.includes('Our Lady of Guadalupe Church')&&r.html.includes('4:00 PM'));
   assert.ok(r.html.includes('Turning 15 is such a special moment in my life'));
   assert.ok(r.html.includes('Please let us know by <strong>Sunday, November 15, 2026</strong>.'));
