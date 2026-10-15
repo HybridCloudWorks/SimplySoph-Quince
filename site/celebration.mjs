@@ -193,9 +193,6 @@ export function invitationAlt(c = celebration, lang = "en") {
     lang,
   );
 }
-export function albumCards(c = celebration, lang = "en") {
-  return `<div class="album-grid">${c.albums.map((a, i) => `<button type="button" class="album-card album-${i % 3}" data-album="${escapeHtml(a.id)}"><span class="album-art" aria-hidden="true">${["✦", "♡", "✧", "❀", "♕", "✶"][i % 6]}</span><span class="album-title">${escapeHtml(a[lang])}</span><span class="album-overlay">${label("Explore this album", "Explora este álbum", lang)}</span></button>`).join("")}</div>`;
-}
 export function registryCards(items, lang = "en") {
   return `<div class="registry-grid">${items.map((r) => `<article class="registry-card">${r.logo ? `<img src="${escapeHtml(r.logo)}" width="72" height="72" alt="${escapeHtml(r.name)}">` : ""}<h2>${escapeHtml(r.name)}</h2><p>${escapeHtml(r.description[lang])}</p>${r.url ? `<a class="button burgundy" href="${escapeHtml(r.url)}" target="_blank" rel="noopener noreferrer">${label("See the registry", "Ver mesa de regalos", lang)}${newTab(lang)}</a>` : `<p class="hint">${label("Registry link coming soon.", "El enlace estará disponible pronto.", lang)}</p>`}</article>`).join("")}</div>`;
 }

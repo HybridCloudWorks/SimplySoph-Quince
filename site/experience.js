@@ -1,9 +1,7 @@
 import {
   celebration,
   venueSection,
-  albumCards,
   registryCards,
-  calendarLink,
   scheduleStrip,
   scheduleList,
   localDate,
@@ -12,18 +10,6 @@ import {
 const lang = document.documentElement.lang === "es" ? "es" : "en";
 export let eventContent = celebration;
 export let liveContent = false;
-export function calendars(c = eventContent, live = liveContent) {
-  const names =
-    lang === "es"
-      ? ["Ceremonia", "Cena", "Recepción"]
-      : ["Ceremony", "Dinner", "Reception"];
-  return ["ceremony", "dinner", "reception"]
-    .map(
-      (kind, i) =>
-        `<div><strong>${names[i]}</strong>${calendarLink(kind, c, lang, live)}</div>`,
-    )
-    .join("");
-}
 // The home page's countdown counts what a guest can act on: the time left to
 // reply until the RSVP deadline, then the time until the celebration. It reads
 // as plain text under a visible label, changes once a minute (never seconds),
@@ -111,10 +97,6 @@ export const experienceReady = (async () => {
       el.innerHTML = scheduleStrip(c, lang);
     for (const el of document.querySelectorAll("[data-schedule]"))
       el.innerHTML = scheduleList(c, lang, true);
-    const albums = document.querySelector("[data-album-cards]");
-    if (albums) albums.innerHTML = albumCards(c, lang);
-    for (const el of document.querySelectorAll("[data-calendar-links]"))
-      el.innerHTML = calendars();
     // "viernes, 15 de enero de 2027" starts a line, so it takes a capital.
     const day = localDate(c.ceremony.start, lang);
     for (const el of document.querySelectorAll("[data-event-date]"))

@@ -87,6 +87,17 @@ test("the family's portraits open the gallery, one album at a time, in both lang
   }
 });
 
+test("every hook the live event settings fill is on a built page", async () => {
+  // site/experience.js redraws these from the admin's settings; a hook that
+  // no page has any more is dead code.
+  const source = await readFile(new URL("../site/experience.js", import.meta.url), "utf8");
+  const hooks = [...source.matchAll(/querySelector(?:All)?\("\[(data-[a-z-]+)\]"\)/g)].map((m) => m[1]);
+  assert.ok(hooks.includes("data-countdown"));
+  let html = "";
+  for (const [, file] of await guestPages()) html += await page(file);
+  for (const hook of hooks) assert.ok(new RegExp(`\\s${hook}[\\s=>]`).test(html), hook);
+});
+
 test("the header is a flat list: sections, sign in, language pill, RSVP and a menu button", async () => {
   for (const [lang, file, names, signIn] of [
     ["en", "index.html", ["Schedule", "Travel", "Photos", "Gifts", "Questions", "Contact"], "Sign in"],

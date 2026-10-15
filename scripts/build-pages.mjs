@@ -215,8 +215,8 @@ function contents(route, lang) {
       // Guests' photos and videos are private (signed-in guests only), so the
       // page starts with one panel that site/guest.js fills: sign in, nothing
       // yet, or the albums and sections that actually have something in them
-      // (data-gallery-albums: site/experience.js fills [data-album-cards]
-      // with every album, media or not).
+      // (data-gallery-albums: a card per album with media, when there is more
+      // than one to choose between).
       '<div class="gallery-state" data-gallery-state><p role="status">' +
       say("Opening the gallery…", "Abriendo la galería…") +
       '</p></div><div data-gallery-albums hidden></div><section class="gallery-section" data-photos-section hidden><h2>' +

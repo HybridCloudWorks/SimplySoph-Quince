@@ -8,7 +8,6 @@ import {
   scheduleStrip,
   scheduleList,
   invitationAlt,
-  albumCards,
   registryCards,
 } from "../site/celebration.mjs";
 import { validateSettings } from "../server/site-settings.mjs";
@@ -73,12 +72,11 @@ test("calendar and map links say what they do in the page's language", () => {
     assert.doesNotMatch(html, /↗/);
     assert.match(html, /<svg class="icon" aria-hidden="true"/);
   }
-  // Links to other sites say they open a new tab; in-page buttons point nowhere.
+  // Links to other sites say they open a new tab.
   assert.match(
     maps(celebration.ceremony.address, "es"),
     /↗<\/span><span class="visually-hidden"> \(se abre en otra pestaña\)/,
   );
-  assert.doesNotMatch(albumCards(celebration), /↗/);
   assert.match(
     registryCards([{ name: "Store", description: { en: "Wishes", es: "Deseos" }, url: "https://example.com/" }]),
     /target="_blank"[^>]*>See the registry<span class="ext" aria-hidden="true">↗/,
