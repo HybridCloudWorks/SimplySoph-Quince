@@ -83,5 +83,5 @@ function verification(root, data) {
   }
   if (parsed.protocol !== "https:" || parsed.hostname !== "wa.me") return;
   root.querySelector(".whatsapp-verification").innerHTML =
-    `<p>${tr("One more step: open WhatsApp and send the prepared START message from this phone. Saving this form alone does not subscribe you. Return and refresh this page after sending.", "Un paso más: abre WhatsApp y envía el mensaje START preparado desde este teléfono. Guardar este formulario no completa la suscripción. Después, vuelve y actualiza esta página.")}</p><a class="button outline" href="${esc(parsed.href)}" target="_blank" rel="noopener noreferrer">${tr("Verify in WhatsApp","Verificar en WhatsApp")} ↗</a>`;
+    `<p>${tr("One more step: open WhatsApp and send the prepared START message from this phone. Saving this form alone does not subscribe you. Return and refresh this page after sending.", "Un paso más: abre WhatsApp y envía el mensaje START preparado desde este teléfono. Guardar este formulario no completa la suscripción. Después, vuelve y actualiza esta página.")}</p><a class="button outline" href="${esc(parsed.href)}" target="_blank" rel="noopener noreferrer">${tr("Verify in WhatsApp","Verificar en WhatsApp")} <span aria-hidden="true">↗</span></a>`;
 }

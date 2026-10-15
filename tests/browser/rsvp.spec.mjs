@@ -224,7 +224,7 @@ test("after the deadline the Spanish page shows the closed note in Spanish", asy
     ),
   ).toBeVisible();
   await expect(
-    page.getByRole("link", { name: "Contacta a la familia" }),
+    page.getByRole("link", { name: "Contactar a la familia" }),
   ).toHaveAttribute("href", "/es/contact/");
   await expect(page.getByRole("button", { name: "Revisar respuesta" })).toHaveCount(0);
   expect(await responsesOf(harness, household)).toEqual([]);
