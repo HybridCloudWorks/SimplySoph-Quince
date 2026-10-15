@@ -301,10 +301,12 @@ async function accountPage(inv) {
   );
   document.querySelector("#guest-logout").onclick = async () => {
     await api("logout", {});
+    dropAllDrafts();
     location.reload();
   };
   document.querySelector("#guest-logout-all").onclick = async () => {
     await api("logout-all", {});
+    dropAllDrafts();
     location.reload();
   };
   const profileForm = document.querySelector("#profile-form"),
@@ -493,6 +495,16 @@ function dropDraft(inv) {
   if (!draftKey(inv)) return;
   try {
     sessionStorage.removeItem(draftKey(inv));
+  } catch {
+    /* nothing was kept */
+  }
+}
+// Signing out leaves none of the household's answers (contact details
+// included) in this tab for the next person to use it.
+function dropAllDrafts() {
+  try {
+    for (const key of Object.keys(sessionStorage))
+      if (key.startsWith("misxv-rsvp")) sessionStorage.removeItem(key);
   } catch {
     /* nothing was kept */
   }

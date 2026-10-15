@@ -145,6 +145,27 @@ test("the quick answers check the contact email first, while it can still be fix
   await expect(page).toHaveURL(harness.url("/rsvp/confirmed/"));
 });
 
+test("signing out clears the RSVP answers, contact details included, kept in this tab", async ({
+  page,
+  harness,
+}) => {
+  const household = households.rivera;
+  await harness.issueInvitation(household);
+  const drafts = () =>
+    page.evaluate(() => Object.keys(sessionStorage).filter((k) => k.startsWith("misxv-rsvp")));
+  for (const button of ["Sign out", "Sign out on all devices"]) {
+    await page.goto(harness.url("/rsvp/"));
+    await signIn(page, harness, household.email);
+    await page.locator("#response").getByRole("textbox", { name: "Email" }).fill("someone.else@example.com");
+    expect(await drafts()).toHaveLength(1);
+    await page.goto(harness.url("/account/"));
+    await page.getByRole("button", { name: button, exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Open your invitation" })).toBeVisible();
+    await expect(page.getByText(/Your answers are kept in this tab/)).toHaveCount(0);
+    expect(await drafts()).toEqual([]);
+  }
+});
+
 test("My account puts the household’s RSVP first, labels contact fields for autofill, and saves in place", async ({
   page,
   harness,
