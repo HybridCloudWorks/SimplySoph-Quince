@@ -986,10 +986,14 @@ async function gallery() {
       .join("")}</div>`;
     cards.hidden = false;
   }
-  const figure = (p) =>
-    p.kind === "video"
-      ? `<figure><video controls playsinline preload="${p.poster ? "none" : "metadata"}"${p.poster ? ` poster="${esc(p.poster)}"` : ""} src="${esc(p.url)}"></video><figcaption>${esc(p.caption)}</figcaption><a href="${esc(p.url)}?download=1" download>${tr("Download", "Descargar")}</a></figure>`
-      : `<figure><img loading="lazy" alt="${esc(p.caption || tr("Photo from the celebration", "Foto de la celebración"))}" src="${esc(p.url)}"><figcaption>${esc(p.caption)}</figcaption><a href="${esc(p.url)}?download=1" download>${tr("Download", "Descargar")}</a></figure>`;
+  const figure = (p) => {
+    // No empty caption box under media that has none.
+    const caption = p.caption ? `<figcaption>${esc(p.caption)}</figcaption>` : "",
+      download = `<a href="${esc(p.url)}?download=1" download>${tr("Download", "Descargar")}</a>`;
+    return p.kind === "video"
+      ? `<figure><video controls playsinline preload="${p.poster ? "none" : "metadata"}"${p.poster ? ` poster="${esc(p.poster)}"` : ""} src="${esc(p.url)}"></video>${caption}${download}</figure>`
+      : `<figure><img loading="lazy" alt="${esc(p.caption || tr("Photo from the celebration", "Foto de la celebración"))}" src="${esc(p.url)}">${caption}${download}</figure>`;
+  };
   function render(album = "") {
     const rows = items.filter((p) => !album || p.album === album);
     for (const [kind, node] of [

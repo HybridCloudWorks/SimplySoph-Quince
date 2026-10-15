@@ -186,7 +186,7 @@ export function mediaUpload(portal, albums) {
   const failed = (e) =>
     ["invalid", "rejected", "failed"].includes(e.state) || (e.state === "queued" && e.problem);
   const row = (e, i) =>
-    `<li class="upload-result" data-state="${esc(e.state)}"><span class="upload-file-name">${esc(e.file.name)}<small>${esc(mb(e.size))}</small></span><span class="upload-status${failed(e) ? " error" : ""}"><span data-status="${i}">${esc(status(e))}</span>${["uploading", "paused"].includes(e.state) ? `<progress max="100" value="${progress(e)}" data-progress="${i}" aria-label="${esc(e.file.name)}"></progress>` : ""}${e.state === "paused" && !busy ? `<button type="button" class="plain-button" data-retry>${tr("Try again", "Reintentar")}</button>` : ""}</span></li>`;
+    `<li class="upload-result" data-state="${esc(e.state)}"><span class="upload-file-name">${esc(e.file.name)}<small>${esc(mb(e.size))}</small></span><span class="upload-status${failed(e) ? " error" : ""}"><span data-status="${i}">${esc(status(e))}</span>${["uploading", "paused"].includes(e.state) ? `<progress class="upload-progress" max="100" value="${progress(e)}" data-progress="${i}" aria-label="${esc(e.file.name)}"></progress>` : ""}${e.state === "paused" && !busy ? `<button type="button" class="plain-button" data-retry>${tr("Try again", "Reintentar")}</button>` : ""}</span></li>`;
   const render = () => {
     // Progress alone changes the numbers in place; anything else redraws the
     // list (keeping focus on a Try again button is not needed while sending).
