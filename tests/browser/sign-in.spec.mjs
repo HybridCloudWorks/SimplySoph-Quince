@@ -10,8 +10,12 @@ const accountLink = /href="(https:\/\/127\.0\.0\.1:\d+\/(?:es\/)?account\/#[A-Za
 // Requests a sign-in link from the page open now and follows it.
 async function signIn(page, harness, email, { button = "Email my sign-in link", proceed = "Continue" } = {}) {
   await page.getByRole("textbox", { name: /Email|Correo/ }).first().fill(email);
+  const before = harness.sent.length;
   await page.getByRole("button", { name: button }).click();
-  const mail = harness.sent.at(-1);
+  // Sign-in requests answer in no less than 0.9 s by design, so the email is
+  // read once it has actually been sent, not right after the click.
+  await expect.poll(() => harness.sent.slice(before).some((m) => m.to === email)).toBe(true);
+  const mail = harness.sent.slice(before).findLast((m) => m.to === email);
   await page.goto(harness.forBrowser(mail.html.match(accountLink)[1]));
   await page.getByRole("button", { name: proceed, exact: true }).click();
   return mail;
