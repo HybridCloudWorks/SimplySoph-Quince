@@ -428,6 +428,12 @@ a[aria-current="page"] {
 .route-strip :focus-visible {
   outline-color: var(--gold);
 }
+/* focusOn() (client.js) gives a new step's heading or a saved/error message
+   tabindex="-1" only so screen readers announce it; it is not a control, so it
+   draws no ring. The error summary keeps its ring: guests tab through it. */
+[tabindex="-1"]:not(.error-summary):focus {
+  outline: none;
+}
 .field-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
