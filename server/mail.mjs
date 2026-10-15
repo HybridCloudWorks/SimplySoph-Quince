@@ -18,7 +18,7 @@ export function sendgridMailer({ apiKey, sender, fetchImpl = fetch }) {
           },
           body: JSON.stringify({
             personalizations: [{ to: [{ email: to }] }],
-            from: { email: sender, name: "SimplySoph Mis XV" },
+            from: { email: sender, name: "Sophia's Quinceañera" },
             subject,
             content: [{ type: "text/html", value: html }],
             custom_args: { misxv_message_id: id },

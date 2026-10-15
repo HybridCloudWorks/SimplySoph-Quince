@@ -2323,8 +2323,8 @@ export function createApplication({
           await mailer.send({
             id: token(),
             to,
-            subject: "Sophia · The family replied / La familia respondió",
-            html: `<p>The family replied to your message on Sophia’s website.</p><p>La familia respondió tu mensaje en el sitio de Sophia.</p><p><a href="${origin}${locale === "es" ? "/es" : ""}/account/">Read it in My account / Léelo en Mi cuenta</a></p>`,
+            subject: "We answered your message / Te respondimos · Sophia’s quinceañera",
+            html: `<p>We answered your message on Sophia’s quinceañera website.</p><p>Te respondimos en el sitio de los XV de Sophia.</p><p><a href="${origin}${locale === "es" ? "/es" : ""}/account/">Sign in to read our reply / Entra para leer nuestra respuesta</a></p>`,
           });
         } catch {
           emailed = false;
