@@ -1907,7 +1907,7 @@ test("a renewal is saved only with a response that carries the cookie, photos in
   assert.ok((await expiresAt()) > before);
 });
 
-test("only email sign-in sessions renew; link, admin and Notion-outage cases do not (AUTHN-7)", async () => {
+test("admin sessions and email sign-ins during a Notion outage do not renew (AUTHN-7)", async () => {
   let down = false,
     f;
   f = await fixture({
@@ -1918,8 +1918,7 @@ test("only email sign-in sessions renew; link, admin and Notion-outage cases do 
       },
     },
   });
-  // The seeded link and admin sessions are both in their last 15 minutes.
-  assert.equal((await f.linkGuest("session")).setCookie, undefined, "invitation links are RSVP-only");
+  // The seeded admin session is in its last 15 minutes.
   assert.equal((await f.admin("dashboard")).setCookie, undefined, "admin sessions keep 30 minutes");
   await f.publicPost("auth/email/request", { email: "test@example.com" });
   const signed = await f.publicPost("auth/email/verify", { token: linkOf(f.sent.at(-1)) });
@@ -1928,6 +1927,51 @@ test("only email sign-in sessions renew; link, admin and Notion-outage cases do 
   const r = await f.app.dispatch({ path: "/api/session", headers: { cookie: signed.setCookie.split(";")[0] } });
   assert.equal(r.verified, true, "a Notion outage never fails the request");
   assert.equal(r.setCookie, undefined, "but it skips the renewal");
+});
+
+test("an invitation-link session stays open while the guest is answering, up to 2 hours", async () => {
+  const f = await fixture();
+  const expiresAt = async () =>
+    Object.values((await f.ledger.read()).sessions).find((s) => s.scope === "rsvp").expiresAt;
+  // Twenty minutes into the form, the page checks in: the session runs 30
+  // minutes from now instead of ending ten minutes later.
+  f.advance(20 * 60000);
+  const touched = await f.linkGuest("session");
+  assert.match(touched.setCookie, /^__session=.*Max-Age=1800/, "the renewed cookie is sent again");
+  assert.equal(await expiresAt(), f.now() + 1800000);
+  // A save 45 minutes after opening the link still works.
+  f.advance(25 * 60000);
+  const saved = await f.linkGuest("rsvp", f.input(), { "idempotency-key": "41414141-4141-4141-8141-414141414141" });
+  assert.equal(saved.saved, true);
+  // Kept busy, it still ends 2 hours after the link was opened.
+  for (let i = 0; i < 6; i++) {
+    f.advance(20 * 60000);
+    await f.linkGuest("session").catch(() => {});
+  }
+  assert.equal(await expiresAt(), at + 7200000, "never past 2 hours");
+  f.advance(at + 7200000 - f.now());
+  assert.equal((await f.linkGuest("session")).kind, null);
+  await assert.rejects(() => f.linkGuest("invitation"), (e) => e.code === "SIGN_IN_REQUIRED");
+});
+
+test("an idle invitation-link session still ends after 30 minutes, and only RSVP routes renew it", async () => {
+  const f = await fixture();
+  f.advance(31 * 60000);
+  await assert.rejects(
+    () => f.linkGuest("rsvp", f.input(), { "idempotency-key": "42424242-4242-4242-8242-424242424242" }),
+    (e) => e.code === "SIGN_IN_REQUIRED",
+  );
+  const g = await fixture();
+  g.advance(20 * 60000);
+  // My account is outside an RSVP-only session: refused, and nothing renewed.
+  await assert.rejects(() => g.linkGuest("account"), (e) => e.code === "SIGN_IN_REQUIRED");
+  const session = Object.values((await g.ledger.read()).sessions).find((s) => s.scope === "rsvp");
+  assert.equal(session.expiresAt, at + 1800000);
+  // A reissued link ends the session instead of renewing it.
+  await g.ledger.transaction((s) => {
+    s.invitations[household].generation = 2;
+  });
+  assert.equal((await g.linkGuest("session")).kind, null);
 });
 
 test("an administrator's sign out everywhere leaves other administrators alone (AUTHN-10)", async () => {

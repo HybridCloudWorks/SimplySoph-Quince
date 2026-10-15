@@ -37,7 +37,8 @@ The model, in one table. The decision record is [v1/access-model.md](v1/access-m
 - **Authenticator codes:** 5 tries per sign-in. Ten wrong codes for one administrator within an hour pause that administrator's sign-ins for an hour, including sign-ins already open, and you get a note in Notifications. During a pause the owner can still sign in with a recovery code. A linked Microsoft account whose two-step sign-in Microsoft confirmed stands in for the code, so it is not paused.
 - **Sessions:**
   - Guests signed in with their email stay signed in while they use the site: 30 minutes after their last visit, at most 12 hours after signing in. Removing their email from the Notion row ends their access on their next request.
-  - Invitation-link sessions (RSVP only) and administrator sessions last 30 minutes.
+  - Invitation-link sessions (RSVP only) also stay open while the guest is answering: 30 minutes after their last step, at most 2 hours after opening the link. Reissuing or revoking the link ends them at once.
+  - Administrator sessions last 30 minutes.
   - **Sign out on all devices** (My account) ends every guest sign-in of that person. **Sign out everywhere** (admin menu) ends their admin and guest sign-ins alike.
   - The cookie is HttpOnly, Secure, SameSite=Strict and scoped to `/api`.
   - Every write needs the CSRF header and the site's Origin. Uploads without a current session are refused before they are read, and each server handles at most 3 uploads at once.
