@@ -154,8 +154,10 @@ test.describe("the home page countdown", () => {
     // October 1, 18:00 UTC; the deadline is November 15, 11:59 PM Central.
     await page.goto(harness.url("/"));
     await expect(countdown(page)).toHaveText("Left to reply 45 days 11 hours 59 minutes");
+    await expect(page.getByText("Please reply by Sunday, November 15")).toBeVisible();
     await page.goto(harness.url("/es/"));
     await expect(countdown(page)).toHaveText("Tiempo para confirmar 45 días 11 horas 59 minutos");
+    await expect(page.getByText("Por favor, confirma a más tardar el domingo 15 de noviembre")).toBeVisible();
   });
 
   test("then counts to the celebration, and disappears once it is over", async ({
@@ -166,6 +168,12 @@ test.describe("the home page countdown", () => {
     await setNow(AFTER_DEADLINE);
     await page.goto(harness.url("/"));
     await expect(countdown(page)).toHaveText("Until the celebration 60 days 16 hours 0 minutes");
+    // No "Please reply by" a date that has passed; the RSVP button stays and
+    // opens the closed note with the household's saved answer.
+    await expect(page.getByText("Please reply by")).toBeHidden();
+    await expect(page.getByRole("main").getByRole("link", { name: "RSVP", exact: true })).toBeVisible();
+    await page.goto(harness.url("/es/"));
+    await expect(page.getByText("Por favor, confirma a más tardar")).toBeHidden();
     await setNow(Date.parse("2027-01-15T23:00:00Z"));
     await page.goto(harness.url("/"));
     await expect(countdown(page)).toHaveText("Today is the day!");

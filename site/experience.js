@@ -28,7 +28,9 @@ export function calendars(c = eventContent, live = liveContent) {
 // reply until the RSVP deadline, then the time until the celebration. It reads
 // as plain text under a visible label, changes once a minute (never seconds),
 // and stops for good once the celebration is over. With reduced motion asked
-// for, it is set once per visit and does not tick.
+// for, it is set once per visit and does not tick. The "Please reply by" line
+// above it goes away at the deadline; the RSVP button stays, for the closed
+// note and the household's saved answer.
 const units = {
   en: [["day", "days"], ["hour", "hours"], ["minute", "minutes"]],
   es: [["día", "días"], ["hora", "horas"], ["minuto", "minutos"]],
@@ -42,6 +44,8 @@ function countdown() {
     deadline = Date.parse(node.dataset.deadline),
     start = Date.parse(node.dataset.start),
     end = Date.parse(node.dataset.end);
+  const replyBy = document.querySelector("[data-reply-by]");
+  if (replyBy) replyBy.hidden = now >= deadline;
   if (![deadline, start, end].every(Number.isFinite) || now >= Math.max(start, end)) {
     node.hidden = true;
     return;
