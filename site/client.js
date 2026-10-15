@@ -159,8 +159,8 @@ const messages = {
     "Solo el propietario del sitio puede hacer esto.",
   ],
   SSO_NO_ACCOUNT: [
-    "This email isn't on the guest list. Use the email the family has for your household, or contact the family to add it.",
-    "Este correo no está en la lista de invitados. Usa el correo que la familia tiene de tu hogar o pide a la familia que lo agregue.",
+    "We don't have this email yet. Try the one where you got your invitation, or write to us at misxv@simplysoph.com and we'll add it.",
+    "Todavía no tenemos este correo. Prueba con el correo donde recibiste tu invitación, o escríbenos a misxv@simplysoph.com y lo agregamos.",
   ],
   SSO_ACCOUNT_CHANGED: [
     "This email is linked to a different Microsoft or Google account. Use the emailed sign-in link instead, or contact the family.",
@@ -318,7 +318,35 @@ const messages = {
     "The authenticator code is invalid or already used. Try the next code.",
     "El código no es válido o ya fue utilizado. Usa el siguiente código.",
   ],
+  WHATSAPP_PHONE_INVALID: [
+    "WhatsApp can't use this number. Check the country code and the number, like +1 817 555 0199.",
+    "WhatsApp no puede usar este número. Revisa el código de país y el número, como +1 817 555 0199.",
+  ],
 };
+// Trouble reaching the API (an outage, a proxy's HTML error page, a dropped
+// connection) is not an answer from it: guests must never read it as
+// "submissions are closed". A form being sent keeps what was typed.
+function trouble(sending, network) {
+  if (network)
+    return sending
+      ? tr(
+          "We couldn't reach the website. Your answers are still here; check your connection and try again.",
+          "No pudimos conectar con el sitio. Tus respuestas siguen aquí; revisa tu conexión e inténtalo de nuevo.",
+        )
+      : tr(
+          "We couldn't reach the website. Check your connection and try again.",
+          "No pudimos conectar con el sitio. Revisa tu conexión e inténtalo de nuevo.",
+        );
+  return sending
+    ? tr(
+        "Something went wrong on our end. Your answers are still here — try again in a minute, or email misxv@simplysoph.com.",
+        "Algo falló de nuestro lado. Tus respuestas siguen aquí; inténtalo de nuevo en un minuto o escríbenos a misxv@simplysoph.com.",
+      )
+    : tr(
+        "Something went wrong on our end. Please try again in a minute, or email misxv@simplysoph.com.",
+        "Algo falló de nuestro lado. Inténtalo de nuevo en un minuto o escríbenos a misxv@simplysoph.com.",
+      );
+}
 export async function api(path, body, options = {}) {
   let res;
   try {
@@ -335,54 +363,95 @@ export async function api(path, body, options = {}) {
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
-    throw new Error(
-      tr(
-        "Connection interrupted. Your form has not been cleared. Please retry.",
-        "Conexión interrumpida. El formulario no se borró. Inténtalo de nuevo.",
-      ),
-    );
+    throw Object.assign(new Error(trouble(body !== undefined, true)), {
+      code: "NETWORK_ERROR",
+    });
   }
   let data;
   try {
     data = await res.json();
   } catch {
-    throw new Error(
-      tr(
-        "Online submissions are not open yet. Please contact the family.",
-        "Los envíos en línea aún no están disponibles. Contacta a la familia.",
-      ),
-    );
+    throw Object.assign(new Error(trouble(body !== undefined, false)), {
+      code: "SERVER_UNAVAILABLE",
+      status: res.status,
+    });
   }
   if (!res.ok) {
-    const pair = messages[data.error];
+    const pair = messages[data?.error];
     throw Object.assign(
       new Error(
         pair
           ? tr(...pair)
-          : tr(
-              "Unable to complete this request. Please retry or contact the family.",
-              "No pudimos completar la solicitud. Inténtalo de nuevo o contacta a la familia.",
-            ),
+          : res.status >= 500
+            ? trouble(body !== undefined, false)
+            : tr(
+                "Unable to complete this request. Please retry or contact the family.",
+                "No pudimos completar la solicitud. Inténtalo de nuevo o contacta a la familia.",
+              ),
       ),
-      { code: data.error, status: res.status },
+      { code: data?.error, status: res.status },
     );
   }
   if (data.csrf) setCsrf(data.csrf);
   return data;
 }
-// An optional { href, label } adds a link after the message (built as DOM, not HTML).
+// The page-wide note at the bottom, for news that belongs to no control: what
+// a form or button caused is shown next to it instead. An optional
+// { href, label } adds a link after the message (built as DOM, not HTML). The
+// note can be closed, and while it shows, the page keeps the focused control
+// scrolled clear of it.
 export function notify(text, link) {
   const box = document.querySelector("#status");
-  box.textContent = text;
+  if (!box) return;
+  const message = document.createElement("span");
+  message.textContent = text;
   if (link) {
     const a = document.createElement("a");
     a.href = link.href;
     a.textContent = link.label;
-    box.append(" ", a);
+    message.append(" ", a);
   }
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "status-close plain-button";
+  close.textContent = tr("Close", "Cerrar");
+  close.addEventListener("click", () => {
+    const back = notify.returnTo;
+    clearNote();
+    if (back?.isConnected) back.focus();
+  });
+  if (!box.contains(document.activeElement)) notify.returnTo = document.activeElement;
+  box.replaceChildren(message, " ", close);
+  // The note's height plus its gap from the bottom of the window.
+  const room = Math.ceil(innerHeight - box.getBoundingClientRect().top) + 16 + "px";
+  document.documentElement.style.scrollPaddingBottom = room;
+  document.body.style.paddingBottom = room;
+  const focused = document.activeElement;
+  if (focused && focused !== document.body && !box.contains(focused))
+    focused.scrollIntoView({ block: "nearest", behavior: "instant" });
   clearTimeout(notify.timer);
-  notify.timer = setTimeout(() => (box.textContent = ""), 12000);
+  notify.timer = setTimeout(clearNote, 12000);
 }
+function clearNote() {
+  const box = document.querySelector("#status");
+  if (box?.contains(document.activeElement) && notify.returnTo?.isConnected)
+    notify.returnTo.focus();
+  box?.replaceChildren();
+  document.documentElement.style.scrollPaddingBottom = "";
+  document.body.style.paddingBottom = "";
+}
+// Moves focus to content that just replaced what was there (a step's heading,
+// a saved or error message), so keyboard and screen-reader users land on it.
+export function focusOn(el) {
+  if (!el) return;
+  if (!el.matches("a[href],button,input,select,textarea,[tabindex]")) el.tabIndex = -1;
+  el.focus();
+}
+let fields = 0;
+// A labelled input. `hint` adds a sentence under it: the input is named by the
+// label's own words (aria-labelledby) and described by the hint, so the hint
+// is not read as part of its name. `attrs` is trusted, fixed markup (for
+// example 'autocapitalize="off"'), never guest data.
 export function field(
   label,
   name,
@@ -392,23 +461,156 @@ export function field(
     required = false,
     max = 254,
     autocomplete = "",
+    inputmode = "",
+    hint = "",
+    attrs = "",
   } = {},
 ) {
-  return `<label>${esc(label)}<input name="${esc(name)}" type="${type}" value="${esc(value)}" ${required ? "required" : ""} maxlength="${max}"${autocomplete ? ` autocomplete="${esc(autocomplete)}"` : ""}></label>`;
+  const id = "field-" + ++fields,
+    extra = `${inputmode ? ` inputmode="${esc(inputmode)}"` : ""}${hint ? ` aria-labelledby="${id}-label" aria-describedby="${id}-hint"` : ""}${attrs ? " " + attrs : ""}`;
+  return `<label>${hint ? `<span id="${id}-label">${esc(label)}</span>` : esc(label)}<input id="${id}" name="${esc(name)}" type="${type}" value="${esc(value)}" ${required ? "required" : ""} maxlength="${max}"${autocomplete ? ` autocomplete="${esc(autocomplete)}"` : ""}${extra}>${hint ? `<span class="hint field-hint" id="${id}-hint">${esc(hint)}</span>` : ""}</label>`;
 }
+// The words a form check uses for a control: its data-label, its
+// aria-labelledby text, else the text written directly in its label (not the
+// options of a select inside it).
+function labelOf(control) {
+  if (control.dataset.label) return control.dataset.label;
+  const named = control.getAttribute("aria-labelledby");
+  if (named) return document.getElementById(named.split(" ")[0])?.textContent.trim() || control.name;
+  const label = control.labels?.[0];
+  if (!label) return control.name;
+  return [...label.childNodes]
+    .filter((n) => n.nodeType === Node.TEXT_NODE)
+    .map((n) => n.textContent)
+    .join(" ")
+    .trim();
+}
+function unmark(control) {
+  control.removeAttribute("aria-invalid");
+  const note = document.getElementById(control.id + "-error");
+  if (!note) return;
+  note.remove();
+  const ids = (control.getAttribute("aria-describedby") || "")
+    .split(" ")
+    .filter((id) => id && id !== note.id);
+  if (ids.length) control.setAttribute("aria-describedby", ids.join(" "));
+  else control.removeAttribute("aria-describedby");
+}
+// Forms are checked here, not by the browser (novalidate): the browser shows
+// one field at a time, in its own language. This lists every field to fix in
+// the page's language, each linked to its field, marks the fields
+// (aria-invalid, with a note under each tied by aria-describedby) and moves
+// focus to the list. A control's data-check replaces the opening words of
+// its line ("Choose how many for:"). Returns whether the form is complete.
+export function checkForm(form) {
+  form.querySelector(".error-summary")?.remove();
+  const lines = new Map();
+  for (const control of form.elements) {
+    if (!control.willValidate) continue;
+    if (control.validity.valid) {
+      unmark(control);
+      continue;
+    }
+    if (!control.id) control.id = "field-" + ++fields;
+    const v = control.validity,
+      opening =
+        control.dataset.check ||
+        (control.type === "checkbox"
+          ? tr("Tick the box:", "Marca la casilla:")
+          : control.tagName === "SELECT"
+            ? tr("Choose an answer for:", "Elige una respuesta para:")
+            : v.valueMissing
+              ? tr("Fill in:", "Completa:")
+              : control.type === "email"
+                ? tr("Check the email address:", "Revisa el correo:")
+                : tr("Check:", "Revisa:"));
+    if (!lines.has(opening)) lines.set(opening, []);
+    lines.get(opening).push(control);
+    if (!document.getElementById(control.id + "-error")) {
+      const note = document.createElement("span");
+      note.className = "field-error";
+      note.id = control.id + "-error";
+      note.textContent =
+        v.valueMissing && control.type !== "checkbox"
+          ? control.tagName === "SELECT"
+            ? tr("Choose one.", "Elige una opción.")
+            : tr("Fill this in.", "Completa este campo.")
+          : control.type === "checkbox"
+            ? tr("Tick this box to continue.", "Marca esta casilla para continuar.")
+            : control.type === "email"
+              ? tr("Use an address like name@example.com.", "Usa un correo como nombre@ejemplo.com.")
+              : tr("Check this field.", "Revisa este campo.");
+      // Inside the label, so a field grid keeps its layout; hidden from the
+      // label's own text (the field's name) and read as its description.
+      note.setAttribute("aria-hidden", "true");
+      const label = control.closest("label");
+      if (label) label.append(note);
+      else control.after(note);
+      control.setAttribute(
+        "aria-describedby",
+        [control.getAttribute("aria-describedby"), note.id].filter(Boolean).join(" "),
+      );
+    }
+    control.setAttribute("aria-invalid", "true");
+  }
+  const prefix = tr("Error: ", "Error: ");
+  if (!lines.size) {
+    if (document.title.startsWith(prefix)) document.title = document.title.slice(prefix.length);
+    return true;
+  }
+  const summary = document.createElement("div");
+  summary.className = "error-summary";
+  summary.setAttribute("role", "alert");
+  summary.tabIndex = -1;
+  for (const [opening, controls] of lines) {
+    const line = document.createElement("p");
+    line.append(opening + " ");
+    controls.forEach((control, i) => {
+      const a = document.createElement("a");
+      a.href = "#" + control.id;
+      a.textContent = labelOf(control);
+      // Focus the field without putting its id in the address bar, where a
+      // reload would read it as an invitation or sign-in link.
+      a.addEventListener("click", (e) => {
+        e.preventDefault();
+        control.focus();
+      });
+      line.append(...(i ? [", ", a] : [a]));
+    });
+    summary.append(line);
+  }
+  form.prepend(summary);
+  if (!document.title.startsWith(prefix)) document.title = prefix + document.title;
+  summary.focus();
+  return false;
+}
+// Runs fn with the form's data once the form is complete. The submit button is
+// marked busy with aria-disabled rather than disabled: disabling the focused
+// button dropped focus to the page (Chromium), so keyboard and screen-reader
+// users lost their place. A second submit while busy is ignored. An error is
+// shown in the form's own alert, next to the button.
 export async function submit(form, fn) {
+  form.noValidate = true;
+  form.addEventListener("change", (e) => {
+    if (e.target.getAttribute?.("aria-invalid") && e.target.validity.valid) unmark(e.target);
+  });
+  let busy = false;
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const button = form.querySelector("[type=submit]");
-    button.disabled = true;
+    if (busy || !checkForm(form)) return;
+    const button = form.querySelector("[type=submit]"),
+      target = form.querySelector(".error[role=alert]") || form.querySelector("[role=alert]:not(.error-summary)");
+    busy = true;
+    button?.setAttribute("aria-disabled", "true");
+    if (target) target.textContent = "";
     try {
       await fn(new FormData(form));
     } catch (err) {
-      const target = form.querySelector("[role=alert]");
-      if (target) target.textContent = err.message;
+      if (target?.isConnected) target.textContent = err.message;
       else notify(err.message);
     } finally {
-      button.disabled = false;
+      busy = false;
+      button?.removeAttribute("aria-disabled");
     }
   });
 }
@@ -435,12 +637,23 @@ export function reloadOnNewLink(when = () => true) {
     if (linkFragment() && when()) location.reload();
   });
 }
+// Navigation menus (<details class="nav-group">) close on Escape, on a click
+// elsewhere, and when focus moves out of them (tabbing past the last item left
+// the menu open over the page). Escape from inside a menu returns focus to its
+// summary, since the focused link is hidden once the menu closes.
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape")
-    for (const el of document.querySelectorAll(".nav-group[open]"))
-      el.open = false;
+  if (e.key !== "Escape") return;
+  for (const el of document.querySelectorAll(".nav-group[open]")) {
+    const inside = el.contains(document.activeElement);
+    el.open = false;
+    if (inside) el.querySelector("summary").focus();
+  }
 });
 document.addEventListener("click", (e) => {
+  for (const el of document.querySelectorAll(".nav-group[open]"))
+    if (!el.contains(e.target)) el.open = false;
+});
+document.addEventListener("focusin", (e) => {
   for (const el of document.querySelectorAll(".nav-group[open]"))
     if (!el.contains(e.target)) el.open = false;
 });
