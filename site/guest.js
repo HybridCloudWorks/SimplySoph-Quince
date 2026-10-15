@@ -907,105 +907,114 @@ if (microsoft) {
 await publicContent();
 
 
+// The guests' gallery shows one clear state: a sign-in panel (photos and
+// videos are for signed-in guests only), a friendly "nothing yet", or the
+// approved media, with album cards and sections only for what exists.
 async function gallery() {
-  const photos = document.querySelector("[data-gallery]"),
-    videos = document.querySelector("[data-videos]");
-  if (!photos || !videos) return;
-  let items = [];
+  const state = document.querySelector("[data-gallery-state]"),
+    photos = document.querySelector("[data-gallery]"),
+    videos = document.querySelector("[data-videos]"),
+    cards = document.querySelector("[data-gallery-albums]");
+  if (!state || !photos || !videos || !cards) return;
+  const panel = (title, text, href, action) => {
+    state.innerHTML = `<div class="notice gallery-panel"><h2>${esc(title)}</h2><p>${esc(text)}</p>${href ? `<a class="button burgundy" href="${esc(href)}">${esc(action)}</a>` : ""}</div>`;
+  };
+  let items;
   try {
     // Only a verified sign-in (or an administrator) may see media; anyone else
-    // gets the sign-in prompt without a refused request in the console.
+    // gets the sign-in panel without a refused request in the console.
     const session = await api("session");
-    if (session.kind !== "admin" && !session.verified) throw new Error();
+    if (session.kind !== "admin" && !session.verified) {
+      panel(
+        tr("Our guests’ photos and videos", "Las fotos y videos de nuestros invitados"),
+        tr(
+          "We share them privately with our guests. Sign in with the email where you received your invitation to see them and to add your own.",
+          "Los compartimos en privado con nuestros invitados. Entra con el correo donde recibiste tu invitación para verlos y para agregar los tuyos.",
+        ),
+        route("account") + "?return=gallery",
+        tr("Sign in to see the gallery", "Entra para ver la galería"),
+      );
+      return;
+    }
     items = (await api("gallery")).media;
-  } catch {
-    photos.innerHTML = videos.innerHTML =
-      "<p>" +
-      tr(
-        "Sign in to view approved photos and videos.",
-        "Inicia sesión para ver fotos y videos aprobados.",
-      ) +
-      ' <a href="' +
-      route("account") +
-      '">' +
-      tr("My account", "Mi cuenta") +
-      "</a></p>";
-    document
-      .querySelector("[data-album-cards]")
-      .addEventListener("click", (e) => {
-        if (e.target.closest("[data-album]"))
-          photos.closest("section").scrollIntoView({ block: "start" });
-      });
+  } catch (e) {
+    panel(
+      tr("The gallery isn’t available right now", "La galería no está disponible por ahora"),
+      e.message,
+    );
     return;
   }
-  for (const button of document.querySelectorAll("[data-album]")) {
-    const image = items.find(
-      (p) => p.kind === "photo" && p.album === button.dataset.album,
+  if (!items.length) {
+    panel(
+      tr("Nothing here yet", "Todavía no hay nada aquí"),
+      tr(
+        "Photos and videos from the celebration appear here once we’ve reviewed them. Took some? Share them with us.",
+        "Las fotos y videos de la celebración aparecen aquí cuando los revisamos. ¿Tomaste algunos? Compártelos con nosotros.",
+      ),
+      route("share"),
+      tr("Share your photos", "Comparte tus fotos"),
     );
-    if (image)
-      button.querySelector(".album-art").innerHTML =
-        '<img src="' + esc(image.url) + '" alt="" loading="lazy">';
+    return;
   }
+  state.hidden = true;
+  document.querySelector("[data-gallery-share]")?.removeAttribute("hidden");
+  const name = (id) => {
+    const album = eventContent.albums.find((a) => a.id === id);
+    return album ? (es ? album.es : album.en) : "";
+  };
+  const counted = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  // A card for each album with something in it (a real cover, never a
+  // placeholder), and only when there is more than one to choose between.
+  const albums = eventContent.albums
+    .map((a) => ({ ...a, rows: items.filter((p) => p.album === a.id) }))
+    .filter((a) => a.rows.length);
+  if (albums.length > 1) {
+    cards.innerHTML = `<div class="album-grid">${albums
+      .map((a, i) => {
+        const cover = a.rows.find((p) => p.kind === "photo")?.url || a.rows.find((p) => p.poster)?.poster,
+          shots = a.rows.filter((p) => p.kind === "photo").length,
+          clips = a.rows.length - shots;
+        return `<button type="button" class="album-card album-${i % 3}" data-album="${esc(a.id)}" aria-pressed="false"><span class="album-art" aria-hidden="true">${cover ? `<img src="${esc(cover)}" alt="" loading="lazy">` : ""}</span><span class="album-title">${esc(name(a.id))} <small>${esc(
+          [
+            shots && counted(shots, tr("photo", "foto"), tr("photos", "fotos")),
+            clips && counted(clips, "video", "videos"),
+          ]
+            .filter(Boolean)
+            .join(" · "),
+        )}</small></span><span class="album-overlay" aria-hidden="true">${tr("Show this album", "Ver este álbum")}</span></button>`;
+      })
+      .join("")}</div>`;
+    cards.hidden = false;
+  }
+  const figure = (p) =>
+    p.kind === "video"
+      ? `<figure><video controls playsinline preload="${p.poster ? "none" : "metadata"}"${p.poster ? ` poster="${esc(p.poster)}"` : ""} src="${esc(p.url)}"></video><figcaption>${esc(p.caption)}</figcaption><a href="${esc(p.url)}?download=1" download>${tr("Download", "Descargar")}</a></figure>`
+      : `<figure><img loading="lazy" alt="${esc(p.caption || tr("Photo from the celebration", "Foto de la celebración"))}" src="${esc(p.url)}"><figcaption>${esc(p.caption)}</figcaption><a href="${esc(p.url)}?download=1" download>${tr("Download", "Descargar")}</a></figure>`;
   function render(album = "") {
     const rows = items.filter((p) => !album || p.album === album);
     for (const [kind, node] of [
       ["photo", photos],
       ["video", videos],
-    ])
-      node.innerHTML =
-        rows
-          .filter((p) => p.kind === kind)
-          .map(
-            (p) =>
-              "<figure><" +
-              (kind === "video"
-                ? 'video controls playsinline preload="metadata"'
-                : 'img loading="lazy" alt="' +
-                  esc(
-                    p.caption ||
-                      tr("Celebration photo", "Foto de la celebración"),
-                  ) +
-                  '"') +
-              ' src="' +
-              esc(p.url) +
-              '">' +
-              (kind === "video" ? "</video>" : "") +
-              "<figcaption>" +
-              esc(p.caption) +
-              '</figcaption><a href="' +
-              esc(p.url) +
-              '?download=1" download>' +
-              tr("Download", "Descargar") +
-              "</a></figure>",
-          )
-          .join("") ||
-        "<p>" +
-          tr(
-            "No approved media in this album yet.",
-            "Aún no hay archivos aprobados en este álbum.",
-          ) +
-          "</p>";
+    ]) {
+      const mine = rows.filter((p) => p.kind === kind);
+      node.innerHTML = mine.map(figure).join("");
+      // The videos section (and the photos one) only when it has something.
+      node.closest("section").hidden = !mine.length;
+    }
     const label = document.querySelector("[data-album-label]");
-    if (label)
-      label.textContent = album
-        ? es
-          ? eventContent.albums.find((a) => a.id === album)?.es
-          : eventContent.albums.find((a) => a.id === album)?.en
-        : tr("All albums", "Todos los álbumes");
-    for (const b of document.querySelectorAll("[data-album]"))
+    if (label) label.textContent = album ? name(album) : albums.length > 1 ? tr("All albums", "Todos los álbumes") : "";
+    for (const b of cards.querySelectorAll("[data-album]"))
       b.setAttribute("aria-pressed", String(b.dataset.album === album));
   }
-  document
-    .querySelector("[data-album-cards]")
-    .addEventListener("click", (e) => {
-      const b = e.target.closest("[data-album]");
-      if (b) {
-        render(
-          b.getAttribute("aria-pressed") === "true" ? "" : b.dataset.album,
-        );
-        photos.closest("section").scrollIntoView({ block: "start" });
-      }
-    });
+  cards.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-album]");
+    if (!b) return;
+    render(b.getAttribute("aria-pressed") === "true" ? "" : b.dataset.album);
+    [photos, videos]
+      .map((node) => node.closest("section"))
+      .find((section) => !section.hidden)
+      ?.scrollIntoView({ block: "start" });
+  });
   render();
 }
 await gallery();
