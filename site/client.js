@@ -128,6 +128,12 @@ const messages = {
     "This video is still being converted (or could not be). Approve it once it plays here.",
     "Este video todavía se está convirtiendo (o no se pudo convertir). Apruébalo cuando se reproduzca aquí.",
   ],
+  // Admin only: the thank-you email links /thank-you/, which stays unlinked
+  // until it has a thanks note or highlight video.
+  THANK_YOU_PAGE_EMPTY: [
+    "The thank-you page is still empty. Add the thanks note or highlight video to site/content.mjs and publish the site first; then this email can link to it.",
+    "La página de agradecimiento todavía está vacía. Agrega la nota de agradecimiento o el video en site/content.mjs y publica el sitio primero; después este correo podrá enlazarla.",
+  ],
   SIGN_IN_BUSY: [
     "Several people are signing in right now. Please try again in a few seconds, or use Sign in with Microsoft or Google.",
     "Varias personas están iniciando sesión. Inténtalo de nuevo en unos segundos, o entra con Microsoft o Google.",
