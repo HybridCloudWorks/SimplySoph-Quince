@@ -651,7 +651,11 @@ export function createApplication({
         type,
         locale,
         household: household.name,
-        url: url || origin + (locale === "es" ? "/es" : "") + "/rsvp/",
+        // A receipt cannot carry the private link (only its hash is kept), so
+        // its button opens the schedule instead of the bare code form.
+        url:
+          url ||
+          origin + (locale === "es" ? "/es" : "") + (responseId ? "/details/" : "/rsvp/"),
         // From the admin's event settings, so a schedule change reaches new emails.
         eventDate: ((d) => d[0].toUpperCase() + d.slice(1))(
           longDate(site.ceremony.start, locale),
@@ -667,6 +671,8 @@ export function createApplication({
         receiptCommitted: !!responseId,
         preview: false,
         updateText,
+        attendance: responseId ? s.responses[responseId]?.attendance : null,
+        invited: s.invitations[household.id]?.invited,
       });
     s.outbox[id] = {
       id,

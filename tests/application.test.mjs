@@ -2598,6 +2598,21 @@ test("an invitation-link RSVP receipt follows the household's current Notion Ema
   assert.equal(receipt.state, "accepted");
 });
 
+test("an RSVP receipt repeats the answer for the invited events and how to change it", async () => {
+  const f = await fixture();
+  await f.linkGuest("rsvp", f.input(), { "idempotency-key": "24242424-2424-4424-8424-242424242424" });
+  const { html, subject } = f.sent.at(-1);
+  assert.equal(subject, "We received your RSVP · Sophia’s Mis XV");
+  // The fixture's invitation covers the ceremony and dinner, not the reception.
+  assert.ok(html.includes(">Ceremony</td>") && html.includes(">1 adult/teen</td>"));
+  assert.ok(html.includes(">Dinner</td>") && html.includes(">2 adults/teens, 1 child</td>"));
+  assert.ok(!html.includes("Reception"));
+  assert.ok(html.includes("You can change it until Sunday, November 15, 2026"));
+  assert.ok(html.includes("open your invitation email again"));
+  // The private link is not stored, so there is no button to the bare code form.
+  assert.ok(!html.includes(origin + "/rsvp/") && html.includes(origin + "/details/"));
+});
+
 test("at most 5 automatic receipts per household a day; later ones wait as drafts for a person (re-audit)", async () => {
   const f = await fixture();
   let previous = null;

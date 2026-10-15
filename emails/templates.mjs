@@ -13,15 +13,15 @@ const copy = {
     ],
     receipt: [
       "We received your RSVP · Sophia’s Mis XV",
-      "Thank you for your response.",
-      "Your household’s response has been received. You can review your attendance and make permitted changes through your private invitation.",
-      "Review your response",
+      "Thank you for your RSVP.",
+      "Here is your household’s answer:",
+      "See the schedule and directions",
     ],
     update: [
       "Your RSVP has been updated · Sophia’s Mis XV",
-      "Your latest response is recorded.",
-      "To review your latest response, open your private invitation link or sign in with your verified email on the My Account page.",
-      "View updated response",
+      "Your change is saved.",
+      "Here is your household’s answer now:",
+      "See the schedule and directions",
     ],
     reminder: [
       "A little reminder · Sophia’s Mis XV",
@@ -52,6 +52,13 @@ const copy = {
     deadline: "RSVP by",
     replyBy: (d) => `Please let us know by ${d}.`,
     quick: ["Or answer now", "We'll be there", "We can't make it"],
+    events: { ceremony: "Ceremony", dinner: "Dinner", dance: "Reception & dance" },
+    adults: (n) => `${n} ${n === 1 ? "adult/teen" : "adults/teens"}`,
+    kids: (n) => `${n} ${n === 1 ? "child" : "children"}`,
+    absent: "not attending",
+    declined: "You let us know no one in your household can attend. We’ll miss you, and thank you for your love.",
+    changeUntil: (d) =>
+      `You can change it until ${d}: open your invitation email again and tap its RSVP button.`,
     private: "Your RSVP link is just for your household.",
     help: `Add ${event.sender} to your contacts so updates reach your inbox. Questions? Just reply and the family will answer.`,
     sign: "With love, Sophia & family",
@@ -65,16 +72,16 @@ const copy = {
       "Responder por tu familia",
     ],
     receipt: [
-      "Recibimos tu confirmación · Los XV de Sophia",
+      "Recibimos su respuesta · Los XV de Sophia",
       "Gracias por responder.",
-      "Recibimos la respuesta de tu familia. Puedes revisar su asistencia y hacer los cambios permitidos a través de tu invitación privada.",
-      "Revisar tu respuesta",
+      "Esta es la respuesta de su familia:",
+      "Ver el programa y cómo llegar",
     ],
     update: [
-      "Actualizamos tu respuesta · Los XV de Sophia",
-      "Tu nueva respuesta quedó registrada.",
-      "Abre tu invitación privada para revisar las respuestas más recientes de tu familia.",
-      "Ver la respuesta actualizada",
+      "Actualizamos su respuesta · Los XV de Sophia",
+      "Su cambio quedó guardado.",
+      "Esta es ahora la respuesta de su familia:",
+      "Ver el programa y cómo llegar",
     ],
     reminder: [
       "Un pequeño recordatorio · Los XV de Sophia",
@@ -105,6 +112,13 @@ const copy = {
     deadline: "Confirma antes del",
     replyBy: (d) => `Por favor, confírmanos a más tardar el ${d}.`,
     quick: ["O responde ahora", "Ahí estaremos", "No podremos asistir"],
+    events: { ceremony: "Ceremonia", dinner: "Cena", dance: "Recepción y baile" },
+    adults: (n) => `${n} ${n === 1 ? "adulto/joven" : "adultos/jóvenes"}`,
+    kids: (n) => `${n} ${n === 1 ? "niño" : "niños"}`,
+    absent: "no asistirán",
+    declined: "Nos avisaron que nadie de su familia podrá asistir. Los vamos a extrañar; gracias por su cariño.",
+    changeUntil: (d) =>
+      `Pueden cambiarla hasta el ${d}: abran de nuevo su correo de invitación y toquen el botón para responder.`,
     private: "Tu enlace es solo para tu familia.",
     help: `Agrega ${event.sender} a tus contactos para que nuestras novedades lleguen a tu bandeja de entrada. ¿Preguntas? Solo responde a este correo y la familia te contestará.`,
     sign: "Con cariño, Sophia y su familia",
@@ -257,6 +271,9 @@ export function renderEmail({
   preview = true,
   dateConfirmed = false,
   receiptCommitted = false,
+  // A receipt's saved answer, and the events on the household's invitation.
+  attendance = null,
+  invited = null,
 }) {
   if (!templateKeys.includes(type) || !copy[locale])
     throw new Error("Unsupported template or locale");
@@ -284,6 +301,27 @@ export function renderEmail({
     quote = type === "invitation" ? note : "",
     reply = rsvp && rsvpDeadline ? c.replyBy(rsvpDeadline) : "",
     preheader = rsvp && eventDate ? `${eventDate}. ${reply}`.trim() : "";
+  // A receipt repeats the answer for the events on the invitation, and says
+  // until when and how to change it (the private link is not kept, so the
+  // invitation email is the way back).
+  const answers =
+    ["receipt", "update"].includes(type) && attendance && invited
+      ? Object.keys(c.events)
+          .filter((e) => invited[e] && attendance[e])
+          .map((e) => ({ event: c.events[e], ...attendance[e] }))
+      : [];
+  const declined = answers.length && answers.every((a) => !a.adultsTeens && !a.kids),
+    said = declined
+      ? []
+      : answers.map((a) => ({
+          event: a.event,
+          count:
+            [a.adultsTeens && c.adults(a.adultsTeens), a.kids && c.kids(a.kids)]
+              .filter(Boolean)
+              .join(", ") || c.absent,
+        })),
+    lead = declined ? c.declined : intro,
+    change = answers.length && rsvpDeadline ? c.changeUntil(rsvpDeadline) : "";
   // Quick answers open the same private link with the answer pre-selected; the
   // guest still confirms on the page, so link scanners cannot submit an RSVP.
   const quick =
@@ -300,7 +338,9 @@ export function renderEmail({
     preview ? c.preview : "",
     `${c.greeting} ${household},`,
     title,
-    intro,
+    lead,
+    said.map((a) => `${a.event}: ${a.count}`).join("\n"),
+    change,
     quote ? `“${quote}” Sophia` : "",
     rows.length
       ? [eventDate, ...rows.map((r) => `${r.time} · ${r.text}`)]
@@ -323,7 +363,7 @@ export function renderEmail({
     locale,
     subject,
     preheader,
-    `${preview ? `<p style="font-size:13px;color:#651625">${c.preview}</p>` : ""}<p>${escape(c.greeting)} ${escape(household)},</p>${title ? `<h1 style="font:30px/1.2 Georgia,serif;color:#651625">${escape(title)}</h1>` : ""}<p>${escape(intro)}</p>${quote ? `<p style="margin:0 0 16px;border-left:3px solid #e9c77b;padding:4px 0 4px 14px;font:italic 18px/1.5 Georgia,serif;color:#4a2a2e">“${escape(quote)}” <span style="font-style:normal;color:#651625">Sophia</span></p>` : ""}${rows.length ? `${eventDate ? `<p style="margin:0 0 6px"><strong>${escape(eventDate)}</strong></p>` : ""}<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin:0 0 16px">${rows.map((r) => `<tr><td style="padding:8px 12px 8px 0;border-top:1px solid #ecdfc8;font-weight:bold;color:#651625;white-space:nowrap;vertical-align:top">${escape(r.time)}</td><td style="padding:8px 0;border-top:1px solid #ecdfc8;vertical-align:top">${escape(r.text)}</td></tr>`).join("")}</table>` : eventDate ? `<p><strong>${c.date}:</strong> ${escape(eventDate)}</p>` : ""}${reply ? `<p>${c.replyBy(`<strong>${escape(rsvpDeadline)}</strong>`)}</p>` : ""}${updateText ? `<p>${escape(updateText)}</p>` : ""}${button(target.href, cta)}${quick ? `<p style="margin:0 0 24px">${escape(c.quick[0])}: <a href="${escape(quick.yes)}" style="color:#651625;font-weight:bold">${escape(c.quick[1])}</a> · <a href="${escape(quick.no)}" style="color:#651625;font-weight:bold">${escape(c.quick[2])}</a></p>` : ""}<p style="font-size:14px">${escape(privacyNote)}</p><p>${escape(c.help)}</p><p style="font-family:Georgia,serif">${escape(c.sign)}</p>`,
+    `${preview ? `<p style="font-size:13px;color:#651625">${c.preview}</p>` : ""}<p>${escape(c.greeting)} ${escape(household)},</p>${title ? `<h1 style="font:30px/1.2 Georgia,serif;color:#651625">${escape(title)}</h1>` : ""}<p>${escape(lead)}</p>${said.length ? `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin:0 0 16px">${said.map((a) => `<tr><td style="padding:8px 12px 8px 0;border-top:1px solid #ecdfc8;font-weight:bold;color:#651625;white-space:nowrap;vertical-align:top">${escape(a.event)}</td><td style="padding:8px 0;border-top:1px solid #ecdfc8;vertical-align:top">${escape(a.count)}</td></tr>`).join("")}</table>` : ""}${change ? `<p>${escape(change)}</p>` : ""}${quote ? `<p style="margin:0 0 16px;border-left:3px solid #e9c77b;padding:4px 0 4px 14px;font:italic 18px/1.5 Georgia,serif;color:#4a2a2e">“${escape(quote)}” <span style="font-style:normal;color:#651625">Sophia</span></p>` : ""}${rows.length ? `${eventDate ? `<p style="margin:0 0 6px"><strong>${escape(eventDate)}</strong></p>` : ""}<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin:0 0 16px">${rows.map((r) => `<tr><td style="padding:8px 12px 8px 0;border-top:1px solid #ecdfc8;font-weight:bold;color:#651625;white-space:nowrap;vertical-align:top">${escape(r.time)}</td><td style="padding:8px 0;border-top:1px solid #ecdfc8;vertical-align:top">${escape(r.text)}</td></tr>`).join("")}</table>` : eventDate ? `<p><strong>${c.date}:</strong> ${escape(eventDate)}</p>` : ""}${reply ? `<p>${c.replyBy(`<strong>${escape(rsvpDeadline)}</strong>`)}</p>` : ""}${updateText ? `<p>${escape(updateText)}</p>` : ""}${button(target.href, cta)}${quick ? `<p style="margin:0 0 24px">${escape(c.quick[0])}: <a href="${escape(quick.yes)}" style="color:#651625;font-weight:bold">${escape(c.quick[1])}</a> · <a href="${escape(quick.no)}" style="color:#651625;font-weight:bold">${escape(c.quick[2])}</a></p>` : ""}<p style="font-size:14px">${escape(privacyNote)}</p><p>${escape(c.help)}</p><p style="font-family:Georgia,serif">${escape(c.sign)}</p>`,
   );
   return { subject, html, text: lines.join("\n\n") };
 }

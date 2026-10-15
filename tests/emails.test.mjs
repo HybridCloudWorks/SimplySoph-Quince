@@ -38,6 +38,25 @@ test('invitation reads like a letter: date subject, places, Sophia’s words, co
   assert.ok(!/view your invitation|keep it private/i.test(r.html));
   assert.ok(!renderEmail({...base,type:'receipt'}).html.includes('Our Lady of Guadalupe'));
 });
+test('a receipt lists the answer for the invited events, until when it can change and how',()=>{
+  const attendance={ceremony:{adultsTeens:2,kids:1},dinner:{adultsTeens:2,kids:0},dance:{adultsTeens:0,kids:0}};
+  const invited={ceremony:true,dinner:true,dance:false};
+  const en=renderEmail({...base,type:'receipt',url:'https://misxv.example/details/',attendance,invited,rsvpDeadline:'Sunday, November 15, 2026'});
+  assert.ok(en.text.includes('Ceremony: 2 adults/teens, 1 child')&&en.text.includes('Dinner: 2 adults/teens'));
+  assert.ok(en.html.includes('>Ceremony</td>')&&en.html.includes('>2 adults/teens, 1 child</td>'));
+  for(const out of [en.text,en.html]){
+    assert.ok(!/Reception/.test(out),'only the events on the invitation');
+    assert.ok(out.includes('You can change it until Sunday, November 15, 2026')&&out.includes('open your invitation email again'));
+    assert.ok(!/permitted|Review your response/.test(out));
+  }
+  assert.ok(!en.html.includes('/rsvp/'),'no button to the generic code form');
+  const es=renderEmail({...base,type:'update',locale:'es',url:'https://misxv.example/es/details/',attendance,invited,rsvpDeadline:'domingo 15 de noviembre de 2026'});
+  assert.ok(es.text.includes('Ceremonia: 2 adultos/jóvenes, 1 niño')&&es.text.includes('Cena: 2 adultos/jóvenes'));
+  assert.ok(es.text.includes('Pueden cambiarla hasta el domingo 15 de noviembre de 2026')&&!/Recepción/.test(es.text));
+  const none={ceremony:{adultsTeens:0,kids:0},dinner:{adultsTeens:0,kids:0},dance:{adultsTeens:0,kids:0}};
+  const declined=renderEmail({...base,type:'receipt',url:'https://misxv.example/details/',attendance:none,invited,rsvpDeadline:'Sunday, November 15, 2026'});
+  assert.ok(declined.text.includes('no one in your household can attend')&&!declined.text.includes('Ceremony:'));
+});
 test('first sentence quotes only a short opening line',()=>{
   assert.equal(firstSentence('One line. Two lines.'),'One line.');
   assert.equal(firstSentence('x'.repeat(300)+'.'),'');
