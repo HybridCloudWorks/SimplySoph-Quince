@@ -17,6 +17,7 @@ import {
   route,
   field,
   submit,
+  checkForm,
   focusOn,
   linkFragment,
   reloadOnNewLink,
@@ -595,6 +596,9 @@ function stillHere(inv, form) {
     () => {},
   );
 }
+// The server's own test for a contact email (server/rsvp-validation.mjs), so
+// the form catches "name@family" too, not only an address without an @.
+const emailPattern = 'pattern="[^\\s@]+@[^\\s@]+\\.[^\\s@]+"';
 function rsvpForm(inv, values, { restored = false } = {}) {
   current = { inv, values };
   const contact = values.contact || inv.contact || {};
@@ -609,7 +613,7 @@ function rsvpForm(inv, values, { restored = false } = {}) {
       .join("")}${
       inv.contactHidden
         ? `<p class="hint">${tr("To change your contact details, sign in with your email on My account.", "Para cambiar sus datos de contacto, entren con su correo en Mi cuenta.")}</p>`
-        : `<div class="field-grid">${field(tr("Email", "Correo electrónico"), "email", { type: "email", value: contact.email, autocomplete: "email" })}${field(tr("Phone (optional)", "Teléfono (opcional)"), "phone", { type: "tel", inputmode: "tel", value: contact.phone, max: 40, autocomplete: "tel" })}</div>${field(tr("Mailing address (optional)", "Dirección postal (opcional)"), "address", { value: contact.address || "", max: 500, autocomplete: "street-address" })}`
+        : `<div class="field-grid">${field(tr("Email", "Correo electrónico"), "email", { type: "email", value: contact.email, autocomplete: "email", attrs: emailPattern })}${field(tr("Phone (optional)", "Teléfono (opcional)"), "phone", { type: "tel", inputmode: "tel", value: contact.phone, max: 40, autocomplete: "tel" })}</div>${field(tr("Mailing address (optional)", "Dirección postal (opcional)"), "address", { value: contact.address || "", max: 500, autocomplete: "street-address" })}`
     }<label>${tr("Dietary/accessibility needs or song request (optional)", "Necesidades alimentarias/de accesibilidad o canción (opcional)")}<textarea name="requests" maxlength="1000">${esc(values.requests || "")}</textarea></label><p class="resume-note" role="status"></p><p class="error" role="alert"></p><button class="button burgundy" type="submit">${tr("Review response", "Revisar respuesta")}</button></form>`,
   );
   const form = portal.querySelector("#response");
@@ -622,6 +626,9 @@ function rsvpForm(inv, values, { restored = false } = {}) {
   form.addEventListener("change", keep);
   for (const button of portal.querySelectorAll("[data-quick]"))
     button.addEventListener("click", () => {
+      // The button fills the counts; the contact details typed are checked
+      // here, since the review has no field to fix them in.
+      if (!checkForm(form, (control) => control.tagName !== "SELECT")) return;
       const quick = { ...formValues(form, inv), attendance: everyone(inv, button.dataset.quick) };
       keepDraft(inv, quick);
       review(inv, quick);

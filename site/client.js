@@ -503,12 +503,14 @@ function unmark(control) {
 // the page's language, each linked to its field, marks the fields
 // (aria-invalid, with a note under each tied by aria-describedby) and moves
 // focus to the list. A control's data-check replaces the opening words of
-// its line ("Choose how many for:"). Returns whether the form is complete.
-export function checkForm(form) {
+// its line ("Choose how many for:"). `only` limits the check to some controls
+// (the RSVP's quick answers fill the counts themselves). Returns whether the
+// form is complete.
+export function checkForm(form, only = () => true) {
   form.querySelector(".error-summary")?.remove();
   const lines = new Map();
   for (const control of form.elements) {
-    if (!control.willValidate) continue;
+    if (!control.willValidate || !only(control)) continue;
     if (control.validity.valid) {
       unmark(control);
       continue;

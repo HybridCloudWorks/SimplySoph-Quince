@@ -117,6 +117,34 @@ test("a signed-in guest whose sign-in timed out mid-RSVP is offered a sign-in in
   );
 });
 
+// The review has no email field, so a contact email the server would refuse
+// is caught on the form, even on the way through a quick answer.
+test("the quick answers check the contact email first, while it can still be fixed", async ({
+  page,
+  harness,
+}) => {
+  const household = households.rivera;
+  await harness.issueInvitation(household);
+  await page.goto(harness.url("/rsvp/"));
+  await signIn(page, harness, household.email);
+  await expect(page.getByRole("heading", { name: "Rivera Family" })).toBeVisible();
+  const email = page.locator("#response").getByRole("textbox", { name: "Email" }),
+    summary = page.locator("#response .error-summary");
+  for (const typo of ["rivera.family", "rivera@family"]) {
+    await email.fill(typo);
+    await page.getByRole("button", { name: "Everyone’s coming" }).click();
+    await expect(summary).toBeFocused();
+    await expect(summary).toHaveText("Check the email address: Email");
+    await expect(page.getByRole("heading", { name: "Review your response" })).toHaveCount(0);
+  }
+  // Only the contact details are checked: the counts come from the button.
+  await email.fill("rivera@family.example");
+  await page.getByRole("button", { name: "Everyone’s coming" }).click();
+  await expect(page.getByRole("heading", { name: "Review your response" })).toBeFocused();
+  await page.getByRole("button", { name: "Save my RSVP" }).click();
+  await expect(page).toHaveURL(harness.url("/rsvp/confirmed/"));
+});
+
 test("My account puts the household’s RSVP first, labels contact fields for autofill, and saves in place", async ({
   page,
   harness,
