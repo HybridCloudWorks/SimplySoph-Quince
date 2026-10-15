@@ -651,7 +651,11 @@ export function createApplication({
         type,
         locale,
         household: household.name,
-        url: url || origin + (locale === "es" ? "/es" : "") + "/rsvp/",
+        // A receipt cannot carry the private link (only its hash is kept), so
+        // its button opens the schedule instead of the bare code form.
+        url:
+          url ||
+          origin + (locale === "es" ? "/es" : "") + (responseId ? "/details/" : "/rsvp/"),
         // From the admin's event settings, so a schedule change reaches new emails.
         eventDate: ((d) => d[0].toUpperCase() + d.slice(1))(
           longDate(site.ceremony.start, locale),
@@ -667,6 +671,8 @@ export function createApplication({
         receiptCommitted: !!responseId,
         preview: false,
         updateText,
+        attendance: responseId ? s.responses[responseId]?.attendance : null,
+        invited: s.invitations[household.id]?.invited,
       });
     s.outbox[id] = {
       id,
@@ -928,14 +934,16 @@ export function createApplication({
     });
     return result;
   }
-  // Signed-in guests stay signed in while they use the site (AUTHN-7). A
-  // request in the last 15 minutes of an email sign-in session extends it to 30
-  // minutes from now, never past 12 hours after sign-in. The extension is saved
-  // only once the request has succeeded, together with the re-sent cookie (photo
+  // Guests stay signed in while they use the site (AUTHN-7). A request in the
+  // last 15 minutes of a guest session extends it to 30 minutes from now, never
+  // past 12 hours after an email sign-in, or 2 hours after an invitation link
+  // was opened: that session only answers the RSVP, which takes minutes, and a
+  // long pause no longer loses a half-filled form. The extension is saved only
+  // once the request has succeeded, together with the re-sent cookie (photo
   // responses included), so the ledger and the browser always agree. Admin
   // sessions keep their fixed 30 minutes (the admin page polls in the
-  // background, which would keep an unattended tab signed in), and
-  // invitation-link sessions, which only open the RSVP, are not extended.
+  // background, which would keep an unattended tab signed in).
+  const linkSessionLimit = 7200000;
   async function dispatch(req) {
     const refresh = {};
     const result = await route(req, refresh);
@@ -1357,6 +1365,7 @@ export function createApplication({
           generation: r.generation,
           scope: "rsvp",
           csrf,
+          startedAt: now(),
           expiresAt: now() + 1800000,
         };
       });
@@ -1381,8 +1390,7 @@ export function createApplication({
     const { session } = ctx;
     if (
       session?.kind === "guest" &&
-      session.accountId &&
-      session.email &&
+      (session.accountId ? !!session.email : session.scope === "rsvp") &&
       ctx.raw &&
       path !== "/api/logout" &&
       path !== "/api/logout-all" &&
@@ -1391,21 +1399,27 @@ export function createApplication({
       session.expiresAt - now() < 900000
     ) {
       const startedAt = session.startedAt ?? session.expiresAt - 1800000,
-        until = Math.min(now() + 1800000, startedAt + 43200000);
-      // Renew only while the sign-in email is still on that household's Notion
-      // row, so removing it still ends access within about 15 minutes. A Notion
-      // error, or no answer within 2 seconds, skips the renewal; it never fails
-      // or noticeably delays the request.
-      const stillListed =
+        until = Math.min(
+          now() + 1800000,
+          startedAt + (session.accountId ? 43200000 : linkSessionLimit),
+        );
+      // Renew an email sign-in only while that email is still on the
+      // household's Notion row, so removing it still ends access within about
+      // 15 minutes. A Notion error, or no answer within 2 seconds, skips the
+      // renewal; it never fails or noticeably delays the request. A link
+      // session was already checked against its link (sessionValid) and only
+      // reaches RSVP routes, so it needs no Notion read.
+      const renew =
         until > session.expiresAt &&
-        (await Promise.race([
-          notion.list().then(
-            (rows) => rosterMatch(rows, session.email)?.id === session.householdId,
-            () => false,
-          ),
-          new Promise((resolve) => setTimeout(() => resolve(false), 2000).unref?.()),
-        ]));
-      if (stillListed)
+        (!session.accountId ||
+          (await Promise.race([
+            notion.list().then(
+              (rows) => rosterMatch(rows, session.email)?.id === session.householdId,
+              () => false,
+            ),
+            new Promise((resolve) => setTimeout(() => resolve(false), 2000).unref?.()),
+          ])));
+      if (renew)
         refresh.renew = { sessionHash: ctx.sessionHash, startedAt, until, raw: ctx.raw };
     }
     if (session && method !== "GET")
@@ -1502,6 +1516,8 @@ export function createApplication({
       const row = await guestInvitation(session, { allowStale: true }),
         s = await ledger.read();
       return {
+        // The page keeps a half-filled RSVP per household under this id.
+        householdId: row.id,
         name: row.name,
         capacity: row.capacity,
         invited: row.invited,

@@ -12,16 +12,16 @@ const copy = {
       "RSVP for your family",
     ],
     receipt: [
-      "We received your RSVP · Sophia’s Mis XV",
-      "Thank you for your response.",
-      "Your household’s response has been received. You can review your attendance and make permitted changes through your private invitation.",
-      "Review your response",
+      "We received your RSVP · Sophia’s quinceañera",
+      "Thank you for your RSVP.",
+      "Here is your family’s answer:",
+      "See the schedule and directions",
     ],
     update: [
       "Your RSVP was updated · Sophia’s quinceañera",
       "We saved your latest answer.",
-      "You can see it any time: open your invitation link, or sign in on the website with this email address.",
-      "See your answer",
+      "Here is your family’s answer now:",
+      "See the schedule and directions",
     ],
     // Reminders go only to families with no saved answer (server/mail-batches.mjs).
     reminder: [
@@ -53,6 +53,13 @@ const copy = {
     deadline: "RSVP by",
     replyBy: (d) => `Please let us know by ${d}.`,
     quick: ["Or answer now", "We'll be there", "We can't make it"],
+    events: { ceremony: "Ceremony", dinner: "Dinner", dance: "Reception & dance" },
+    adults: (n) => `${n} ${n === 1 ? "adult/teen" : "adults/teens"}`,
+    kids: (n) => `${n} ${n === 1 ? "child" : "children"}`,
+    absent: "not attending",
+    declined: "You let us know no one in your family can attend. We’ll miss you, and thank you for your love.",
+    changeUntil: (d) =>
+      `You can change it until ${d}: open your invitation email again and tap its RSVP button.`,
     private: "This RSVP link is just for your family, so please don’t forward this email.",
     keepPrivate: "Your invitation link is just for your family. Please don’t share it.",
     help: `Add ${event.sender} to your contacts so our emails reach your inbox. Questions? Just reply — we read every message.`,
@@ -68,16 +75,16 @@ const copy = {
       "Confirmar asistencia",
     ],
     receipt: [
-      "Recibimos tu confirmación · Los XV de Sophia",
+      "Recibimos su respuesta · Los XV de Sophia",
       "Gracias por responder.",
-      "Recibimos la respuesta de tu familia. Puedes revisar su asistencia y hacer los cambios permitidos a través de tu invitación privada.",
-      "Revisar tu respuesta",
+      "Esta es la respuesta de su familia:",
+      "Ver el programa y cómo llegar",
     ],
     update: [
       "Su respuesta se actualizó · Los XV de Sophia",
       "Guardamos su respuesta más reciente.",
-      "Pueden verla cuando quieran: abran el enlace de su invitación o entren al sitio con este correo.",
-      "Ver su respuesta",
+      "Esta es ahora la respuesta de su familia:",
+      "Ver el programa y cómo llegar",
     ],
     reminder: [
       "Un pequeño recordatorio · Los XV de Sophia",
@@ -108,6 +115,13 @@ const copy = {
     deadline: "Confirmen a más tardar el",
     replyBy: (d) => `Por favor, confirmen su asistencia a más tardar el ${d}.`,
     quick: ["O respondan ahora", "Ahí estaremos", "No podremos ir"],
+    events: { ceremony: "Ceremonia", dinner: "Cena", dance: "Recepción y baile" },
+    adults: (n) => `${n} ${n === 1 ? "adulto/joven" : "adultos/jóvenes"}`,
+    kids: (n) => `${n} ${n === 1 ? "niño" : "niños"}`,
+    absent: "no asistirán",
+    declined: "Nos avisaron que nadie de su familia podrá asistir. Los vamos a extrañar; gracias por su cariño.",
+    changeUntil: (d) =>
+      `Pueden cambiarla hasta el ${d}: abran de nuevo su correo de invitación y toquen el botón para responder.`,
     private: "Este enlace es solo para su familia; por favor, no reenvíen este correo.",
     keepPrivate: "El enlace de su invitación es solo para su familia. Por favor, no lo compartan.",
     help: `Agreguen ${event.sender} a sus contactos para que nuestros correos lleguen a su bandeja de entrada. ¿Preguntas? Respondan a este correo; leemos todos los mensajes.`,
@@ -193,6 +207,54 @@ export function emailSchedule(site, invited, locale = "en") {
   }
   return rows;
 }
+// Every email shares one frame: the burgundy "Sophia · Mis XV" band and a card.
+function layout(locale, subject, preheader, body) {
+  return `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(subject)}</title></head><body style="margin:0;background:#fbf5e9;color:#351e21;font:16px/1.6 Arial,sans-serif">${preheader ? `<div style="display:none;max-height:0;overflow:hidden">${escape(preheader)}</div>` : ""}<table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td align="center" style="padding:24px 12px"><table role="presentation" width="560" style="width:100%;max-width:560px;background:#fffdf8;border:1px solid #d9c6a5" cellspacing="0" cellpadding="0"><tr><td style="background:#651625;color:#e9c77b;padding:28px;text-align:center;font:36px Georgia,serif">Sophia · Mis XV</td></tr><tr><td style="padding:28px">${body}</td></tr></table></td></tr></table></body></html>`;
+}
+const button = (href, label) =>
+  `<p style="margin:28px 0"><a href="${escape(href)}" style="display:inline-block;background:#651625;color:#fff;padding:14px 22px;text-decoration:none">${escape(label)}</a></p>`;
+// The sign-in link, in the guest's language. It says who it is from, which
+// celebration, what the link opens and how long it lasts, instead of a lone
+// link (the shape of phishing mail).
+const signInCopy = {
+  en: {
+    subject: "Your sign-in link · Sophia’s quinceañera",
+    greeting: "Hello",
+    intro: (date) =>
+      `You asked to sign in to the website for Sophia’s quinceañera${date ? ` (${date})` : ""}. Once you’re in, you can share photos and videos, write in the guestbook, send us a message and update your contact details.`,
+    cta: "Sign in to the website",
+    once: "This link works once, within 15 minutes. No password needed.",
+    ignore: "Didn’t ask for this? Ignore this email; nobody can sign in without the link.",
+    sign: "With love, Sophia’s family",
+  },
+  es: {
+    subject: "Tu enlace para entrar · Los XV de Sophia",
+    greeting: "Hola",
+    intro: (date) =>
+      `Pediste entrar al sitio de los XV de Sophia${date ? ` (${date})` : ""}. Ya adentro, puedes compartir fotos y videos, escribir en el libro de firmas, enviarnos mensajes y actualizar tus datos de contacto.`,
+    cta: "Entrar al sitio",
+    once: "Este enlace funciona una sola vez, durante 15 minutos. No necesitas contraseña.",
+    ignore: "¿No lo pediste? Ignora este correo; nadie puede entrar sin el enlace.",
+    sign: "Con cariño, la familia de Sophia",
+  },
+};
+export function renderSignInEmail({ locale = "en", household = "", url, eventDate = "" }) {
+  const c = signInCopy[locale];
+  if (!c) throw new Error("Unsupported locale");
+  const target = new URL(url);
+  if (target.protocol !== "https:" || target.username || target.password)
+    throw new Error("An HTTPS URL without embedded credentials is required");
+  const greeting = household ? `${c.greeting} ${household},` : `${c.greeting},`,
+    intro = c.intro(eventDate);
+  const html = layout(
+    locale,
+    c.subject,
+    intro,
+    `<p>${escape(greeting)}</p><p>${escape(intro)}</p>${button(target.href, c.cta)}<p>${escape(c.once)}</p><p style="font-size:14px">${escape(c.ignore)}</p><p style="font-family:Georgia,serif">${escape(c.sign)}</p>`,
+  );
+  const text = [greeting, intro, `${c.cta}: ${target.href}`, c.once, c.ignore, c.sign].join("\n\n");
+  return { subject: c.subject, html, text };
+}
 // The opening sentence of Sophia's own message, when it is short enough to quote.
 export function firstSentence(text) {
   const m = String(text || "")
@@ -213,6 +275,9 @@ export function renderEmail({
   preview = true,
   dateConfirmed = false,
   receiptCommitted = false,
+  // A receipt's saved answer, and the events on the household's invitation.
+  attendance = null,
+  invited = null,
 }) {
   if (!templateKeys.includes(type) || !copy[locale])
     throw new Error("Unsupported template or locale");
@@ -240,6 +305,27 @@ export function renderEmail({
     quote = type === "invitation" ? note : "",
     reply = rsvp && rsvpDeadline ? c.replyBy(rsvpDeadline) : "",
     preheader = rsvp && eventDate ? `${eventDate}. ${reply}`.trim() : "";
+  // A receipt repeats the answer for the events on the invitation, and says
+  // until when and how to change it (the private link is not kept, so the
+  // invitation email is the way back).
+  const answers =
+    ["receipt", "update"].includes(type) && attendance && invited
+      ? Object.keys(c.events)
+          .filter((e) => invited[e] && attendance[e])
+          .map((e) => ({ event: c.events[e], ...attendance[e] }))
+      : [];
+  const declined = answers.length && answers.every((a) => !a.adultsTeens && !a.kids),
+    said = declined
+      ? []
+      : answers.map((a) => ({
+          event: a.event,
+          count:
+            [a.adultsTeens && c.adults(a.adultsTeens), a.kids && c.kids(a.kids)]
+              .filter(Boolean)
+              .join(", ") || c.absent,
+        })),
+    lead = declined ? c.declined : intro,
+    change = answers.length && rsvpDeadline ? c.changeUntil(rsvpDeadline) : "";
   // Quick answers open the same private link with the answer pre-selected; the
   // guest still confirms on the page, so link scanners cannot submit an RSVP.
   const quick =
@@ -252,9 +338,11 @@ export function renderEmail({
     preview ? c.preview : "",
     c.greeting(household),
     title,
-    intro,
+    lead,
     // The change itself follows "here's what you need to know:" directly.
     updateText,
+    said.map((a) => `${a.event}: ${a.count}`).join("\n"),
+    change,
     quote ? `“${quote}” Sophia` : "",
     rows.length
       ? [eventDate, ...rows.map((r) => `${r.time} · ${r.text}`)]
@@ -272,6 +360,11 @@ export function renderEmail({
     c.help,
     c.sign,
   ].filter(Boolean);
-  const html = `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(subject)}</title></head><body style="margin:0;background:#fbf5e9;color:#351e21;font:16px/1.6 Arial,sans-serif">${preheader ? `<div style="display:none;max-height:0;overflow:hidden">${escape(preheader)}</div>` : ""}<table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td align="center" style="padding:24px 12px"><table role="presentation" width="560" style="width:100%;max-width:560px;background:#fffdf8;border:1px solid #d9c6a5" cellspacing="0" cellpadding="0"><tr><td style="background:#651625;color:#e9c77b;padding:28px;text-align:center;font:36px Georgia,serif">Sophia · Mis XV</td></tr><tr><td style="padding:28px">${preview ? `<p style="font-size:13px;color:#651625">${c.preview}</p>` : ""}<p>${escape(c.greeting(household))}</p>${title ? `<h1 style="font:30px/1.2 Georgia,serif;color:#651625">${escape(title)}</h1>` : ""}<p>${escape(intro)}</p>${updateText ? `<p>${escape(updateText)}</p>` : ""}${quote ? `<p style="margin:0 0 16px;border-left:3px solid #e9c77b;padding:4px 0 4px 14px;font:italic 18px/1.5 Georgia,serif;color:#4a2a2e">“${escape(quote)}” <span style="font-style:normal;color:#651625">Sophia</span></p>` : ""}${rows.length ? `${eventDate ? `<p style="margin:0 0 6px"><strong>${escape(eventDate)}</strong></p>` : ""}<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin:0 0 16px">${rows.map((r) => `<tr><td style="padding:8px 12px 8px 0;border-top:1px solid #ecdfc8;font-weight:bold;color:#651625;white-space:nowrap;vertical-align:top">${escape(r.time)}</td><td style="padding:8px 0;border-top:1px solid #ecdfc8;vertical-align:top">${escape(r.text)}</td></tr>`).join("")}</table>` : eventDate ? `<p><strong>${c.date}:</strong> ${escape(eventDate)}</p>` : ""}${reply ? `<p>${c.replyBy(`<strong>${escape(rsvpDeadline)}</strong>`)}</p>` : ""}<p style="margin:28px 0"><a href="${escape(target.href)}" style="display:inline-block;background:#651625;color:#fff;padding:14px 22px;text-decoration:none">${escape(cta)}</a></p>${quick ? `<p style="margin:0 0 24px">${escape(c.quick[0])}: <a href="${escape(quick.yes)}" style="color:#651625;font-weight:bold">${escape(c.quick[1])}</a> · <a href="${escape(quick.no)}" style="color:#651625;font-weight:bold">${escape(c.quick[2])}</a></p>` : ""}<p style="font-size:14px">${escape(privacyNote)}</p><p>${escape(c.help)}</p><p style="font-family:Georgia,serif">${escape(c.sign)}</p></td></tr></table></td></tr></table></body></html>`;
+  const html = layout(
+    locale,
+    subject,
+    preheader,
+    `${preview ? `<p style="font-size:13px;color:#651625">${c.preview}</p>` : ""}<p>${escape(c.greeting(household))}</p>${title ? `<h1 style="font:30px/1.2 Georgia,serif;color:#651625">${escape(title)}</h1>` : ""}<p>${escape(lead)}</p>${updateText ? `<p>${escape(updateText)}</p>` : ""}${said.length ? `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin:0 0 16px">${said.map((a) => `<tr><td style="padding:8px 12px 8px 0;border-top:1px solid #ecdfc8;font-weight:bold;color:#651625;white-space:nowrap;vertical-align:top">${escape(a.event)}</td><td style="padding:8px 0;border-top:1px solid #ecdfc8;vertical-align:top">${escape(a.count)}</td></tr>`).join("")}</table>` : ""}${change ? `<p>${escape(change)}</p>` : ""}${quote ? `<p style="margin:0 0 16px;border-left:3px solid #e9c77b;padding:4px 0 4px 14px;font:italic 18px/1.5 Georgia,serif;color:#4a2a2e">“${escape(quote)}” <span style="font-style:normal;color:#651625">Sophia</span></p>` : ""}${rows.length ? `${eventDate ? `<p style="margin:0 0 6px"><strong>${escape(eventDate)}</strong></p>` : ""}<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin:0 0 16px">${rows.map((r) => `<tr><td style="padding:8px 12px 8px 0;border-top:1px solid #ecdfc8;font-weight:bold;color:#651625;white-space:nowrap;vertical-align:top">${escape(r.time)}</td><td style="padding:8px 0;border-top:1px solid #ecdfc8;vertical-align:top">${escape(r.text)}</td></tr>`).join("")}</table>` : eventDate ? `<p><strong>${c.date}:</strong> ${escape(eventDate)}</p>` : ""}${reply ? `<p>${c.replyBy(`<strong>${escape(rsvpDeadline)}</strong>`)}</p>` : ""}${button(target.href, cta)}${quick ? `<p style="margin:0 0 24px">${escape(c.quick[0])}: <a href="${escape(quick.yes)}" style="color:#651625;font-weight:bold">${escape(c.quick[1])}</a> · <a href="${escape(quick.no)}" style="color:#651625;font-weight:bold">${escape(c.quick[2])}</a></p>` : ""}<p style="font-size:14px">${escape(privacyNote)}</p><p>${escape(c.help)}</p><p style="font-family:Georgia,serif">${escape(c.sign)}</p>`,
+  );
   return { subject, html, text: lines.join("\n\n") };
 }

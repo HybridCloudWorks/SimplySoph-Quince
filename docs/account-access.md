@@ -27,6 +27,8 @@ The model, in one table. The decision record is [v1/access-model.md](v1/access-m
   - Expire after 15 minutes and work once.
   - Sent only to an email on the guest list. Unknown addresses get the same response, after the same delay, and no email.
   - At most 3 links per address every 15 minutes. Only links actually sent count, so nobody can lock someone else out.
+  - Written in the language of the page the guest asked from (else the household's), greeting the household and saying what the link opens, that it works once for 15 minutes, and to ignore it if they didn't ask.
+  - After confirming, the guest goes back to the page they started from: My account, the RSVP, Share photos, the guestbook, Contact or the gallery (English or Spanish). Only a page name from that list is stored with the link, never an address from the request.
 - **Google and Microsoft:**
   - Sign-ins use a one-time, purpose-bound ticket.
   - A guest sign-in never creates an admin session; admins sign in at `/admin/login/`.
@@ -37,7 +39,8 @@ The model, in one table. The decision record is [v1/access-model.md](v1/access-m
 - **Authenticator codes:** 5 tries per sign-in. Ten wrong codes for one administrator within an hour pause that administrator's sign-ins for an hour, including sign-ins already open, and you get a note in Notifications. During a pause the owner can still sign in with a recovery code. A linked Microsoft account whose two-step sign-in Microsoft confirmed stands in for the code, so it is not paused.
 - **Sessions:**
   - Guests signed in with their email stay signed in while they use the site: 30 minutes after their last visit, at most 12 hours after signing in. Removing their email from the Notion row ends their access on their next request.
-  - Invitation-link sessions (RSVP only) and administrator sessions last 30 minutes.
+  - Invitation-link sessions (RSVP only) also stay open while the guest is answering: 30 minutes after their last step, at most 2 hours after opening the link. Reissuing or revoking the link ends them at once.
+  - Administrator sessions last 30 minutes.
   - **Sign out on all devices** (My account) ends every guest sign-in of that person. **Sign out everywhere** (admin menu) ends their admin and guest sign-ins alike.
   - The cookie is HttpOnly, Secure, SameSite=Strict and scoped to `/api`.
   - Every write needs the CSRF header and the site's Origin. Uploads without a current session are refused before they are read, and each server handles at most 3 uploads at once.

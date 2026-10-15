@@ -30,7 +30,7 @@ test("the skip link keeps an RSVP in progress instead of reloading it", async ({
   ).toBeVisible();
   const ceremony = page
     .getByRole("main")
-    .getByRole("group", { name: "Ceremony", exact: true });
+    .getByRole("group", { name: /^Ceremony · / });
   await ceremony.getByLabel("Adults / teens").selectOption("2");
   await page
     .getByLabel("Dietary/accessibility needs or song request (optional)")
@@ -58,7 +58,7 @@ test("opening /rsvp/#main shows the invitation form without a broken-link error"
     page.getByRole("heading", { name: "Open your invitation" }),
   ).toBeVisible();
   await expect(page.getByText("This invitation link isn't working.")).toHaveCount(0);
-  await expect(page.getByLabel("Invitation code")).toHaveValue("");
+  await expect(page.getByLabel("Invitation link or code")).toHaveValue("");
 });
 
 test("the skip link on My account does not start a sign-in confirmation", async ({

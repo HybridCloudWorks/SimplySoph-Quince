@@ -1492,6 +1492,8 @@ async function adminSignIn(f, email) {
 test("an invitation link or code opens the RSVP only; everything else needs the email sign-in", async () => {
   const f = await fixture();
   assert.equal((await f.linkGuest("invitation")).contactHidden, true);
+  // The page keeps a half-filled RSVP in the tab under the household's id.
+  assert.equal((await f.linkGuest("invitation")).householdId, household);
   await f.linkGuest("rsvp", f.input(), { "idempotency-key": "11111111-1111-4111-8111-111111111111" });
   for (const [path, body] of [
     ["messages", { kind: "guestbook", name: "A", text: "Hi", consent: true }],
@@ -1518,6 +1520,62 @@ test("guests sign in with the email on their Notion row, including Additional Em
   await f.publicPost("auth/email/verify", { token: linkOf(f.sent.at(-1)) });
   const accounts = Object.values((await f.ledger.read()).accounts);
   assert.ok(accounts.some((a) => a.email === "grandma@example.com" && a.householdId === household));
+});
+
+test("the emailed sign-in link brings the guest back to the page they asked from", async () => {
+  const f = await fixture();
+  const signIn = async (body) => {
+    f.advance(900001); // past the 3-links-per-15-minutes limit
+    await f.publicPost("auth/email/request", { email: "test@example.com", ...body });
+    const mail = f.sent.at(-1);
+    return { mail, result: await f.publicPost("auth/email/verify", { token: linkOf(mail) }) };
+  };
+  // From the Spanish photo page: a Spanish email whose link confirms on
+  // /es/account/, then returns to /es/share/.
+  const share = await signIn({ return: "es/share" });
+  assert.match(share.mail.html, /\/es\/account\/#[A-Za-z0-9_-]{43}"/);
+  assert.equal(share.result.returnTo, "es/share");
+  assert.equal((await signIn({ return: "guestbook" })).result.returnTo, "guestbook");
+  // Only page names from the list are kept, never an address from the request.
+  for (const value of ["https://evil.example/", "//evil.example", "admin", "es/admin/login", "share/../admin", 42]) {
+    const { mail, result } = await signIn({ return: value });
+    assert.equal(result.returnTo, null, String(value));
+    assert.match(mail.html, /"https:\/\/misxv\.simplysoph\.com\/account\/#[A-Za-z0-9_-]{43}"/);
+  }
+  const s = await f.ledger.read();
+  assert.ok(Object.values(s.emailLinks || {}).every((l) => !l.returnTo || /^(es\/)?[a-z]+$/.test(l.returnTo)));
+});
+
+test("the sign-in email greets the household in its language and says what the link does", async () => {
+  const f = await fixture();
+  await f.publicPost("auth/email/request", { email: "test@example.com", return: "account" });
+  const en = f.sent.at(-1);
+  assert.equal(en.subject, "Your sign-in link · Sophia’s quinceañera");
+  assert.equal(en.secret, true, "kept out of Sent Items");
+  for (const words of [
+    "Hello Test family,",
+    "Sophia’s quinceañera",
+    "Friday, January 15, 2027",
+    "share photos and videos",
+    "works once",
+    "15 minutes",
+    "Didn’t ask for this? Ignore this email",
+    "Sophia’s family",
+  ])
+    assert.ok(en.html.includes(words), words);
+  assert.ok(!/Inicia sesión|Continuar/.test(en.html), "one language only");
+  // A Spanish household, or a guest asking from a Spanish page, reads Spanish.
+  await f.ledger.transaction((s) => {
+    s.invitations[household].locale = "es";
+  });
+  await f.publicPost("auth/email/request", { email: "test@example.com" });
+  const es = f.sent.at(-1);
+  assert.equal(es.subject, "Tu enlace para entrar · Los XV de Sophia");
+  for (const words of ["Hola Test family,", "viernes 15 de enero de 2027", "una sola vez", "15 minutos", "¿No lo pediste? Ignora este correo", "la familia de Sophia"])
+    assert.ok(es.html.includes(words), words);
+  assert.match(es.html, /\/es\/account\/#[A-Za-z0-9_-]{43}"/);
+  assert.ok(!/Sign in|works once/.test(es.html), "one language only");
+  assert.ok(!/[ �]/.test(en.html + es.html), "no characters the mail server cannot carry");
 });
 
 test("an email removed from Notion can no longer use an issued sign-in link", async () => {
@@ -1907,7 +1965,7 @@ test("a renewal is saved only with a response that carries the cookie, photos in
   assert.ok((await expiresAt()) > before);
 });
 
-test("only email sign-in sessions renew; link, admin and Notion-outage cases do not (AUTHN-7)", async () => {
+test("admin sessions and email sign-ins during a Notion outage do not renew (AUTHN-7)", async () => {
   let down = false,
     f;
   f = await fixture({
@@ -1918,8 +1976,7 @@ test("only email sign-in sessions renew; link, admin and Notion-outage cases do 
       },
     },
   });
-  // The seeded link and admin sessions are both in their last 15 minutes.
-  assert.equal((await f.linkGuest("session")).setCookie, undefined, "invitation links are RSVP-only");
+  // The seeded admin session is in its last 15 minutes.
   assert.equal((await f.admin("dashboard")).setCookie, undefined, "admin sessions keep 30 minutes");
   await f.publicPost("auth/email/request", { email: "test@example.com" });
   const signed = await f.publicPost("auth/email/verify", { token: linkOf(f.sent.at(-1)) });
@@ -1928,6 +1985,51 @@ test("only email sign-in sessions renew; link, admin and Notion-outage cases do 
   const r = await f.app.dispatch({ path: "/api/session", headers: { cookie: signed.setCookie.split(";")[0] } });
   assert.equal(r.verified, true, "a Notion outage never fails the request");
   assert.equal(r.setCookie, undefined, "but it skips the renewal");
+});
+
+test("an invitation-link session stays open while the guest is answering, up to 2 hours", async () => {
+  const f = await fixture();
+  const expiresAt = async () =>
+    Object.values((await f.ledger.read()).sessions).find((s) => s.scope === "rsvp").expiresAt;
+  // Twenty minutes into the form, the page checks in: the session runs 30
+  // minutes from now instead of ending ten minutes later.
+  f.advance(20 * 60000);
+  const touched = await f.linkGuest("session");
+  assert.match(touched.setCookie, /^__session=.*Max-Age=1800/, "the renewed cookie is sent again");
+  assert.equal(await expiresAt(), f.now() + 1800000);
+  // A save 45 minutes after opening the link still works.
+  f.advance(25 * 60000);
+  const saved = await f.linkGuest("rsvp", f.input(), { "idempotency-key": "41414141-4141-4141-8141-414141414141" });
+  assert.equal(saved.saved, true);
+  // Kept busy, it still ends 2 hours after the link was opened.
+  for (let i = 0; i < 6; i++) {
+    f.advance(20 * 60000);
+    await f.linkGuest("session").catch(() => {});
+  }
+  assert.equal(await expiresAt(), at + 7200000, "never past 2 hours");
+  f.advance(at + 7200000 - f.now());
+  assert.equal((await f.linkGuest("session")).kind, null);
+  await assert.rejects(() => f.linkGuest("invitation"), (e) => e.code === "SIGN_IN_REQUIRED");
+});
+
+test("an idle invitation-link session still ends after 30 minutes, and only RSVP routes renew it", async () => {
+  const f = await fixture();
+  f.advance(31 * 60000);
+  await assert.rejects(
+    () => f.linkGuest("rsvp", f.input(), { "idempotency-key": "42424242-4242-4242-8242-424242424242" }),
+    (e) => e.code === "SIGN_IN_REQUIRED",
+  );
+  const g = await fixture();
+  g.advance(20 * 60000);
+  // My account is outside an RSVP-only session: refused, and nothing renewed.
+  await assert.rejects(() => g.linkGuest("account"), (e) => e.code === "SIGN_IN_REQUIRED");
+  const session = Object.values((await g.ledger.read()).sessions).find((s) => s.scope === "rsvp");
+  assert.equal(session.expiresAt, at + 1800000);
+  // A reissued link ends the session instead of renewing it.
+  await g.ledger.transaction((s) => {
+    s.invitations[household].generation = 2;
+  });
+  assert.equal((await g.linkGuest("session")).kind, null);
 });
 
 test("an administrator's sign out everywhere leaves other administrators alone (AUTHN-10)", async () => {
@@ -2496,6 +2598,21 @@ test("an invitation-link RSVP receipt follows the household's current Notion Ema
   const receipt = Object.values((await f.ledger.read()).outbox).find((j) => j.type === "receipt");
   assert.equal(receipt.to, "changed@example.org");
   assert.equal(receipt.state, "accepted");
+});
+
+test("an RSVP receipt repeats the answer for the invited events and how to change it", async () => {
+  const f = await fixture();
+  await f.linkGuest("rsvp", f.input(), { "idempotency-key": "24242424-2424-4424-8424-242424242424" });
+  const { html, subject } = f.sent.at(-1);
+  assert.equal(subject, "We received your RSVP · Sophia’s quinceañera");
+  // The fixture's invitation covers the ceremony and dinner, not the reception.
+  assert.ok(html.includes(">Ceremony</td>") && html.includes(">1 adult/teen</td>"));
+  assert.ok(html.includes(">Dinner</td>") && html.includes(">2 adults/teens, 1 child</td>"));
+  assert.ok(!html.includes("Reception"));
+  assert.ok(html.includes("You can change it until Sunday, November 15, 2026"));
+  assert.ok(html.includes("open your invitation email again"));
+  // The private link is not stored, so there is no button to the bare code form.
+  assert.ok(!html.includes(origin + "/rsvp/") && html.includes(origin + "/details/"));
 });
 
 test("at most 5 automatic receipts per household a day; later ones wait as drafts for a person (re-audit)", async () => {

@@ -9,9 +9,9 @@ All routes below exist. Guest routes have matching `/es/` versions and language 
 | `/details/` | Complete schedule, calendar links and links to venue pages |
 | `/ceremony/` | Ceremony time and confirmed church/parking details when supplied |
 | `/reception/` | AMZ address and map directions |
-| `/rsvp/` | Opens with the private invitation link or typed code (RSVP only), or for a signed-in guest once their household's link is issued; uses current Notion household allocations; per-event attendance and contact corrections |
-| `/rsvp/confirmed/` | Shows only a durably saved answer; edit response and add to calendar |
-| `/account/` | Sign-in with the household's Notion email (emailed link, Google or Microsoft); contact details, WhatsApp updates, private family replies and sign-out on all devices |
+| `/rsvp/` | Opens with the private invitation link, or the link or code pasted into the form (RSVP only), or for a signed-in guest once their household's link is issued. States the household's allocation from Notion and the reply-by date; **Everyone's coming** / **We can't make it** go straight to the review, as do the invitation email's quick-answer links; or per-event counts, asking only about the invited events (each with its time and place) and about children only when the invitation includes them. Nothing is saved before **Save my RSVP**. Answers in progress stay in the browser tab through a reload, a language switch or Back, and while the guest keeps working the link session stays open (up to 2 hours) |
+| `/rsvp/confirmed/` | Shows only a durably saved answer, when it was saved and until when it can change; calendars and directions for the events they attend, or a thank-you and the guestbook for a household that can't come |
+| `/account/` | Sign-in with the email where the household got its invitation (emailed link, Google or Microsoft), returning to the page the guest started from; the household's RSVP and a way to change it, contact details, WhatsApp updates, private family replies, and sign-out on all devices |
 | `/court/` | Approved court names, roles and portraits |
 | `/padrinos/` | Public thank-you to the padrinos, once the family approves it |
 | `/gallery/` | Approved photos and videos, for signed-in guests |

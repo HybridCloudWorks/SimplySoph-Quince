@@ -15,8 +15,8 @@ SendGrid is Twilio's email service, but it is a separate account; text messages 
 | Message | When it is sent |
 |---|---|
 | Invitation, reminder, update, details, change, thank-you | Only after a person previews and confirms it (**Admin → Invitations**) |
-| Sign-in link | When a guest or administrator asks for one. Not kept in Sent Items |
-| RSVP receipt | After an RSVP, only to an address on the household's Notion row; at most 5 automatic receipts per household a day (later ones wait as drafts in Communications) |
+| Sign-in link | When a guest or administrator asks for one, in the guest's language. Not kept in Sent Items |
+| RSVP receipt | After an RSVP, only to an address on the household's Notion row; at most 5 automatic receipts per household a day (later ones wait as drafts in Communications). It repeats the answer for the events on the invitation and says to open the invitation email again to change it before the deadline (`npm run emails:preview` shows a sample) |
 | Family notifications | To `NOTIFICATION_EMAILS` (default: `ADMIN_EMAILS`), never to guests |
 
 Nothing else is sent automatically (owner decision 7 in [v1/access-model.md](v1/access-model.md)).
