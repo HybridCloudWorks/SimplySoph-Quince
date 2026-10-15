@@ -412,6 +412,29 @@ export async function submit(form, fn) {
     }
   });
 }
+// A URL fragment is either an in-page anchor (the skip link's #main, the photo
+// QR code's #media-upload) or the one-time credential from an emailed or texted
+// link (/rsvp/#…, /account/#…, /admin/login/#…, Microsoft's #state=…). Anchors
+// belong to the browser: reading one as a credential, or reloading for it,
+// threw away whatever the guest was filling in. Only a credential is returned.
+export function linkFragment(hash = location.hash) {
+  const value = hash.replace(/^#/, "");
+  if (!value) return "";
+  let id = value;
+  try {
+    id = decodeURIComponent(value);
+  } catch {
+    /* not percent-encoded: compare as written */
+  }
+  return document.getElementById(id) ? "" : value;
+}
+// An emailed link opened in a tab already on the page only changes the hash;
+// reload so the new link is read like a fresh visit. Anchors never reload.
+export function reloadOnNewLink(when = () => true) {
+  addEventListener("hashchange", () => {
+    if (linkFragment() && when()) location.reload();
+  });
+}
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape")
     for (const el of document.querySelectorAll(".nav-group[open]"))

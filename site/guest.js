@@ -8,7 +8,18 @@ import {
   contactTopicsEs,
   calendarLink,
 } from "./celebration.mjs";
-import { api, esc, es, tr, route, field, submit, notify } from "./client.js";
+import {
+  api,
+  esc,
+  es,
+  tr,
+  route,
+  field,
+  submit,
+  notify,
+  linkFragment,
+  reloadOnNewLink,
+} from "./client.js";
 import {
   startMicrosoft,
   microsoftReturn,
@@ -419,10 +430,8 @@ async function publicContent() {
   }
 }
 await experienceReady;
-// An emailed link opened in a tab already on this page only changes the hash;
-// reload so the link is read like a fresh visit.
-addEventListener("hashchange", () => location.reload());
-let fragment = location.hash.slice(1);
+reloadOnNewLink();
+let fragment = linkFragment();
 const microsoft =
   portal && document.body.dataset.route === "account" ? microsoftReturn() : null;
 if (microsoft) {

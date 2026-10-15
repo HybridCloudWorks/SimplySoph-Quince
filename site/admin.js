@@ -6,7 +6,15 @@ import { smsComposer } from "./admin-sms.js";
 import { batchToolbar, eventNames } from "./admin-batches.js";
 import { startPulse, activityBanner } from "./admin-pulse.js";
 import { websiteEditor, notificationInbox } from "./admin-experience.js";
-import { api, esc, field, submit, notify } from "./client.js";
+import {
+  api,
+  esc,
+  field,
+  submit,
+  notify,
+  linkFragment,
+  reloadOnNewLink,
+} from "./client.js";
 import {
   startMicrosoft,
   microsoftReturn,
@@ -122,9 +130,7 @@ async function attempt(method, fn) {
     if (!accessNote(method, e)) notify(e.message);
   }
 }
-addEventListener("hashchange", () => {
-  if (view === "admin/login") location.reload();
-});
+reloadOnNewLink(() => view === "admin/login");
 async function login() {
   const session = await api("session");
   if (session.kind === "admin") {
@@ -154,7 +160,7 @@ async function login() {
     }
     return;
   }
-  const fragment = location.hash.slice(1);
+  const fragment = linkFragment();
   if (fragment) {
     history.replaceState(null, "", location.pathname);
     root.innerHTML =
