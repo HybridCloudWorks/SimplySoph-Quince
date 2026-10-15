@@ -67,7 +67,28 @@ const DECODE_LIMITS = [
 ];
 // ffprobe's answer for a phone video is a few KB.
 const PROBE_ANSWER = 1_000_000;
+// An instance converts one video at a time: it has one vCPU, and the original
+// waits in /tmp, which is memory. The media job takes this slot before it
+// claims or downloads a video, holds it for the whole run and passes it to
+// convertVideo; called on its own, convertVideo takes the slot itself.
+// Returns null while another conversion holds it.
 let busy = false;
+export function conversionSlot() {
+  if (busy) return null;
+  busy = true;
+  let held = true;
+  return {
+    get held() {
+      return held;
+    },
+    // Only once: a second release must not free a slot someone else now holds.
+    release() {
+      if (!held) return;
+      held = false;
+      busy = false;
+    },
+  };
+}
 // Runs ffprobe/ffmpeg below the API's own priority, so pages, uploads and
 // sign-ins on the same instance stay responsive while a video converts.
 // Their log (stderr) is never read: ffmpeg logs a line for every damaged
@@ -142,11 +163,16 @@ async function containerOf(file) {
 // The default time budget fits the worst accepted file on one vCPU: 300 MB
 // of 4K HEVC (measured about 3 minutes for 60 s of 10-bit 4K, most of it
 // decoding) with room to spare; docs/deployment.md sets the request timeout.
-export async function convertVideo(input, directory, { timeoutMs = 420000 } = {}) {
+// `slot` is the caller's conversionSlot(), when it already holds one.
+export async function convertVideo(
+  input,
+  directory,
+  { timeoutMs = 420000, slot = null } = {},
+) {
   const format = await containerOf(input).catch(() => null);
   if (!format) throw error(422, "INVALID_VIDEO");
-  if (busy) throw error(503, "VIDEO_BUSY");
-  busy = true;
+  const own = slot?.held ? null : conversionSlot();
+  if (!own && !slot?.held) throw error(503, "VIDEO_BUSY");
   const output = path.join(directory, "output.mp4"),
     poster = path.join(directory, "poster.jpg");
   try {
@@ -295,7 +321,7 @@ export async function convertVideo(input, directory, { timeoutMs = 420000 } = {}
     if (e.status) throw e;
     throw error(422, "INVALID_VIDEO");
   } finally {
-    busy = false;
+    own?.release();
   }
 }
 // A private working directory for one conversion, always removed afterwards

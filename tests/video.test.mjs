@@ -5,7 +5,7 @@ import { mkdtemp, mkdir, readdir, readFile, rm, writeFile, stat } from "node:fs/
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
-import { convertVideo, withVideoDirectory, mediaResponse } from "../server/video.mjs";
+import { convertVideo, conversionSlot, withVideoDirectory, mediaResponse } from "../server/video.mjs";
 
 // Video conversion (#74). CI does not install ffmpeg (the production image
 // does), so most tests decide which ffprobe and ffmpeg the code finds on PATH:
@@ -159,6 +159,32 @@ test("one video is converted at a time, and a failure releases the guard (#74)",
   await first;
   await s.reset({ FAKE_FFPROBE_EXIT: "1" });
   await assert.rejects(s.convert(mp4), invalid, "the next video is not told the server is busy");
+  assert.deepEqual(await readdir(s.tmp), []);
+});
+
+test("the media job holds the conversion slot for its whole run: its own conversions go ahead, any other is told the server is busy", { skip: noShell }, async (t) => {
+  const s = await sandbox(t, { fakes: true });
+  const busy = (e) => e.status === 503 && e.code === "VIDEO_BUSY";
+  await s.reset({ FAKE_FFPROBE_JSON: meta({ duration: "2" }, [video(640, 360)]), FAKE_FFMPEG_BYTES: "16" });
+  const job = conversionSlot();
+  assert.ok(job?.held);
+  assert.equal(conversionSlot(), null, "one at a time");
+  await assert.rejects(s.convert(webm), busy, "nothing else converts meanwhile");
+  assert.deepEqual(await s.calls(), [], "not even ffprobe runs");
+  assert.equal((await s.convert(mp4, { slot: job })).videoBytes, 16);
+  assert.equal((await s.convert(mov, { slot: job })).videoBytes, 16, "one after another in the same run");
+  assert.ok(job.held, "a conversion does not release the job's slot");
+  await assert.rejects(s.convert(webm), busy);
+  job.release();
+  const next = conversionSlot();
+  job.release();
+  assert.equal(conversionSlot(), null, "releasing twice does not free a slot someone else now holds");
+  await assert.rejects(s.convert(mp4, { slot: job }), busy, "a released slot is no longer a pass");
+  next.release();
+  assert.equal((await s.convert(mp4)).videoBytes, 16, "on its own, convertVideo takes and frees the slot");
+  const after = conversionSlot();
+  assert.ok(after, "and it is free again afterwards");
+  after.release();
   assert.deepEqual(await readdir(s.tmp), []);
 });
 

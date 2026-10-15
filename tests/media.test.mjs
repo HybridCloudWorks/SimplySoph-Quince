@@ -12,6 +12,7 @@ import { Ledger, memoryAdapter, memoryMedia, UPLOAD_UNIT } from "../server/store
 import { createApplication } from "../server/application.mjs";
 import { hash, token } from "../server/auth.mjs";
 import { createGate } from "../server/gate.mjs";
+import { conversionSlot } from "../server/video.mjs";
 
 const origin = "https://misxv.simplysoph.com",
   at = Date.parse("2026-12-01T18:00:00Z"),
@@ -376,7 +377,12 @@ test("a video waits for the scheduled conversion, and the family can approve it 
 
 test("a video that can never play is marked with its reason; a server problem is retried, then given up after 3 tries", async () => {
   let answer;
+  const media = memoryMedia(),
+    downloads = [],
+    download = media.download.bind(media);
+  media.download = (id, ...rest) => (downloads.push(id), download(id, ...rest));
   const f = await fixture({
+    media,
     videoProcessor: async () => {
       throw answer;
     },
@@ -407,11 +413,20 @@ test("a video that can never play is marked with its reason; a server problem is
   assert.deepEqual(await f.app.processMedia(), { converted: 0, refused: 1, retrying: 0, abandoned: 0 });
   assert.deepEqual(await f.guest("uploads/" + slow.id), { state: "failed", problem: "PROCESSING_FAILED" });
 
-  // Another conversion running on this instance: handed back untouched.
+  // This instance is still converting (the previous run, say): the run ends
+  // before it claims or downloads anything, and the video waits untouched.
   const waiting = await f.upload(randomBytes(1000), { kind: "video", type: "video/mp4" });
-  answer = Object.assign(new Error(), { status: 503, code: "VIDEO_BUSY" });
-  assert.deepEqual(await f.app.processMedia(), { converted: 0, refused: 0, retrying: 0, abandoned: 0 });
-  assert.equal((await f.state()).photos[waiting.id].attempts, 0);
+  const running = conversionSlot(),
+    fetched = downloads.length;
+  try {
+    assert.deepEqual(await f.app.processMedia(), { converted: 0, refused: 0, retrying: 0, abandoned: 0 });
+  } finally {
+    running.release();
+  }
+  assert.equal(downloads.length, fetched, "nothing downloaded");
+  assert.equal((await f.state()).photos[waiting.id].lease, undefined, "not claimed");
+  assert.equal((await f.state()).photos[waiting.id].attempts, undefined, "no attempt used");
+  assert.ok(f.logs.some((l) => l.message === "media job skipped: this instance is converting a video"));
   // A video another instance is converting (its lease is current) is left alone.
   await f.ledger.transaction((s) => (s.photos[waiting.id].lease = Date.parse("2026-12-01T18:05:00Z")));
   answer = Object.assign(new Error(), { status: 422, code: "INVALID_VIDEO" });

@@ -9,7 +9,12 @@ import { enrollment } from "./mfa-enrollment.mjs";
 import { createNotifications } from "./notifications.mjs";
 import { createMailBatches } from "./mail-batches.mjs";
 import { logEvent } from "./event-log.mjs";
-import { convertVideo, mediaResponse, withVideoDirectory } from "./video.mjs";
+import {
+  convertVideo,
+  conversionSlot,
+  mediaResponse,
+  withVideoDirectory,
+} from "./video.mjs";
 import { uploadLimits, classify } from "../site/upload-batch.mjs";
 import { calendar, contactTopics, escapeHtml } from "../site/celebration.mjs";
 import { siteSettings, validateSettings } from "./site-settings.mjs";
@@ -115,7 +120,8 @@ export function createApplication({
   whatsappTransport,
   whatsappWebhook,
   whatsappTemplates = [],
-  // (input file, working directory) => { video, poster, duration }; see video.mjs.
+  // (input file, working directory, { slot }) => { video, poster, duration };
+  // see video.mjs. The media job holds the conversion slot while it runs.
   videoProcessor = convertVideo,
   key,
   origin,
@@ -2986,84 +2992,87 @@ export function createApplication({
       await discardUploads(gone);
       result.abandoned = gone.length;
     }
-    while (Date.now() - started < budgetMs) {
-      const waiting = Object.values((await ledger.read()).photos)
-        .filter((r) => r.state === "processing" && !(r.lease > now()) && !tried.has(r.id))
-        .sort((a, b) => (a.receivedAt || 0) - (b.receivedAt || 0))[0];
-      if (!waiting) break;
-      tried.add(waiting.id);
-      const job = await ledger.transaction((s) => {
-        const r = s.photos[waiting.id];
-        if (r?.state !== "processing" || r.lease > now()) return null;
-        r.lease = now() + 600000;
-        r.attempts = (r.attempts || 0) + 1;
-        return { id: r.id, attempts: r.attempts };
+    // This instance's one conversion (video.mjs), taken before anything is
+    // claimed or downloaded. A run can take 8 minutes and the job fires
+    // every 5, so the next run may find this one still converting: it then
+    // ends at once, instead of pulling up to 300 MB into memory first.
+    const slot = conversionSlot();
+    if (!slot)
+      log({
+        severity: "INFO",
+        message: "media job skipped: this instance is converting a video",
       });
-      if (!job) continue;
-      let done, failure;
-      try {
-        done = await withVideoDirectory(async (directory) => {
-          const input = join(directory, "input");
-          await media.download(job.id, "upload", input);
-          const out = await videoProcessor(input, directory);
-          const stored = (e) => {
-            if (e.code !== 412) throw e;
-          };
-          await media.put(job.id, { path: out.video }, "video").catch(stored);
-          if (out.poster)
-            await media.put(job.id, { path: out.poster }, "poster").catch(stored);
-          return { poster: !!out.poster, duration: Math.round(out.duration) };
+    try {
+      while (slot && Date.now() - started < budgetMs) {
+        const waiting = Object.values((await ledger.read()).photos)
+          .filter((r) => r.state === "processing" && !(r.lease > now()) && !tried.has(r.id))
+          .sort((a, b) => (a.receivedAt || 0) - (b.receivedAt || 0))[0];
+        if (!waiting) break;
+        tried.add(waiting.id);
+        const job = await ledger.transaction((s) => {
+          const r = s.photos[waiting.id];
+          if (r?.state !== "processing" || r.lease > now()) return null;
+          r.lease = now() + 600000;
+          r.attempts = (r.attempts || 0) + 1;
+          return { id: r.id, attempts: r.attempts };
         });
-      } catch (e) {
-        failure = e;
-      }
-      if (failure?.code === "VIDEO_BUSY") {
-        // Another conversion is running on this instance: hand it back.
+        if (!job) continue;
+        let done, failure;
+        try {
+          done = await withVideoDirectory(async (directory) => {
+            const input = join(directory, "input");
+            await media.download(job.id, "upload", input);
+            const out = await videoProcessor(input, directory, { slot });
+            const stored = (e) => {
+              if (e.code !== 412) throw e;
+            };
+            await media.put(job.id, { path: out.video }, "video").catch(stored);
+            if (out.poster)
+              await media.put(job.id, { path: out.poster }, "poster").catch(stored);
+            return { poster: !!out.poster, duration: Math.round(out.duration) };
+          });
+        } catch (e) {
+          failure = e;
+        }
+        // The guest's file can never work (422), or its original is gone, or it
+        // failed 3 times; anything else is tried again by a later run.
+        const refused =
+          failure &&
+          (failure.status === 422 || failure.code === 404 || job.attempts >= 3);
         await ledger.transaction((s) => {
           const r = s.photos[job.id];
-          if (r?.state === "processing") {
-            delete r.lease;
-            r.attempts--;
+          if (r?.state !== "processing") return;
+          delete r.lease;
+          if (done) {
+            r.state = "pending";
+            r.poster = done.poster;
+            r.duration = done.duration;
+            s.notifications ??= {};
+            s.notifications[job.id] = { id: job.id, kind: "video", at: now(), read: false };
+          } else if (refused) {
+            r.state = "failed";
+            r.problem = failure.status === 422 ? failure.code : "PROCESSING_FAILED";
           }
         });
-        break;
-      }
-      // The guest's file can never work (422), or its original is gone, or it
-      // failed 3 times; anything else is tried again by a later run.
-      const refused =
-        failure &&
-        (failure.status === 422 || failure.code === 404 || job.attempts >= 3);
-      await ledger.transaction((s) => {
-        const r = s.photos[job.id];
-        if (r?.state !== "processing") return;
-        delete r.lease;
+        if (done || refused) await media.remove(job.id, "upload").catch(() => {});
         if (done) {
-          r.state = "pending";
-          r.poster = done.poster;
-          r.duration = done.duration;
-          s.notifications ??= {};
-          s.notifications[job.id] = { id: job.id, kind: "video", at: now(), read: false };
-        } else if (refused) {
-          r.state = "failed";
-          r.problem = failure.status === 422 ? failure.code : "PROCESSING_FAILED";
+          await sendNotification(job.id);
+          result.converted++;
+        } else if (refused) result.refused++;
+        else {
+          result.retrying++;
+          log({
+            severity: "WARNING",
+            message: "video conversion will be retried",
+            code: failure.code ?? null,
+            attempts: job.attempts,
+          });
+          // Without ffmpeg every video would fail the same way.
+          if (failure.code === "VIDEO_UNAVAILABLE") break;
         }
-      });
-      if (done || refused) await media.remove(job.id, "upload").catch(() => {});
-      if (done) {
-        await sendNotification(job.id);
-        result.converted++;
-      } else if (refused) result.refused++;
-      else {
-        result.retrying++;
-        log({
-          severity: "WARNING",
-          message: "video conversion will be retried",
-          code: failure.code ?? null,
-          attempts: job.attempts,
-        });
-        // Without ffmpeg every video would fail the same way.
-        if (failure.code === "VIDEO_UNAVAILABLE") break;
       }
+    } finally {
+      slot?.release();
     }
     log({ severity: "INFO", message: "media", media: result });
     return result;
