@@ -68,7 +68,7 @@ function contents(route, lang) {
       .join("")}</div><div data-announcements></div></section>`;
   const heading = `<div class="page-heading"><p class="eyebrow">SOPHIA · MIS XV</p><h1>${routes.find((r) => r[0] === route)?.[es ? 2 : 1] || "Sophia"}</h1></div>`;
   if (route === "registry")
-    return `<section class="page section">${heading}<p class="lead">${say("Your presence is the greatest gift. If you would like to celebrate with a gift, here are Sophia’s wishes.", "Tu presencia es el mejor regalo. Si deseas celebrar con un regalo, aquí están los deseos de Sophia.")}</p><div data-public-registries>${registryCards(registryDefaults, lang)}</div></section>`;
+    return `<section class="page section">${heading}<p class="lead">${say("Your presence is the best gift. If you’d like to give Sophia something, here is her gift registry.", "Tu presencia es nuestro mejor regalo. Si quieres darle algo a Sophia, aquí está su mesa de regalos.")}</p><div data-public-registries>${registryCards(registryDefaults, lang)}</div></section>`;
   if (route === "account")
     return `<section class="page section">${heading}<div class="portal" id="portal" data-view="${route}"><p role="status">${t.loading}</p></div>${route === "account" ? `<p class="account-admin-link">${say("Helping run the celebration?", "¿Ayudas a organizar la celebración?")} <a href="/admin/login/">${say("Administrator sign-in", "Acceso de administradores")}</a></p>` : ""}</section>`;
   let body = "";
@@ -213,13 +213,16 @@ function contents(route, lang) {
   if (route === "share")
     body = `<div class="share-intro"><p class="lead">${say("Share the celebration through your eyes.", "Comparte la celebración desde tu mirada.")}</p><p>${say("Choose your favorite photos and videos. The family reviews every upload before sharing it in the guest gallery.", "Elige tus fotos y videos favoritos. La familia revisa cada archivo antes de compartirlo en la galería de invitados.")}</p></div><div id="media-upload" tabindex="-1"></div><div class="portal share-portal" id="portal" data-view="share"></div><aside class="media-reminder"><strong>${say("A little reminder", "Un pequeño recordatorio")}</strong><p>${say("Only share media you have permission to upload, including permission from a parent or guardian for children. Approved uploads are visible to signed-in guests.", "Comparte solo archivos que tengas permiso de subir, incluido el permiso de un padre o tutor para los menores. Los archivos aprobados son visibles para los invitados que inician sesión.")} <a href="${href("terms", lang)}">${say("Read the media policy", "Lee la política de medios")}</a></p></aside>`;
   if (route === "guestbook" || route === "contact")
-    body = `<p class="lead">${route === "guestbook" ? say("Leave Sophia a wish for the years ahead.", "Deja a Sophia un deseo para los años que vienen.") : say("We’re here to help with your invitation.", "Estamos aquí para ayudarte con tu invitación.")}</p>${route === "contact" ? `<p><a href="mailto:${event.sender}">${event.sender}</a></p>` : ""}<div class="portal" id="portal" data-view="${route}"></div>${route === "guestbook" ? '<div data-guestbook class="cards"></div>' : ""}`;
+    body = `<p class="lead">${route === "guestbook" ? say("Leave Sophia a wish for the years ahead.", "Deja a Sophia un deseo para los años que vienen.") : say("Questions about your invitation, your RSVP or the day? Write to us and we’ll get back to you.", "¿Tienes preguntas sobre tu invitación, tu respuesta o el día de la fiesta? Escríbenos y te contestamos.")}</p>${route === "contact" ? `<p><a href="mailto:${event.sender}">${event.sender}</a></p>` : ""}<div class="portal" id="portal" data-view="${route}"></div>${route === "guestbook" ? '<div data-guestbook class="cards"></div>' : ""}`;
   if (route === "faq")
     body =
       [
         [
-          say("When should I RSVP?", "¿Cuándo debo confirmar?"),
-          `${t.deadline}. ${say("Use the private invitation sent to your household.", "Usa la invitación privada que recibió tu familia.")}`,
+          say("When do I need to RSVP?", "¿Hasta cuándo puedo confirmar?"),
+          say(
+            `By ${t.deadline}. Use the invitation link we sent your family.`,
+            `A más tardar el ${t.deadline}. Usa el enlace de invitación que le enviamos a tu familia.`,
+          ),
         ],
         [
           say(
@@ -227,8 +230,8 @@ function contents(route, lang) {
             "¿Puedo llevar acompañantes o niños?",
           ),
           say(
-            "Your invitation specifies the adult/teen and child spaces allocated to your household. Contact the family if the information needs correcting.",
-            "Tu invitación indica los lugares para adultos/jóvenes y niños asignados a tu familia. Contacta a la familia si hay un error.",
+            "Your invitation shows the seats we saved for your family: adults and teens, and children. If something doesn’t look right, please let us know.",
+            "Tu invitación muestra los lugares que apartamos para tu familia: adultos y jóvenes, y niños. Si algo no está bien, avísanos.",
           ),
         ],
         family.children && [
@@ -247,7 +250,7 @@ function contents(route, lang) {
           esc(
             say(
               `The ceremony ends around ${timeRange({ start: celebration.ceremony.end }, lang)} and dinner starts at ${timeRange({ start: celebration.dinner.start }, lang)} at ${celebration.reception.name}.`,
-              `La ceremonia termina alrededor de las ${timeRange({ start: celebration.ceremony.end }, lang)} y la cena comienza a las ${timeRange({ start: celebration.dinner.start }, lang)} en ${celebration.reception.name}.`,
+              `La ceremonia termina alrededor de las ${timeRange({ start: celebration.ceremony.end }, lang)} y la cena empieza a las ${timeRange({ start: celebration.dinner.start }, lang)} en ${celebration.reception.name}.`,
             ),
           ),
         ],
@@ -257,15 +260,15 @@ function contents(route, lang) {
             "¿Puedo tomar fotos durante la ceremonia?",
           ),
           say(
-            "Please keep phones away during the ceremony. You can share your photos from the reception on the Share photos page.",
-            "Por favor, guarda tu teléfono durante la ceremonia. Puedes compartir tus fotos de la recepción en la página Comparte fotos y videos.",
+            `Please keep phones put away during the ceremony. You can share your reception photos on <a href="${href("share", lang)}">Share your photos</a>.`,
+            `Por favor, guarda tu teléfono durante la ceremonia. Puedes compartir tus fotos de la recepción en <a href="${href("share", lang)}">Comparte tus fotos</a>.`,
           ),
         ],
         [
           say("Can I change my response?", "¿Puedo cambiar mi respuesta?"),
           say(
-            "Open your invitation link again, or sign in with your email from My account, and edit before the deadline. Your most recent saved response is the one counted.",
-            "Abre de nuevo tu enlace de invitación, o inicia sesión con tu correo desde Mi cuenta, y edita antes de la fecha límite. Se contará la última respuesta guardada.",
+            "Yes, until the RSVP deadline. Open your invitation link again, or sign in with your email, and change your answer. We go by the last answer you save.",
+            "Sí, hasta la fecha límite. Abre otra vez tu enlace de invitación, o entra con tu correo, y cambia tu respuesta. Tomamos en cuenta la última respuesta que guardes.",
           ),
         ],
         [
@@ -273,17 +276,17 @@ function contents(route, lang) {
           esc(localized(family.dressCode)) || t.pending,
         ],
         [
-          say("Are gifts required?", "¿Se requieren regalos?"),
+          say("Do I need to bring a gift?", "¿Tengo que llevar regalo?"),
           say(
-            "Your presence is the greatest gift. If you would like to bring one, Sophia’s wishes are on the Registry page.",
-            "Tu presencia es el mejor regalo. Si deseas traer uno, los deseos de Sophia están en la página de registro de regalos.",
+            `Your presence is the best gift. If you’d like to give Sophia something, see <a href="${href("registry", lang)}">Gifts</a>.`,
+            `Tu presencia es nuestro mejor regalo. Si quieres darle algo a Sophia, consulta la <a href="${href("registry", lang)}">Mesa de regalos</a>.`,
           ),
         ],
         [
           say("Can I share photos?", "¿Puedo compartir fotos?"),
           say(
-            "Use Share photos and agree to the photo terms. Only approved photos and videos appear to signed-in guests.",
-            "Usa Comparte tus fotos y acepta las condiciones. Solo los invitados que inician sesión pueden ver archivos aprobados.",
+            `Yes. Sign in and use <a href="${href("share", lang)}">Share your photos</a>. We look at every photo and video first, and only guests who sign in can see the ones we approve. See our <a href="${href("terms", lang)}">Photo &amp; video policy</a>.`,
+            `Sí. Entra al sitio y usa <a href="${href("share", lang)}">Comparte tus fotos</a>. Revisamos cada foto y video primero, y solo los invitados que entran al sitio pueden ver los que aprobamos. Consulta <a href="${href("terms", lang)}">Uso de fotos y videos</a>.`,
           ),
         ],
       ]
