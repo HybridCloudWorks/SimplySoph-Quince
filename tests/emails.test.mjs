@@ -62,3 +62,16 @@ test('first sentence quotes only a short opening line',()=>{
   assert.equal(firstSentence('x'.repeat(300)+'.'),'');
   assert.equal(firstSentence(undefined),'');
 });
+import {renderSignInEmail} from '../emails/templates.mjs';
+test('the sign-in email greets the household the way the other emails do',()=>{
+  const greeting=(html)=>html.match(/<p>((?:Hello|Hola)[^<]*)<\/p>/)[1],url='https://misxv.example/account/#sample';
+  for(const [locale,expected] of [['en','Hello Familia Morales,'],['es','Hola, Familia Morales:']]){
+    const signIn=renderSignInEmail({locale,household:'Familia Morales',url});
+    assert.equal(greeting(signIn.html),expected);
+    assert.equal(greeting(renderEmail({...base,locale,household:'Familia Morales'}).html),expected);
+    assert.equal(signIn.text.split('\n\n')[0],expected);
+  }
+  // Without a name, still a greeting with its punctuation.
+  assert.equal(renderSignInEmail({locale:'en',url}).text.split('\n\n')[0],'Hello,');
+  assert.equal(renderSignInEmail({locale:'es',url}).text.split('\n\n')[0],'Hola:');
+});

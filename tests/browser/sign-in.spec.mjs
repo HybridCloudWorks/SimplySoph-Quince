@@ -33,7 +33,7 @@ test("the emailed sign-in link is in the guest’s language and brings them back
 
   const mail = harness.sent.at(-1);
   expect(mail.subject).toBe("Tu enlace para entrar · Los XV de Sophia");
-  expect(mail.html).toContain("Hola Familia Morales,");
+  expect(mail.html).toContain("Hola, Familia Morales:");
   expect(mail.html).toContain("viernes 15 de enero de 2027");
   expect(mail.html).toContain("¿No lo pediste? Ignora este correo");
   const link = mail.html.match(accountLink)[1];

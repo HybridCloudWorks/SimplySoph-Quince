@@ -219,7 +219,8 @@ const button = (href, label) =>
 const signInCopy = {
   en: {
     subject: "Your sign-in link · Sophia’s quinceañera",
-    greeting: "Hello",
+    // Punctuated like the other emails' greetings (copy.*.greeting above).
+    greeting: (name) => (name ? `Hello ${name},` : "Hello,"),
     intro: (date) =>
       `You asked to sign in to the website for Sophia’s quinceañera${date ? ` (${date})` : ""}. Once you’re in, you can share photos and videos, write in the guestbook, send us a message and update your contact details.`,
     cta: "Sign in to the website",
@@ -229,7 +230,7 @@ const signInCopy = {
   },
   es: {
     subject: "Tu enlace para entrar · Los XV de Sophia",
-    greeting: "Hola",
+    greeting: (name) => (name ? `Hola, ${name}:` : "Hola:"),
     intro: (date) =>
       `Pediste entrar al sitio de los XV de Sophia${date ? ` (${date})` : ""}. Ya adentro, puedes compartir fotos y videos, escribir en el libro de firmas, enviarnos mensajes y actualizar tus datos de contacto.`,
     cta: "Entrar al sitio",
@@ -244,7 +245,7 @@ export function renderSignInEmail({ locale = "en", household = "", url, eventDat
   const target = new URL(url);
   if (target.protocol !== "https:" || target.username || target.password)
     throw new Error("An HTTPS URL without embedded credentials is required");
-  const greeting = household ? `${c.greeting} ${household},` : `${c.greeting},`,
+  const greeting = c.greeting(household),
     intro = c.intro(eventDate);
   const html = layout(
     locale,
