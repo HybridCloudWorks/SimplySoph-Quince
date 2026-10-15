@@ -214,6 +214,62 @@ test("a refusal is final for that file only; a limit pauses at once; nothing inv
   assert.ok(!api.calls.some((c) => c.start === "IMG.HEIC"), "the HEIC photo never left the phone");
 });
 
+// An MP4/MOV file reduced to the boxes the length check reads.
+const mp4Box = (type, ...parts) => {
+  const body = Buffer.concat(parts);
+  const head = Buffer.alloc(8);
+  head.writeUInt32BE(8 + body.length);
+  head.write(type, 4, "ascii");
+  return Buffer.concat([head, body]);
+};
+const mvhd = (scale, length, version = 0) => {
+  const b = Buffer.alloc(version ? 32 : 20);
+  b.writeUInt8(version, 0);
+  if (version) {
+    b.writeUInt32BE(scale, 20);
+    b.writeBigUInt64BE(BigInt(length), 24);
+  } else {
+    b.writeUInt32BE(scale, 12);
+    b.writeUInt32BE(length, 16);
+  }
+  return mp4Box("mvhd", b);
+};
+
+test("a video's length is read from the file itself, so one over a minute is caught before it is sent", async () => {
+  // Camera files put the movie header after the media data.
+  const camera = Buffer.concat([
+    mp4Box("ftyp", Buffer.from("qt  \0\0\0\0qt  ")),
+    mp4Box("wide"),
+    mp4Box("mdat", randomBytes(5000)),
+    mp4Box("moov", mvhd(600, 600 * 75), mp4Box("trak", Buffer.alloc(20))),
+  ]);
+  const { videoSeconds, checkVideoLengths } = await import("../site/upload-batch.mjs");
+  assert.equal(await videoSeconds(real("IMG.MOV", "video/quicktime", camera)), 75);
+  // 64-bit sizes and a version-1 header, as long recordings use.
+  const largeMdat = Buffer.alloc(16);
+  largeMdat.writeUInt32BE(1);
+  largeMdat.write("mdat", 4, "ascii");
+  largeMdat.writeBigUInt64BE(16n + 100n, 8);
+  const long = Buffer.concat([
+    mp4Box("ftyp", Buffer.from("isom")),
+    largeMdat,
+    randomBytes(100),
+    mp4Box("moov", mp4Box("udta"), mvhd(90000, 90000 * 59.5, 1)),
+  ]);
+  assert.equal(await videoSeconds(real("PXL.mp4", "video/mp4", long)), 59.5);
+  // Anything it cannot read is left to the server.
+  for (const bytes of [Buffer.from([0x1a, 0x45, 0xdf, 0xa3, 1, 2, 3]), randomBytes(64), Buffer.alloc(0), camera.subarray(0, 60)])
+    assert.equal(await videoSeconds(real("x.webm", "video/webm", bytes)), null);
+  const rows = createUploadBatch([
+    real("long.MOV", "video/quicktime", camera),
+    real("ok.mp4", "video/mp4", long),
+    real("photo.jpg", "image/jpeg", randomBytes(10)),
+  ]);
+  await checkVideoLengths(rows);
+  assert.deepEqual(rows.map((r) => r.problem), ["video-long", null, null]);
+  assert.equal(rows[0].seconds, 75);
+});
+
 test("a server that keeps answering without taking bytes pauses the file instead of looping", async () => {
   const api = fakeApi();
   api.transport.put = async () => ({ received: 0, complete: false });

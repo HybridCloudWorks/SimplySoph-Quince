@@ -81,6 +81,57 @@ export function createUploadBatch(files) {
     };
   });
 }
+// The length in seconds of an MP4/MOV video (every phone records one), read
+// from its "mvhd" box rather than by playing it: the site's CSP allows no
+// blob: media, and not every browser decodes an iPhone's HEVC. null when it
+// cannot tell (WebM, an unusual file); the server checks every video again.
+export async function videoSeconds(file) {
+  const view = async (start, length) =>
+    new DataView(await file.slice(start, start + length).arrayBuffer());
+  const box = async (at) => {
+    const head = await view(at, 16);
+    let size = head.getUint32(0),
+      header = 8;
+    const type = String.fromCharCode(...[4, 5, 6, 7].map((i) => head.getUint8(i)));
+    if (size === 1) {
+      size = Number(head.getBigUint64(8));
+      header = 16;
+    } else if (size === 0) size = file.size - at;
+    if (size < header) throw new Error("bad box");
+    return { type, size, header };
+  };
+  try {
+    // Top-level boxes: the movie header is near the end in camera files.
+    for (let at = 0, n = 0; at + 8 <= file.size && n < 64; n++) {
+      const top = await box(at);
+      if (top.type === "moov")
+        for (let inner = at + top.header, m = 0; inner + 8 <= at + top.size && m < 64; m++) {
+          const child = await box(inner);
+          if (child.type === "mvhd") {
+            const v = await view(inner + child.header, 32),
+              long = v.getUint8(0) === 1,
+              scale = v.getUint32(long ? 20 : 12),
+              length = long ? Number(v.getBigUint64(24)) : v.getUint32(16);
+            return scale ? length / scale : null;
+          }
+          inner += child.size;
+        }
+      at += top.size;
+    }
+  } catch {
+    // Not an MP4/MOV the page can read: the server decides.
+  }
+  return null;
+}
+// Marks videos over a minute before anything is sent, so the guest can trim
+// them first instead of waiting for a long upload to be refused.
+export async function checkVideoLengths(entries, measure = videoSeconds) {
+  for (const entry of entries)
+    if (entry.kind === "video" && !entry.problem) {
+      entry.seconds = await measure(entry.file).catch(() => null);
+      if (entry.seconds >= uploadLimits.videoSeconds + 1) entry.problem = "video-long";
+    }
+}
 // Server answers that mean "this file, as sent, will never be accepted".
 // Everything else (a dropped connection, a busy or restarting server, a
 // timeout) is worth another try, and trying again is always safe: the server

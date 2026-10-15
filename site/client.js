@@ -111,36 +111,38 @@ const messages = {
     "Mueve los archivos a otro álbum antes de eliminarlo o cambiar su ID.",
   ],
   VERIFIED_ACCOUNT_REQUIRED: [
-    "Verify your email in My account to view or download media.",
-    "Verifica tu correo en Mi cuenta para ver o descargar archivos.",
+    "Sign in with your email to see and download photos and videos.",
+    "Entra con tu correo para ver y descargar fotos y videos.",
   ],
-  INVALID_VIDEO: [
-    "Choose a valid MP4 or WebM video: up to 8 MB, 60 seconds and 4096 pixels per dimension.",
-    "Elige un video MP4 o WebM válido: hasta 8 MB, 60 segundos y 4096 píxeles por dimensión.",
+  // Opening a photo or video upload (POST /api/uploads). Answers about the
+  // pieces of a file and its conversion are worded in site/media-upload.js.
+  INVALID_UPLOAD: [
+    "This kind of file can't be shared here. Choose photos (JPEG, PNG or WebP) or videos (MP4, MOV or WebM).",
+    "Este tipo de archivo no se puede compartir aquí. Elige fotos (JPEG, PNG o WebP) o videos (MP4, MOV o WebM).",
   ],
-  VIDEO_BUSY: [
-    "Another video is being prepared. Please try again shortly.",
-    "Se está preparando otro video. Inténtalo de nuevo en un momento.",
+  VIDEO_TOO_LARGE: [
+    "This video is larger than 300 MB. Trim it in your Photos or Gallery app, or record at 1080p instead of 4K, and try again.",
+    "Este video pesa más de 300 MB. Recórtalo en tu app de Fotos o Galería, o grábalo en 1080p en lugar de 4K, y vuelve a intentarlo.",
+  ],
+  MEDIA_NOT_READY: [
+    "This video is still being converted (or could not be). Approve it once it plays here.",
+    "Este video todavía se está convirtiendo (o no se pudo convertir). Apruébalo cuando se reproduzca aquí.",
   ],
   SIGN_IN_BUSY: [
     "Several people are signing in right now. Please try again in a few seconds, or use Sign in with Microsoft or Google.",
     "Varias personas están iniciando sesión. Inténtalo de nuevo en unos segundos, o entra con Microsoft o Google.",
   ],
   UPLOAD_BUSY: [
-    "Several uploads are arriving right now. Please try this one again in a minute.",
-    "Están llegando varias cargas. Intenta con esta de nuevo en un minuto.",
+    "Several files are arriving right now. Please try again in a minute.",
+    "Están llegando varios archivos en este momento. Inténtalo de nuevo en un minuto.",
   ],
   PHOTO_BUSY: [
-    "Several photos are being prepared right now. Please try this one again in a minute.",
-    "Se están preparando varias fotos. Intenta con esta de nuevo en un minuto.",
-  ],
-  VIDEO_UNAVAILABLE: [
-    "Video processing is not available yet. Contact the family.",
-    "El procesamiento de videos aún no está disponible. Contacta a la familia.",
+    "Several photos are being prepared right now. Please try again in a minute.",
+    "Se están preparando varias fotos en este momento. Inténtalo de nuevo en un minuto.",
   ],
   PHOTO_TOO_LARGE: [
-    "Choose a file up to 8 MB.",
-    "Elige un archivo de hasta 8 MB.",
+    "This photo is larger than 40 MB. Save a smaller copy and choose that one.",
+    "Esta foto pesa más de 40 MB. Guarda una copia más pequeña y elige esa.",
   ],
   EMAIL_SIGN_IN_UNAVAILABLE: [
     "Email sign-in is not open yet. Please contact the family.",
@@ -258,10 +260,6 @@ const messages = {
     "Enter explicit whole-number adult and child counts, totaling 1–50. Use 0 when there are no children.",
     "Ingresa cantidades enteras de adultos y niños, con un total de 1 a 50. Usa 0 si no hay niños.",
   ],
-  INVALID_PHOTO: [
-    "Choose a valid JPEG, PNG or WebP photo up to 8 MB.",
-    "Elige una foto JPEG, PNG o WebP válida de hasta 8 MB.",
-  ],
   ALREADY_SEATED: [
     "A selected household is already assigned to another table. Remove that assignment first.",
     "Una familia ya está asignada a otra mesa. Retira esa asignación primero.",
@@ -307,8 +305,8 @@ const messages = {
     "Espera antes de intentarlo de nuevo.",
   ],
   DAILY_UPLOAD_LIMIT: [
-    "Your household has shared 20 photos and videos today, the daily limit. Please share more tomorrow.",
-    "Tu familia ya compartió 20 fotos y videos hoy, el límite diario. Comparte más mañana.",
+    "Your household has shared 20 photos and videos today, the daily limit. You can share more tomorrow.",
+    "Tu hogar ya compartió 20 fotos y videos hoy, el límite diario. Puedes compartir más mañana.",
   ],
   API_NOT_CONFIGURED: [
     "Online submissions are not open yet. Please contact the family.",
