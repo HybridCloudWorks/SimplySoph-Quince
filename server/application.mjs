@@ -2980,7 +2980,8 @@ export function createApplication({
   // first, one at a time. It starts no new video after `budgetMs`, so a run
   // ends within the request timeout. A claimed video carries a lease, so two
   // instances never convert the same one; a run that dies leaves the lease to
-  // expire and the next run tries again, up to 3 times.
+  // expire and the next run tries again. After 3 runs, whether they failed or
+  // died, the video is given up.
   async function processMedia({ budgetMs = 60000 } = {}) {
     const started = Date.now(),
       result = { converted: 0, refused: 0, retrying: 0, abandoned: 0 },
@@ -3012,11 +3013,30 @@ export function createApplication({
         const job = await ledger.transaction((s) => {
           const r = s.photos[waiting.id];
           if (r?.state !== "processing" || r.lease > now()) return null;
+          // Claimed 3 times and still waiting: those runs died without an
+          // answer, so the conversion most likely took the instance down (out
+          // of memory, say), with every request on it. It is not tried again.
+          if ((r.attempts || 0) >= 3) {
+            delete r.lease;
+            r.state = "failed";
+            r.problem = "PROCESSING_FAILED";
+            return { id: r.id, attempts: r.attempts, givenUp: true };
+          }
           r.lease = now() + 600000;
           r.attempts = (r.attempts || 0) + 1;
           return { id: r.id, attempts: r.attempts };
         });
         if (!job) continue;
+        if (job.givenUp) {
+          await media.remove(job.id, "upload").catch(() => {});
+          result.refused++;
+          log({
+            severity: "ERROR",
+            message: "video conversion given up: 3 runs ended without an answer",
+            attempts: job.attempts,
+          });
+          continue;
+        }
         let done, failure;
         try {
           done = await withVideoDirectory(async (directory) => {

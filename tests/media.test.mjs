@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHmac, randomBytes } from "node:crypto";
-import { writeFile } from "node:fs/promises";
+import { rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
 import { Ledger, memoryAdapter, memoryMedia, UPLOAD_UNIT } from "../server/store.mjs";
@@ -433,6 +433,51 @@ test("a video that can never play is marked with its reason; a server problem is
   assert.deepEqual(await f.app.processMedia(), { converted: 0, refused: 0, retrying: 0, abandoned: 0 });
   f.advance(10 * 60000);
   assert.deepEqual(await f.app.processMedia(), { converted: 0, refused: 1, retrying: 0, abandoned: 0 }, "after the lease ends");
+});
+
+test("a video whose conversion takes the instance down with it is given up on the 4th run, without converting it again", async () => {
+  const calls = [];
+  let converting;
+  const f = await fixture({
+    videoProcessor: async (input, directory, { slot }) => {
+      calls.push(input);
+      if (calls.length > 3) throw Object.assign(new Error(), { status: 503, code: "VIDEO_TIMEOUT" });
+      // The instance is killed mid-conversion (out of memory, say): nothing
+      // after this runs or is saved, and its slot and /tmp go with it.
+      slot.release();
+      await rm(directory, { recursive: true, force: true });
+      converting();
+      return new Promise(() => {});
+    },
+  });
+  const { id } = await f.upload(randomBytes(1000), { kind: "video", type: "video/mp4" });
+  for (const attempt of [1, 2, 3]) {
+    await new Promise((resolve) => {
+      converting = resolve;
+      f.app.processMedia(); // never returns
+    });
+    const row = (await f.state()).photos[id];
+    assert.equal(row.state, "processing");
+    assert.equal(row.attempts, attempt);
+    assert.ok(row.lease, "claimed, and no outcome was ever recorded");
+    // The next scheduled run on a fresh instance, after the lease ran out.
+    f.advance(10 * 60000 + 1000);
+  }
+  assert.equal(calls.length, 3);
+  assert.deepEqual(await f.app.processMedia(), { converted: 0, refused: 1, retrying: 0, abandoned: 0 });
+  assert.equal(calls.length, 3, "not converted a 4th time");
+  const row = (await f.state()).photos[id];
+  assert.equal(row.state, "failed");
+  assert.equal(row.problem, "PROCESSING_FAILED");
+  assert.equal(row.lease, undefined);
+  assert.equal(stored(f, "upload", id), undefined, "the original is removed");
+  assert.deepEqual(await f.guest("uploads/" + id), { state: "failed", problem: "PROCESSING_FAILED" });
+  assert.ok(f.logs.some((l) => l.severity === "ERROR" && /given up/.test(l.message) && l.attempts === 3));
+  // Never leased again.
+  f.advance(10 * 60000 + 1000);
+  assert.deepEqual(await f.app.processMedia(), { converted: 0, refused: 0, retrying: 0, abandoned: 0 });
+  assert.equal((await f.state()).photos[id].lease, undefined);
+  assert.equal(calls.length, 3);
 });
 
 test("removing a video before it is converted discards the original, and the media job skips it", async () => {
