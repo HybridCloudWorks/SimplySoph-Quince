@@ -288,13 +288,15 @@ const messages = {
     "That invitation could not be opened. Check the link or contact us.",
     "No pudimos abrir la invitación. Revisa el enlace o escríbenos.",
   ],
+  // Only Save on the RSVP review gets these two, and the review speaks to the
+  // household (ustedes), so they do too.
   RESPONSE_CHANGED: [
     "Your response changed in another window. Reload to review the latest saved response.",
-    "Tu respuesta cambió en otra ventana. Recarga para revisar la última respuesta guardada.",
+    "Su respuesta cambió en otra ventana. Recarguen la página para revisar la última respuesta guardada.",
   ],
   RSVP_CLOSED: [
     "The RSVP deadline has passed. Please contact us.",
-    "La fecha límite ya pasó. Escríbenos.",
+    "La fecha límite ya pasó. Por favor, escríbannos.",
   ],
   CAPACITY_NEEDS_REVIEW: [
     "The family needs to review the spaces on this invitation. Please contact them.",

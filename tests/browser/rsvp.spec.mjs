@@ -265,6 +265,36 @@ test("a form opened before the deadline but saved after it is refused and nothin
   expect(harness.sent).toEqual([]);
 });
 
+// The review speaks to the household (ustedes: "Revisen su respuesta"), and
+// so do the refusals that only a save from it can get.
+test("in Spanish, a refused save speaks to the household the way the review does", async ({
+  page,
+  harness,
+  setNow,
+}) => {
+  const household = households.morales;
+  const { link } = await harness.issueInvitation(household, { locale: "es" });
+  await setNow(DEADLINE - 60_000);
+  await page.goto(harness.forBrowser(link));
+  await page.getByRole("button", { name: "Vamos todos" }).click();
+  await expect(page.getByRole("heading", { name: "Revisen su respuesta" })).toBeVisible();
+  const save = page.getByRole("button", { name: "Guardar mi respuesta" }),
+    alert = page.locator("#portal .error");
+  // Answered in another window in the meantime.
+  await page.route("**/api/rsvp", (route) =>
+    route.fulfill({ status: 409, json: { error: "RESPONSE_CHANGED" } }),
+  );
+  await save.click();
+  await expect(alert).toHaveText(
+    "Su respuesta cambió en otra ventana. Recarguen la página para revisar la última respuesta guardada.",
+  );
+  await page.unroute("**/api/rsvp");
+  await setNow(AFTER_DEADLINE);
+  await save.click();
+  await expect(alert).toHaveText("La fecha límite ya pasó. Por favor, escríbannos.");
+  expect(await responsesOf(harness, household)).toEqual([]);
+});
+
 test("a household that answers just before the deadline sees the RSVP closed right after it and cannot change it", async ({
   page,
   harness,
