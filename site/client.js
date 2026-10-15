@@ -479,11 +479,15 @@ function labelOf(control) {
   if (named) return document.getElementById(named.split(" ")[0])?.textContent.trim() || control.name;
   const label = control.labels?.[0];
   if (!label) return control.name;
-  return [...label.childNodes]
-    .filter((n) => n.nodeType === Node.TEXT_NODE)
-    .map((n) => n.textContent)
-    .join(" ")
-    .trim();
+  return (
+    [...label.childNodes]
+      .filter((n) => n.nodeType === Node.TEXT_NODE)
+      .map((n) => n.textContent)
+      .join(" ")
+      .trim() ||
+    label.textContent.trim() ||
+    control.name
+  );
 }
 function unmark(control) {
   control.removeAttribute("aria-invalid");

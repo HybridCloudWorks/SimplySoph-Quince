@@ -47,8 +47,7 @@ function show(html, { focus = settled } = {}) {
   document.title = heading ? `${heading.textContent.trim()} · ${pageTitle}` : pageTitle;
   if (focus)
     focusOn(
-      portal.querySelector("[data-focus]") ||
-        heading ||
+      heading ||
         portal.querySelector("[role=alert]:not(:empty),[role=status]:not(:empty),.notice"),
     );
 }

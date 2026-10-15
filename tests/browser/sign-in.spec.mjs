@@ -67,6 +67,32 @@ test("the sign-in form says which email to use, and a provider’s error shows n
   await expect(page.locator("#status")).toBeEmpty();
 });
 
+test("a signed-in guest whose sign-in timed out mid-RSVP is offered a sign-in in a new tab, with the answers kept", async ({
+  page,
+  harness,
+  setNow,
+}) => {
+  const household = households.rivera;
+  await harness.issueInvitation(household);
+  await page.goto(harness.url("/rsvp/"));
+  await signIn(page, harness, household.email);
+  // The sign-in started on the RSVP page, so it comes back there.
+  await expect(page).toHaveURL(harness.url("/rsvp/"));
+  await page.getByRole("button", { name: "Everyone’s coming" }).click();
+  await setNow(harness.now() + 31 * 60_000);
+  await page.getByRole("button", { name: "Save my RSVP" }).click();
+  const error = page.locator("#portal .error");
+  await expect(error).toContainText(
+    "Your sign-in timed out. Sign in again; your answers are kept here.",
+  );
+  const again = error.getByRole("link", { name: "Sign in in a new tab" });
+  await expect(again).toHaveAttribute("href", "/account/?return=rsvp");
+  await expect(again).toHaveAttribute("target", "_blank");
+  await expect(page.getByRole("main").getByRole("listitem").first()).toHaveText(
+    "Ceremony: 2 adults/teens, 1 child",
+  );
+});
+
 test("My account puts the household’s RSVP first, labels contact fields for autofill, and saves in place", async ({
   page,
   harness,
