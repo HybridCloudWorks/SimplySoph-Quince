@@ -47,6 +47,31 @@ test("the emailed sign-in link is in the guest’s language and brings them back
   await expect(page.getByLabel("Nombre para mostrar")).toBeVisible();
 });
 
+// The field's error note used to go when the field lost focus, which is the
+// press on the button itself: the button moved up under the pointer and that
+// first press did nothing.
+test("after a form error, fixing the field and pressing the button once is enough", async ({ page, harness }) => {
+  await page.goto(harness.url("/account/"));
+  const email = page.getByRole("textbox", { name: "Email" }).first();
+  const send = page.getByRole("button", { name: "Email my sign-in link" });
+  await send.click();
+  await expect(email).toHaveAttribute("aria-invalid", "true");
+  await email.fill(households.rivera.email);
+  const before = harness.sent.length;
+  await send.click();
+  await expect(page.getByRole("heading", { name: "Check your email" })).toBeFocused();
+  await expect.poll(() => harness.sent.length).toBe(before + 1);
+
+  await page.goto(harness.url("/rsvp/"));
+  const code = page.getByRole("textbox", { name: "Invitation link or code" });
+  const next = page.getByRole("button", { name: "Continue", exact: true });
+  await next.click();
+  await expect(code).toHaveAttribute("aria-invalid", "true");
+  await code.fill("AAAA-BBBB-CCCC-DDDD");
+  await next.click();
+  await expect(page.getByText("That invitation could not be opened. Check the link or contact us.")).toBeVisible();
+});
+
 test("switching language on My account keeps the page the sign-in was asked from", async ({
   page,
   harness,

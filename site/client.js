@@ -600,10 +600,13 @@ export function checkForm(form, only = () => true) {
 // marked busy with aria-disabled rather than disabled: disabling the focused
 // button dropped focus to the page (Chromium), so keyboard and screen-reader
 // users lost their place. A second submit while busy is ignored. An error is
-// shown in the form's own alert, next to the button.
+// shown in the form's own alert, next to the button. A field's error note goes
+// as soon as what is typed is valid: waiting for "change", which fires when the
+// field loses focus, removed it during the press on the button, so the button
+// moved up under the pointer and the press was lost.
 export async function submit(form, fn) {
   form.noValidate = true;
-  form.addEventListener("change", (e) => {
+  form.addEventListener("input", (e) => {
     if (e.target.getAttribute?.("aria-invalid") && e.target.validity.valid) unmark(e.target);
   });
   let busy = false;
