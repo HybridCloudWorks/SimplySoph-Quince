@@ -82,6 +82,6 @@ The pages are built from `site/` by `scripts/build-pages.mjs`, which also makes 
 
 ## License
 
-The **code** is available under the [MIT License](LICENSE).
+All rights reserved. See [LICENSE](LICENSE).
 
-The **family's content is not**: the photographs and artwork in `site/assets/`, the names and details of the family and guests, and the written text about the celebration are © 2026 Simply Soph Media, all rights reserved. After the event the repository will be cleaned of this content and turned into a reusable template.
+That covers the code and the **family's content** alike: the photographs and artwork in `site/assets/`, the names and details of the family and guests, and the written text about the celebration are © 2026 Simply Soph Media. After the event the repository will be cleaned of this content and turned into a reusable template.

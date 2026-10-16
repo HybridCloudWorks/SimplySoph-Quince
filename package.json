@@ -2,7 +2,7 @@
   "name": "simplysoph-quince",
   "version": "0.1.0",
   "private": true,
-  "license": "MIT",
+  "license": "UNLICENSED",
   "description": "Static quinceanera website and secure integration handoff",
   "type": "module",
   "engines": {
