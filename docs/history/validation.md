@@ -48,7 +48,7 @@ Follow [deployment.md](../deployment.md)’s live acceptance gate before distrib
 
 ## Publication and automatic release — September 27, 2026
 
-- Manually published the current multi-page build, then added and exercised automatic publishing on a push. GitHub run [36308570469](https://github.com/saulpatinojr/SimplySoph-Quince/actions/runs/36308570469) passed both checks and production deployment. It published commit `1bb6f7916d762ac91f74325ee1d37bbbcec127ef`, release `sites/misxv-simplysoph/releases/1790500356008000` at 09:12:36 UTC.
+- Manually published the current multi-page build, then added and exercised automatic publishing on a push. GitHub run [36308570469](https://github.com/HybridCloudWorks/SimplySoph-Quince/actions/runs/36308570469) passed both checks and production deployment. It published commit `1bb6f7916d762ac91f74325ee1d37bbbcec127ef`, release `sites/misxv-simplysoph/releases/1790500356008000` at 09:12:36 UTC.
 - The suite now has 60 passing tests, including two deployment guards. A credential-free dry run validated the complete 64-file upload manifest. PR runs correctly skip the deployment job.
 - All 54 public HTML documents matched the generated local files byte-for-byte; an unknown route returned HTTP 404. The public invitation hash exactly matches the corrected original.
 - The custom-domain X-Release-Commit header matched the pushed commit. Browser navigation from Home to Details to Spanish Details showed the Friday date and separate pages on the public domain.
