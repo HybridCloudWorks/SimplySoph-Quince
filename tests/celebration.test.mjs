@@ -4,6 +4,7 @@ import {
   celebration,
   calendar,
   maps,
+  mapLinks,
   calendarLink,
   scheduleStrip,
   scheduleList,
@@ -127,6 +128,28 @@ test("settings reject dangerous links, invalid event ordering and ambiguous date
     assert.throws(
       () => validateSettings(c),
       (e) => e.code === "INVALID_SITE_SETTINGS",
+    );
+  }
+});
+
+test("each venue opens in Google Maps, Apple Maps and Waze, each saying it opens a new tab", () => {
+  const address = celebration.reception.address,
+    q = encodeURIComponent(address);
+  assert.deepEqual(mapLinks(address), {
+    google: `https://www.google.com/maps/search/?api=1&query=${q}`,
+    apple: `https://maps.apple.com/?q=${q}`,
+    waze: `https://waze.com/ul?q=${q}&navigate=yes`,
+  });
+  for (const [lang, label, note] of [
+    ["en", "Open in Waze", "(opens in a new tab)"],
+    ["es", "Abrir en Waze", "(se abre en otra pestaña)"],
+  ]) {
+    const html = maps(address, lang);
+    assert.ok(
+      html.includes(
+        `<a class="button outline" target="_blank" rel="noopener noreferrer" href="https://waze.com/ul?q=${q}&amp;navigate=yes">${label}<span class="ext" aria-hidden="true">↗</span><span class="visually-hidden"> ${note}</span></a>`,
+      ),
+      lang,
     );
   }
 });
