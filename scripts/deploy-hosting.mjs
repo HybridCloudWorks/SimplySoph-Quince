@@ -5,6 +5,7 @@ import { gzipSync } from 'node:zlib';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { GoogleAuth } from 'google-auth-library';
+import { pagesNeedApi } from '../site/api-contract.mjs';
 
 const site = 'misxv-simplysoph';
 const project = 'simplysoph-66c78';
@@ -70,6 +71,26 @@ export async function liveRegistries(origin, {fetchImpl = fetch} = {}) {
     return Array.isArray(registries) ? JSON.stringify(registries.map(r => [r.id, r.url])) : null;
   } catch { return null; }
 }
+// Pages are published only in front of an API that understands them
+// (docs/deployment.md: deploy a backward-compatible API before publishing a
+// frontend that depends on it). The live GET /api/config must report an
+// apiVersion at least what these pages need (site/api-contract.mjs); missing,
+// older or unreadable refuses the publish, with the reason. Returns the live
+// version.
+const deployApiFirst = 'Deploy the API from this commit first (docs/deployment.md, Deploy the API), then re-run this job';
+export async function assertLiveApi(origin, {fetchImpl = fetch, needs = pagesNeedApi} = {}) {
+  let live;
+  try {
+    const res = await fetchImpl(`${origin}/api/config`,{cache:'no-store',redirect:'error',signal:AbortSignal.timeout(15000)});
+    if (!res.ok) throw new Error(`it answered HTTP ${res.status}`);
+    live = (await res.json()).apiVersion;
+  } catch (error) {
+    throw new Error(`Refusing to publish: the live API's version could not be read (${error.message}). ${deployApiFirst}.`);
+  }
+  if (!Number.isInteger(live)) throw new Error(`Refusing to publish: the live API reports no apiVersion, and these pages need ${needs}. ${deployApiFirst}.`);
+  if (live < needs) throw new Error(`Refusing to publish: the live API is apiVersion ${live}, and these pages need ${needs}. ${deployApiFirst}.`);
+  return live;
+}
 export function registryCheck(before, after) {
   if (before === null || after === null) return 'Gift registry links: not compared (the API could not be read before and after).';
   if (before !== after) throw new Error('The gift registry links changed during the release; inspect the event settings before retrying');
@@ -106,7 +127,9 @@ async function release(env = process.env) {
     return (await result.json()).object.sha === env.GITHUB_SHA;
   }
   if (!await isCurrent()) { console.log('Newer commit exists; obsolete release skipped.'); return; }
-  const origin = 'https://misxv.simplysoph.com', registriesBefore = await liveRegistries(origin);
+  const origin = 'https://misxv.simplysoph.com';
+  const apiVersion = await assertLiveApi(origin);
+  const registriesBefore = await liveRegistries(origin);
   const auth = new GoogleAuth({scopes:['https://www.googleapis.com/auth/cloud-platform']});
   const token = await auth.getAccessToken();
   if (!token) throw new Error('Google authentication failed');
@@ -132,6 +155,8 @@ async function release(env = process.env) {
   const finalized = await request(`${api}${version.name}?update_mask=status`,'PATCH',{status:'FINALIZED'});
   if (finalized.status !== 'FINALIZED') throw new Error('Version was not finalized');
   if (!await isCurrent()) { console.log('Newer commit exists; uploaded version was not released.'); return; }
+  // Again just before the release: an API rolled back during the upload refuses it too.
+  await assertLiveApi(origin);
   const published = await request(`${api}sites/${site}/releases?versionName=${encodeURIComponent(version.name)}`,'POST',{message:`GitHub ${env.GITHUB_SHA}`});
   console.log(`Released ${env.GITHUB_SHA}: ${published.name}`);
   // Normal HTTPS verification, bounded retry for edge propagation.
@@ -142,7 +167,7 @@ async function release(env = process.env) {
     if (stale) waitingFor = stale.join(', ');
     if (stale && !stale.length) {
       const registries = registryCheck(registriesBefore, await liveRegistries(origin));
-      const summary = `Published [misxv.simplysoph.com](https://misxv.simplysoph.com)\n\nCommit: \`${env.GITHUB_SHA}\`\n\nRelease: \`${published.name}\`\n\nStatic site verified over HTTPS: ${servedChecks.map(([path]) => `\`${path}\``).join(', ')} serve the built bytes.\n\n${registries}\n\nLive RSVP/email activation remains separate.\n`;
+      const summary = `Published [misxv.simplysoph.com](https://misxv.simplysoph.com)\n\nCommit: \`${env.GITHUB_SHA}\`\n\nRelease: \`${published.name}\`\n\nStatic site verified over HTTPS: ${servedChecks.map(([path]) => `\`${path}\``).join(', ')} serve the built bytes.\n\nLive API: apiVersion ${apiVersion} (these pages need ${pagesNeedApi}).\n\n${registries}\n\nLive RSVP/email activation remains separate.\n`;
       if (env.GITHUB_STEP_SUMMARY) await appendFile(env.GITHUB_STEP_SUMMARY,summary);
       console.log(`Custom domain serves the expected commit and content. ${registries}`); return;
     }

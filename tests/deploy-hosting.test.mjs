@@ -85,3 +85,36 @@ test('post-release check fails when the gift registry links change and reports w
   assert.match(registryCheck(before, down), /not compared/);
   assert.equal(await liveRegistries('https://example.org', {fetchImpl: async () => { throw new TypeError('fetch failed'); }}), null);
 });
+
+// QA-03/QA-04: the pages of #104 went live in front of API revision 00031,
+// which did not understand them. The publisher now reads the live API's
+// contract first and refuses unless it is at least what the pages need.
+test('publishing refuses unless the live API reports the contract these pages need', async () => {
+  const { assertLiveApi } = await import('../scripts/deploy-hosting.mjs');
+  const { pagesNeedApi } = await import('../site/api-contract.mjs');
+  const { apiVersion } = await import('../server/application.mjs');
+  // The API built with these pages always serves what they need.
+  assert.ok(Number.isInteger(pagesNeedApi) && apiVersion >= pagesNeedApi);
+  const asked = [];
+  const config = (body, status = 200) => async (url) => {
+    asked.push(url);
+    return new Response(JSON.stringify(body), {status, headers:{'content-type':'application/json'}});
+  };
+  const first = /Deploy the API from this commit first \(docs\/deployment\.md, Deploy the API\), then re-run this job/;
+  assert.equal(await assertLiveApi('https://example.org', {fetchImpl: config({apiVersion: 1}), needs: 1}), 1);
+  assert.equal(await assertLiveApi('https://example.org', {fetchImpl: config({apiVersion: 3}), needs: 2}), 3);
+  assert.deepEqual(asked, ['https://example.org/api/config', 'https://example.org/api/config']);
+  // Revision 00031 answers /api/config without apiVersion.
+  await assert.rejects(assertLiveApi('https://example.org', {fetchImpl: config({live: true, deadline: '2026-11-16T05:59:00Z'}), needs: 1}),
+    (e) => /reports no apiVersion/.test(e.message) && first.test(e.message));
+  await assert.rejects(assertLiveApi('https://example.org', {fetchImpl: config({apiVersion: 1}), needs: 2}),
+    (e) => /is apiVersion 1, and these pages need 2/.test(e.message) && first.test(e.message));
+  await assert.rejects(assertLiveApi('https://example.org', {fetchImpl: config({apiVersion: '2'}), needs: 1}), /reports no apiVersion/);
+  // Unreachable, an error page or no JSON: refused, saying why.
+  await assert.rejects(assertLiveApi('https://example.org', {fetchImpl: async () => { throw new TypeError('fetch failed'); }, needs: 1}),
+    (e) => /could not be read \(fetch failed\)/.test(e.message) && first.test(e.message));
+  await assert.rejects(assertLiveApi('https://example.org', {fetchImpl: config({error: 'X'}, 503), needs: 1}),
+    (e) => /could not be read \(it answered HTTP 503\)/.test(e.message) && first.test(e.message));
+  await assert.rejects(assertLiveApi('https://example.org', {fetchImpl: async () => new Response('<html>', {status: 200}), needs: 1}),
+    (e) => /could not be read/.test(e.message) && first.test(e.message));
+});

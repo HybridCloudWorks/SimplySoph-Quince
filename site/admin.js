@@ -26,7 +26,7 @@ import {
 import { contactTopics, contactTopicsEn } from "./celebration.mjs";
 import { date, time, stamp as recordedAt } from "./datetime.mjs";
 import { adminMessages } from "./admin-messages.js";
-import { audienceOf } from "./notes.mjs";
+import { audienceOf, consentOf } from "./notes.mjs";
 // Admin's own error wording (guest pages never load it).
 addMessages(adminMessages);
 const root = document.querySelector("#admin-app"),
@@ -542,7 +542,10 @@ function noteFacts(r, visibility) {
     family: "The writer left the box unchecked: for Sophia and the family only. It can’t be shown.",
     guests: "The writer agreed to show it to guests who sign in.",
     public: "The writer agreed to show it to anyone with the site’s address.",
-  }[r.display] || "Sent before the choice existed, under “We may publish this name and message after we read them.”: treated as agreeing to be shown to anyone.";
+  }[r.display] ||
+    (consentOf(r) === "public"
+      ? "Sent before the choice existed, under “We may publish this name and message after we read them.”: treated as agreeing to be shown to anyone."
+      : "Sent while the server didn’t yet record the writer’s choice: treated as agreeing to show it only to guests who sign in.");
   const audience = audienceOf(r, visibility);
   return `<p class="hint">${esc(consent)}${r.state === "approved" ? ` Shown now to: ${audience === "public" ? "anyone with the site’s address" : audience === "guests" ? "guests who sign in" : "nobody"}.` : ""}</p>${r.via === "link" ? `<p class="hint">Sent from the household’s invitation link, without an email sign-in.</p>` : ""}`;
 }

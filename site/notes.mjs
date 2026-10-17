@@ -17,12 +17,24 @@
 // never becomes public when the switch moves to "public". Notes saved before
 // this choice existed were sent under the required statement "We may publish
 // this name and message after we read them." and count as "public".
+//
+// The choice reached guests before the API that stores it: the pages of #104
+// (b3546fa) were published at 2026-10-17T03:22:00Z while the live API was
+// still revision 00031, which ignores `audience` and stores no `display`
+// (QA-03). From that moment a note without a stored choice may have been
+// written as "show to guests who sign in", so it counts as "guests", the
+// narrower reading; only notes before it keep the legacy "public".
+export const choiceLiveFrom = Date.parse("2026-10-17T03:22:00Z");
 export const visibilities = ["guests", "public"];
 export const visibilityOf = (site) =>
   site?.guestbook?.visibility === "public" ? "public" : "guests";
 const rank = { family: 0, guests: 1, public: 2 };
 export const consentOf = (note) =>
-  Object.hasOwn(rank, note?.display) ? note.display : "public";
+  Object.hasOwn(rank, note?.display)
+    ? note.display
+    : Number.isFinite(note?.at) && note.at < choiceLiveFrom
+      ? "public"
+      : "guests";
 // Who may see this note now: "family", "guests" or "public".
 export function audienceOf(note, visibility) {
   const consent = consentOf(note),

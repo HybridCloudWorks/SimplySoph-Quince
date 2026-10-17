@@ -55,6 +55,12 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createAccounts, accountActive, rosterMatch } from "./accounts.mjs";
+// The API contract this server serves, reported by GET /api/config. Raise it
+// when the API adds something pages will rely on; pages say what they need
+// in site/api-contract.mjs, and scripts/deploy-hosting.mjs refuses to publish
+// pages that need more than the live API reports. 1: the API of the round 2
+// review (the clock, channels, the note's audience, the table card, …).
+export const apiVersion = 1;
 const events = ["ceremony", "dinner", "dance"];
 const safeText = (s, max = 1000) => {
   if (
@@ -1217,6 +1223,9 @@ export function createApplication({
       throw error(403, "ORIGIN_REJECTED");
     if (path === "/api/config" && method === "GET")
       return {
+        // The contract this API serves (site/api-contract.mjs): the publish
+        // job refuses pages that need a newer one.
+        apiVersion,
         clientId,
         // Administrators' Microsoft sign-in uses it whatever guestMicrosoft says.
         microsoftClientId,
