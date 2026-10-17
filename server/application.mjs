@@ -18,6 +18,8 @@ import {
 import { uploadLimits, classify } from "../site/upload-batch.mjs";
 import { calendar, contactTopics, escapeHtml } from "../site/celebration.mjs";
 import { siteSettings, validateSettings } from "./site-settings.mjs";
+import { smsProgram } from "../site/sms-program.mjs";
+import { audienceOf, displayFor, visibilities, visibilityOf } from "../site/notes.mjs";
 import { randomUUID, randomBytes, createHmac, timingSafeEqual } from "node:crypto";
 import sharp from "sharp";
 import { imageGate, createGate } from "./gate.mjs";
@@ -111,6 +113,11 @@ export function createApplication({
     throw error(503, "SSO_NOT_CONFIGURED");
   },
   microsoftClientId = "",
+  // GUEST_MICROSOFT_SIGN_IN (server/start.mjs): whether guests may sign in with
+  // Microsoft. On by default; off refuses the guest route only. Administrators
+  // sign in with Microsoft either way, and a guest who used Microsoft before
+  // still has the emailed link to the same address.
+  guestMicrosoft = true,
   // Async (authorizationHeader) => boolean from server/scheduler.mjs; null disables the drain.
   verifyScheduler = null,
   media,
@@ -301,12 +308,42 @@ export function createApplication({
   // An invitation link or typed code opens the RSVP and nothing else: contact
   // details stay hidden and every other route treats the session as signed out.
   // Uploads, messages and edits need the email sign-in (owner's access model).
+  // The household may also leave one moderated note for Sophia per invitation
+  // link (POST /api/guestbook-note); a link session still reads nothing more.
   const rsvpScopeRoutes = new Set([
     "GET /api/session",
     "GET /api/invitation",
     "POST /api/rsvp",
+    "POST /api/guestbook-note",
     "POST /api/logout",
   ]);
+  // Approved notes for Sophia that a reader may see: "public" (anyone, and only
+  // while the family's switch says so) or "guests" (signed-in guests and
+  // administrators). Each note goes to the narrower of the switch and what its
+  // writer agreed to (site/notes.mjs).
+  function shownNotes(s, reader) {
+    const visibility = visibilityOf(siteSettings(s));
+    return Object.values(s.messages)
+      .filter((m) => m.kind === "guestbook" && m.state === "approved")
+      .filter((m) => {
+        const audience = audienceOf(m, visibility);
+        return reader === "public" ? audience === "public" : audience !== "family";
+      })
+      .sort((a, b) => (a.at || 0) - (b.at || 0))
+      .map((m) => ({ id: m.id, name: m.name, text: m.text }));
+  }
+  // A note's name, text and consent, checked before any budget is spent, so a
+  // refused post never uses up the household's messages for the hour.
+  function noteInput(body) {
+    const name = safeText(body.name, 100),
+      text = safeText(body.text, 2000);
+    if (!name || !text) throw error(422, "MESSAGE_REQUIRED");
+    // What the writer agreed to, given the sentence the page showed them
+    // (`audience`); unchecked means only Sophia and her family read it.
+    if (body.audience !== undefined && !visibilities.includes(body.audience))
+      throw error(422, "INVALID_FIELDS");
+    return { name, text, display: displayFor(body.consent, body.audience) };
+  }
   const hiddenContact = () => ({ email: "", phone: "", address: null });
   // One derived status per household for the organizer dashboard; computed from
   // the ledger on read so it can never drift from the underlying records.
@@ -1015,10 +1052,20 @@ export function createApplication({
     if (path === "/api/config" && method === "GET")
       return {
         clientId,
+        // Administrators' Microsoft sign-in uses it whatever guestMicrosoft says.
         microsoftClientId,
+        guestMicrosoft: guestMicrosoft && !!microsoftClientId,
         deadline,
         mailConfigured: mailer.configured,
         live: true,
+        // Which message channels are really on, from the server's own switches
+        // (server/start.mjs): pages offer a channel only while it is live.
+        channels: {
+          whatsapp: whatsapp.enabled,
+          sms: sms.enabled,
+          smsKeyword: smsProgram.keyword,
+          smsNumber: smsProgram.phoneDisplay,
+        },
       };
     if (path === "/api/site" && method === "GET") {
       return { site: siteSettings(await ledger.read()) };
@@ -1052,9 +1099,9 @@ export function createApplication({
             textEs,
             at,
           })),
-        messages: Object.values(s.messages)
-          .filter((r) => r.kind === "guestbook" && r.state === "approved")
-          .map((r) => ({ id: r.id, name: r.name, text: r.text })),
+        // Notes for Sophia only while the family has made them public, and only
+        // those whose writers agreed to that; otherwise GET /api/guestbook.
+        messages: shownNotes(s, "public"),
         photos: [], // Media metadata and bytes require a signed-in guest or administrator.
       };
     }
@@ -1181,6 +1228,9 @@ export function createApplication({
     if (path === "/api/auth/sso/guest" && method === "POST") {
       if (!["microsoft", "google"].includes(body.provider))
         throw error(422, "INVALID_PROVIDER");
+      // Refused before the token is read or any failure budget is spent.
+      if (body.provider === "microsoft" && !guestMicrosoft)
+        throw error(404, "SSO_NOT_CONFIGURED");
       const nonce = openTicket(body.ticket, "guest");
       const identity = await chargeFailures(
         ledger,
@@ -1497,6 +1547,16 @@ export function createApplication({
           })),
       };
     }
+    // Approved notes for Sophia that signed-in guests may read (the same rule
+    // as the gallery: a verified email sign-in still on the list, or an
+    // administrator). An invitation-link session never reaches this route.
+    if (path === "/api/guestbook" && method === "GET") {
+      requireAuth();
+      if (session.kind !== "admin" && !session.accountId)
+        throw error(403, "VERIFIED_ACCOUNT_REQUIRED");
+      if (session.kind !== "admin") await stillListed(session);
+      return { messages: shownNotes(ctx.state, "guests") };
+    }
     if (path === "/api/auth/email/request" && method === "POST")
       return accounts.request(body);
     if (path === "/api/auth/email/verify" && method === "POST")
@@ -1663,6 +1723,14 @@ export function createApplication({
       const row = await guestInvitation(session, { fresh: true }),
         fingerprint = digestInput(body),
         owner = token();
+      // The language of the page the RSVP was saved from (R-045), sent as a
+      // header so an older API simply ignores it. It is kept on this response
+      // and picks this receipt's language only: the invitation's language
+      // (admin-owned, used for invitations and reminders) and the family's
+      // guest list in Notion are never changed by it.
+      const pageLanguage = ["en", "es"].includes(headers["x-page-language"])
+        ? headers["x-page-language"]
+        : null;
       if (!row.invitationReady) throw error(409, "INVITATION_NOT_READY");
       // One save records the response and claims the Notion sync and the
       // receipt email; one final save records both outcomes (2 writes, not 5).
@@ -1730,6 +1798,7 @@ export function createApplication({
           householdId: row.id,
           fingerprint,
           submittedAt: new Date(now()).toISOString(),
+          ...(pageLanguage ? { locale: pageLanguage } : {}),
         };
         s.responses[id] = response;
         if (s.profiles?.[row.id]) {
@@ -1750,7 +1819,7 @@ export function createApplication({
             household: row,
             recipient: receiptTo,
             responseId: id,
-            locale: current.locale || "en",
+            locale: response.locale || current.locale || "en",
           });
         audit(s, row.id, "rsvp", id, now());
         // In-app only: RSVPs reach the family's inbox inside the same save,
@@ -1804,22 +1873,12 @@ export function createApplication({
     }
     if (path === "/api/messages" && method === "POST") {
       requireAuth("guest");
-      await guestInvitation(session);
-      await rateLimit(
-        ledger,
-        hash("message:" + session.householdId),
-        5,
-        3600000,
-        now(),
-      );
+      // Everything in the request is checked before the household's budget of
+      // 5 messages an hour is charged: a refused post costs nothing.
       if (!["contact", "guestbook"].includes(body.kind))
         throw error(422, "INVALID_KIND");
-      if (body.kind === "guestbook" && body.consent !== true)
-        throw error(422, "CONSENT_REQUIRED");
       const id = randomUUID(),
-        name = safeText(body.name, 100),
-        text = safeText(body.text, 2000);
-      if (!name || !text) throw error(422, "MESSAGE_REQUIRED");
+        { name, text, display } = noteInput(body);
       const contactEmail =
         body.kind === "contact"
           ? email(
@@ -1832,6 +1891,14 @@ export function createApplication({
       const topic = body.kind === "contact" ? body.topic || "Other" : "";
       if (body.kind === "contact" && !contactTopics.includes(topic))
         throw error(422, "INVALID_TOPIC");
+      await guestInvitation(session);
+      await rateLimit(
+        ledger,
+        hash("message:" + session.householdId),
+        5,
+        3600000,
+        now(),
+      );
       await ledger.transaction((s) => {
         s.notifications ??= {};
         s.notifications[id] = {
@@ -1850,6 +1917,54 @@ export function createApplication({
           name,
           text,
           kind: body.kind,
+          // A note's audience as its writer agreed (site/notes.mjs).
+          ...(body.kind === "guestbook" ? { display } : {}),
+          state: "pending",
+          at: now(),
+        };
+      });
+      await sendNotification(id);
+      return { id, state: "pending" };
+    }
+    // A household that came in with its invitation link leaves one note for
+    // Sophia without signing in again (R-024): one per household for each
+    // issue of the link (a reissued link allows one more), inside the
+    // household's 5 messages an hour and a site-wide daily budget, so a
+    // forwarded link cannot flood the review queue. The note waits for the
+    // family's review like any other, and the review shows it came from the
+    // link. Signed-in guests use POST /api/messages.
+    if (path === "/api/guestbook-note" && method === "POST") {
+      requireAuth("guest");
+      if (session.scope !== "rsvp") throw error(403, "LINK_SESSION_REQUIRED");
+      const { name, text, display } = noteInput(body);
+      await guestInvitation(session);
+      const sent = (s) =>
+        Object.values(s.messages).some(
+          (m) =>
+            m.via === "link" &&
+            m.householdId === session.householdId &&
+            m.generation === session.generation,
+        );
+      if (sent(await ledger.read())) throw error(409, "LINK_NOTE_ALREADY_SENT");
+      await rateLimit(ledger, hash("message:" + session.householdId), 5, 3600000, now());
+      await rateLimit(ledger, "link-notes", 200, 86400000, now());
+      const id = randomUUID();
+      await ledger.transaction((s) => {
+        if (sent(s)) throw error(409, "LINK_NOTE_ALREADY_SENT");
+        s.notifications ??= {};
+        s.notifications[id] = { id, kind: "guestbook", at: now(), read: false };
+        s.messages[id] = {
+          email: "",
+          topic: "",
+          id,
+          householdId: session.householdId,
+          accountId: null,
+          via: "link",
+          generation: session.generation,
+          name,
+          text,
+          kind: "guestbook",
+          display,
           state: "pending",
           at: now(),
         };
@@ -2368,7 +2483,19 @@ export function createApplication({
           photos: Object.values(ctx.state.photos),
           albums: siteSettings(ctx.state).albums,
           mailConfigured: mailer.configured,
+          guestbookVisibility: visibilityOf(siteSettings(ctx.state)),
         };
+      }
+      // Who can read approved notes for Sophia (site/notes.mjs): the one
+      // switch the API, the note form, the note page and Privacy all follow.
+      if (path === "/api/admin/guestbook-visibility" && method === "POST") {
+        if (!visibilities.includes(body.visibility)) throw error(422, "INVALID_FIELDS");
+        return ledger.transaction((s) => {
+          // Kept apart from s.site (see server/site-settings.mjs).
+          s.guestbook = { visibility: body.visibility };
+          audit(s, session.actor, "guestbook-visibility:" + body.visibility, "event", now());
+          return { visibility: body.visibility };
+        });
       }
       if (path === "/api/admin/message-reply" && method === "POST") {
         const text = safeText(body.text, 2000);
@@ -2438,6 +2565,9 @@ export function createApplication({
           if (!row) throw error(404, "NOT_FOUND");
           if (row.kind === "contact" && body.state === "approved")
             throw error(422, "CONTACT_IS_PRIVATE");
+          // Its writer left the box unchecked: for Sophia and the family only.
+          if (row.kind === "guestbook" && row.display === "family" && body.state === "approved")
+            throw error(422, "NOTE_IS_PRIVATE");
           // A video can be approved once it plays: not while it is still
           // converting, nor after a conversion that failed.
           const waiting = body.collection === "photos" && row.state === "processing";

@@ -170,9 +170,10 @@ const messages = {
     "This email is linked to a different Microsoft or Google account. Use the emailed sign-in link instead, or contact us.",
     "Este correo está vinculado a otra cuenta de Microsoft o Google. Usa el enlace de acceso por correo o escríbenos.",
   ],
+  // Guests read this one; administrators read their own (adminMessages below).
   SSO_TENANT_NOT_ALLOWED: [
-    "Use a personal Microsoft account (Outlook, Hotmail, Live) or a Simply Soph work account.",
-    "Usa una cuenta personal de Microsoft (Outlook, Hotmail, Live) o una cuenta de trabajo de Simply Soph.",
+    "This Microsoft account belongs to a school or workplace, so it can’t sign in here. Use the emailed sign-in link (it works with any address) or a personal Outlook or Hotmail account.",
+    "Esta cuenta de Microsoft es de una escuela o un trabajo y no puede entrar aquí. Usa el enlace de acceso por correo (funciona con cualquier dirección) o una cuenta personal de Outlook o Hotmail.",
   ],
   SSO_EMAIL_NOT_VERIFIED: [
     "That account can’t confirm this email address. Gmail addresses work with Google, and Hotmail or Outlook addresses with Microsoft. Any address works with the emailed sign-in link.",
@@ -321,10 +322,38 @@ const messages = {
     "El código no es válido o ya fue utilizado. Usa el siguiente código.",
   ],
   WHATSAPP_PHONE_INVALID: [
-    "WhatsApp can't use this number. Check the country code and the number, like +1 817 555 0199.",
-    "WhatsApp no puede usar este número. Revisa el código de país y el número, como +1 817 555 0199.",
+    "WhatsApp can't use this number. Check the country code and the number, like +52 55 1234 5678.",
+    "WhatsApp no puede usar este número. Revisa el código de país y el número, como +52 55 1234 5678.",
+  ],
+  // site/guest-whatsapp.js adds the SMS keyword when SMS is live.
+  WHATSAPP_US_NUMBER: [
+    "WhatsApp updates are for numbers outside the US and Canada.",
+    "Los avisos por WhatsApp son para números fuera de Estados Unidos y Canadá.",
+  ],
+  WHATSAPP_NOT_AVAILABLE: [
+    "WhatsApp updates haven’t started yet. Nothing was saved.",
+    "Los avisos por WhatsApp aún no empiezan. No se guardó nada.",
+  ],
+  // The note page speaks to one person (tú).
+  LINK_NOTE_ALREADY_SENT: [
+    "Your family already sent a note from this invitation link. To write another, sign in with your email.",
+    "Tu familia ya envió un mensaje desde este enlace de invitación. Para escribir otro, entra con tu correo.",
+  ],
+  LINK_SESSION_REQUIRED: [
+    "Open your invitation link again to send your note from it.",
+    "Abre de nuevo tu enlace de invitación para enviar tu mensaje desde él.",
+  ],
+  NOTE_IS_PRIVATE: [
+    "The writer left the box unchecked, so this note is for Sophia and the family only and can’t be shown.",
+    "Quien lo escribió no marcó la casilla, así que este mensaje es solo para Sophia y su familia y no se puede mostrar.",
   ],
 };
+// Administrators read some errors differently (admin pages are in English).
+const adminMessages = {
+  SSO_TENANT_NOT_ALLOWED:
+    "This school or work Microsoft account can’t sign in here. Use your simplysoph.com Microsoft 365 account, a personal Microsoft account (Outlook, Hotmail, Live), or the emailed sign-in link.",
+};
+const onAdminPage = () => /^admin(\/|$)/.test(document.body?.dataset.route || "");
 // Trouble reaching the API (an outage, a proxy's HTML error page, a dropped
 // connection) is not an answer from it: guests must never read it as
 // "submissions are closed". A form being sent keeps what was typed.
@@ -379,10 +408,13 @@ export async function api(path, body, options = {}) {
     });
   }
   if (!res.ok) {
-    const pair = messages[data?.error];
+    const pair = messages[data?.error],
+      forAdmin = onAdminPage() && adminMessages[data?.error];
     throw Object.assign(
       new Error(
-        pair
+        forAdmin
+          ? forAdmin
+          : pair
           ? tr(...pair)
           : res.status >= 500
             ? trouble(body !== undefined, false)

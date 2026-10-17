@@ -23,6 +23,7 @@ import {
   googleButton,
 } from "./sso.js";
 import { contactTopics, contactTopicsEn } from "./celebration.mjs";
+import { audienceOf } from "./notes.mjs";
 const root = document.querySelector("#admin-app"),
   view = root.dataset.view;
 // Contact messages store the topic value the server checks; show the label
@@ -481,19 +482,56 @@ function mediaPreview(r) {
     ? `<video controls playsinline preload="${r.poster ? "none" : "metadata"}"${r.poster ? ` poster="/api/photo/${esc(r.id)}?poster=1"` : ""} src="/api/photo/${esc(r.id)}"></video>`
     : `<img src="/api/photo/${esc(r.id)}" alt="Pending photo">`;
 }
+// Who can read approved notes for Sophia: the one switch (site/notes.mjs) the
+// API, the note form, the note page and Privacy follow.
+function noteVisibilityForm(current = "guests") {
+  const option = (value, label, text) =>
+    `<label class="check"><input type="radio" name="visibility" value="${value}"${current === value ? " checked" : ""}> <span><strong>${label}</strong><br>${text}</span></label>`;
+  return `<form id="note-visibility" class="card"><fieldset><legend>Who can read approved notes on “A note for Sophia”</legend>${option(
+    "guests",
+    "Guests who sign in (default)",
+    "Approved notes appear only to guests signed in with their email, and to administrators. Visitors who are not signed in see no notes.",
+  )}${option(
+    "public",
+    "Anyone with the site’s address",
+    "Approved notes also appear to visitors who are not signed in, but only notes whose writers agreed to that. Notes written while this was set to signed-in guests stay with signed-in guests.",
+  )}</fieldset><p class="hint">The note form, the note page and the Privacy page tell guests what you choose here. Notes whose writers left the box unchecked are never shown, whatever you choose. Switching back to signed-in guests hides the notes from everyone else at once.</p>${formEnd("Save who can read notes")}`;
+}
+// What a note's writer agreed to, where it came from, and who can read it now.
+function noteFacts(r, visibility) {
+  const consent = {
+    family: "The writer left the box unchecked: for Sophia and the family only. It can’t be shown.",
+    guests: "The writer agreed to show it to guests who sign in.",
+    public: "The writer agreed to show it to anyone with the site’s address.",
+  }[r.display] || "Sent before the choice existed, under “We may publish this name and message after we read them.”: treated as agreeing to be shown to anyone.";
+  const audience = audienceOf(r, visibility);
+  return `<p class="hint">${esc(consent)}${r.state === "approved" ? ` Shown now to: ${audience === "public" ? "anyone with the site’s address" : audience === "guests" ? "guests who sign in" : "nobody"}.` : ""}</p>${r.via === "link" ? `<p class="hint">Sent from the household’s invitation link, without an email sign-in.</p>` : ""}`;
+}
 async function moderation() {
   const d = await api("admin/moderation"),
     photos = view === "admin/photos",
     rows = photos ? d.photos : d.messages;
-  root.innerHTML = `<p>${photos ? "Photos and videos are visible only to signed-in guests after approval. Rejected items remain hidden." : "Contact messages always remain private. Guestbook messages require approval before publication."}</p><div class="cards">${rows.map((r) => `<article class="card">${photos ? `${mediaPreview(r)}<p>${esc(r.caption)}</p>` : `<h3>${esc(r.name)}</h3><p>${esc(topicLabel(r.topic))}</p><p>${esc(r.email || "")}</p><p>${esc(r.text)}</p><span class="badge">${esc(r.kind)}</span>`}<p>Status: ${esc(r.state)}</p>${photos ? `<label>Album<select data-media-album="${esc(r.id)}">${(d.albums || []).map((a) => `<option value="${esc(a.id)}"${a.id === (r.album || "event") ? " selected" : ""}>${esc(a.en)}</option>`).join("")}</select></label>` : ""}<div class="row-actions">${r.kind !== "contact" && !["processing", "failed"].includes(r.state) ? button("Approve", "approve", r.id) : ""}${button("Remove from display", "reject", r.id)}</div></article>`).join("") || "<p>No submissions yet.</p>"}</div>`;
+  root.innerHTML = `<p>${photos ? "Photos and videos are visible only to signed-in guests after approval. Rejected items remain hidden." : "Contact messages always remain private. Guestbook messages require approval before publication."}</p><div class="cards">${rows.map((r) => `<article class="card">${photos ? `${mediaPreview(r)}<p>${esc(r.caption)}</p>` : `<h3>${esc(r.name)}</h3><p>${esc(topicLabel(r.topic))}</p><p>${esc(r.email || "")}</p><p>${esc(r.text)}</p><span class="badge">${esc(r.kind)}</span>`}<p>Status: ${esc(r.state)}</p>${photos ? `<label>Album<select data-media-album="${esc(r.id)}">${(d.albums || []).map((a) => `<option value="${esc(a.id)}"${a.id === (r.album || "event") ? " selected" : ""}>${esc(a.en)}</option>`).join("")}</select></label>` : ""}<div class="row-actions">${r.kind !== "contact" && r.display !== "family" && !["processing", "failed"].includes(r.state) ? button("Approve", "approve", r.id) : ""}${button("Remove from display", "reject", r.id)}</div></article>`).join("") || "<p>No submissions yet.</p>"}</div>`;
   if (photos)
     root.insertAdjacentHTML(
       "afterbegin",
       `<details class="card table-qr"><summary>Media uploads</summary><div class="table-qr-content"><img src="/assets/photo-upload-qr.svg" width="160" height="160" alt="QR code to the photo upload page"><div><p>Scan to open the photo upload page directly. Guests sign in with the email the family has for their household before choosing files.</p><a class="button burgundy" href="/assets/photo-upload-qr.svg" download>Download printable QR</a></div></div></details>`,
     );
   if (!photos) {
+    root.insertAdjacentHTML("afterbegin", noteVisibilityForm(d.guestbookVisibility));
+    submit(root.querySelector("#note-visibility"), async (f) => {
+      const { visibility } = await api("admin/guestbook-visibility", { visibility: f.get("visibility") });
+      await moderation();
+      notify(
+        visibility === "public"
+          ? "Saved: approved notes whose writers agreed can now be read by anyone with the site’s address."
+          : "Saved: approved notes are now for guests who sign in.",
+      );
+    });
     const cards = root.querySelectorAll(".cards > .card");
     rows.forEach((r, i) => {
+      if (r.kind === "guestbook")
+        cards[i].querySelector(".row-actions")?.insertAdjacentHTML("beforebegin", noteFacts(r, d.guestbookVisibility));
       if (r.kind !== "contact") return;
       cards[i].insertAdjacentHTML(
         "beforeend",

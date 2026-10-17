@@ -5,8 +5,10 @@ import { startHarness, googleCredential } from "./harness.mjs";
 
 export { expect };
 export const test = base.extend({
-  harness: async ({}, use, testInfo) => {
-    const harness = await startHarness();
+  // Per-file or per-describe server switches: test.use({ harnessOptions: { whatsapp: true } }).
+  harnessOptions: [{}, { option: true }],
+  harness: async ({ harnessOptions }, use, testInfo) => {
+    const harness = await startHarness(harnessOptions);
     await use(harness);
     await harness.close();
     // On failure, keep what the server saw next to the trace.

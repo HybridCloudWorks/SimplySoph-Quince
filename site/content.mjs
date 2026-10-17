@@ -1,3 +1,4 @@
+import { terms } from "./lexicon.mjs";
 export const event = {
   name: "Sophia",
   date: "2027-01-15",
@@ -78,10 +79,11 @@ export const routes = [
   ["contact", "Contact", "Contacto"],
   ["privacy", "Privacy policy", "Política de privacidad"],
   ["terms", "Photo & video policy", "Uso de fotos y videos"],
-  ["whatsapp", "WhatsApp updates", "Mensajes WhatsApp"],
-  // Title Case on purpose: the registered SMS campaign quotes these word for word.
-  ["sms", "SMS Updates", "Mensajes SMS"],
-  ["sms-terms", "SMS Terms", "Términos SMS"],
+  ["whatsapp", terms.whatsappProgram.en, terms.whatsappProgram.es],
+  // English in Title Case on purpose: the registered SMS campaign quotes these
+  // word for word. The Spanish names are not part of the registration.
+  ["sms", terms.smsProgram.en, terms.smsProgram.es],
+  ["sms-terms", terms.smsTerms.en, terms.smsTerms.es],
   ["thank-you", "Thank you", "Gracias"],
   ["404", "Page not found", "Página no encontrada"],
 ];
@@ -105,7 +107,8 @@ export const sections = [
   { name: ["Sophia", "Sophia"], pages: ["sophia", "court", "padrinos"] },
   { pages: ["details", "ceremony", "reception"] },
   { pages: ["travel"] },
-  { pages: ["gallery", "share", "guestbook"] },
+  // Named for both, so the note for Sophia is found from the header.
+  { name: [terms.photosAndNotes.en, terms.photosAndNotes.es], pages: ["gallery", "share", "guestbook"] },
   { pages: ["registry"] },
   { pages: ["faq"] },
   { pages: ["contact"] },

@@ -56,6 +56,10 @@ if (env.EVENT_BUCKET) {
   // refused silently; set both or neither.
   if (!env.MICROSOFT_CLIENT_ID !== !env.MICROSOFT_TENANT_ID)
     throw new Error("Set both MICROSOFT_CLIENT_ID and MICROSOFT_TENANT_ID, or neither");
+  // Guests' Microsoft sign-in: on unless set to "false" (an owner decision);
+  // administrators' Microsoft sign-in does not depend on it.
+  if (!["", "true", "false"].includes(env.GUEST_MICROSOFT_SIGN_IN ?? ""))
+    throw new Error("GUEST_MICROSOFT_SIGN_IN must be true or false");
   const smsTransport = twilioTransport({
     accountSid: env.TWILIO_ACCOUNT_SID,
     serviceSid: env.TWILIO_MESSAGING_SERVICE_SID,
@@ -145,6 +149,7 @@ if (env.EVENT_BUCKET) {
     }),
     verifyGoogleIdentity: googleIdentityVerifier(env.ADMIN_GOOGLE_CLIENT_ID),
     microsoftClientId: env.MICROSOFT_CLIENT_ID || "",
+    guestMicrosoft: env.GUEST_MICROSOFT_SIGN_IN !== "false",
     verifyScheduler: schedulerVerifier(
       env.SCHEDULER_AUDIENCE,
       env.SCHEDULER_SERVICE_ACCOUNT,

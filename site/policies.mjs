@@ -1,3 +1,4 @@
+import { date } from "./datetime.mjs";
 // The privacy and photo & video policies, in the family's own voice ("we" is
 // Sophia's family). Each entry is one paragraph; an entry starting "- " is a
 // list item, and consecutive items form one list under the paragraph before.
@@ -73,3 +74,20 @@ export const policies = {
     ],
   },
 };
+// When each policy last changed, shown as "Updated <date>" at its top (one
+// constant per policy, read by scripts/build-pages.mjs). `text` fingerprints
+// the policy as published, in both languages: tests/policies.test.mjs fails
+// when a policy's words change and this entry does not, and prints the new
+// fingerprint to record here together with the date of the change.
+export const policyUpdated = {
+  // Added: who can read the notes for Sophia.
+  privacy: { on: "2026-10-17", text: "24d8d95dbb906b20" },
+  terms: { on: "2026-10-15", text: "4baed64de3735d2c" },
+  // Added on the Spanish page: the registered replies arrive in English.
+  "sms-terms": { on: "2026-10-17", text: "71ee0dbceb705d1e" },
+};
+// "Updated October 17, 2026" · "Actualizado el 17 de octubre de 2026".
+export function updatedOn(route, lang) {
+  const day = date(policyUpdated[route].on + "T12:00:00-06:00", lang, { weekday: false });
+  return lang === "es" ? "Actualizado el " + day : "Updated " + day;
+}
