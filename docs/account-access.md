@@ -25,8 +25,8 @@ The model, in one table. The decision record is [v1/access-model.md](v1/access-m
 - **Notes for Sophia:** who can read approved notes is one switch on Admin → Messages: guests who sign in (the default) or anyone with the site's address. Each note keeps what its writer agreed to (not shown, signed-in guests, or anyone), and is shown to the narrower of the two. The note form, the note page and Privacy say what the switch says.
 - **Emailed links:**
   - 256-bit secrets, hashed at rest, and not kept in the mailbox's Sent Items.
-  - Expire after 15 minutes and work once.
-  - Sent only to an email on the guest list. Unknown addresses get the same response, after the same delay, and no email.
+  - Expire after 15 minutes and work once. A used, expired or unknown link gets one answer from the server, so the page says "expired or already used" and asks for the address to send a new link, instead of offering Continue again.
+  - Sent only to an email on the guest list. Unknown addresses get the same response, after the same delay, and no email. "Check your email" adds the same line for everyone: try the email where the invitation came, or write to misxv@simplysoph.com to be added.
   - At most 3 links per address every 15 minutes. Only links actually sent count, so nobody can lock someone else out.
   - Written in the language of the page the guest asked from (else the household's), greeting the household and saying what the link opens, that it works once for 15 minutes, and to ignore it if they didn't ask.
   - After confirming, the guest goes back to the page they started from: My account, the RSVP, Share photos, the guestbook, Contact or the gallery (English or Spanish). Only a page name from that list is stored with the link, never an address from the request.

@@ -115,9 +115,10 @@ test("every page's main takes focus from the skip link (R-076)", async () => {
 });
 
 test("the home page's invitation link says “opens in a new tab” once (R-090)", async () => {
+  // Before: "Open the full invitation in a new tab (opens in a new tab)".
   for (const [file, words] of [
-    ["index.html", "opens in a new tab"],
-    ["es/index.html", "se abre en otra pestaña"],
+    ["index.html", "new tab"],
+    ["es/index.html", "otra pestaña"],
   ]) {
     const caption = (await page(file)).match(/<figcaption>([\s\S]*?)<\/figcaption>/)[1];
     assert.equal(caption.split(words).length - 1, 1, file);
