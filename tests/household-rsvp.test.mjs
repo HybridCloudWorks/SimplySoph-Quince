@@ -56,3 +56,22 @@ test('contact and requests reject oversized text, control characters, bad emails
   assert.equal(result.contact.phone,'555-0100');
   assert.equal(result.requests,'No nuts, please.');
 });
+// R-002: "open" has one definition, site/lifecycle.mjs rsvpOpen (half-open:
+// the deadline instant itself is closed). The server asks it instead of
+// comparing the deadline itself, so the browser and the API cannot disagree.
+test('the RSVP closes at the deadline instant, by the lifecycle model, to the millisecond', async () => {
+  const invite=invitation(), at=Date.parse(invite.deadline);
+  assert.deepEqual(validateHouseholdRsvp(input(),invite,at-1),input());
+  for (const t of [at, at+1])
+    assert.throws(()=>validateHouseholdRsvp(input(),invite,t),e=>e.code==='RSVP_CLOSED'&&e.status===403);
+  const {rsvpOpen}=await import('../site/lifecycle.mjs');
+  for (const t of [at-1, at, at+1]) {
+    let open=true;
+    try { validateHouseholdRsvp(input(),invite,t); } catch (e) { if (e.code==='RSVP_CLOSED') open=false; else throw e; }
+    assert.equal(open, rsvpOpen(t,{deadline:at}), new Date(t).toISOString());
+  }
+  const {readFile}=await import('node:fs/promises');
+  const source=await readFile(new URL('../server/rsvp-validation.mjs',import.meta.url),'utf8');
+  assert.match(source,/import \{ rsvpOpen \} from "\.\.\/site\/lifecycle\.mjs"/);
+  assert.doesNotMatch(source,/now\s*[<>]=?\s*Date\.parse\(deadline\)|Date\.parse\(deadline\)\s*[<>]=?\s*now/,'a second comparison of the deadline');
+});
