@@ -56,6 +56,13 @@ test.describe("while WhatsApp and SMS are live", () => {
     await expect(page.getByText(/haven’t started yet/)).toBeHidden();
     await expect(page.getByText(/you can get text messages instead/)).toBeVisible();
     await expect(page.getByText("Sign in with the email where you received your invitation.", { exact: false })).toBeVisible();
+    // R-094: the Spanish page says the same, in the guest's words, and neither
+    // page keeps the old "the email we have for your family".
+    await page.goto(harness.url("/es/whatsapp/"));
+    await expect(page.getByText("Entra al sitio con el correo donde recibiste tu invitación.", { exact: false })).toBeVisible();
+    await expect(page.getByText(/correo que tenemos de (tu|su) familia/)).toHaveCount(0);
+    await page.goto(harness.url("/whatsapp/"));
+    await expect(page.getByText(/email we have for your family/)).toHaveCount(0);
   });
 });
 

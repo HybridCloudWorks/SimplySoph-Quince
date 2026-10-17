@@ -309,6 +309,19 @@ const serverReplies = () => {
 // ---- (a) No retired variant anywhere a guest reads ----
 const breaks = (text, lang) => banned[lang].filter(([re]) => re.test(text)).map(([re, why]) => `${text.match(re)[0]} (${why})`);
 
+// R-094: /whatsapp/ once said "Sign in with the email we have for your family"
+// / "Entra al sitio con el correo que tenemos de tu familia" (git log -S), the
+// voice of a company. The sentences as they were are refused, so they cannot
+// come back on any page, script, email or reply scanned below.
+test("the retired /whatsapp/ sign-in sentence is refused in English and Spanish", () => {
+  assert.equal(breaks("Sign in with the email we have for your family.", "en").length, 1);
+  assert.equal(breaks("Entra al sitio con el correo que tenemos de tu familia.", "es").length, 1);
+  assert.equal(breaks("Entren al sitio con el correo que tenemos de su familia.", "es").length, 1);
+  // The wording that replaced them passes.
+  assert.deepEqual(breaks("Sign in with the email where you received your invitation.", "en"), []);
+  assert.deepEqual(breaks("Entra al sitio con el correo donde recibiste tu invitación.", "es"), []);
+});
+
 test("no retired variant in site/lexicon.mjs `banned` is on a built page, in either language", async () => {
   const found = [];
   for (const [file, lang] of await guestPages())

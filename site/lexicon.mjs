@@ -141,6 +141,8 @@ export const banned = {
     [/\bWe['’]ll be there\b/i, "the quick answers are 'Everyone’s coming' and 'We can’t make it'"],
     [/\bhousehold\b/i, "the invited group is the 'family'"],
     [/\bPhotographs\b|\bThe video collection\b/, "'Photos' and 'Videos'"],
+    // The old /whatsapp/ wording (R-094): a company's voice, not the family's.
+    [/\bemail we have for your family\b/i, "say 'the email where you received your invitation'"],
   ],
   es: [
     [/libro de firmas/i, "el mensaje para Sophia se llama 'mensaje'"],
@@ -160,6 +162,7 @@ export const banned = {
     [/Ahí estaremos|No podremos ir\b/, "las respuestas rápidas: 'Vamos todos' y 'No podremos asistir'"],
     [/quinceañera de Sophia/i, "la fiesta es 'los XV de Sophia' (la quinceañera es Sophia)"],
     [/Fotografías|La colección de videos/, "'Fotos' y 'Videos'"],
+    [/correo que tenemos de (?:tu|su) familia/i, "'el correo donde recibiste tu invitación' (R-094)"],
     [/\b\d{1,2}:\d{2}\s?[ap]\.m\./, "la hora se escribe '4:00 p. m.' (con espacio)"],
     [/\b(?:lunes|martes|miércoles|jueves|viernes|sábado|domingo), \d/i, "sin coma después del día: 'viernes 15 de enero de 2027'"],
     [/\b\d{1,2} de (?:Enero|Febrero|Marzo|Abril|Mayo|Junio|Julio|Agosto|Septiembre|Octubre|Noviembre|Diciembre)\b/, "los meses van en minúscula"],
