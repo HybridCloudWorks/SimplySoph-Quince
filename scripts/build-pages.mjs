@@ -535,7 +535,10 @@ function contents(route, lang) {
     </ol>${smsReplies}${smsLinks}</article>`;
   if (route === "privacy")
     body += `<article class="editorial"><h2>${say("Optional SMS messages", "Avisos por SMS (opcionales)")}</h2><p>${say("Simply Soph Media text messages are optional. If you text our keyword to join, we keep your mobile number, the keywords you send, when you agreed, and whether each text was delivered, and we note your choice on our guest list. Our text-message service processes the texts only to deliver them. We do not sell or share your SMS opt-in data or personal information with third parties for marketing purposes. No mobile information will be shared with third parties or affiliates for marketing or promotional purposes. Text messaging originator opt-in data and consent will not be shared with any third parties. Using the website or answering by email does not sign you up for texts.", "Los mensajes de texto de Simply Soph Media son opcionales. Si envías nuestra palabra clave para suscribirte, guardamos tu número de celular, las palabras clave que envías, cuándo aceptaste y si cada mensaje se entregó, y anotamos tu preferencia en nuestra lista de invitados. Nuestro servicio de mensajes de texto los procesa solo para entregarlos. No vendemos ni compartimos con terceros tus datos de suscripción SMS ni tu información personal con fines de mercadotecnia. No compartiremos información móvil con terceros ni afiliados con fines de mercadotecnia o promoción. Los datos de suscripción y consentimiento de mensajes de texto no se compartirán con ningún tercero. Usar el sitio o responder por correo no te suscribe a los mensajes de texto.")}</p><p>${say("Reply STOP at any time to stop texts. We keep a short note of your opt-out so we don’t text you again by mistake. To see, correct or delete your information, email misxv@simplysoph.com.", "Responde STOP en cualquier momento para dejar de recibir mensajes. Guardamos una nota breve de tu cancelación para no volver a escribirte por error. Para ver, corregir o borrar tu información, escribe a misxv@simplysoph.com.")}</p><a href="${href("sms-terms", lang)}">${routeTitle("sms-terms", lang)}</a></article>`;
-  // Policy paragraphs; a run of "- " items becomes a real list.
+  // Policy paragraphs; a run of "- " items becomes a real list. Privacy's
+  // item on how long we keep information ends with the site and photo
+  // lifespan once the family sets one (R-171): site/lifespan.mjs fills the
+  // slot with the gallery's and thank-you page's lines.
   if (["privacy", "terms"].includes(route)) {
     const notice =
       '<article class="editorial">' +
@@ -543,8 +546,9 @@ function contents(route, lang) {
         .map((p, i, all) => {
           if (!p.startsWith("- ")) return "<p>" + esc(p) + "</p>";
           const open = all[i - 1]?.startsWith("- ") ? "" : "<ul>",
-            close = all[i + 1]?.startsWith("- ") ? "" : "</ul>";
-          return open + "<li>" + esc(p.slice(2)) + "</li>" + close;
+            close = all[i + 1]?.startsWith("- ") ? "" : "</ul>",
+            slot = route === "privacy" && p === policies.retentionItem[lang] ? " <span data-lifespan hidden></span>" : "";
+          return open + "<li>" + esc(p.slice(2)) + slot + "</li>" + close;
         })
         .join("") +
       "</article>";
@@ -676,7 +680,7 @@ function head({ route, title, lang, admin }) {
 }
 function document({ route, title, lang = "en", admin = false }) {
   const t = copy[lang];
-  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="strict-origin-when-cross-origin">${head({ route, title, lang, admin })}<link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/pages.css">${route === "404" ? '<script type="module" src="/not-found.js"></script>' : ""}${["gallery", "thank-you"].includes(route) && !admin ? '<script type="module" src="/lifespan.mjs"></script>' : ""}<script type="module" src="/nav.js"></script><script type="module" src="/${admin ? "admin" : "guest"}.js"></script></head><body data-route="${route}" data-register="${registerFor(route)}"><a class="skip" href="#main">${lang === "es" ? "Ir al contenido" : "Skip to content"}</a>${navigation(lang, admin ? "" : route)}<main id="main" tabindex="-1">${
+  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="strict-origin-when-cross-origin">${head({ route, title, lang, admin })}<link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/pages.css">${route === "404" ? '<script type="module" src="/not-found.js"></script>' : ""}${["gallery", "thank-you", "privacy"].includes(route) && !admin ? '<script type="module" src="/lifespan.mjs"></script>' : ""}<script type="module" src="/nav.js"></script><script type="module" src="/${admin ? "admin" : "guest"}.js"></script></head><body data-route="${route}" data-register="${registerFor(route)}"><a class="skip" href="#main">${lang === "es" ? "Ir al contenido" : "Skip to content"}</a>${navigation(lang, admin ? "" : route)}<main id="main" tabindex="-1">${
     admin
       ? `<section class="section admin-shell"><aside aria-label="Administration" hidden>${adminRoutes
           .filter(

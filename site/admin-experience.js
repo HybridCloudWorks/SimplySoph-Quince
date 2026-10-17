@@ -51,7 +51,8 @@ export const copyWarnings = (warnings = []) =>
     ? `<section class="notice copy-warnings" aria-labelledby="copy-warnings-title"><h2 id="copy-warnings-title" tabindex="-1">Check the Spanish wording</h2><p>These saved texts differ from the website’s wording decisions. They are shown to guests as written; change them here if you agree.</p><ul>${warnings.map((w) => `<li><strong>${esc(w.field)}:</strong> ${esc(w.note)}</li>`).join("")}</ul></section>`
     : "";
 // How long the site and the photos stay (server/site-settings.mjs): blank
-// until the family decides, and then the gallery and thank-you page say it.
+// until the family decides, and then the gallery, the thank-you page and the
+// Privacy policy say it (site/lifespan.mjs).
 // The rule is tied to both dates (aria-describedby) and checked on the form
 // (min), and a date the server refuses is named and marked (P5-A11Y-07).
 const dayText = (day) => date(Date.parse(day + "T12:00:00Z"), "en", { weekday: false });
@@ -64,7 +65,7 @@ const lifespanFields = (site) => {
   const life = site.lifespan,
     rules = lifespanRules(site),
     attrs = (min, reason) => `min="${min}" aria-describedby="lifespan-rule" data-error="${esc(rules[reason][1].replace(/^[^:]+: u/, "U"))}"`;
-  return `<fieldset><legend>Site and photo lifespan</legend><p class="hint" id="lifespan-rule">Optional. Leave blank until the family decides. Once set, the gallery and the thank-you page say “The site stays up through …” and “Download your photos by …”. The photos date can’t be before ${dayText(reviewDay)}, the review date in the Privacy policy, or after the site’s. The site’s date can’t be before ${dayText(partyDay(site))}.</p>${field("The site stays up through", "lifespan.siteUntil", { type: "date", value: life.siteUntil || "", max: 10, attrs: attrs(partyDay(site), "site-before-party") })}${field("Download your photos by", "lifespan.photosUntil", { type: "date", value: life.photosUntil || "", max: 10, attrs: attrs(reviewDay, "photos-before-review") })}</fieldset>`;
+  return `<fieldset><legend>Site and photo lifespan</legend><p class="hint" id="lifespan-rule">Optional. Leave blank until the family decides. Once set, the gallery, the thank-you page and the Privacy policy say “The site stays up through …” and “Download your photos by …”. The photos date can’t be before ${dayText(reviewDay)}, the review date in the Privacy policy, or after the site’s. The site’s date can’t be before ${dayText(partyDay(site))}.</p>${field("The site stays up through", "lifespan.siteUntil", { type: "date", value: life.siteUntil || "", max: 10, attrs: attrs(partyDay(site), "site-before-party") })}${field("Download your photos by", "lifespan.photosUntil", { type: "date", value: life.photosUntil || "", max: 10, attrs: attrs(reviewDay, "photos-before-review") })}</fieldset>`;
 };
 // Marks the field a refused save names: aria-invalid, its note tied to it.
 function markRefused(form, name, words) {

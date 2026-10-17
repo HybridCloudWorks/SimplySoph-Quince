@@ -850,6 +850,72 @@ test("the gallery and the thank-you page say how long the site and photos stay o
   await expect(harness.admin("site", { ...(await harness.admin("site")).site, lifespan: { siteUntil: "", photosUntil: "2027-01-31" } })).rejects.toMatchObject({ code: "INVALID_SITE_SETTINGS" });
 });
 
+// R-171: the dates the family sets in Admin → Website & event are the ones
+// Privacy gives too, next to the gallery and the thank-you page, in English
+// and Spanish; with none set, Privacy says its review-date sentence alone.
+test("Privacy, the gallery and the thank-you page give the same lifespan dates once set in Admin, and Privacy falls back to its review date", async ({ page, context, harness }) => {
+  test.setTimeout(60_000);
+  const review = {
+    en: "How long we keep it: after the celebration, starting February 1, 2027, we review the information we collected for it and delete what we no longer need. You can ask us to delete your information at any time.",
+    es: "Cuánto tiempo la guardamos: después de la celebración, a partir del 1 de febrero de 2027, revisamos la información que reunimos para ella y borramos lo que ya no necesitamos. Puedes pedirnos que borremos tu información en cualquier momento.",
+  };
+  const retention = (lang) => page.locator("main li").filter({ hasText: lang === "es" ? "Cuánto tiempo la guardamos" : "How long we keep it" });
+  const fallback = async () => {
+    for (const lang of ["en", "es"]) {
+      await page.goto(harness.url(lang === "es" ? "/es/privacy/" : "/privacy/"));
+      await expect(page.locator("[data-lifespan]")).toBeAttached();
+      await expect(retention(lang)).toHaveText(review[lang]);
+      await expect(page.locator("[data-lifespan]")).toBeHidden();
+    }
+    for (const path of ["/gallery/", "/thank-you/", "/es/gallery/", "/es/thank-you/"]) {
+      await page.goto(harness.url(path));
+      await expect(page.locator("[data-lifespan]"), path).toBeHidden();
+    }
+  };
+  // Until the family decides: the review date alone.
+  await fallback();
+  // Admin → Website & event, as the family sets it.
+  const save = async (siteUntil, photosUntil) => {
+    await context.addCookies([harness.ownerCookie()]);
+    await page.goto(harness.url("/admin/site/"));
+    const form = page.locator("#site-settings");
+    await form.getByLabel("The site stays up through").fill(siteUntil);
+    await form.getByLabel("Download your photos by").fill(photosUntil);
+    await form.getByRole("button", { name: "Save website & calendars" }).click();
+    await expect(page.locator("#status")).toContainText("Website settings saved.");
+    await context.clearCookies();
+  };
+  await save("2027-06-30", "2027-03-31");
+  const site = { en: "The site stays up through Wednesday, June 30, 2027.", es: "El sitio seguirá disponible hasta el miércoles 30 de junio de 2027." };
+  const photos = {
+    en: "Download your photos by Wednesday, March 31, 2027.",
+    tu: "Descarga tus fotos a más tardar el miércoles 31 de marzo de 2027.",
+    ustedes: "Descarguen sus fotos a más tardar el miércoles 31 de marzo de 2027.",
+  };
+  for (const [path, lines] of [
+    ["/gallery/", `${site.en} ${photos.en}`],
+    ["/thank-you/", `${site.en} ${photos.en}`],
+    ["/es/gallery/", `${site.es} ${photos.tu}`],
+    ["/es/thank-you/", `${site.es} ${photos.ustedes}`],
+  ]) {
+    await page.goto(harness.url(path));
+    await expect(page.locator("[data-lifespan]"), path).toHaveText(lines);
+  }
+  // Privacy says the same dates, after its review-date sentence.
+  for (const [lang, lines] of [
+    ["en", `${site.en} ${photos.en}`],
+    ["es", `${site.es} ${photos.tu}`],
+  ]) {
+    await page.goto(harness.url(lang === "es" ? "/es/privacy/" : "/privacy/"));
+    await expect(page.locator("[data-lifespan]")).toHaveText(lines);
+    await expect(retention(lang)).toHaveText(`${review[lang]} ${lines}`);
+  }
+  // Cleared again in Admin: back to the review date alone everywhere.
+  await save("", "");
+  expect((await harness.admin("site")).site.lifespan).toBe(null);
+  await fallback();
+});
+
 // R-009: the end of the upload window, the home page and the table card at
 // the same instants (January 17, 11:59 PM and January 18, 12:01 AM).
 test("the table card works until the end of January 17 and closes at midnight, while the home page stays thankful", async ({ page, harness, setNow }) => {

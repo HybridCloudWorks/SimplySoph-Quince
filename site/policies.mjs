@@ -19,6 +19,15 @@ const retention = {
 };
 // The same sentence continuing a list item: "How long we keep it: after …".
 const lowerFirst = (s) => s.charAt(0).toLowerCase() + s.slice(1);
+// Privacy's summary item for it. On the page it ends with the site and photo
+// lifespan once the family sets one (R-171): scripts/build-pages.mjs leaves
+// a slot after this item that site/lifespan.mjs fills with the same lines
+// and dates the gallery and the thank-you page show, and leaves hidden
+// until then, when this review-date sentence is all there is.
+const retentionItem = {
+  en: "- How long we keep it: " + lowerFirst(retention.en),
+  es: "- Cuánto tiempo la guardamos: " + lowerFirst(retention.es),
+};
 // Who "Simply Soph Media" is. The SMS program registered under that name
 // (a sole-proprietor brand) is run by the family itself.
 const host = {
@@ -57,6 +66,7 @@ const deviceNote = {
 };
 export const policies = {
   retention,
+  retentionItem,
   host,
   tableCard,
   privacy: {
@@ -70,7 +80,7 @@ export const policies = {
       tableCard.privacy.en,
       deviceNote.en,
       "- To see, correct or delete your information: email misxv@simplysoph.com.",
-      "- How long we keep it: " + lowerFirst(retention.en),
+      retentionItem.en,
       "The details are below.",
     ],
     es: [
@@ -83,7 +93,7 @@ export const policies = {
       tableCard.privacy.es,
       deviceNote.es,
       "- Para ver, corregir o borrar tu información: escríbenos a misxv@simplysoph.com.",
-      "- Cuánto tiempo la guardamos: " + lowerFirst(retention.es),
+      retentionItem.es,
       "Abajo están los detalles.",
     ],
   },
