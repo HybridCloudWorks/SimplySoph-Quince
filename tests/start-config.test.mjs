@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {availableParallelism} from 'node:os';
+import {readFile} from 'node:fs/promises';
 import {startServer, runToExit} from './support/server-process.mjs';
 
 // A complete production configuration with synthetic values. Each case breaks one
@@ -70,4 +71,27 @@ test('production refuses to start when one setting is wrong', {concurrency:Math.
     for (const secret of ['test-only-secret', 'test-only-notion-token', 'test-only-token'])
       assert.ok(!stderr.includes(secret), `does not print ${secret}`);
   })));
+});
+
+// docs/deployment.md's configuration table promises "every variable
+// server/start.mjs reads", and .env.example "the same names".
+test('every name server/start.mjs reads is in .env.example and in the configuration table of docs/deployment.md', async () => {
+  const read = file => readFile(new URL(`../${file}`, import.meta.url), 'utf8');
+  const start = await read('server/start.mjs');
+  assert.match(start, /const env = process\.env\b/);
+  assert.equal(start.match(/process\.env/g).length, 1, 'start.mjs reads its settings only through `env`');
+  const names = [...new Set([...start.matchAll(/\benv\.([A-Z][A-Z0-9_]*)/g)].map(m => m[1]))].sort();
+  assert.ok(names.length >= 30 && names.includes('EVENT_BUCKET') && names.includes('GALLERY_ARCHIVE_PART_MB'), names.join(' '));
+  // Cloud Run sets K_SERVICE itself: named in .env.example, never set there.
+  const platform = ['K_SERVICE'];
+  const example = await read('.env.example');
+  const assigned = [...example.matchAll(/^([A-Z][A-Z0-9_]*)=/gm)].map(m => m[1]).sort();
+  assert.deepEqual(assigned, names.filter(name => !platform.includes(name)), '.env.example sets exactly the names start.mjs reads');
+  for (const name of platform) assert.match(example, new RegExp(`\\b${name}\\b`));
+  const doc = await read('docs/deployment.md');
+  const from = doc.indexOf('\n## Configuration\n'), to = doc.indexOf('\n## ', from + 1);
+  assert.ok(from > 0 && to > from, 'docs/deployment.md has its Configuration section');
+  const documented = [...doc.slice(from, to).matchAll(/^\| ([^|]+)\|/gm)]
+    .flatMap(row => [...row[1].matchAll(/`([A-Z][A-Z0-9_]*)`/g)].map(m => m[1])).sort();
+  assert.deepEqual(documented, names, 'the configuration table names exactly the names start.mjs reads');
 });
