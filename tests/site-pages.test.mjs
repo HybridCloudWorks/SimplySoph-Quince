@@ -31,6 +31,11 @@ test("a page waits to be linked until the family's content exists", () => {
   assert.equal(ready("court", { ...empty, court: [{ name: "Example", role: "dama" }] }), true);
   assert.equal(ready("padrinos", { ...empty, padrinos: [{ gift: "misa", names: "Example" }] }), true);
   assert.equal(ready("thank-you", { ...empty, highlightVideo: "https://example.com/" }), true);
+  // R-012: Travel waits for hotels or an airport note (it is in waitsFor, so
+  // the loop above and the link scan below cover it while empty).
+  assert.ok("travel" in waitsFor);
+  assert.equal(ready("travel", { ...empty, hotels: [{ name: "Example" }] }), true);
+  assert.equal(ready("travel", { ...empty, airport: { name: "Example" } }), true);
   // Every guest page with a header link belongs to exactly one section.
   const listed = sections.flatMap((s) => s.pages);
   assert.equal(new Set(listed).size, listed.length);
@@ -103,9 +108,10 @@ test("every hook the live event settings fill is on a built page", async () => {
 });
 
 test("the header is a flat list: sections, sign in, language pill, RSVP and a menu button", async () => {
+  // Travel waits for hotels or the airport note (R-012), so it is not here yet.
   for (const [lang, file, names, signIn] of [
-    ["en", "index.html", ["Schedule", "Travel", "Photos &amp; notes", "Gifts", "Questions", "Contact"], "Sign in"],
-    ["es", "es/index.html", ["Programa", "Viaje", "Fotos y mensajes", "Mesa de regalos", "Preguntas", "Contacto"], "Iniciar sesión"],
+    ["en", "index.html", ["Schedule", "Photos &amp; notes", "Gifts", "Questions", "Contact"], "Sign in"],
+    ["es", "es/index.html", ["Programa", "Fotos y mensajes", "Mesa de regalos", "Preguntas", "Contacto"], "Iniciar sesión"],
   ]) {
     const nav = header(await page(file));
     assert.doesNotMatch(nav, /<details|<summary/);
@@ -350,4 +356,114 @@ test("guests hear the hosts as “we”, never “the family” as someone else"
       assert.doesNotMatch(line, thirdPerson, `${url.pathname.split("/").slice(-2).join("/")}:${i + 1}`);
     });
   }
+});
+
+// ---- Family content that does not exist yet (R-011, R-164, R-013, R-017,
+// R-053, R-087, R-086, R-066, R-019): the built pages say only what is true
+// today. The same slots filled with test content: tests/family-slots.test.mjs.
+const both = (en, es) => [
+  ["", en],
+  ["es/", es],
+];
+test("each “soon” promise is said once, in today's words, and the venue notes keep only venue facts", async () => {
+  for (const [lang, words] of both(
+    {
+      details: "We’ll share the dress code here soon.",
+      faq: "We’ll share this here soon.",
+      travel: "We’ll share hotel and airport suggestions here soon.",
+      ceremony: "Parking and arrival details will be shared here.",
+      reception: "Entrance, parking and accessibility details will be shared here.",
+    },
+    {
+      details: "Pronto compartiremos aquí el código de vestimenta.",
+      faq: "Lo compartiremos aquí pronto.",
+      travel: "Pronto compartiremos aquí sugerencias de hoteles y de cómo llegar desde el aeropuerto.",
+      ceremony: "Compartiremos aquí los detalles de llegada y estacionamiento.",
+      reception: "Compartiremos los detalles de entrada, estacionamiento y accesibilidad.",
+    },
+  ))
+    for (const [route, sentence] of Object.entries(words)) {
+      const html = main(await page(`${lang}${route}/index.html`));
+      // Once on the page (the venue pages also carry it for the live redraw).
+      assert.equal(html.split(sentence).length - 1, ["ceremony", "reception"].includes(route) ? 2 : 1, `${lang}${route}`);
+      assert.doesNotMatch(html, /a más tardar el (?!domingo 15 de noviembre)|here by /, `${lang}${route}: no date invented`);
+    }
+  // The parking promise is its own line now, not part of the venue notes.
+  const ceremony = main(await page("ceremony/index.html"));
+  assert.match(ceremony, /<p>Please silence your phone and follow the church’s guidance during the ceremony\.<\/p><p class="venue-parking">Parking and arrival details will be shared here\.<\/p>/);
+  assert.match(ceremony, /<div data-venue="ceremony" data-parking="Parking and arrival details will be shared here\.">/);
+  assert.match(main(await page("es/reception/index.html")), /<p>La cena y la recepción serán en el mismo lugar\.<\/p><p class="venue-parking">Compartiremos los detalles de entrada, estacionamiento y accesibilidad\.<\/p>/);
+});
+
+test("the Schedule says the two places are a drive apart, without a drive time, and does not link Travel yet", async () => {
+  for (const [lang, line] of both(
+    "<dt>Between the two places</dt><dd>The ceremony and the reception are in different places, so allow time to drive from one to the other.</dd>",
+    "<dt>Entre un lugar y otro</dt><dd>La ceremonia y la recepción son en lugares distintos, así que calcula tiempo para manejar de uno a otro.</dd>",
+  )) {
+    const box = main(await page(`${lang}details/index.html`)).match(/<aside class="good-to-know"[\s\S]*?<\/aside>/)[0];
+    assert.ok(box.includes(line), lang);
+    assert.doesNotMatch(box, /minut|short drive|corta distancia/i, lang);
+    assert.doesNotMatch(box, /travel\//, lang);
+  }
+  // No traditions chosen: no "What to expect".
+  for (const file of ["details/index.html", "es/details/index.html"])
+    assert.doesNotMatch(await page(file), /what-to-expect|What to expect|Qué esperar/);
+  // Travel still builds for someone who has its address.
+  assert.match(main(await page("travel/index.html")), /<h1>Travel<\/h1>/);
+});
+
+test("Questions links the RSVP while it is open and has the closed answer ready for the deadline", async () => {
+  for (const [lang, open, closed] of [
+    ["", /<p data-rsvp-while="open">By Sunday, November 15, 2026\. Open the invitation link we sent your family, or go to <a href="\/rsvp\/">RSVP<\/a>\.<\/p>/, /<p data-rsvp-while="closed" hidden>RSVPs closed on Sunday, November 15, 2026\. To answer or change your answer now, please <a href="\/contact\/">contact us<\/a>\.<\/p>/],
+    ["es/", /<p data-rsvp-while="open">A más tardar el domingo 15 de noviembre de 2026\. Abre el enlace de invitación que le enviamos a tu familia, o ve a <a href="\/es\/rsvp\/">Confirmar asistencia<\/a>\.<\/p>/, /<p data-rsvp-while="closed" hidden>Las respuestas cerraron el domingo 15 de noviembre de 2026\. Para responder o cambiar tu respuesta, <a href="\/es\/contact\/">escríbenos<\/a>\.<\/p>/],
+  ]) {
+    const html = main(await page(`${lang}faq/index.html`));
+    assert.match(html, open, lang);
+    assert.match(html, closed, lang);
+    // No age cut-off yet: no question about it.
+    assert.doesNotMatch(html, /Who counts as a child|Quién cuenta como niño/);
+  }
+});
+
+test("the RSVP pages carry what is still to come and nothing the family has not decided", async () => {
+  for (const file of ["rsvp/index.html", "es/rsvp/confirmed/index.html", "account/index.html"]) {
+    const portal = (await page(file)).match(/<div class="portal" id="portal"[^>]*>/)[0];
+    assert.ok(portal.includes('data-coming="{&quot;dressCode&quot;:null,&quot;hotels&quot;:null,&quot;parking&quot;:null}"'), file);
+    assert.doesNotMatch(portal, /data-parking-posted|data-child-age/, file);
+  }
+  // Pages without the RSVP carry none of it.
+  assert.doesNotMatch(await page("contact/index.html"), /data-coming/);
+});
+
+test("Gifts says the Target list is called “Sophia’s Birthday Wish List”, in both languages", async () => {
+  assert.ok(main(await page("registry/index.html")).includes("On Target’s site the list is called “Sophia’s Birthday Wish List.”"));
+  assert.ok(main(await page("es/registry/index.html")).includes("En Target, la lista aparece como “Sophia’s Birthday Wish List” (página en inglés)."));
+});
+
+test("each calendar file has Google Calendar beside it, with the same event in the page's language", async () => {
+  for (const [lang, file, title] of [
+    ["en", "details/index.html", "Sophia’s quinceañera — Religious ceremony"],
+    ["es", "es/details/index.html", "XV de Sophia — Ceremonia religiosa"],
+  ]) {
+    const html = main(await page(file));
+    const google = [...html.matchAll(/<a class="target" href="(https:\/\/calendar\.google\.com\/calendar\/render\?[^"]+)" target="_blank" rel="noopener noreferrer">Google Calendar<span class="visually-hidden">: ([^<]+)<\/span>/g)];
+    assert.deepEqual(google.map((m) => m[2]), lang === "en" ? ["Ceremony", "Dinner", "Reception &amp; dance"] : ["Ceremonia", "Cena", "Recepción y baile"]);
+    const url = new URL(google[0][1].replaceAll("&amp;", "&"));
+    assert.equal(url.searchParams.get("text"), title);
+    // The same UTC times as the calendar file.
+    const ics = await readFile(new URL(`calendar/${lang === "es" ? "es/" : ""}ceremony.ics`, dist), "utf8");
+    const at = (field) => ics.match(new RegExp(`^${field}:(\\S+)`, "m"))[1];
+    assert.equal(url.searchParams.get("dates"), `${at("DTSTART")}/${at("DTEND")}`);
+    assert.equal(url.searchParams.get("location"), "Our Lady of Guadalupe Church, 4100 Blue Mound Rd, Fort Worth, TX 76106");
+  }
+  // The venue pages too (the reception page has dinner and the reception).
+  assert.equal((main(await page("reception/index.html")).match(/calendar\.google\.com/g) || []).length, 2);
+});
+
+test("the Spanish pages use the English invitation art until the Spanish art exists", async () => {
+  const og = async (file) => (await page(file)).match(/<meta property="og:image" content="([^"]+)"/)[1];
+  assert.equal(await og("es/index.html"), await og("index.html"));
+  assert.match(await og("index.html"), /\/assets\/img\/og-invitation\.[0-9a-f]{10}\.jpg$/);
+  const art = async (file) => main(await page(file)).match(/<figure class="invitation"[\s\S]*?<\/figure>/)[0].match(/src="([^"]+)"/)[1];
+  assert.equal(await art("es/index.html"), await art("index.html"));
 });

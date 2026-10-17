@@ -2,24 +2,29 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   celebration,
-  calendar,
   maps,
   mapLinks,
   calendarLink,
+  calendarActions,
+  googleCalendarUrl,
   scheduleStrip,
   scheduleList,
   invitationAlt,
   registryCards,
   venueSection,
 } from "../site/celebration.mjs";
-import { validateSettings } from "../server/site-settings.mjs";
+import { calendar } from "../site/calendar-file.mjs";
+import { validateSettings, siteSettings } from "../server/site-settings.mjs";
+import { registryDefaults } from "../server/registry-settings.mjs";
 test("separate calendars preserve Central-time instants, addresses and unique event identity", () => {
   const c = structuredClone(celebration);
   assert.equal(c.ceremony.end, "2027-01-15T17:00:00-06:00");
   assert.equal(c.reception.end, "2027-01-16T00:30:00-06:00");
+  const titles = { ceremony: "Religious ceremony", dinner: "Dinner", reception: "Reception & dance" };
   for (const kind of ["ceremony", "dinner", "reception"]) {
     const data = calendar(kind, c);
-    assert.match(data, /SUMMARY:Sophia Isabel/);
+    // R-091: what the event is part of, then the event (was "Sophia Isabel — …").
+    assert.ok(data.includes(`\r\nSUMMARY:Sophia’s quinceañera — ${titles[kind]}\r\n`), kind);
     assert.match(data, new RegExp("UID:misxv-" + kind + "@simplysoph.com"));
     assert.match(data, /DTSTART:/);
     assert.match(data, /DTEND:/);
@@ -56,7 +61,9 @@ test("Spanish calendars share each event's identity and hold only confirmed fact
     assert.match(en, new RegExp(`URL:https://misxv.simplysoph.com/${place}/`));
     assert.match(es, new RegExp(`URL:https://misxv.simplysoph.com/es/${place}/`));
   }
-  assert.match(unfold(calendar("ceremony", c, "es")), /SUMMARY:Sophia Isabel — Ceremonia religiosa/);
+  assert.match(unfold(calendar("ceremony", c, "es")), /\r\nSUMMARY:XV de Sophia — Ceremonia religiosa\r\n/);
+  assert.match(unfold(calendar("dinner", c, "es")), /\r\nSUMMARY:XV de Sophia — Cena\r\n/);
+  assert.match(unfold(calendar("reception", c, "es")), /\r\nSUMMARY:XV de Sophia — Recepción y baile\r\n/);
   assert.match(unfold(calendar("ceremony", c, "es")), /DESCRIPTION:Quinceañera de Sophia Isabel/);
   // A content change bumps SEQUENCE in both languages.
   c.version = 7;
@@ -189,4 +196,66 @@ test("calendar and map links carry their event's name, visually hidden", () => {
   assert.ok(venueSection("reception", celebration, "es").includes(`Abrir en Google Maps${hidden("Cena y recepción")}`));
   // Without a name, maps() reads as before.
   assert.doesNotMatch(maps(celebration.ceremony.address), /visually-hidden">:/);
+});
+
+// R-066: Google Calendar beside every calendar file, with the file's facts.
+test("Google Calendar links carry the calendar file's facts, in the page's language, beside the file", () => {
+  const unfold = (ics) => ics.replace(/\r\n /g, "");
+  for (const kind of ["ceremony", "dinner", "reception"])
+    for (const lang of ["en", "es"]) {
+      const url = new URL(googleCalendarUrl(kind, celebration, lang)),
+        ics = unfold(calendar(kind, celebration, lang)),
+        field = (name) => ics.match(new RegExp(`^${name}:(.*)$`, "m"))[1].replace(/\\([,;\\])/g, "$1");
+      assert.equal(url.origin + url.pathname, "https://calendar.google.com/calendar/render");
+      assert.equal(url.searchParams.get("action"), "TEMPLATE");
+      // UTC, exactly the file's start and end.
+      assert.equal(url.searchParams.get("dates"), `${field("DTSTART")}/${field("DTEND")}`, `${kind} ${lang}`);
+      assert.match(url.searchParams.get("dates"), /^\d{8}T\d{6}Z\/\d{8}T\d{6}Z$/);
+      for (const [param, name] of [["text", "SUMMARY"], ["location", "LOCATION"], ["details", "DESCRIPTION"]])
+        assert.equal(url.searchParams.get(param), field(name), `${kind} ${lang} ${param}`);
+    }
+  assert.equal(new URL(googleCalendarUrl("reception", celebration, "es")).searchParams.get("text"), "XV de Sophia — Recepción y baile");
+  const html = calendarActions("dinner", celebration, "es", true);
+  assert.match(html, /^<span class="calendar-choices"><a class="calendar-link" href="\/api\/calendar\/es\/dinner\.ics" download>/);
+  assert.match(html, /<a class="target" href="https:\/\/calendar\.google\.com\/calendar\/render\?[^"]+" target="_blank" rel="noopener noreferrer">Google Calendar<span class="visually-hidden">: Cena<\/span><span class="ext" aria-hidden="true">↗<\/span><span class="visually-hidden"> \(se abre en otra pestaña\)<\/span><\/a><\/span>$/);
+  // The file link itself is still a download, not a new tab.
+  assert.doesNotMatch(calendarLink("dinner", celebration, "es", true), /↗/);
+  // No confirmed end time: neither the file nor Google Calendar.
+  const c = structuredClone(celebration);
+  c.ceremony.end = null;
+  assert.doesNotMatch(calendarActions("ceremony", c), /href=/);
+  assert.throws(() => googleCalendarUrl("ceremony", c), /Confirmed end/);
+});
+
+// R-011 / R-164: the venue notes keep venue facts; parking (or the promise to
+// post it) is its own line from the family's content.
+test("venue pages show the parking line after the notes, and saved notes lose the old promise sentence only", () => {
+  const ceremony = venueSection("ceremony", celebration, "en", false, "Parking and arrival details will be shared here.");
+  assert.match(ceremony, /<p>Please silence your phone and follow the church’s guidance during the ceremony\.<\/p><p class="venue-parking">Parking and arrival details will be shared here\.<\/p><div class="calendar-actions">/);
+  assert.doesNotMatch(venueSection("ceremony", celebration, "en"), /venue-parking/);
+  for (const kind of ["ceremony", "reception"])
+    for (const lang of ["en", "es"]) assert.doesNotMatch(celebration[kind].notes[lang], /parking|estacionamiento|shared here|Compartiremos/i);
+  // Settings saved before the change (the live ones match these old defaults).
+  const saved = structuredClone(celebration);
+  saved.ceremony.notes = {
+    en: "Please silence your phone and follow the church’s guidance during the ceremony. Parking and arrival details will be shared here.",
+    es: "Silencia tu teléfono y sigue las indicaciones de la iglesia durante la ceremonia. Compartiremos aquí los detalles de llegada y estacionamiento.",
+  };
+  saved.reception.notes = {
+    en: "Dinner and the reception take place at the same venue. Entrance, parking and accessibility details will be shared here.",
+    es: "La cena y la recepción serán en el mismo lugar. Compartiremos los detalles de entrada, estacionamiento y accesibilidad.",
+  };
+  const site = siteSettings({ site: saved });
+  assert.deepEqual(site.ceremony.notes, celebration.ceremony.notes);
+  assert.deepEqual(site.reception.notes, celebration.reception.notes);
+  assert.match(saved.reception.notes.en, /will be shared here/, "what is stored is not rewritten here");
+  // The family's own words stay exactly as typed.
+  saved.ceremony.notes.en = "Doors open at 3:30.  Arrive early.";
+  assert.equal(siteSettings({ site: saved }).ceremony.notes.en, "Doors open at 3:30.  Arrive early.");
+  // Before anything is saved: the defaults, venue facts only.
+  assert.deepEqual(siteSettings({}).reception.notes, celebration.reception.notes);
+  // The registry default names Target's list (R-086); its link stays as it was.
+  assert.match(siteSettings({}).registries[0].description.en, /On Target’s site the list is called “Sophia’s Birthday Wish List\.”$/);
+  assert.equal(registryDefaults[0].url, "https://www.target.com/gift-registry/gift/quincenera");
+  assert.equal(celebration.registries[0].description, registryDefaults[0].description);
 });

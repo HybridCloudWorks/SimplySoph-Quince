@@ -24,7 +24,7 @@ import {
   contactTopics,
   contactTopicsEn,
   contactTopicsEs,
-  calendarLink,
+  calendarActions,
   localTime,
 } from "./celebration.mjs";
 import {
@@ -51,13 +51,14 @@ import {
 } from "./sso.js";
 import { galleryOpen } from "./lifecycle.mjs";
 import { date, at } from "./datetime.mjs";
-import { siteClock } from "./now.mjs";
-// The upload form, the WhatsApp choices and "Download all photos" load only on
-// the pages that show them, so every other page (the home page above all)
-// stays light (tests/home-weight.test.mjs).
+import { siteClock, clock } from "./now.mjs";
+// The upload form, the WhatsApp choices, "Download all photos" and "What's
+// next" load only on the pages that show them, so every other page (the home
+// page above all) stays light (tests/home-weight.test.mjs).
 const uploads = () => import("./media-upload.js");
 const whatsapp = () => import("./guest-whatsapp.js");
 const downloads = () => import("./gallery-download.js");
+const promises = () => import("./promises.mjs");
 const portal = document.querySelector("#portal");
 // Shared wording (site/lexicon.mjs) in this page's language and, in Spanish,
 // its form of address.
@@ -121,6 +122,26 @@ const people = (v) =>
     .join(", ") || tr("not attending", "no asistirán");
 // Only the events on the household's invitation are asked about or listed.
 const invitedEvents = (inv) => Object.keys(eventNames).filter((e) => inv.invited[e]);
+// The events someone in the household is coming to, by the saved answer.
+const attendingOf = ({ invited, response: r }) =>
+  Object.keys(eventNames).filter((e) => invited[e] && r.attendance[e].adultsTeens + r.attendance[e].kids > 0);
+// "What's next" (site/promises.mjs): what is still to come (data-coming, from
+// the build) unless `pending` is false, and the channels the server has live.
+async function whatsNext(session, pending = true) {
+  try {
+    const [m, cfg] = await Promise.all([promises(), config().catch(() => ({}))]);
+    return m.whatsNext({
+      coming: pending ? JSON.parse(portal.dataset.coming || "{}") : {},
+      channels: cfg.channels,
+      linkSession: session.scope === "rsvp",
+      lang,
+      register,
+      now: clock(),
+    });
+  } catch {
+    return "";
+  }
+}
 function summary(attendance, inv) {
   return `<ul class="summary-list">${invitedEvents(inv)
     .map((e) => `<li><strong>${eventNames[e]}:</strong> ${people(attendance[e])}</li>`)
@@ -390,9 +411,11 @@ function rsvpStatus(inv) {
 async function accountPage(inv) {
   const data = await api("account");
   let { profile } = await api("profile");
-  const signedInAs = data.account.email;
+  const signedInAs = data.account.email,
+    // As on the confirmation; no list of what's coming after a "no".
+    next = await whatsNext({}, !(inv.response && !attendingOf(inv).length));
   show(
-    `<h2>${esc(data.account.name)}</h2><p class="hint">${tr("Signed in as", "Entraste con")} ${esc(signedInAs)}</p>${rsvpStatus(inv)}<div class="row-actions"><a href="${route("reception")}">${tr("Directions", "Cómo llegar")}</a><button id="guest-logout" class="plain-button">${tr("Sign out", "Cerrar sesión")}</button></div><form id="profile-form"><h3>${tr("Contact details", "Datos de contacto")}</h3>${field(tr("Contact email", "Correo de contacto"), "email", { type: "email", value: profile.contact.email, autocomplete: "email", hint: tr(`We use it to reach you about the celebration. You still sign in with ${signedInAs}.`, `Lo usamos para escribirte sobre la celebración. Sigues entrando con ${signedInAs}.`) })}${field(tr("Phone", "Teléfono"), "phone", { type: "tel", inputmode: "tel", autocomplete: "tel", value: profile.contact.phone, max: 40 })}${field(tr("Mailing address", "Dirección postal"), "address", { value: profile.contact.address || "", max: 500, autocomplete: "street-address" })}<p role="alert" class="error"></p><button type="submit" class="button burgundy">${tr("Save contact details", "Guardar datos")}</button><p class="saved-note" role="status"></p></form><section id="whatsapp-preferences" class="card" hidden></section><div id="family-chat"></div><div class="account-sign-out"><p class="hint">${tr("Signed in on a computer or phone that isn’t yours?", "¿Entraste en una computadora o teléfono que no es tuyo?")}</p><button id="guest-logout-all" class="button outline">${tr("Sign out on all devices", "Cerrar sesión en todos los dispositivos")}</button></div>`,
+    `<h2>${esc(data.account.name)}</h2><p class="hint">${tr("Signed in as", "Entraste con")} ${esc(signedInAs)}</p>${rsvpStatus(inv)}<div class="row-actions"><a href="${route("reception")}">${tr("Directions", "Cómo llegar")}</a><button id="guest-logout" class="plain-button">${tr("Sign out", "Cerrar sesión")}</button></div><form id="profile-form"><h3>${tr("Contact details", "Datos de contacto")}</h3>${field(tr("Contact email", "Correo de contacto"), "email", { type: "email", value: profile.contact.email, autocomplete: "email", hint: tr(`We use it to reach you about the celebration. You still sign in with ${signedInAs}.`, `Lo usamos para escribirte sobre la celebración. Sigues entrando con ${signedInAs}.`) })}${field(tr("Phone", "Teléfono"), "phone", { type: "tel", inputmode: "tel", autocomplete: "tel", value: profile.contact.phone, max: 40 })}${field(tr("Mailing address", "Dirección postal"), "address", { value: profile.contact.address || "", max: 500, autocomplete: "street-address" })}<p role="alert" class="error"></p><button type="submit" class="button burgundy">${tr("Save contact details", "Guardar datos")}</button><p class="saved-note" role="status"></p></form>${next}<section id="whatsapp-preferences" class="card" hidden></section><div id="family-chat"></div><div class="account-sign-out"><p class="hint">${tr("Signed in on a computer or phone that isn’t yours?", "¿Entraste en una computadora o teléfono que no es tuyo?")}</p><button id="guest-logout-all" class="button outline">${tr("Sign out on all devices", "Cerrar sesión en todos los dispositivos")}</button></div>`,
   );
   document.querySelector("#guest-logout").onclick = async () => {
     await api("logout", {});
@@ -505,8 +528,13 @@ function eventLegend(e) {
     place = e === "ceremony" ? c.ceremony.name : c.reception.name;
   return `<span class="event-name">${eventNames[e]}</span> <span class="event-when">· ${esc(localTime(start, es ? "es" : "en"))} · ${esc(place)}</span>`;
 }
+// The children's age cut-off, once the family sets one (built into the page).
+const age = Number(portal?.dataset.childAge) || 0;
 function countField(event, key, max, value) {
-  const label = key === "kids" ? tr("Children", "Niños") : tr("Adults / teens", "Adultos / jóvenes"),
+  const label =
+      key === "kids"
+        ? tr("Children", "Niños") + (age ? tr(` (under ${age})`, ` (menores de ${age} años)`) : "")
+        : tr("Adults / teens", "Adultos / jóvenes") + (age ? tr(` (${age} and older)`, ` (${age} años o más)`) : ""),
     // The note under a count left empty names its event, so the notes down
     // the form are not six identical lines.
     note = `${eventNames[event]}: ${key === "kids" ? tr("choose how many children.", "elijan cuántos niños.") : tr("choose how many adults/teens.", "elijan cuántos adultos/jóvenes.")}`;
@@ -785,8 +813,10 @@ function review(inv, values, { push = true } = {}) {
     ]
       .filter(Boolean)
       .join("");
+  // The review names the household, as the form does (a quick-answer link
+  // opens straight here), and says before Save when it replaces an answer.
   show(
-    `<h2>${tr("Review your response", "Revisen su respuesta")}</h2>${summary(input.attendance, inv)}${details}<p class="resume-note" role="status"></p><p class="error" role="alert"></p><div class="row-actions"><button type="button" id="confirm" class="button burgundy">${tr("Save my RSVP", "Guardar mi respuesta")}</button><button type="button" id="edit" class="button outline">${tr("Change counts", "Cambiar cantidades")}</button></div>`,
+    `<h2>${tr("Review your response", "Revisen su respuesta")}</h2><p><strong>${esc(inv.name)}</strong></p>${summary(input.attendance, inv)}${details}${inv.response ? `<p class="notice">${tr("This replaces your saved answer.", "Esto reemplaza su respuesta guardada.")}</p>` : ""}<p class="resume-note" role="status"></p><p class="error" role="alert"></p><div class="row-actions"><button type="button" id="confirm" class="button burgundy">${tr("Save my RSVP", "Guardar mi respuesta")}</button><button type="button" id="edit" class="button outline">${tr("Change counts", "Cambiar cantidades")}</button></div>`,
   );
   if (push) {
     // The entry left behind is the form's, even when an in-page link (the
@@ -889,11 +919,9 @@ function closeAtDeadline(inv) {
 // The page after saving adapts to the answer: attending households get only
 // the calendars and directions they need; declining households get a warm note.
 const calendarKind = { ceremony: "ceremony", dinner: "dinner", dance: "reception" };
-function confirmation(inv, session) {
+function confirmation(inv, session, next = "") {
   const r = inv.response,
-    attending = invitedEvents(inv).filter(
-      (e) => r.attendance[e].adultsTeens + r.attendance[e].kids > 0,
-    ),
+    attending = attendingOf(inv),
     open = rsvpOpen(inv),
     // After the party: thanks in the past tense, the photos, and no calendar
     // files, directions or changes for a day that is over.
@@ -926,19 +954,23 @@ function confirmation(inv, session) {
   const calendars = attending
     .map(
       (e) =>
-        `<div><strong>${eventNames[e]}</strong>${calendarLink(calendarKind[e], eventContent, es ? "es" : "en", liveContent)}</div>`,
+        `<div><strong>${eventNames[e]}</strong>${calendarActions(calendarKind[e], eventContent, lang, liveContent)}</div>`,
     )
     .join("");
+  // Each link names only the events this household is coming to, and says
+  // "parking" once there is parking to show (data-parking-posted, from the build).
+  const dinner = attending.includes("dinner"),
+    dance = attending.includes("dance");
   const places = [
     attending.includes("ceremony") &&
-      `<a href="${route("ceremony")}">${tr("Ceremony location & parking", "Ubicación y estacionamiento de la ceremonia")}</a>`,
-    attending.some((e) => e !== "ceremony") &&
-      `<a href="${route("reception")}">${tr("Dinner & reception location", "Ubicación de la cena y recepción")}</a>`,
+      `<a href="${route("ceremony")}">${"parkingPosted" in portal.dataset ? tr("Ceremony location & parking", "Ubicación y estacionamiento de la ceremonia") : tr("Ceremony location", "Ubicación de la ceremonia")}</a>`,
+    (dinner || dance) &&
+      `<a href="${route("reception")}">${dinner && dance ? tr("Dinner & reception location", "Ubicación de la cena y recepción") : dinner ? tr("Dinner location", "Ubicación de la cena") : tr("Reception location", "Ubicación de la recepción")}</a>`,
   ]
     .filter(Boolean)
     .join("");
   // WhatsApp opt-in changes data, so it needs the email sign-in; an
-  // invitation-link session is pointed to My account instead.
+  // invitation-link session is pointed to My account instead (in `next`).
   const whatsapp =
     session.scope === "rsvp" || over
       ? ""
@@ -947,7 +979,7 @@ function confirmation(inv, session) {
   const account = `<p><a href="${route("account")}">${session.verified ? tr("Open my account", "Abrir mi cuenta") : tr("Sign in with your email for photos and messages", "Entra con tu correo para fotos y mensajes")}</a></p>`;
   if (over)
     return `<div class="notice success"><h2>${tr("Thank you for celebrating with us!", "¡Gracias por celebrar con nosotros!")}</h2><p>${tr("Thank you", "Gracias")}, ${esc(inv.name)}.</p></div>${summary(r.attendance, inv)}${saved}<div class="row-actions"><a class="button burgundy" href="${route("gallery")}">${tr("See the photos", "Ver las fotos")}</a><a href="${route("share")}">${esc(say(terms.sharePhotos, es ? "es" : "en"))}<span class="arrow" aria-hidden="true">→</span></a></div>${note}${account}`;
-  return `<div class="notice success"><h2>${tr("We can’t wait to celebrate with you!", "¡Los esperamos con mucha ilusión!")}</h2><p>${tr("Thank you", "Gracias")}, ${esc(inv.name)}.</p></div>${summary(r.attendance, inv)}${saved}<h3>${tr("Add to your calendar", "Agregar al calendario")}</h3><div class="calendar-actions">${calendars}</div><h3>${tr("Getting there", "Cómo llegar")}</h3><div class="row-actions">${places}</div>${edit}${note}${whatsapp}${account}`;
+  return `<div class="notice success"><h2>${tr("We can’t wait to celebrate with you!", "¡Los esperamos con mucha ilusión!")}</h2><p>${tr("Thank you", "Gracias")}, ${esc(inv.name)}.</p></div>${summary(r.attendance, inv)}${saved}<h3>${tr("Add to your calendar", "Agregar al calendario")}</h3><div class="calendar-actions">${calendars}</div><h3>${tr("Getting there", "Cómo llegar")}</h3><div class="row-actions">${places}</div>${edit}${note}${next}${whatsapp}${account}`;
 }
 // Set just before the page moves to the confirmation after a save, so the
 // confirmation takes focus then (and not when opened from a bookmark).
@@ -1025,7 +1057,8 @@ async function showPortal() {
       );
       return;
     }
-    show(confirmation(inv, session), { focus: justSaved() });
+    const next = !partyOver() && attendingOf(inv).length ? await whatsNext(session) : "";
+    show(confirmation(inv, session, next), { focus: justSaved() });
     const updates = portal.querySelector("#whatsapp-preferences");
     if (updates) (await whatsapp()).whatsappPreferences(updates, inv.contact.phone || "");
     return;
@@ -1134,6 +1167,13 @@ await experienceReady;
 // The server's clock and RSVP deadline (both requests started with the page).
 await clockReady;
 noteAudience();
+// Questions: "When do I need to RSVP?" answers for open or closed RSVPs, and
+// changes at the deadline, on the server's clock.
+const rsvpAnswers = document.querySelectorAll("[data-rsvp-while]");
+if (rsvpAnswers.length)
+  watch(() => {
+    for (const el of rsvpAnswers) el.hidden = (el.dataset.rsvpWhile === "open") !== rsvpOpenNow();
+  });
 if (document.querySelector("[data-whatsapp-signup]")) (await whatsapp()).whatsappProgramPage();
 reloadOnNewLink();
 let fragment = linkFragment();

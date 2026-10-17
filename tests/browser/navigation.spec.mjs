@@ -32,9 +32,9 @@ test.describe("on a phone", () => {
     await menu.click();
     await expect(menu).toHaveAttribute("aria-expanded", "true");
     await expect(menu).toHaveAccessibleName("Close");
+    // Travel joins once it has hotels or an airport note (R-012).
     await expect(links.getByRole("link")).toHaveText([
       "Schedule",
-      "Travel",
       "Photos & notes",
       "Gifts",
       "Questions",
@@ -74,8 +74,8 @@ test.describe("on a phone", () => {
     await menu.focus();
     await page.keyboard.press("Enter");
     await expect(menu).toHaveAttribute("aria-expanded", "true");
-    // Through the seven links, the language switch and RSVP, then the button.
-    for (let i = 0; i < 9; i++) await page.keyboard.press("Tab");
+    // Through the six links, the language switch and RSVP, then the button.
+    for (let i = 0; i < 8; i++) await page.keyboard.press("Tab");
     await expect(menu).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(menu).toHaveAttribute("aria-expanded", "false");
@@ -142,7 +142,7 @@ test.describe("on a phone", () => {
     await page.getByRole("button", { name: "Menú" }).click();
     await expect(
       page.getByRole("navigation", { name: "Navegación principal" }).getByRole("link"),
-    ).toHaveText(["Programa", "Viaje", "Fotos y mensajes", "Mesa de regalos", "Preguntas", "Contacto", "Iniciar sesión"]);
+    ).toHaveText(["Programa", "Fotos y mensajes", "Mesa de regalos", "Preguntas", "Contacto", "Iniciar sesión"]);
   });
 
   test("the RSVP button is on the first screen of the home page", async ({

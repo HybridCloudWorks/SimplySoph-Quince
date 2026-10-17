@@ -1,5 +1,11 @@
 import { terms } from "./lexicon.mjs";
 import { timeRange as clockRange } from "./datetime.mjs";
+// The Target card names the list as Target's English page does. The live text
+// is in the event settings (docs/publishing.md).
+export const registryDescription = {
+  en: "A few wishes for Sophia’s next chapter. On Target’s site the list is called “Sophia’s Birthday Wish List.”",
+  es: "Algunos deseos para el próximo capítulo de Sophia. En Target, la lista aparece como “Sophia’s Birthday Wish List” (página en inglés).",
+};
 export const celebration = {
   version: 1,
   name: "Sophia Isabel",
@@ -14,9 +20,11 @@ export const celebration = {
     image: "/assets/church.png",
     start: "2027-01-15T16:00:00-06:00",
     end: "2027-01-15T17:00:00-06:00",
+    // Venue facts only. Parking, and the promise to post it, come from the
+    // family's content (site/promises.mjs), below these notes.
     notes: {
-      en: "Please silence your phone and follow the church’s guidance during the ceremony. Parking and arrival details will be shared here.",
-      es: "Silencia tu teléfono y sigue las indicaciones de la iglesia durante la ceremonia. Compartiremos aquí los detalles de llegada y estacionamiento.",
+      en: "Please silence your phone and follow the church’s guidance during the ceremony.",
+      es: "Silencia tu teléfono y sigue las indicaciones de la iglesia durante la ceremonia.",
     },
   },
   reception: {
@@ -26,8 +34,8 @@ export const celebration = {
     start: "2027-01-15T19:30:00-06:00",
     end: "2027-01-16T00:30:00-06:00",
     notes: {
-      en: "Dinner and the reception take place at the same venue. Entrance, parking and accessibility details will be shared here.",
-      es: "La cena y la recepción serán en el mismo lugar. Compartiremos los detalles de entrada, estacionamiento y accesibilidad.",
+      en: "Dinner and the reception take place at the same venue.",
+      es: "La cena y la recepción serán en el mismo lugar.",
     },
   },
   dinner: {
@@ -58,10 +66,8 @@ export const celebration = {
     {
       id: "target",
       name: "Target",
-      description: {
-        en: "A few wishes for Sophia’s next chapter.",
-        es: "Algunos deseos para el próximo capítulo de Sophia.",
-      },
+      // The same words as server/registry-settings.mjs.
+      description: registryDescription,
       url: "",
       logo: "/assets/target.svg",
     },
@@ -178,12 +184,26 @@ export function calendarLink(kind, c = celebration, lang = "en", live = false) {
     return `<p class="hint">${label("Calendar download will be available once the end time is confirmed.", "La descarga del calendario estará disponible cuando se confirme la hora de finalización.", lang)}</p>`;
   return `<a class="calendar-link" href="${live ? "/api/calendar/" : "/calendar/"}${lang === "es" ? "es/" : ""}${e(kind)}.ics" download>${calendarMark}<span>${label("Add to calendar", "Agregar al calendario", lang)}${subject(label(...calendarNames[kind], lang))}</span></a>`;
 }
+// The same event in Google Calendar, which many Android phones use instead of
+// opening a downloaded file: a prefilled event with the .ics file's facts.
+export function googleCalendarUrl(kind, c = celebration, lang = "en") {
+  const f = calendarFacts(kind, c, lang),
+    q = encodeURIComponent;
+  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${q(f.title)}&dates=${f.start}/${f.end}&location=${q(f.location)}&details=${q(f.description)}`;
+}
+// Every calendar action: the file, and Google Calendar beside it (a new tab).
+export function calendarActions(kind, c = celebration, lang = "en", live = false) {
+  if (!c[kind].end) return calendarLink(kind, c, lang, live);
+  return `<span class="calendar-choices">${calendarLink(kind, c, lang, live)}<a class="target" href="${escapeHtml(googleCalendarUrl(kind, c, lang))}" target="_blank" rel="noopener noreferrer">Google Calendar${subject(label(...calendarNames[kind], lang))}${newTab(lang)}</a></span>`;
+}
 // A venue page's facts. The photo beside it is built once with the page
 // (scripts/build-pages.mjs); live settings re-render only these facts.
-export function venueSection(kind, c = celebration, lang = "en", live = false) {
+// `parking` is the family's parking text, or the promise to post it
+// (site/promises.mjs), which the page carries for the re-render.
+export function venueSection(kind, c = celebration, lang = "en", live = false, parking = "") {
   const v = c[kind],
     e = escapeHtml;
-  return `<article class="venue-details"><p class="eyebrow">${e(localDate(v.start, lang))}</p><h2>${e(v.name)}</h2><address>${e(v.address)}</address>${kind === "reception" ? `<dl class="venue-schedule"><dt>${label("Dinner", "Cena", lang)}</dt><dd>${e(clockRange(c.dinner.start, c.dinner.end, lang, { nbsp: true }))}</dd><dt>${label("Reception & dance", "Recepción y baile", lang)}</dt><dd>${e(clockRange(v.start, v.end, lang, { nbsp: true }))}</dd></dl>` : `<p class="lead">${e(localTime(v.start, lang))}${v.end ? " – " + e(localTime(v.end, lang)) : ""}</p>`}${maps(v.address, lang, label(...(kind === "ceremony" ? [terms.ceremonyLong.en, terms.ceremonyLong.es] : [terms.dinnerAndReception.en, terms.dinnerAndReception.es]), lang))}<p>${e(v.notes[lang])}</p><div class="calendar-actions">${kind === "reception" ? `<div><strong>${label("Dinner", "Cena", lang)}</strong>${calendarLink("dinner", c, lang, live)}</div>` : ""}<div><strong>${label(kind === "ceremony" ? "Ceremony" : "Reception", kind === "ceremony" ? "Ceremonia" : "Recepción", lang)}</strong>${calendarLink(kind, c, lang, live)}</div></div></article>`;
+  return `<article class="venue-details"><p class="eyebrow">${e(localDate(v.start, lang))}</p><h2>${e(v.name)}</h2><address>${e(v.address)}</address>${kind === "reception" ? `<dl class="venue-schedule"><dt>${label("Dinner", "Cena", lang)}</dt><dd>${e(clockRange(c.dinner.start, c.dinner.end, lang, { nbsp: true }))}</dd><dt>${label("Reception & dance", "Recepción y baile", lang)}</dt><dd>${e(clockRange(v.start, v.end, lang, { nbsp: true }))}</dd></dl>` : `<p class="lead">${e(localTime(v.start, lang))}${v.end ? " – " + e(localTime(v.end, lang)) : ""}</p>`}${maps(v.address, lang, label(...(kind === "ceremony" ? [terms.ceremonyLong.en, terms.ceremonyLong.es] : [terms.dinnerAndReception.en, terms.dinnerAndReception.es]), lang))}${v.notes[lang] ? `<p>${e(v.notes[lang])}</p>` : ""}${parking ? `<p class="venue-parking">${e(parking)}</p>` : ""}<div class="calendar-actions">${kind === "reception" ? `<div><strong>${label("Dinner", "Cena", lang)}</strong>${calendarActions("dinner", c, lang, live)}</div>` : ""}<div><strong>${label(kind === "ceremony" ? "Ceremony" : "Reception", kind === "ceremony" ? "Ceremonia" : "Recepción", lang)}</strong>${calendarActions(kind, c, lang, live)}</div></div></article>`;
 }
 // The day at a glance, from the confirmed schedule: the church, then dinner and
 // the dance at the reception venue, each linking to its venue page.
@@ -203,7 +223,7 @@ export function scheduleList(c = celebration, lang = "en", live = false) {
   ]
     .map(([kind, place, name]) => {
       const venue = c[place];
-      return `<li class="schedule-item"><p class="schedule-time">${e(clockRange(c[kind].start, c[kind].end, lang, { nbsp: true }))}</p><div><h2>${name}</h2><p class="schedule-venue"><a href="${pageHref(place, lang)}">${e(venue.name)}${arrow}</a></p><address>${e(venue.address)}</address><p class="schedule-actions"><a href="https://www.google.com/maps/search/?api=1&amp;query=${encodeURIComponent(venue.address)}" target="_blank" rel="noopener noreferrer">${label("Map", "Mapa", lang)}${subject(name)}${newTab(lang)}</a>${calendarLink(kind, c, lang, live)}</p></div></li>`;
+      return `<li class="schedule-item"><p class="schedule-time">${e(clockRange(c[kind].start, c[kind].end, lang, { nbsp: true }))}</p><div><h2>${name}</h2><p class="schedule-venue"><a href="${pageHref(place, lang)}">${e(venue.name)}${arrow}</a></p><address>${e(venue.address)}</address><p class="schedule-actions"><a href="https://www.google.com/maps/search/?api=1&amp;query=${encodeURIComponent(venue.address)}" target="_blank" rel="noopener noreferrer">${label("Map", "Mapa", lang)}${subject(name)}${newTab(lang)}</a>${calendarActions(kind, c, lang, live)}</p></div></li>`;
     })
     .join("")}</ol>`;
 }
@@ -219,72 +239,38 @@ export function invitationAlt(c = celebration, lang = "en") {
 export function registryCards(items, lang = "en") {
   return `<div class="registry-grid">${items.map((r) => `<article class="registry-card">${r.logo ? `<img src="${escapeHtml(r.logo)}" width="72" height="72" alt="${escapeHtml(r.name)}">` : ""}<h2>${escapeHtml(r.name)}</h2><p>${escapeHtml(r.description[lang])}</p>${r.url ? `<a class="button burgundy" href="${escapeHtml(r.url)}" target="_blank" rel="noopener noreferrer">${label("See the registry", "Ver mesa de regalos", lang)}${newTab(lang)}</a>` : `<p class="hint">${label("Registry link coming soon.", "El enlace estará disponible pronto.", lang)}</p>`}</article>`).join("")}</div>`;
 }
-const icsEscape = (s) =>
-  String(s)
-    .replace(/\\/g, "\\\\")
-    .replace(/\r?\n/g, "\\n")
-    .replace(/,/g, "\\,")
-    .replace(/;/g, "\\;");
-function fold(line) {
-  let rows = [],
-    row = "";
-  for (const char of line) {
-    if (new TextEncoder().encode(row + char).length > 75) {
-      rows.push(row);
-      row = " ";
-    }
-    row += char;
-  }
-  return [...rows, row].join("\r\n");
-}
-// One event per file, in English or Spanish. A saved event lives in a guest's
-// calendar for good, so the description holds only confirmed facts and the
-// venue page, where parking and arrival details appear once they're known;
-// the venue notes (which can say "will be shared here") stay on the website.
-// The UID is the same in both languages and SEQUENCE follows the content
-// version, so a changed time replaces the saved event instead of adding one.
-export function calendar(kind, c = celebration, lang = "en") {
-  if (!["ceremony", "dinner", "reception"].includes(kind))
-    throw new Error("Unknown calendar");
+// One event's facts, for its calendar file (site/calendar-file.mjs) and its
+// Google Calendar link alike. A saved event lives in a calendar for good, so
+// the description holds only confirmed facts and the venue page (the notes
+// stay on the website). Times are UTC. "Sophia’s quinceañera — Religious
+// ceremony" / "XV de Sophia — Ceremonia religiosa".
+const eventTitles = {
+  ceremony: terms.ceremonyLong,
+  dinner: terms.dinner,
+  reception: terms.receptionDance,
+};
+export function calendarFacts(kind, c = celebration, lang = "en") {
+  if (!eventTitles[kind]) throw new Error("Unknown calendar");
   const item = c[kind],
     venue = kind === "dinner" ? c.reception : item;
   if (!item.end || Date.parse(item.end) <= Date.parse(item.start))
     throw new Error("Confirmed end time required");
   const utc = (value) =>
     new Date(value).toISOString().replace(/[-:]/g, "").replace(".000", "");
-  const title = {
-    ceremony: label("Religious ceremony", "Ceremonia religiosa", lang),
-    dinner: label("Dinner", "Cena", lang),
-    reception: label("Reception & dance", "Recepción y baile", lang),
-  }[kind];
+  const say = (entry) => label(entry.en, entry.es, lang);
   const page =
     "https://misxv.simplysoph.com" +
     pageHref(kind === "ceremony" ? "ceremony" : "reception", lang);
-  const description = label(
-    `${c.name}’s quinceañera. ${venue.name}, ${venue.address}. Times are Central Time. Latest details: ${page}`,
-    `Quinceañera de ${c.name}. ${venue.name}, ${venue.address}. Horarios en hora del centro. Detalles actualizados: ${page}`,
-    lang,
-  );
-  return [
-    "BEGIN:VCALENDAR",
-    "VERSION:2.0",
-    `PRODID:-//SimplySoph//Mis Quinceanera//${lang === "es" ? "ES" : "EN"}`,
-    "CALSCALE:GREGORIAN",
-    "METHOD:PUBLISH",
-    "BEGIN:VEVENT",
-    `UID:misxv-${kind}@simplysoph.com`,
-    "DTSTAMP:20260927T000000Z",
-    `SEQUENCE:${c.version || 0}`,
-    `DTSTART:${utc(item.start)}`,
-    `DTEND:${utc(item.end)}`,
-    `SUMMARY:${icsEscape(c.name + " — " + title)}`,
-    `LOCATION:${icsEscape(venue.name + ", " + venue.address)}`,
-    `DESCRIPTION:${icsEscape(description)}`,
-    `URL:${page}`,
-    "END:VEVENT",
-    "END:VCALENDAR",
-    "",
-  ]
-    .map(fold)
-    .join("\r\n");
+  return {
+    start: utc(item.start),
+    end: utc(item.end),
+    title: `${say(terms.calendarTitle)} — ${say(eventTitles[kind])}`,
+    location: venue.name + ", " + venue.address,
+    description: label(
+      `${c.name}’s quinceañera. ${venue.name}, ${venue.address}. Times are Central Time. Latest details: ${page}`,
+      `Quinceañera de ${c.name}. ${venue.name}, ${venue.address}. Horarios en hora del centro. Detalles actualizados: ${page}`,
+      lang,
+    ),
+    page,
+  };
 }

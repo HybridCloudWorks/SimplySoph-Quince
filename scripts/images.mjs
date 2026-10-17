@@ -74,28 +74,45 @@ export async function buildImages({ assets, out, cache }) {
       );
     return result;
   }
-  const [invitation, church, reception] = await Promise.all([
+  // The invitation in each language: site/assets/invitation.png for English
+  // and, once the family supplies it, invitation-es.png for the Spanish pages
+  // and their link previews. Until then the Spanish pages use the English art.
+  const spanishArt = await readFile(new URL("invitation-es.png", assets)).then(
+    () => true,
+    (e) => {
+      if (e.code === "ENOENT") return false;
+      throw e;
+    },
+  );
+  const [invitationEn, invitationEs, church, reception] = await Promise.all([
     // Shown at most 365 CSS pixels wide (290 on phones); 1024 is the original,
     // linked as "Open the full invitation".
     picture("invitation", [400, 730, 1024]),
+    spanishArt ? picture("invitation-es", [400, 730, 1024]) : null,
     picture("church", [480, 800]),
     picture("reception", [490, 980]),
   ]);
   // The link preview (WhatsApp, iMessage, Facebook): the invitation centered on
   // the home page's wine gradient, 1200 × 630.
-  const art = await readFile(new URL("invitation.png", assets));
-  const og = await emit("og-invitation", "jpg", [art, "og-1200x630-v1"], async () => {
-    const card = await sharp(art).resize({ height: 570 }).toBuffer(),
-      { width } = await sharp(card).metadata();
-    return sharp(
-      Buffer.from(
-        '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630"><defs><radialGradient id="g" cx="50%" cy="40%" r="75%"><stop offset="0" stop-color="#7d2530"/><stop offset=".55" stop-color="#521421"/><stop offset="1" stop-color="#360d16"/></radialGradient></defs><rect width="1200" height="630" fill="url(#g)"/></svg>',
-      ),
-    )
-      .composite([{ input: card, left: Math.round((1200 - width) / 2), top: 30 }])
-      .jpeg({ quality: 82, mozjpeg: true })
-      .toBuffer();
-  });
+  const card = async (name) => {
+    const art = await readFile(new URL(name + ".png", assets));
+    return emit("og-" + name, "jpg", [art, "og-1200x630-v1"], async () => {
+      const card = await sharp(art).resize({ height: 570 }).toBuffer(),
+        { width } = await sharp(card).metadata();
+      return sharp(
+        Buffer.from(
+          '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630"><defs><radialGradient id="g" cx="50%" cy="40%" r="75%"><stop offset="0" stop-color="#7d2530"/><stop offset=".55" stop-color="#521421"/><stop offset="1" stop-color="#360d16"/></radialGradient></defs><rect width="1200" height="630" fill="url(#g)"/></svg>',
+        ),
+      )
+        .composite([{ input: card, left: Math.round((1200 - width) / 2), top: 30 }])
+        .jpeg({ quality: 82, mozjpeg: true })
+        .toBuffer();
+    });
+  };
+  const ogEn = await card("invitation"),
+    ogEs = spanishArt ? await card("invitation-es") : ogEn;
+  const invitation = { en: invitationEn, es: invitationEs || invitationEn },
+    og = { en: ogEn, es: ogEs };
   const icon = (size) => () =>
     sharp(Buffer.from(iconSvg(size))).png({ compressionLevel: 9 }).toBuffer();
   const touchIcon = await emit("apple-touch-icon", "png", [iconSvg(180)], icon(180)),

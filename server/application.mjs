@@ -19,7 +19,8 @@ import { uploadLimits, classify, referenceCode } from "../site/upload-batch.mjs"
 import { milestones, inUploadWindow, rsvpOpen } from "../site/lifecycle.mjs";
 import { quotaSetting, familyLimit, recent, nextRoom, DAY } from "./upload-quota.mjs";
 import { tableCardSvg } from "./party-card.mjs";
-import { calendar, contactTopics, escapeHtml } from "../site/celebration.mjs";
+import { contactTopics, escapeHtml } from "../site/celebration.mjs";
+import { calendar } from "../site/calendar-file.mjs";
 import { siteSettings, validateSettings, galleryDownload } from "./site-settings.mjs";
 import { smsProgram } from "../site/sms-program.mjs";
 import { audienceOf, displayFor, visibilities, visibilityOf } from "../site/notes.mjs";

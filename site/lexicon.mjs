@@ -51,6 +51,8 @@ export const terms = {
   // The gallery's action for saving every approved photo and video at once.
   downloadAll: { en: "Download all photos", es: "Descargar todas las fotos" },
   family: { en: "family", es: "familia" },
+  // What a saved calendar event is part of: "<this> — Religious ceremony".
+  calendarTitle: { en: "Sophia’s quinceañera", es: "XV de Sophia" },
   ceremonyLong: { en: "Religious ceremony", es: "Ceremonia religiosa" },
   ceremony: { en: "Ceremony", es: "Ceremonia" },
   dinner: { en: "Dinner", es: "Cena" },

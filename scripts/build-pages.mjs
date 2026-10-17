@@ -8,7 +8,6 @@ import {
   timeRange,
   venueSection,
   registryCards,
-  calendar,
   pageHref,
   arrow,
   newTab,
@@ -17,7 +16,7 @@ import {
   invitationAlt,
 } from "../site/celebration.mjs";
 import { mkdir, writeFile, copyFile, rm } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
 import QRCode from "qrcode";
 import { buildImages, picture, iconSvg } from "./images.mjs";
@@ -35,6 +34,8 @@ import {
 import { exampleFamily, previewRoutes } from "../site/preview-content.mjs";
 import { milestones, phaseAt, previewKey } from "../site/lifecycle.mjs";
 import { date as longDate, capitalize } from "../site/datetime.mjs";
+import { promised, coming } from "../site/promises.mjs";
+import { calendar } from "../site/calendar-file.mjs";
 // The celebration's phase at the time of the build (--now=<ISO>, default the
 // real time). Only what a crawler reads depends on it: link previews and the
 // misxv-phase marker a release check can compare. The pages themselves are
@@ -45,14 +46,25 @@ const option = (name) =>
 const buildNow = option("now") ? Date.parse(option("now")) : Date.now();
 if (!Number.isFinite(buildNow)) throw new Error("--now must be an ISO date and time");
 const phase = phaseAt(buildNow, milestones({ deadline: event.deadline, site: celebration }));
-// The public build uses the family's approved content; the admin preview swaps
-// in the idea-book examples (see the end of this file).
-let family = approvedFamily;
 // --out=<name> builds into .cache/builds/<name>/ instead of dist/ (tests that
 // compare phases build there, so they never touch the dist/ other tests read).
 const outName = option("out");
 if (outName !== undefined && !/^[a-z0-9-]{1,40}$/.test(outName))
   throw new Error("--out must be a short lowercase name");
+// --fixture=<module>, for tests and only with --out: test content laid over the
+// family's (the module's `family`) and, if it gives one, an `assets` folder
+// of artwork, so pages can be checked as they will look once the family fills
+// them in. Never part of a published build.
+const fixturePath = option("fixture");
+if (fixturePath !== undefined && outName === undefined)
+  throw new Error("--fixture needs --out");
+const fixture = fixturePath
+  ? await import(pathToFileURL(path.resolve(fixturePath)).href)
+  : {};
+// The public build uses the family's approved content; the admin preview swaps
+// in the idea-book examples (see the end of this file).
+const publicFamily = { ...approvedFamily, ...fixture.family };
+let family = publicFamily;
 const outBase = outName ? `../.cache/builds/${outName}/` : "../";
 const root = new URL(outBase + "dist/", import.meta.url),
   esc = (s) =>
@@ -83,6 +95,43 @@ const sectionName = (section, lang) =>
   section.name?.[lang === "es" ? 1 : 0] || routeTitle(section.pages[0], lang);
 // Filled in by buildImages() before any page is written.
 let images;
+// The family's numbers, checked: a slot the family has not filled is null,
+// and a value that is not a sensible number stops the build.
+const wholeNumber = (value, name, most) => {
+  if (value === null || value === undefined) return null;
+  if (!Number.isInteger(value) || value < 1 || value > most)
+    throw new Error(`family.${name} must be a whole number from 1 to ${most}`);
+  return value;
+};
+const driveMinutes = () => wholeNumber(family.driveMinutes, "driveMinutes", 240);
+const childAge = () => wholeNumber(family.childAgeCutoff, "childAgeCutoff", 20);
+// What the RSVP pages and My account need from the family's content, carried
+// on the page for site/guest.js (the browser never loads content.mjs):
+//   data-coming          each promised thing not posted yet, with its date or
+//                        null (the "What's next" lines, site/promises.mjs);
+//   data-parking-posted  parking content exists, so the confirmation may say
+//                        "Ceremony location & parking";
+//   data-child-age       the children's age cut-off for the RSVP's labels.
+function portalData(route) {
+  if (!["rsvp", "rsvp/confirmed", "account"].includes(route)) return "";
+  return ` data-coming="${esc(JSON.stringify(coming(family)))}"${family.parking ? " data-parking-posted" : ""}${childAge() ? ` data-child-age="${childAge()}"` : ""}`;
+}
+// "What to expect" on the Schedule: the approved meanings of the traditions
+// the family says are part of Sophia's day (family.traditions), one row each
+// in the Schedule's row pattern, the Spanish name first. No traditions, no
+// section. The title names no service: whether it is a Mass is the family's.
+function whatToExpect(lang) {
+  const es = lang === "es",
+    say = (a, b) => (es ? b : a);
+  const rows = (family.traditions || []).map((key) => {
+    const t = padrinoTraditions[key];
+    if (!t) throw new Error("Unknown tradition in family.traditions: " + key);
+    const name = t.es.replace(/^de /, "");
+    return `<li class="schedule-item"><h3 class="schedule-time"${es ? "" : ' lang="es"'}>${esc(name)}</h3><div>${es ? "" : `<p class="schedule-venue">${esc(t.en)}</p>`}<p>${esc(t.meaning[lang])}</p></div></li>`;
+  });
+  if (!rows.length) return "";
+  return `<section class="what-to-expect" aria-labelledby="what-to-expect"><h2 id="what-to-expect">${say("What to expect", "Qué esperar")}</h2><p>${say("Some of the traditions that are part of Sophia’s day, and what they mean.", "Algunas de las tradiciones que forman parte del día de Sophia y lo que significan.")}</p><ul class="schedule-list">${rows.join("")}</ul></section>`;
+}
 function contents(route, lang) {
   const es = lang === "es",
     t = copy[lang],
@@ -96,8 +145,10 @@ function contents(route, lang) {
   // newest announcement under the status line. On wide screens the written
   // schedule sits right under the actions, as on phones, above Sophia's words.
   if (route === "") {
-    const by = esc(longDate(event.deadline, lang, { year: false }));
-    return `<section class="hero" data-home><div class="hero-copy"><p class="eyebrow">MIS QUINCEAÑERA</p><h1>Sophia</h1><p class="hero-line" data-hero-line>${t.tagline}</p><p class="date" data-event-date>${t.date}</p><div class="actions" data-home-actions>${link("rsvp", t.rsvp)}<a href="${href("details", lang)}">${t.all}${arrow}</a></div><p class="hero-deadline" data-reply-by>${say(`Please RSVP by ${by}`, `Por favor, confirmen a más tardar el ${by}`)}</p><div class="countdown" data-countdown hidden></div><div class="home-status" data-home-status hidden></div><div class="home-latest" data-latest-update hidden></div></div><div class="hero-schedule" data-home-schedule><h2 class="strip-heading">${routeTitle("details", lang)}</h2><div data-schedule-strip>${scheduleStrip(celebration, lang)}</div></div><blockquote class="sophia-quote" data-home-quote><p>“${esc(celebration.quote[lang])}”</p><cite>— ${esc(celebration.name)}</cite></blockquote><p class="home-note" data-home-note><a href="${href("guestbook", lang)}">${esc(sayTerm(terms.leaveNote, lang, registerFor("")))}${arrow}</a></p><figure class="invitation" data-home-invitation>${picture(images.invitation, { alt: esc(invitationAlt(celebration, lang)), sizes: "(max-width: 760px) 290px, 365px", loading: "eager", priority: "high" })}<figcaption><a href="${images.invitation.jpeg.at(-1)[1]}" target="_blank" rel="noopener">${t.invitationCaption}${newTab(lang)}</a></figcaption></figure></section><div class="home-updates" data-announcements></div>`;
+    const by = esc(longDate(event.deadline, lang, { year: false })),
+      // The invitation in the page's language (scripts/images.mjs).
+      art = images.invitation[lang];
+    return `<section class="hero" data-home><div class="hero-copy"><p class="eyebrow">MIS QUINCEAÑERA</p><h1>Sophia</h1><p class="hero-line" data-hero-line>${t.tagline}</p><p class="date" data-event-date>${t.date}</p><div class="actions" data-home-actions>${link("rsvp", t.rsvp)}<a href="${href("details", lang)}">${t.all}${arrow}</a></div><p class="hero-deadline" data-reply-by>${say(`Please RSVP by ${by}`, `Por favor, confirmen a más tardar el ${by}`)}</p><div class="countdown" data-countdown hidden></div><div class="home-status" data-home-status hidden></div><div class="home-latest" data-latest-update hidden></div></div><div class="hero-schedule" data-home-schedule><h2 class="strip-heading">${routeTitle("details", lang)}</h2><div data-schedule-strip>${scheduleStrip(celebration, lang)}</div></div><blockquote class="sophia-quote" data-home-quote><p>“${esc(celebration.quote[lang])}”</p><cite>— ${esc(celebration.name)}</cite></blockquote><p class="home-note" data-home-note><a href="${href("guestbook", lang)}">${esc(sayTerm(terms.leaveNote, lang, registerFor("")))}${arrow}</a></p><figure class="invitation" data-home-invitation>${picture(art, { alt: esc(invitationAlt(celebration, lang)), sizes: "(max-width: 760px) 290px, 365px", loading: "eager", priority: "high" })}<figcaption><a href="${art.jpeg.at(-1)[1]}" target="_blank" rel="noopener">${t.invitationCaption}${newTab(lang)}</a></figcaption></figure></section><div class="home-updates" data-announcements></div>`;
   }
   // The page title; pages that belong to a larger section also name it above
   // the title and list its other pages with content underneath.
@@ -112,11 +163,16 @@ function contents(route, lang) {
     return `<section class="page section">${heading}<p class="lead">${say("Your presence is the best gift. If you’d like to give Sophia something, here is her gift registry.", "Tu presencia es nuestro mejor regalo. Si quieres darle algo a Sophia, aquí está su mesa de regalos.")}</p><div data-public-registries>${registryCards(registryDefaults, lang)}</div></section>`;
   // Administrators sign in at /admin/login/ directly; guests never need it.
   if (route === "account")
-    return `<section class="page section">${heading}<div class="portal" id="portal" data-view="${route}"><p role="status">${t.loading}</p></div></section>`;
+    return `<section class="page section">${heading}<div class="portal" id="portal" data-view="${route}"${portalData(route)}><p role="status">${t.loading}</p></div></section>`;
   let body = "";
   if (textContent[route]) {
-    const c = textContent[route];
-    body = `<div class="editorial"><span class="ornament" aria-hidden="true">✦</span><h2>${c[0][es ? 1 : 0]}</h2><p class="lead">${c[1][es ? 1 : 0]}</p><p>${c[2][es ? 1 : 0]}</p>${nextSteps}</div>`;
+    const c = textContent[route],
+      // Travel's last line is its hotels promise, dated once the family sets a date.
+      last =
+        route === "travel"
+          ? esc(promised("travel", lang, { by: family.promises?.hotels?.by, now: buildNow }))
+          : c[2][es ? 1 : 0];
+    body = `<div class="editorial"><span class="ornament" aria-hidden="true">✦</span><h2>${c[0][es ? 1 : 0]}</h2><p class="lead">${c[1][es ? 1 : 0]}</p><p>${last}</p>${nextSteps}</div>`;
   }
   const localized = (value) =>
     typeof value === "string" ? value : value?.[lang] || value?.en || "";
@@ -189,8 +245,8 @@ function contents(route, lang) {
       .join("")}</div>`;
   // The day at a glance: church, then dinner, from the confirmed schedule.
   if (route === "travel") {
-    const drive = family.driveMinutes
-      ? `<p class="route-drive">${say(`about ${esc(family.driveMinutes)} min`, `unos ${esc(family.driveMinutes)} min`)}</p>`
+    const drive = driveMinutes()
+      ? `<p class="route-drive">${say(`about ${driveMinutes()} min`, `unos ${driveMinutes()} min`)}</p>`
       : "";
     const stay = family.hotels.map(
       (item) =>
@@ -207,24 +263,38 @@ function contents(route, lang) {
   if (route === "thank-you" && (family.thanksNote || family.highlightVideo))
     body = `<div class="thanks-note"><p class="thanks-script">Gracias</p>${family.thanksNote ? `<p>${esc(localized(family.thanksNote))}</p>` : ""}<p class="actions">${family.highlightVideo ? `<a class="button burgundy" href="${safeLink(family.highlightVideo)}" target="_blank" rel="noopener noreferrer">${say("Watch the highlights", "Ver los mejores momentos")}${newTab(lang)}</a>` : ""}<a href="${href("share", lang)}">${say("Share your photos", "Comparte tus fotos")}${arrow}</a></p></div>`;
   // Each part of the day carries its own time, place, map and calendar file;
-  // practical notes follow in a small box, with a neutral line until the
-  // family decides the dress code.
+  // practical notes follow in a small box: the dress code (or the promise to
+  // post it), the drive between the two places, and parking and children once
+  // the family supplies them.
   if (route === "details") {
+    const minutes = driveMinutes();
     const notes = [
-      [say("Dress code", "Código de vestimenta"), family.dressCode ? esc(localized(family.dressCode)) : say("We’ll share the dress code here soon.", "Pronto compartiremos aquí el código de vestimenta.")],
+      [say("Dress code", "Código de vestimenta"), esc(promised("details", lang, { content: family.dressCode, by: family.promises?.dressCode?.by, now: buildNow }))],
+      [
+        say("Between the two places", "Entre un lugar y otro"),
+        minutes
+          ? say(`The ceremony and the reception are in different places, about ${minutes} minutes apart by car, so allow time to drive from one to the other.`, `La ceremonia y la recepción son en lugares distintos, a unos ${minutes} minutos en auto, así que calcula tiempo para manejar de uno a otro.`)
+          : say("The ceremony and the reception are in different places, so allow time to drive from one to the other.", "La ceremonia y la recepción son en lugares distintos, así que calcula tiempo para manejar de uno a otro."),
+      ],
       family.parking && [say("Parking", "Estacionamiento"), esc(localized(family.parking))],
       family.children && [say("Children", "Niños"), esc(localized(family.children))],
     ].filter(Boolean);
-    body = `<p class="lead" data-event-date>${t.date}</p><p class="hint">${t.time}</p><div data-schedule>${scheduleList(celebration, lang)}</div><aside class="good-to-know" aria-labelledby="good-to-know"><h2 id="good-to-know">${say("Good to know", "Lo que debes saber")}</h2><dl>${notes.map(([term, text]) => `<dt>${term}</dt><dd>${text}</dd>`).join("")}</dl><p><a href="${href("faq", lang)}">${say("More answers in Questions", "Más respuestas en Preguntas")}${arrow}</a></p></aside>`;
+    // Travel, once it has hotels or the airport (content.mjs waitsFor).
+    const travel = ready("travel", family)
+      ? `<p><a href="${href("travel", lang)}">${say("Coming from out of town? See Travel", "¿Vienes de fuera? Consulta Viaje")}${arrow}</a></p>`
+      : "";
+    body = `<p class="lead" data-event-date>${t.date}</p><p class="hint">${t.time}</p><div data-schedule>${scheduleList(celebration, lang)}</div>${whatToExpect(lang)}<aside class="good-to-know" aria-labelledby="good-to-know"><h2 id="good-to-know">${say("Good to know", "Lo que debes saber")}</h2><dl>${notes.map(([term, text]) => `<dt>${term}</dt><dd>${text}</dd>`).join("")}</dl>${travel}<p><a href="${href("faq", lang)}">${say("More answers in Questions", "Más respuestas en Preguntas")}${arrow}</a></p></aside>`;
   }
-  // The photo is built here once; live settings re-render only the facts.
+  // The photo is built here once; live settings re-render only the facts, and
+  // keep the parking line the page carries (site/experience.js).
   if (route === "ceremony" || route === "reception") {
-    const v = celebration[route];
-    body = `<div class="venue-layout venue-${route}"><div data-venue="${route}">${venueSection(route, celebration, lang)}</div><figure class="venue-image">${picture(images[route === "ceremony" ? "church" : "reception"], { alt: esc((route === "ceremony" ? say("Front of ", "Fachada de ") : say("Entrance of ", "Entrada de ")) + v.name), sizes: "(max-width: 760px) calc(100vw - 32px), 600px" })}<figcaption>${esc(v.name)}</figcaption></figure></div>`;
+    const v = celebration[route],
+      parking = promised(route, lang, { content: family.parking, by: family.promises?.parking?.by, now: buildNow });
+    body = `<div class="venue-layout venue-${route}"><div data-venue="${route}" data-parking="${esc(parking)}">${venueSection(route, celebration, lang, false, parking)}</div><figure class="venue-image">${picture(images[route === "ceremony" ? "church" : "reception"], { alt: esc((route === "ceremony" ? say("Front of ", "Fachada de ") : say("Entrance of ", "Entrada de ")) + v.name), sizes: "(max-width: 760px) calc(100vw - 32px), 600px" })}<figcaption>${esc(v.name)}</figcaption></figure></div>`;
   }
   // The deadline is shown inside the RSVP itself (site/guest.js).
   if (route === "rsvp" || route === "rsvp/confirmed")
-    body = `<div class="portal" id="portal" data-view="${route}"><p role="status">${t.loading}</p></div>`;
+    body = `<div class="portal" id="portal" data-view="${route}"${portalData(route)}><p role="status">${t.loading}</p></div>`;
   if (route === "gallery")
     body =
       // Guests' photos and videos are private (signed-in guests only), so the
@@ -268,12 +338,20 @@ function contents(route, lang) {
   if (route === "faq")
     body =
       [
+        // Two answers: while RSVPs are open, and once they have closed. The
+        // build shows the one for its phase; site/guest.js swaps them at the
+        // deadline on the server's clock.
         [
           say("When do I need to RSVP?", "¿Hasta cuándo puedo confirmar?"),
-          say(
-            `By ${t.deadline}. Use the invitation link we sent your family.`,
-            `A más tardar el ${t.deadline}. Usa el enlace de invitación que le enviamos a tu familia.`,
-          ),
+          {
+            html: `<p data-rsvp-while="open"${phase === "rsvp-open" ? "" : " hidden"}>${say(
+              `By ${t.deadline}. Open the invitation link we sent your family, or go to <a href="${href("rsvp", lang)}">RSVP</a>.`,
+              `A más tardar el ${t.deadline}. Abre el enlace de invitación que le enviamos a tu familia, o ve a <a href="${href("rsvp", lang)}">${terms.rsvpAction.es}</a>.`,
+            )}</p><p data-rsvp-while="closed"${phase === "rsvp-open" ? " hidden" : ""}>${say(
+              `RSVPs closed on ${t.deadline}. To answer or change your answer now, please <a href="${href("contact", lang)}">contact us</a>.`,
+              `Las respuestas cerraron el ${t.deadline}. Para responder o cambiar tu respuesta, <a href="${href("contact", lang)}">escríbenos</a>.`,
+            )}</p>`,
+          },
         ],
         [
           say(
@@ -283,6 +361,13 @@ function contents(route, lang) {
           say(
             "Your invitation shows the seats we saved for your family: adults and teens, and children. If something doesn’t look right, please let us know.",
             "Tu invitación muestra los lugares que apartamos para tu familia: adultos y jóvenes, y niños. Si algo no está bien, avísanos.",
+          ),
+        ],
+        childAge() && [
+          say("Who counts as a child?", "¿Quién cuenta como niño?"),
+          say(
+            `Guests under ${childAge()} count as children on your RSVP. Guests ${childAge()} and older count as adults/teens.`,
+            `En tu respuesta, los invitados menores de ${childAge()} años cuentan como niños. Los de ${childAge()} años o más cuentan como adultos/jóvenes.`,
           ),
         ],
         family.children && [
@@ -324,7 +409,7 @@ function contents(route, lang) {
         ],
         [
           say("What should I wear?", "¿Cómo debo vestirme?"),
-          esc(localized(family.dressCode)) || t.pending,
+          esc(promised("faq", lang, { content: family.dressCode, by: family.promises?.dressCode?.by, now: buildNow })),
         ],
         [
           say("Do I need to bring a gift?", "¿Tengo que llevar regalo?"),
@@ -344,7 +429,7 @@ function contents(route, lang) {
         .filter(Boolean)
         .reduce(
           (list, [q, a]) =>
-            list + `<details><summary>${q}</summary><p>${a}</p></details>`,
+            list + `<details><summary>${q}</summary>${a.html ?? `<p>${a}</p>`}</details>`,
           '<div class="faq-list">',
         ) + `</div><p>${link("contact", t.contact)}</p>`;
   if (route === "privacy")
@@ -522,7 +607,7 @@ function head({ route, title, lang, admin }) {
         ? "Los XV de Sophia · 15 de enero de 2027"
         : "Sophia’s Quinceañera · January 15, 2027",
     url = origin + (admin ? `/${route}/` : href(route === "404" ? "" : route, lang));
-  return `<title>${esc(route === "" && !admin ? t.site : `${title} · ${t.site}`)}</title><meta name="description" content="${esc(description)}"><meta name="misxv-phase" content="${phase}"><meta name="misxv-deadline" content="${esc(event.deadline)}"><meta name="theme-color" content="#360d16" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#070c15" media="(prefers-color-scheme: dark)"><meta property="og:type" content="website"><meta property="og:site_name" content="${esc(t.site)}"><meta property="og:title" content="${esc(ogTitle)}"><meta property="og:description" content="${esc(description)}"><meta property="og:url" content="${url}"><meta property="og:image" content="${origin}${images.og}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:alt" content="${esc(es ? "Invitación a los XV de Sophia en dorado y borgoña" : "Sophia’s gold and burgundy quinceañera invitation")}"><meta property="og:locale" content="${es ? "es_US" : "en_US"}"><meta property="og:locale:alternate" content="${es ? "en_US" : "es_US"}"><meta name="twitter:card" content="summary_large_image"><link rel="icon" type="image/svg+xml" href="${favicon}"><link rel="icon" type="image/png" sizes="32x32" href="${images.favicon}"><link rel="apple-touch-icon" href="${images.touchIcon}"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="${fonts}">`;
+  return `<title>${esc(route === "" && !admin ? t.site : `${title} · ${t.site}`)}</title><meta name="description" content="${esc(description)}"><meta name="misxv-phase" content="${phase}"><meta name="misxv-deadline" content="${esc(event.deadline)}"><meta name="theme-color" content="#360d16" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#070c15" media="(prefers-color-scheme: dark)"><meta property="og:type" content="website"><meta property="og:site_name" content="${esc(t.site)}"><meta property="og:title" content="${esc(ogTitle)}"><meta property="og:description" content="${esc(description)}"><meta property="og:url" content="${url}"><meta property="og:image" content="${origin}${images.og[es ? "es" : "en"]}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:alt" content="${esc(es ? "Invitación a los XV de Sophia en dorado y borgoña" : "Sophia’s gold and burgundy quinceañera invitation")}"><meta property="og:locale" content="${es ? "es_US" : "en_US"}"><meta property="og:locale:alternate" content="${es ? "en_US" : "es_US"}"><meta name="twitter:card" content="summary_large_image"><link rel="icon" type="image/svg+xml" href="${favicon}"><link rel="icon" type="image/png" sizes="32x32" href="${images.favicon}"><link rel="apple-touch-icon" href="${images.touchIcon}"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="${fonts}">`;
 }
 function document({ route, title, lang = "en", admin = false }) {
   const t = copy[lang];
@@ -551,7 +636,9 @@ if (path.resolve(fileURLToPath(root)) !== path.join(outDir, "dist"))
 await rm(root, { recursive: true, force: true });
 await mkdir(root, { recursive: true });
 images = await buildImages({
-  assets: new URL("../site/assets/", import.meta.url),
+  assets: fixture.assets
+    ? pathToFileURL(path.resolve(fixture.assets) + path.sep)
+    : new URL("../site/assets/", import.meta.url),
   out: root,
   cache: new URL("../.cache/images/", import.meta.url),
 });
@@ -628,6 +715,7 @@ for (const file of [
   "guest-whatsapp.js",
   "notes.mjs",
   "gallery-download.js",
+  "promises.mjs",
 ])
   await copyFile(
     new URL("../site/" + file, import.meta.url),
@@ -668,7 +756,7 @@ for (const lang of ["en", "es"]) {
     await writeFile(new URL(`${lang}/${route}.html`, previewRoot), html);
   }
 }
-family = approvedFamily;
+family = publicFamily;
 console.log(
   `Built ${count} pages, English/Spanish guest routes, private admin shells and calendar, plus ${previewRoutes.length * 2} admin preview pages, with ${phase} link previews${outName ? ` in .cache/builds/${outName}/` : ""}. Runtime features require the configured API.`,
 );

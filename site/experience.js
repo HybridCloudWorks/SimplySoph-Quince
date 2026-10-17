@@ -66,8 +66,9 @@ export const experienceReady = (async () => {
     const quote = document.querySelector("[data-home-quote]");
     if (quote)
       quote.innerHTML = `<p>“${esc(c.quote[lang])}”</p><cite>— ${esc(c.name)}</cite>`;
+    // The parking line is the family's content, built into the page.
     for (const el of document.querySelectorAll("[data-venue]"))
-      el.innerHTML = venueSection(el.dataset.venue, c, lang, true);
+      el.innerHTML = venueSection(el.dataset.venue, c, lang, true, el.dataset.parking);
     for (const el of document.querySelectorAll("[data-schedule-strip]"))
       el.innerHTML = scheduleStrip(c, lang);
     for (const el of document.querySelectorAll("[data-schedule]"))

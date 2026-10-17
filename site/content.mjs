@@ -1,4 +1,5 @@
 import { terms } from "./lexicon.mjs";
+import { posted } from "./promises.mjs";
 export const event = {
   name: "Sophia",
   date: "2027-01-15",
@@ -17,12 +18,22 @@ export const event = {
 //     cards: names and tradition only, never amounts or planning status
 //   hotels: [{ name, where: { en, es }, notes: { en, es }, url }]
 //   airport: { name, notes: { en, es } } — the "Flying in" card on Travel
-//   driveMinutes: 15 — church to reception, shown on the route strip
+//   driveMinutes: 15 — church to reception, shown on the route strip and in the
+//     Schedule's "Good to know" box (no minutes are stated until it is set)
 //   portraits: [{ album: "childhood" (a celebration album id), age, caption: { en, es }, src }]
 //     — gallery chapters, oldest first; a missing src shows the age as a placeholder
 //   dressCode, parking, children: { en, es } — answers on Questions and in the
-//     Schedule's "Good to know" box
+//     Schedule's "Good to know" box; parking also on both venue pages
 //   thanksNote: { en, es } — the thank-you page message, after the event
+//   promises: { dressCode, hotels, parking: { by: "2026-12-01" | null } } — the
+//     day each promised item will be posted by. Every page that promises one
+//     (and the RSVP confirmation and My account) says "by <date>" until the
+//     content above exists (site/promises.mjs); null keeps today's wording.
+//   childAgeCutoff: 12 — guests younger than this count as children; the RSVP
+//     labels and Questions say so. null leaves the labels as they are.
+//   traditions: ["corona", "zapatos"] — keys of padrinoTraditions below that are
+//     part of Sophia's day, explained on the Schedule under "What to expect".
+//     Empty shows nothing.
 export const family = {
   bio: null,
   portrait: null,
@@ -41,6 +52,9 @@ export const family = {
   children: null,
   highlightVideo: null,
   thanksNote: null,
+  promises: { dressCode: { by: null }, hotels: { by: null }, parking: { by: null } },
+  childAgeCutoff: null,
+  traditions: [],
 };
 // Padrino traditions for the public thank-you cards: the Spanish name in script,
 // the English name underneath, and a one-line meaning (from the approved idea book).
@@ -95,6 +109,8 @@ export const waitsFor = {
   sophia: (f) => Boolean(f.bio || f.parentsMessage || f.moments.length),
   court: (f) => f.court.length > 0,
   padrinos: (f) => f.padrinos.length > 0,
+  // Hotels or the airport note; until then Travel only repeats the Schedule.
+  travel: posted.hotels,
   "thank-you": (f) => Boolean(f.thanksNote || f.highlightVideo),
 };
 export const ready = (route, f = family) => !waitsFor[route] || waitsFor[route](f);
@@ -142,7 +158,6 @@ export const copy = {
     signIn: "Sign in",
     menu: "Menu",
     site: "Sophia’s Quinceañera",
-    pending: "We’ll share this here soon.",
     time: "All times are local to Fort Worth, Texas.",
     contact: "Questions? Contact us",
     invitationCaption: "Open the full invitation in a new tab",
@@ -163,7 +178,6 @@ export const copy = {
     signIn: "Iniciar sesión",
     menu: "Menú",
     site: "Los XV de Sophia",
-    pending: "Lo compartiremos aquí pronto.",
     time: "Todos los horarios son de Fort Worth, Texas.",
     contact: "¿Preguntas? Escríbenos",
     invitationCaption: "Abre la invitación completa en otra pestaña",
@@ -212,10 +226,7 @@ export const textContent = {
       "The celebration is in Fort Worth, Texas. The ceremony and the reception are in different places, so plan time to drive from one to the other.",
       "La celebración será en Fort Worth, Texas. La ceremonia y la recepción son en lugares distintos, así que calcula tiempo para manejar de uno a otro.",
     ],
-    [
-      "We’ll share hotel and airport suggestions here soon.",
-      "Pronto compartiremos aquí sugerencias de hoteles y de cómo llegar desde el aeropuerto.",
-    ],
+    // Then the hotels promise (site/promises.mjs places.travel).
   ],
   "thank-you": [
     ["A chapter to remember", "Un capítulo para recordar"],

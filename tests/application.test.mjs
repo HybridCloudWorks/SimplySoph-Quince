@@ -796,7 +796,9 @@ test("site settings require admin, prevent stale saves, and publish registry edi
   assert.match(ics.binary.toString(), /DTEND:20270115T230000Z/);
   // The Spanish pages' calendar: Spanish words, the same event and version.
   const es = (await f.app.dispatch({ path: "/api/calendar/es/ceremony.ics" })).binary.toString();
-  assert.match(es, /SUMMARY:Sophia Isabel — Ceremonia religiosa/);
+  // R-091: the title says what the event is part of, in the page's language.
+  assert.match(es, /SUMMARY:XV de Sophia — Ceremonia religiosa\r\n/);
+  assert.match(ics.binary.toString(), /SUMMARY:Sophia’s quinceañera — Religious ceremony\r\n/);
   assert.match(es, /UID:misxv-ceremony@simplysoph.com/);
   assert.match(es, new RegExp(`SEQUENCE:${site.version + 1}`));
   assert.match(es, /DTEND:20270115T230000Z/);

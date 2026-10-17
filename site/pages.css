@@ -958,6 +958,15 @@ blockquote {
   min-height: 44px;
   font-weight: 600;
 }
+/* The calendar file and Google Calendar, side by side when they fit. */
+.calendar-choices {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0 24px;
+}
+.calendar-choices > a {
+  font-weight: 600;
+}
 .calendar-actions .hint {
   font-size: 0.8rem;
   margin-top: 12px;
