@@ -35,3 +35,13 @@ document.addEventListener("focusout", (e) => {
 matchMedia("(min-width: 1081px)").addEventListener("change", () => setOpen(false));
 // Returning with the Back button can restore a page with the menu open.
 addEventListener("pageshow", () => isOpen() && setOpen(false));
+// The pages a sign-in can bring a guest back to (server/accounts.mjs keeps
+// the same list; site/guest.js uses this one). My account opened for one of
+// them (/account/?return=share) keeps it when the language changes. This is
+// the first script on every page, so the link is right as soon as the page
+// shows, before the larger page scripts arrive.
+export const returnPages = ["account", "rsvp", "share", "guestbook", "contact", "gallery"];
+const returnAsked = new URLSearchParams(location.search).get("return"),
+  languageSwitch = document.querySelector(".lang-switch");
+if (document.body?.dataset.route === "account" && returnPages.includes(returnAsked) && languageSwitch)
+  languageSwitch.setAttribute("href", languageSwitch.getAttribute("href") + "?return=" + returnAsked);

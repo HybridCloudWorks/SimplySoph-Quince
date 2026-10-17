@@ -75,17 +75,6 @@ const origin = "https://misxv.simplysoph.com";
 const favicon = "data:image/svg+xml," + encodeURIComponent(iconSvg());
 const routeTitle = (route, lang) =>
   routes.find((r) => r[0] === route)?.[lang === "es" ? 2 : 1] || "";
-// "Sunday, November 15" / "domingo 15 de noviembre", from the RSVP deadline.
-const deadline = (lang, options) => {
-  const text = new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", {
-    timeZone: event.timezone,
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    ...options,
-  }).format(new Date(event.deadline));
-  return lang === "es" ? text.replace(", ", " ") : text;
-};
 // Sections that have a page with content, and each section's own pages.
 const sectionOf = (route) => sections.find((s) => s.pages.includes(route));
 const readyPages = (section) => section.pages.filter((r) => ready(r, family));
@@ -101,8 +90,14 @@ function contents(route, lang) {
       `<a class="button burgundy" href="${href(r, lang)}">${label}</a>`;
   // Where a guest goes next from a page that has nothing more to show yet.
   const nextSteps = `<p class="actions next-steps">${link("rsvp", t.rsvp)}<a href="${href("details", lang)}">${t.all}${arrow}</a></p>`;
-  if (route === "")
-    return `<section class="hero"><div class="hero-copy"><p class="eyebrow">MIS QUINCEAÑERA</p><h1>Sophia</h1><p class="hero-line">${t.tagline}</p><p class="date" data-event-date>${t.date}</p><div class="actions">${link("rsvp", t.rsvp)}<a href="${href("details", lang)}">${t.all}${arrow}</a></div><p class="hero-deadline" data-reply-by>${say(`Please reply by ${deadline(lang)}`, `Por favor, confirma a más tardar el ${deadline(lang)}`)}</p><div class="countdown" data-countdown data-deadline="${esc(event.deadline)}" data-start="${esc(celebration.countdownAt)}" data-end="${esc(celebration.reception.end || celebration.countdownAt)}" hidden></div></div><div class="hero-schedule"><h2 class="strip-heading">${routeTitle("details", lang)}</h2><div data-schedule-strip>${scheduleStrip(celebration, lang)}</div></div><blockquote class="sophia-quote" data-home-quote><p>“${esc(celebration.quote[lang])}”</p><cite>— ${esc(celebration.name)}</cite></blockquote><figure class="invitation">${picture(images.invitation, { alt: esc(invitationAlt(celebration, lang)), sizes: "(max-width: 760px) 290px, 365px", loading: "eager", priority: "high" })}<figcaption><a href="${images.invitation.jpeg.at(-1)[1]}" target="_blank" rel="noopener">${t.invitationCaption}${newTab(lang)}</a></figcaption></figure></section><div class="home-updates" data-announcements></div>`;
+  // The home page in its RSVP-open state; site/home.mjs redraws it for the
+  // phase (answered, closed, the day itself, the evening, after) and puts the
+  // newest announcement under the status line. On wide screens the written
+  // schedule sits right under the actions, as on phones, above Sophia's words.
+  if (route === "") {
+    const by = esc(longDate(event.deadline, lang, { year: false }));
+    return `<section class="hero" data-home><div class="hero-copy"><p class="eyebrow">MIS QUINCEAÑERA</p><h1>Sophia</h1><p class="hero-line" data-hero-line>${t.tagline}</p><p class="date" data-event-date>${t.date}</p><div class="actions" data-home-actions>${link("rsvp", t.rsvp)}<a href="${href("details", lang)}">${t.all}${arrow}</a></div><p class="hero-deadline" data-reply-by>${say(`Please RSVP by ${by}`, `Por favor, confirmen a más tardar el ${by}`)}</p><div class="countdown" data-countdown hidden></div><div class="home-status" data-home-status hidden></div><div class="home-latest" data-latest-update hidden></div></div><div class="hero-schedule" data-home-schedule><h2 class="strip-heading">${routeTitle("details", lang)}</h2><div data-schedule-strip>${scheduleStrip(celebration, lang)}</div></div><blockquote class="sophia-quote" data-home-quote><p>“${esc(celebration.quote[lang])}”</p><cite>— ${esc(celebration.name)}</cite></blockquote><p class="home-note" data-home-note><a href="${href("guestbook", lang)}">${esc(sayTerm(terms.leaveNote, lang, registerFor("")))}${arrow}</a></p><figure class="invitation" data-home-invitation>${picture(images.invitation, { alt: esc(invitationAlt(celebration, lang)), sizes: "(max-width: 760px) 290px, 365px", loading: "eager", priority: "high" })}<figcaption><a href="${images.invitation.jpeg.at(-1)[1]}" target="_blank" rel="noopener">${t.invitationCaption}${newTab(lang)}</a></figcaption></figure></section><div class="home-updates" data-announcements></div>`;
+  }
   // The page title; pages that belong to a larger section also name it above
   // the title and list its other pages with content underneath.
   const section = sectionOf(route),
@@ -599,6 +594,8 @@ for (const file of [
   "lifecycle.mjs",
   "datetime.mjs",
   "lexicon.mjs",
+  "now.mjs",
+  "home.mjs",
   "experience.js",
   "nav.js",
   "not-found.js",

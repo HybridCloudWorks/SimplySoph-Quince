@@ -65,15 +65,17 @@ test("“We can’t make it” saves a decline; the note thanks the family and e
     page.getByText("We’ll miss you, and thank you for your love."),
   ).toBeVisible();
   await expect(page.getByText(/in our hearts/)).toHaveCount(0);
+  // The note link is the same one the attending confirmation and the home
+  // page show (site/lexicon.mjs leaveNote).
   await expect(
     page.getByText(
-      "Writing in the guestbook needs a quick sign-in with your email. The link we send brings you right back to the guestbook.",
+      "Leaving a note needs a quick sign-in with your email. The link we send brings you right back to write it.",
     ),
   ).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Edit response" }),
   ).toHaveClass(/\boutline\b/);
-  await page.getByRole("link", { name: "Write in the guestbook" }).click();
+  await page.getByRole("link", { name: "Leave Sophia a note" }).click();
   await expect(page).toHaveURL(harness.url("/guestbook/"));
   await expect(
     page.getByRole("heading", { name: "Sign in with your email" }),

@@ -1,6 +1,25 @@
 import { whatsappPreferences } from "./guest-whatsapp.js";
 import { mediaUpload } from "./media-upload.js";
-import { experienceReady, eventContent, liveContent } from "./experience.js";
+import { returnPages } from "./nav.js";
+// The clock runtime (site/now.mjs) and the lexicon come through
+// experience.js, which already loads them, so this page's first scripts
+// arrive in as few round trips as before.
+import {
+  experienceReady,
+  eventContent,
+  liveContent,
+  clockReady,
+  serverConfig,
+  rsvpOpenNow,
+  rsvpDeadline,
+  rememberReply,
+  forgetReply,
+  watch,
+  lifecycleState,
+  terms,
+  say,
+  registerFor,
+} from "./experience.js";
 import {
   registryCards,
   contactTopics,
@@ -54,12 +73,9 @@ function show(html, { focus = settled } = {}) {
 }
 const statusError = (message) =>
   `<p class="notice" role="alert">${esc(message)}</p><a href="${route("contact")}">${tr("Contact us", "Escríbenos")}</a>`;
-let configured = null;
-const config = () =>
-  (configured ??= api("config").catch((e) => {
-    configured = null;
-    throw e;
-  }));
+// GET /api/config, fetched once for the page by site/now.mjs (which also
+// takes the server's clock from it).
+const config = serverConfig;
 // Dates as the family reads them, in Central time (the deadline is 11:59 PM
 // Central, which is already the next day in some time zones).
 const dateIn = (iso, options) =>
@@ -67,12 +83,15 @@ const dateIn = (iso, options) =>
     .toLocaleDateString(es ? "es-US" : "en-US", { timeZone: "America/Chicago", ...options })
     .replace(es ? /^(\p{L}+),/u : /$^/, "$1");
 const monthDay = (iso) => dateIn(iso, { month: "long", day: "numeric" });
-// Same cut-off as the server: at the deadline itself, answers are closed.
-const rsvpOpen = (inv) => Date.now() < Date.parse(inv.deadline);
+// Same cut-off as the server, on the server's clock (site/now.mjs): a phone
+// that runs fast can still answer until the real deadline.
+const rsvpOpen = (inv) => rsvpOpenNow(inv.deadline);
+// The page after the party speaks in the past tense (site/lifecycle.mjs).
+const partyOver = () => ["after", "archived"].includes(lifecycleState()?.phase);
 // "Please reply by Sunday, November 15", on the form and the code entry, until
 // the deadline passes.
 function replyBy(deadline) {
-  if (!(Date.now() < Date.parse(deadline))) return "";
+  if (!rsvpOpenNow(deadline)) return "";
   const day = esc(dateIn(deadline, { weekday: "long", month: "long", day: "numeric" }));
   return `<p class="deadline">${tr(`Please reply by <strong>${day}</strong>.`, `Fecha límite para responder: <strong>${day}</strong>.`)}</p>`;
 }
@@ -93,7 +112,6 @@ function summary(attendance, inv) {
 // After an emailed sign-in link, the guest comes back to the page they asked
 // from; server/accounts.mjs keeps the same list. My account can be opened for
 // another page with ?return=share.
-const returnPages = ["account", "rsvp", "share", "guestbook", "contact", "gallery"];
 function returnPage() {
   const view = portal.dataset.view.split("/")[0],
     asked = new URLSearchParams(location.search).get("return");
@@ -105,12 +123,8 @@ function returnPage() {
         : "account";
   return (es ? "es/" : "") + page;
 }
-// My account opened for another page keeps it when the language changes, so
-// the sign-in still brings the guest back there.
-const returnAsked = new URLSearchParams(location.search).get("return"),
-  languageSwitch = document.querySelector(".lang-switch");
-if (portal?.dataset.view === "account" && returnPages.includes(returnAsked) && languageSwitch)
-  languageSwitch.setAttribute("href", languageSwitch.getAttribute("href") + "?return=" + returnAsked);
+// (My account opened for another page keeps it when the language changes:
+// site/nav.js, so the link is right as soon as the page shows.)
 // Opens the page a sign-in started from ("es/share"), unless it is this one.
 function goBack(name) {
   const m = /^(es\/)?([a-z]+)$/.exec(name || "");
@@ -176,14 +190,14 @@ function invitationFrom(text) {
   return { token, answer: ["yes", "no"].includes(answer) ? answer : null };
 }
 function accessForm(value = "", reason = "") {
+  // After the deadline the RSVP pages say so first (the link or code below
+  // still opens the household's saved answer).
+  const closed = portal.dataset.view.startsWith("rsvp") && !rsvpOpenNow();
   show(
-    `${reason ? `<p class="notice" role="alert">${esc(reason)}</p>` : ""}${anyDraft() ? `<p class="notice" role="status">${tr("Your answers are kept in this tab. Open your invitation email again, or paste its link below, to finish.", "Tus respuestas siguen guardadas en esta pestaña. Abre de nuevo tu correo de invitación, o pega el enlace aquí abajo, para terminar.")}</p>` : ""}<h2>${tr("Open your invitation", "Abre tu invitación")}</h2><p>${tr("The private link in your invitation opens your RSVP. You can also paste that link, or type the code from your invitation, below.", "El enlace privado de tu invitación abre tu respuesta. También puedes pegar ese enlace, o escribir el código de tu invitación, aquí abajo.")}</p><form id="access">${field(tr("Invitation link or code", "Enlace o código de invitación"), "token", { value, required: true, max: 1000, hint: tr("For example misxv.simplysoph.com/rsvp/#… from your invitation email or message.", "Por ejemplo misxv.simplysoph.com/rsvp/#… de tu correo o mensaje de invitación."), attrs: 'autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off"' })}<p class="error" role="alert"></p><button type="submit" class="button burgundy">${tr("Continue", "Continuar")}</button></form><hr>${emailSignInHtml()}`,
+    `${reason ? `<p class="notice" role="alert">${esc(reason)}</p>` : ""}${closed ? closedNote(rsvpDeadline()) : ""}${anyDraft() ? `<p class="notice" role="status">${tr("Your answers are kept in this tab. Open your invitation email again, or paste its link below, to finish.", "Tus respuestas siguen guardadas en esta pestaña. Abre de nuevo tu correo de invitación, o pega el enlace aquí abajo, para terminar.")}</p>` : ""}<h2>${tr("Open your invitation", "Abre tu invitación")}</h2><p>${tr("The private link in your invitation opens your RSVP. You can also paste that link, or type the code from your invitation, below.", "El enlace privado de tu invitación abre tu respuesta. También puedes pegar ese enlace, o escribir el código de tu invitación, aquí abajo.")}</p><form id="access">${field(tr("Invitation link or code", "Enlace o código de invitación"), "token", { value, required: true, max: 1000, hint: tr("For example misxv.simplysoph.com/rsvp/#… from your invitation email or message.", "Por ejemplo misxv.simplysoph.com/rsvp/#… de tu correo o mensaje de invitación."), attrs: 'autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off"' })}<p class="error" role="alert"></p><button type="submit" class="button burgundy">${tr("Continue", "Continuar")}</button></form><hr>${emailSignInHtml()}`,
   );
-  config()
-    .then((c) =>
-      portal.querySelector("#access")?.insertAdjacentHTML("beforebegin", replyBy(c.deadline)),
-    )
-    .catch(() => {});
+  if (!closed)
+    portal.querySelector("#access")?.insertAdjacentHTML("beforebegin", replyBy(rsvpDeadline()));
   submit(document.querySelector("#access"), async (data) => {
     const { token, answer } = invitationFrom(data.get("token"));
     await api("invitation-session", { token });
@@ -302,11 +316,13 @@ async function accountPage(inv) {
   document.querySelector("#guest-logout").onclick = async () => {
     await api("logout", {});
     dropAllDrafts();
+    forgetReply();
     location.reload();
   };
   document.querySelector("#guest-logout-all").onclick = async () => {
     await api("logout-all", {});
     dropAllDrafts();
+    forgetReply();
     location.reload();
   };
   const profileForm = document.querySelector("#profile-form"),
@@ -692,8 +708,15 @@ function review(inv, values, { push = true } = {}) {
     alert.replaceChildren();
     note.textContent = "";
     try {
-      await api("rsvp", answerFrom(inv, values), { headers: { "Idempotency-Key": key } });
+      const input = answerFrom(inv, values),
+        saved = await api("rsvp", input, { headers: { "Idempotency-Key": key } });
       dropDraft(inv);
+      // This device remembers that the household replied (yes or no, nothing
+      // else), for the home page on the next visit (site/now.mjs).
+      rememberReply(
+        Object.values(input.attendance).some((v) => v.adultsTeens + v.kids > 0) ? "yes" : "no",
+        saved.submittedAt,
+      );
       try {
         sessionStorage.setItem("misxv-rsvp-saved", "1");
       } catch {
@@ -704,6 +727,12 @@ function review(inv, values, { push = true } = {}) {
     } catch (err) {
       if (["SIGN_IN_REQUIRED", "CSRF_REJECTED"].includes(err.code)) timedOut(inv, portal);
       else alert.textContent = err.message;
+      // Saved a moment too late: the server's answer, and who to write to.
+      if (err.code === "RSVP_CLOSED" && !portal.querySelector("[data-closed-contact]"))
+        alert.insertAdjacentHTML(
+          "afterend",
+          `<p data-closed-contact><a href="${route("contact")}">${tr("Contact us", "Escríbannos")}</a></p>`,
+        );
     }
     busy = false;
     save.removeAttribute("aria-disabled");
@@ -720,12 +749,33 @@ addEventListener("popstate", (e) => {
     if (complete(inv, values)) review(inv, values, { push: false });
   } else rsvpForm(inv, values);
 });
-function rsvpClosed(inv) {
-  const until = monthDay(inv.deadline);
-  const answered = inv.response
-    ? `<p>${tr("Your saved answer:", "Su respuesta guardada:")}</p>${summary(inv.response.attendance, inv)}`
-    : "";
+// "RSVPs are closed", with the household's saved answer when there is one.
+// Signed out, it leads the /rsvp/ page from the deadline on.
+function closedNote(deadline, answered = "") {
+  const until = monthDay(deadline);
   return `<div class="notice"><h2>${tr("RSVPs are closed", "Las respuestas están cerradas")}</h2><p>${tr(`RSVPs closed on ${until}. To answer or change your answer now, please contact us.`, `Las respuestas cerraron el ${until}. Para responder o cambiar su respuesta, escríbannos.`)}</p>${answered}<p><a class="button burgundy" href="${route("contact")}">${tr("Contact us", "Escríbannos")}</a></p></div>`;
+}
+function rsvpClosed(inv) {
+  return closedNote(
+    inv.deadline,
+    inv.response
+      ? `<p>${tr("Your saved answer:", "Su respuesta guardada:")}</p>${summary(inv.response.attendance, inv)}`
+      : "",
+  );
+}
+// A form left open across the deadline turns into the closed note when the
+// deadline passes on the server's clock, without a reload (site/now.mjs wakes
+// at the boundary). A save that races it still gets the server's refusal.
+let stopClosing = null;
+function closeAtDeadline(inv) {
+  stopClosing?.();
+  stopClosing = watch(() => {
+    if (rsvpOpen(inv) || portal.dataset.view !== "rsvp") return;
+    if (!portal.querySelector("#response, #confirm")) return;
+    stopClosing?.();
+    stopClosing = null;
+    show(rsvpClosed(inv));
+  });
 }
 // The page after saving adapts to the answer: attending households get only
 // the calendars and directions they need; declining households get a warm note.
@@ -736,6 +786,9 @@ function confirmation(inv, session) {
       (e) => r.attendance[e].adultsTeens + r.attendance[e].kids > 0,
     ),
     open = rsvpOpen(inv),
+    // After the party: thanks in the past tense, the photos, and no calendar
+    // files, directions or changes for a day that is over.
+    over = partyOver(),
     savedOn = esc(dateIn(r.submittedAt, { month: "short", day: "numeric" })),
     until = monthDay(inv.deadline);
   const saved = `<p class="saved-note">${
@@ -746,16 +799,24 @@ function confirmation(inv, session) {
         )
       : tr(`Saved ${savedOn}`, `Guardada el ${savedOn}`)
   }</p>`;
-  const edit = open
-    ? `<p><a class="button outline" href="${route("rsvp")}">${tr("Edit response", "Editar respuesta")}</a></p>`
-    : `<p>${tr("The RSVP deadline has passed. To change your answer, please contact us.", "La fecha límite ya pasó. Para cambiar su respuesta, escríbannos.")}</p><p><a href="${route("contact")}">${tr("Contact us", "Escríbannos")}</a></p>`;
+  const edit = over
+    ? ""
+    : open
+      ? `<p><a class="button outline" href="${route("rsvp")}">${tr("Edit response", "Editar respuesta")}</a></p>`
+      : `<p>${tr("The RSVP deadline has passed. To change your answer, please contact us.", "La fecha límite ya pasó. Para cambiar su respuesta, escríbannos.")}</p><p><a href="${route("contact")}">${tr("Contact us", "Escríbannos")}</a></p>`;
+  // The same link on both confirmations (and under the home page's quote).
+  const note = `<p class="note-link"><a href="${route("guestbook")}">${esc(say(terms.leaveNote, es ? "es" : "en", registerFor("rsvp/confirmed")))}<span class="arrow" aria-hidden="true">→</span></a></p>`;
   if (!attending.length)
-    return `<div class="notice success"><h2>${tr("Thank you for letting us know.", "Gracias por avisarnos.")}</h2><p>${tr("We’ll miss you, and thank you for your love.", "Los vamos a extrañar; gracias por su cariño.")}</p></div>${saved}<p>${tr("Would you like to leave Sophia a note?", "¿Les gustaría dejarle un mensaje a Sophia?")}</p>${
-      // The guestbook is for signed-in guests; an invitation link only answers the RSVP.
+    return `<div class="notice success"><h2>${tr("Thank you for letting us know.", "Gracias por avisarnos.")}</h2><p>${
+      over
+        ? tr("We missed you, and thank you for your love.", "Los extrañamos; gracias por su cariño.")
+        : tr("We’ll miss you, and thank you for your love.", "Los vamos a extrañar; gracias por su cariño.")
+    }</p></div>${saved}${note}${
+      // Notes are for signed-in guests; an invitation link only answers the RSVP.
       session.verified
         ? ""
-        : `<p class="hint">${tr("Writing in the guestbook needs a quick sign-in with your email. The link we send brings you right back to the guestbook.", "Para escribir en el libro de firmas hay que entrar con su correo. El enlace que les enviamos los lleva directo al libro de firmas.")}</p>`
-    }<p><a class="button burgundy" href="${route("guestbook")}">${tr("Write in the guestbook", "Escribir en el libro de firmas")}</a></p>${edit}`;
+        : `<p class="hint">${tr("Leaving a note needs a quick sign-in with your email. The link we send brings you right back to write it.", "Para dejar un mensaje hay que entrar con su correo. El enlace que les enviamos los trae de vuelta para escribirlo.")}</p>`
+    }${edit}`;
   const calendars = attending
     .map(
       (e) =>
@@ -773,11 +834,13 @@ function confirmation(inv, session) {
   // WhatsApp opt-in changes data, so it needs the email sign-in; an
   // invitation-link session is pointed to My account instead.
   const whatsapp =
-    session.scope === "rsvp"
+    session.scope === "rsvp" || over
       ? ""
       : `<details class="card"><summary>${tr("Optional: get event updates on WhatsApp", "Opcional: recibe novedades del evento por WhatsApp")}</summary><section id="whatsapp-preferences"></section></details>`;
   const account = `<p><a href="${route("account")}">${session.verified ? tr("Open my account", "Abrir mi cuenta") : tr("Sign in with your email for photos and messages", "Entra con tu correo para fotos y mensajes")}</a></p>`;
-  return `<div class="notice success"><h2>${tr("We can’t wait to celebrate with you!", "¡Los esperamos con mucha ilusión!")}</h2><p>${tr("Thank you", "Gracias")}, ${esc(inv.name)}.</p></div>${summary(r.attendance, inv)}${saved}<h3>${tr("Add to your calendar", "Agregar al calendario")}</h3><div class="calendar-actions">${calendars}</div><h3>${tr("Getting there", "Cómo llegar")}</h3><div class="row-actions">${places}</div>${edit}${whatsapp}${account}`;
+  if (over)
+    return `<div class="notice success"><h2>${tr("Thank you for celebrating with us!", "¡Gracias por celebrar con nosotros!")}</h2><p>${tr("Thank you", "Gracias")}, ${esc(inv.name)}.</p></div>${summary(r.attendance, inv)}${saved}<div class="row-actions"><a class="button burgundy" href="${route("gallery")}">${tr("See the photos", "Ver las fotos")}</a><a href="${route("share")}">${esc(say(terms.sharePhotos, es ? "es" : "en"))}<span class="arrow" aria-hidden="true">→</span></a></div>${note}${account}`;
+  return `<div class="notice success"><h2>${tr("We can’t wait to celebrate with you!", "¡Los esperamos con mucha ilusión!")}</h2><p>${tr("Thank you", "Gracias")}, ${esc(inv.name)}.</p></div>${summary(r.attendance, inv)}${saved}<h3>${tr("Add to your calendar", "Agregar al calendario")}</h3><div class="calendar-actions">${calendars}</div><h3>${tr("Getting there", "Cómo llegar")}</h3><div class="row-actions">${places}</div>${edit}${note}${whatsapp}${account}`;
 }
 // Set just before the page moves to the confirmation after a save, so the
 // confirmation takes focus then (and not when opened from a bookmark).
@@ -824,6 +887,7 @@ async function showPortal() {
       show(rsvpClosed(inv));
       return;
     }
+    closeAtDeadline(inv);
     const draft = readDraft(inv);
     if (quickAnswer) {
       const values = { ...(draft || startingValues(inv)), attendance: everyone(inv, quickAnswer) };
@@ -877,37 +941,28 @@ addEventListener("pageshow", (e) => {
   if (e.persisted && portal)
     showPortal().catch((err) => show(statusError(err.message)));
 });
+// Approved notes for Sophia. (The home page's announcements are drawn by
+// site/home.mjs, dated and newest first.)
 async function publicContent() {
-  const nodes = document.querySelectorAll(
-    "[data-guestbook],[data-announcements]",
-  );
+  const nodes = document.querySelectorAll("[data-guestbook]");
   if (!nodes.length) return;
   try {
     const data = await api("public");
-    for (const box of nodes) {
-      if (box.hasAttribute("data-guestbook"))
-        box.innerHTML = data.messages
-          .map(
-            (m) =>
-              `<article class="card"><blockquote>${esc(m.text)}</blockquote><p>— ${esc(m.name)}</p></article>`,
-          )
-          .join("");
-      if (box.hasAttribute("data-announcements"))
-        box.innerHTML = data.announcements
-          .map(
-            (a) =>
-              `<article class="notice"><h3>${esc(es && a.titleEs ? a.titleEs : a.title)}</h3><p>${esc(es && a.textEs ? a.textEs : a.text)}</p></article>`,
-          )
-          .join("");
-    }
+    for (const box of nodes)
+      box.innerHTML = data.messages
+        .map(
+          (m) =>
+            `<article class="card"><blockquote>${esc(m.text)}</blockquote><p>— ${esc(m.name)}</p></article>`,
+        )
+        .join("");
   } catch {
     for (const box of nodes)
-      box.innerHTML = box.hasAttribute("data-announcements")
-        ? ""
-        : `<p class="hint">${tr("This collection is not available yet.", "Esta colección aún no está disponible.")}</p>`;
+      box.innerHTML = `<p class="hint">${tr("This collection is not available yet.", "Esta colección aún no está disponible.")}</p>`;
   }
 }
 await experienceReady;
+// The server's clock and RSVP deadline (both requests started with the page).
+await clockReady;
 reloadOnNewLink();
 let fragment = linkFragment();
 const microsoft =

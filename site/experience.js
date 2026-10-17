@@ -7,56 +7,33 @@ import {
   localDate,
   escapeHtml as esc,
 } from "./celebration.mjs";
+import { sample, setSite, siteSettled } from "./now.mjs";
+// For site/guest.js (one import, one round trip fewer on every page).
+export {
+  ready as clockReady,
+  serverConfig,
+  rsvpOpenNow,
+  rsvpDeadline,
+  rememberReply,
+  forgetReply,
+  watch,
+  state as lifecycleState,
+  siteClock,
+} from "./now.mjs";
+export { terms, say, registerFor } from "./lexicon.mjs";
 const lang = document.documentElement.lang === "es" ? "es" : "en";
 export let eventContent = celebration;
 export let liveContent = false;
-// The home page's countdown counts what a guest can act on: the time left to
-// reply until the RSVP deadline, then the time until the celebration. It reads
-// as plain text under a visible label, changes once a minute (never seconds),
-// and stops for good once the celebration is over. With reduced motion asked
-// for, it is set once per visit and does not tick. The "Please reply by" line
-// above it goes away at the deadline; the RSVP button stays, for the closed
-// note and the household's saved answer.
-const units = {
-  en: [["day", "days"], ["hour", "hours"], ["minute", "minutes"]],
-  es: [["día", "días"], ["hora", "horas"], ["minuto", "minutos"]],
-};
-let ticking = 0;
-function countdown() {
-  const node = document.querySelector("[data-countdown]");
-  if (!node) return;
-  clearTimeout(ticking);
-  const now = Date.now(),
-    deadline = Date.parse(node.dataset.deadline),
-    start = Date.parse(node.dataset.start),
-    end = Date.parse(node.dataset.end);
-  const replyBy = document.querySelector("[data-reply-by]");
-  if (replyBy) replyBy.hidden = now >= deadline;
-  if (![deadline, start, end].every(Number.isFinite) || now >= Math.max(start, end)) {
-    node.hidden = true;
-    return;
-  }
-  node.hidden = false;
-  if (now >= start) {
-    node.innerHTML = `<p class="countdown-label">${lang === "es" ? "¡Hoy es el gran día!" : "Today is the day!"}</p>`;
-  } else {
-    const target = now < deadline ? deadline : start,
-      minutes = Math.ceil((target - now) / 60000),
-      values = [Math.floor(minutes / 1440), Math.floor(minutes / 60) % 24, minutes % 60];
-    const label =
-      now < deadline
-        ? lang === "es" ? "Tiempo para confirmar" : "Left to reply"
-        : lang === "es" ? "Falta para la celebración" : "Until the celebration";
-    node.innerHTML = `<p class="countdown-label">${label}</p> <p class="countdown-values">${values
-      .map((v, i) => `<span><strong>${v}</strong> ${units[lang][i][v === 1 ? 0 : 1]}</span>`)
-      .join(" ")}</p>`;
-  }
-  // Next change at the top of the next minute.
-  if (!matchMedia("(prefers-reduced-motion: reduce)").matches)
-    ticking = setTimeout(countdown, 60000 - (now % 60000) + 50);
-}
-countdown();
-document.addEventListener("visibilitychange", () => !document.hidden && countdown());
+// The home page follows the celebration's phase (site/home.mjs, loaded only
+// there and after the page has drawn): the answered, closed, day-of, evening
+// and after states. Its built HTML is the RSVP-open state, for anyone without
+// JavaScript and for the first paint.
+if (document.querySelector("[data-home]"))
+  import("./home.mjs")
+    .then((home) => home.startHome({ lang, content: () => eventContent }))
+    .catch(() => {
+      /* The built RSVP-open home page stays. */
+    });
 document.addEventListener("click", async (e) => {
   const button = e.target.closest("[data-copy-address]");
   if (!button) return;
@@ -72,9 +49,13 @@ document.addEventListener("click", async (e) => {
 });
 export const experienceReady = (async () => {
   try {
-    const res = await fetch("/api/site", { credentials: "same-origin" });
+    const before = Date.now(),
+      res = await fetch("/api/site", { credentials: "same-origin" }),
+      after = Date.now();
     if (!res.ok) return;
-    const { site } = await res.json();
+    const { site, now } = await res.json();
+    // The server's clock, for every date-aware part of the page (site/now.mjs).
+    sample(before, after, now);
     if (!site?.ceremony || !site?.albums) return;
     eventContent = { ...celebration, ...site };
     liveContent = true;
@@ -85,12 +66,6 @@ export const experienceReady = (async () => {
     const quote = document.querySelector("[data-home-quote]");
     if (quote)
       quote.innerHTML = `<p>“${esc(c.quote[lang])}”</p><cite>— ${esc(c.name)}</cite>`;
-    const node = document.querySelector("[data-countdown]");
-    if (node) {
-      node.dataset.start = c.countdownAt;
-      node.dataset.end = c.reception.end || c.countdownAt;
-      countdown();
-    }
     for (const el of document.querySelectorAll("[data-venue]"))
       el.innerHTML = venueSection(el.dataset.venue, c, lang, true);
     for (const el of document.querySelectorAll("[data-schedule-strip]"))
@@ -101,7 +76,11 @@ export const experienceReady = (async () => {
     const day = localDate(c.ceremony.start, lang);
     for (const el of document.querySelectorAll("[data-event-date]"))
       el.textContent = day.charAt(0).toUpperCase() + day.slice(1);
+    // The phase follows the live times (the home page redraws).
+    setSite(c);
   } catch {
     /* The checked-in event details remain available during service outages. */
+  } finally {
+    siteSettled();
   }
 })();

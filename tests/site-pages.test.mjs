@@ -88,11 +88,15 @@ test("the family's portraits open the gallery, one album at a time, in both lang
 });
 
 test("every hook the live event settings fill is on a built page", async () => {
-  // site/experience.js redraws these from the admin's settings; a hook that
-  // no page has any more is dead code.
-  const source = await readFile(new URL("../site/experience.js", import.meta.url), "utf8");
-  const hooks = [...source.matchAll(/querySelector(?:All)?\("\[(data-[a-z-]+)\]"\)/g)].map((m) => m[1]);
-  assert.ok(hooks.includes("data-countdown"));
+  // site/experience.js redraws these from the admin's settings, and
+  // site/home.mjs the home page by phase; a hook that no page has any more is
+  // dead code.
+  let source = "";
+  for (const file of ["experience.js", "home.mjs"])
+    source += await readFile(new URL("../site/" + file, import.meta.url), "utf8");
+  const hooks = [...source.matchAll(/(?:querySelector(?:All)?\(|\$\()"\[(data-[a-z-]+)\]"\)/g)].map((m) => m[1]);
+  for (const hook of ["data-countdown", "data-home", "data-reply-by", "data-home-status", "data-latest-update"])
+    assert.ok(hooks.includes(hook), hook);
   let html = "";
   for (const [, file] of await guestPages()) html += await page(file);
   for (const hook of hooks) assert.ok(new RegExp(`\\s${hook}[\\s=>]`).test(html), hook);
@@ -121,9 +125,12 @@ test("the header is a flat list: sections, sign in, language pill, RSVP and a me
 });
 
 test("the home page puts the name, date and RSVP before the schedule, words and artwork", async () => {
-  for (const [file, deadline] of [
-    ["index.html", "Please reply by Sunday, November 15"],
-    ["es/index.html", "Por favor, confirma a más tardar el domingo 15 de noviembre"],
+  // Built in its RSVP-open state; site/home.mjs follows the phase. The Spanish
+  // home page speaks to the household (ustedes), and the deadline sentence is
+  // "Please RSVP by" (site/lexicon.mjs).
+  for (const [file, deadline, note] of [
+    ["index.html", "Please RSVP by Sunday, November 15", 'href="/guestbook/">Leave Sophia a note'],
+    ["es/index.html", "Por favor, confirmen a más tardar el domingo 15 de noviembre", 'href="/es/guestbook/">Déjenle un mensaje a Sophia'],
   ]) {
     const html = main(await page(file));
     const at = (needle) => {
@@ -137,8 +144,12 @@ test("the home page puts the name, date and RSVP before the schedule, words and 
       at('class="button burgundy" href="' + (file.startsWith("es") ? "/es" : "") + '/rsvp/"'),
       at(deadline),
       at("data-countdown"),
+      // The newest announcement, under the status line (R-030).
+      at("data-latest-update"),
       at('class="schedule-strip"'),
       at("data-home-quote"),
+      // "Leave Sophia a note →" under her words (R-028).
+      at(note),
       at('class="invitation"'),
     ];
     assert.deepEqual(order, [...order].sort((a, b) => a - b), file);
