@@ -2516,6 +2516,8 @@ export function createApplication({
           // A save without the download choice (an older admin page) keeps
           // the one stored, rather than quietly widening it to guests.
           if (!site.gallery && s.site?.gallery) site.gallery = s.site.gallery;
+          // Likewise Contact's named host (R-166): only a save that sends it changes it.
+          if (!site.contact && s.site?.contact) site.contact = s.site.contact;
           site.version++;
           s.site = site;
           audit(s, session.actor, "site-settings", "event", now());

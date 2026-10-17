@@ -138,6 +138,20 @@ export function validateSettings(input) {
   });
   if (new Set(next.registries.map((r) => r.id)).size !== next.registries.length)
     bad();
+  // Contact's named host (R-166): a line the family may write, in both
+  // languages, such as who reads the messages. Names live only here, in the
+  // saved settings, never in the public repository; empty (the default) leaves
+  // the Contact page exactly as built. Both languages or neither.
+  if (input.contact !== undefined) {
+    const line = (v) => {
+      if (typeof v !== "string" || v.length > 300 || /[\x00-\x1f\x7f]/.test(v)) bad();
+      return v.trim();
+    };
+    const en = line(input.contact?.host?.en ?? ""),
+      es = line(input.contact?.host?.es ?? "");
+    if (!en !== !es) bad();
+    next.contact = { host: { en, es } };
+  }
   // `guestbook` is not taken from here (see siteSettings).
   // Who may download all approved photos and videos at once (the owner's
   // choice, docs/cleanup.md). Settings saved before it existed mean "guests".

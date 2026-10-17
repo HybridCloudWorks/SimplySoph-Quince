@@ -81,7 +81,8 @@ export const escapeHtml = (value) =>
         c
       ],
   );
-// The stored topic values the server checks; guests see the labels below.
+// The stored topic values the server checks (server/application.mjs); they
+// never change, so saved messages keep theirs. People read the labels below.
 export const contactTopics = [
   "RSVP Questions",
   "Event Information",
@@ -96,17 +97,17 @@ export const contactTopicsEn = [
   "Event information",
   "Accommodations",
   "Transportation",
-  "Photo submissions",
-  "Registry questions",
+  "Sharing photos and videos",
+  "Gifts",
   "Other",
 ];
 export const contactTopicsEs = [
-  "Preguntas sobre RSVP",
+  "Preguntas sobre tu respuesta",
   "Información del evento",
   "Hospedaje",
   "Transporte",
-  "Envío de fotos",
-  "Registro de regalos",
+  "Compartir fotos y videos",
+  "Mesa de regalos",
   "Otro",
 ];
 const label = (en, es, lang) => (lang === "es" ? es : en);

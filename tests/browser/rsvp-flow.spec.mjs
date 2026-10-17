@@ -155,7 +155,7 @@ test("answers survive Back from the review, a reload and a switch to Spanish, an
   await page.goto(harness.forBrowser(link));
   await chooseCounts(page, everyCount);
   const requests = page.getByLabel(
-    "Dietary/accessibility needs or song request (optional)",
+    "Anything we should know? Allergies, accessibility needs, or a song you’d love to hear (optional)",
   );
   await requests.fill("A song for Sophia");
   await page.getByRole("button", { name: "Review response" }).click();
@@ -236,7 +236,7 @@ test("without a household id from the API, no answers are kept, so one household
     morales = await harness.issueInvitation(households.morales);
   await page.goto(harness.forBrowser(rivera.link));
   await chooseCounts(page, { Ceremony: [2, 1] });
-  await page.getByLabel("Dietary/accessibility needs or song request (optional)").fill("Rivera’s song");
+  await page.getByLabel("Anything we should know? Allergies, accessibility needs, or a song you’d love to hear (optional)").fill("Rivera’s song");
 
   // Another household's invitation, opened in the same tab.
   await page.goto(harness.forBrowser(morales.link));
@@ -244,7 +244,7 @@ test("without a household id from the API, no answers are kept, so one household
   await expect(page.getByText("We kept the answers you started.")).toHaveCount(0);
   await expect(eventGroup(page, "Ceremony").getByLabel("Adults / teens")).toHaveValue("");
   await expect(
-    page.getByLabel("Dietary/accessibility needs or song request (optional)"),
+    page.getByLabel("Anything we should know? Allergies, accessibility needs, or a song you’d love to hear (optional)"),
   ).toHaveValue("");
   expect(
     await page.evaluate(() => Object.keys(sessionStorage).filter((k) => k.startsWith("misxv-rsvp:"))),
@@ -475,8 +475,10 @@ test("a pasted invitation link works without https://, with stray spaces, or as 
   await expect(box).toHaveAttribute("autocapitalize", "off");
   await expect(box).toHaveAttribute("autocorrect", "off");
   await expect(box).toHaveAttribute("spellcheck", "false");
+  // The hint shows a code's shape too (R-080; tests/sign-in-words.test.mjs
+  // holds it to the server's codes).
   await expect(box).toHaveAccessibleDescription(
-    "For example misxv.simplysoph.com/rsvp/#… from your invitation email or message.",
+    "For example misxv.simplysoph.com/rsvp/#… from your invitation email or message, or a code of 16 letters and numbers, like ABCD-EFGH-…",
   );
   await expect(page.locator("#portal .deadline")).toHaveText(
     "Please reply by Sunday, November 15.",

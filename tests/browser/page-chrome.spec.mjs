@@ -106,15 +106,16 @@ test("every guest submit says what it is doing while it waits: code, sign-in, de
     await expectIdle(page, { form, button, label });
     await page.unrouteAll({ behavior: "ignoreErrors" });
   }
-  // A message on Contact and a note for Sophia: "Sending…".
-  for (const path of ["/contact/", "/guestbook/"]) {
+  // A note for Sophia: "Sending…". (Signed in, Contact has no form of its
+  // own: it points to the thread on My account, whose "Sending…" is above;
+  // R-085, tests/browser/sign-in.spec.mjs.)
+  for (const path of ["/guestbook/"]) {
     await page.goto(harness.url(path));
     form = page.locator("#message");
     button = form.locator("button[type=submit]");
-    // Contact asks for "Your name"; the note, for the name as it should appear.
-    await form.getByRole("textbox", { name: path === "/contact/" ? "Your name" : "Your name, as you’d like it to appear", exact: true }).fill("The Riveras");
-    await form.getByRole("textbox", { name: path === "/contact/" ? "Your message" : "Your note", exact: true }).fill("Congratulations, Sophia!");
-    if (path === "/guestbook/") await form.getByRole("checkbox").check();
+    await form.getByRole("textbox", { name: "Your name, as you’d like it to appear", exact: true }).fill("The Riveras");
+    await form.getByRole("textbox", { name: "Your note", exact: true }).fill("Congratulations, Sophia!");
+    await form.getByRole("checkbox").check();
     request = await hold(page, "messages");
     await button.click();
     await expectBusy(page, { form, button, words: "Sending…" });

@@ -195,9 +195,13 @@ test("signing out clears the RSVP answers, contact details included, kept in thi
     expect(await drafts()).toHaveLength(1);
     await page.goto(harness.url("/account/"));
     await page.getByRole("button", { name: button, exact: true }).click();
+    // Signed out, My account is "Sign in" (R-041); the RSVP, where a kept
+    // draft would be offered, has none.
+    await expect(page.getByRole("heading", { name: "Sign in with your email" })).toBeVisible();
+    expect(await drafts()).toEqual([]);
+    await page.goto(harness.url("/rsvp/"));
     await expect(page.getByRole("heading", { name: "Open your invitation" })).toBeVisible();
     await expect(page.getByText(/Your answers are kept in this tab/)).toHaveCount(0);
-    expect(await drafts()).toEqual([]);
   }
 });
 
@@ -258,8 +262,9 @@ test("My account puts the household’s RSVP first, labels contact fields for au
   await page.getByRole("button", { name: "Save my RSVP" }).click();
   await expect(page).toHaveURL(harness.url("/rsvp/confirmed/"));
   await page.goto(harness.url("/account/"));
+  // Each event and its count, with a colon (R-090).
   await expect(status).toContainText(
-    "Ceremony 2 adults/teens, 1 child · Dinner 2 adults/teens, 1 child — saved Oct 1",
+    "Ceremony: 2 adults/teens, 1 child · Dinner: 2 adults/teens, 1 child — saved Oct 1",
   );
   await expect(status.getByRole("link", { name: "Change your RSVP" })).toHaveAttribute(
     "href",

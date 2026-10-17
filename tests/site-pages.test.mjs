@@ -111,7 +111,8 @@ test("the header is a flat list: sections, sign in, language pill, RSVP and a me
   // Travel waits for hotels or the airport note (R-012), so it is not here yet.
   for (const [lang, file, names, signIn] of [
     ["en", "index.html", ["Schedule", "Photos &amp; notes", "Gifts", "Questions", "Contact"], "Sign in"],
-    ["es", "es/index.html", ["Programa", "Fotos y mensajes", "Mesa de regalos", "Preguntas", "Contacto"], "Iniciar sesión"],
+    // One Spanish verb for signing in (R-042): "Entrar", as in the emails.
+    ["es", "es/index.html", ["Programa", "Fotos y mensajes", "Mesa de regalos", "Preguntas", "Contacto"], "Entrar"],
   ]) {
     const nav = header(await page(file));
     assert.doesNotMatch(nav, /<details|<summary/);

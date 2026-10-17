@@ -324,17 +324,21 @@ function contents(route, lang) {
       es
         ? `<strong>In English:</strong> sign in below, then choose your photos and videos. <a href="${href("share", "en")}" hreflang="en">Open this page in English</a>`
         : `<strong>En español:</strong> entra abajo y luego elige tus fotos y videos. <a href="${href("share", "es")}" hreflang="es">Ver esta página en español</a>`
-    }</p></section><div class="portal share-portal" id="portal" data-view="share"></div><div class="media-reminder" role="note"><p><strong>${say("A little reminder", "Un pequeño recordatorio")}</strong></p><p>${say("Only share photos and videos you have permission to share, including a parent’s or guardian’s permission for children. Once we approve them, they are visible to our signed-in guests.", "Comparte solo fotos y videos que tengas permiso de compartir, incluido el permiso de un padre, madre o tutor para los menores. Cuando los aprobamos, los pueden ver nuestros invitados que inician sesión.")} <a href="${href("terms", lang)}">${say("Photo & video policy", "Uso de fotos y videos")}</a></p></div>`;
+    }</p></section><div class="portal share-portal" id="portal" data-view="share"></div><div class="media-reminder" role="note"><p><strong>${say("A little reminder", "Un pequeño recordatorio")}</strong></p><p>${say("Only share photos and videos you have permission to share, including a parent’s or guardian’s permission for children. Once we approve them, they are visible to our signed-in guests.", "Comparte solo fotos y videos que tengas permiso de compartir, incluido el permiso de un padre, madre o tutor para los menores. Cuando los aprobamos, los pueden ver nuestros invitados que entran al sitio.")} <a href="${href("terms", lang)}">${say("Photo & video policy", "Uso de fotos y videos")}</a></p></div>`;
   }
+  // Contact leads with the address and says where a reply appears (R-084);
+  // the family's named host, when they write one in the event settings, goes
+  // under the first line (data-contact-host, site/experience.js). Sending a
+  // message on the site is the quiet second choice below (portal-quiet).
   if (route === "guestbook" || route === "contact")
-    body = `<p class="lead">${route === "guestbook" ? say("Leave Sophia a note with your wishes for the years ahead.", "Déjale a Sophia un mensaje con tus buenos deseos para los años que vienen.") : say("Questions about your invitation, your RSVP or the day? Write to us and we’ll get back to you.", "¿Tienes preguntas sobre tu invitación, tu respuesta o el día de la fiesta? Escríbenos y te contestamos.")}</p>${route === "contact" ? `<p><a class="target" href="mailto:${event.sender}">${event.sender}</a></p>` : ""}${
+    body = `<p class="lead">${route === "guestbook" ? say("Leave Sophia a note with your wishes for the years ahead.", "Déjale a Sophia un mensaje con tus buenos deseos para los años que vienen.") : say("Questions about your invitation, your RSVP or the day? Write to us and we’ll get back to you.", "¿Tienes preguntas sobre tu invitación, tu respuesta o el día de la fiesta? Escríbenos y te contestamos.")}</p>${route === "contact" ? `<p class="contact-host" data-contact-host hidden></p><p><a class="target" href="mailto:${event.sender}">${event.sender}</a></p><p class="contact-reply">${say("Write to that address and we’ll reply by email. If you sign in and write to us here, our reply appears in My account.", "Si escribes a ese correo, te respondemos por correo. Si entras y nos escribes aquí, nuestra respuesta aparece en Mi cuenta.")}</p>` : ""}${
       // The notes come first, under their heading, then the way to leave one.
       // Who can read them follows the family's setting (site/notes.mjs): the
       // built sentence is the default, and site/guest.js replaces it at runtime.
       route === "guestbook"
         ? `<section class="notes-for-sophia" aria-labelledby="notes-title"><h2 id="notes-title">${esc(term(terms.notesTitle, lang))}</h2><p class="hint" data-note-audience="audience">${esc(noteSentence("audience", "guests", lang))}</p><div data-notes class="cards"></div></section>`
         : ""
-    }<div class="portal" id="portal" data-view="${route}"></div>`;
+    }<div class="portal${route === "contact" ? " portal-quiet" : ""}" id="portal" data-view="${route}"></div>`;
   if (route === "faq")
     body =
       [
@@ -611,7 +615,7 @@ function head({ route, title, lang, admin }) {
 }
 function document({ route, title, lang = "en", admin = false }) {
   const t = copy[lang];
-  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="strict-origin-when-cross-origin">${head({ route, title, lang, admin })}<link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/pages.css">${route === "404" ? '<script type="module" src="/not-found.js"></script>' : ""}<script type="module" src="/nav.js"></script><script type="module" src="/${admin ? "admin" : "guest"}.js"></script></head><body data-route="${route}"><a class="skip" href="#main">${lang === "es" ? "Ir al contenido" : "Skip to content"}</a>${navigation(lang, admin ? "" : route)}<main id="main">${
+  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="strict-origin-when-cross-origin">${head({ route, title, lang, admin })}<link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/pages.css">${route === "404" ? '<script type="module" src="/not-found.js"></script>' : ""}<script type="module" src="/nav.js"></script><script type="module" src="/${admin ? "admin" : "guest"}.js"></script></head><body data-route="${route}"><a class="skip" href="#main">${lang === "es" ? "Ir al contenido" : "Skip to content"}</a>${navigation(lang, admin ? "" : route)}<main id="main" tabindex="-1">${
     admin
       ? `<section class="section admin-shell"><aside aria-label="Administration" hidden>${adminRoutes
           .filter(
@@ -713,6 +717,7 @@ for (const file of [
   "admin-history.js",
   "admin-whatsapp.js",
   "guest-whatsapp.js",
+  "guest-account.js",
   "notes.mjs",
   "gallery-download.js",
   "promises.mjs",
@@ -752,7 +757,7 @@ for (const lang of ["en", "es"]) {
     const banner = `<aside class="preview-banner" role="note"><p><strong>${lang === "es" ? "Vista previa con texto de ejemplo." : "Preview with example text."}</strong> ${lang === "es" ? "Los invitados no ven esta página. Los nombres, fotos y enlaces son ejemplos hasta que la familia los confirme." : "Guests can’t see this page. Names, photos and links are examples until the family confirms them."}</p><p>${previewRoutes.map((r) => `<a href="${preview(r, lang)}"${r === route ? ' aria-current="page"' : ""}>${esc(routes.find((x) => x[0] === r)[lang === "es" ? 2 : 1])}</a>`).join(" · ")}</p><p><a href="${preview(route, other)}" lang="${other}">${lang === "es" ? "View in English" : "Ver en español"}</a> · <a href="/admin/site/">${lang === "es" ? "Volver a la administración" : "Back to admin"}</a></p></aside>`;
     const html = document({ route, title: lang === "es" ? es : en, lang })
       .replace("<title>", `<title>${lang === "es" ? "Vista previa" : "Preview"} · `)
-      .replace('<main id="main">', `<main id="main">${banner}`);
+      .replace('<main id="main" tabindex="-1">', `<main id="main" tabindex="-1">${banner}`);
     await writeFile(new URL(`${lang}/${route}.html`, previewRoot), html);
   }
 }

@@ -453,7 +453,8 @@ test.describe("a household that replied", () => {
     expect((await marker(page)).answer).toBe("yes");
     await page.goto(harness.url("/account/"));
     await page.getByRole("button", { name: "Sign out", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Open your invitation" })).toBeVisible();
+    // Signed out, My account is "Sign in" (R-041).
+    await expect(page.getByRole("heading", { name: "Sign in with your email" })).toBeVisible();
     expect(await marker(page)).toBe(null);
     await openHome(page, harness);
     await expect(home.countdown(page)).toHaveText(/^Time left to RSVP/);
@@ -517,7 +518,9 @@ test.describe("the RSVP page on the server's clock", () => {
     await setNow(AFTER_DEADLINE);
     await page.getByRole("button", { name: "Save my RSVP" }).click();
     await expect(page.getByRole("alert")).toHaveText("The RSVP deadline has passed. Please contact us.");
-    await expect(page.locator("#portal [data-closed-contact]").getByRole("link", { name: "Contact us" })).toHaveAttribute("href", "/contact/");
+    // "contact us" in the alert is the link (R-075), so it is said once.
+    await expect(page.getByRole("alert").getByRole("link", { name: "contact us" })).toHaveAttribute("href", "/contact/");
+    await expect(page.locator("#portal").getByRole("link", { name: /contact us/i })).toHaveCount(1);
   });
 
   test("after the party the confirmation thanks the household and offers no calendar or directions", async ({ page, harness, setNow }) => {

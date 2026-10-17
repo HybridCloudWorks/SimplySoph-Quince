@@ -12,21 +12,14 @@ import {
   rsvpOpenNow,
   rsvpDeadline,
   rememberReply,
-  forgetReply,
   watch,
   lifecycleState,
   terms,
   say,
   registerFor,
+  sessionStatus,
 } from "./experience.js";
-import {
-  registryCards,
-  contactTopics,
-  contactTopicsEn,
-  contactTopicsEs,
-  calendarActions,
-  localTime,
-} from "./celebration.mjs";
+import { calendarActions, localTime } from "./celebration.mjs";
 import {
   api,
   esc,
@@ -39,8 +32,9 @@ import {
   focusOn,
   linkFragment,
   reloadOnNewLink,
-  announce,
   markBusy,
+  sayError,
+  mentionsUs,
 } from "./client.js";
 import {
   startMicrosoft,
@@ -72,25 +66,31 @@ const eventNames = {
   dinner: tr("Dinner", "Cena"),
   dance: tr("Reception & dance", "Recepción y baile"),
 };
-// The page's own title ("Your invitation · Sophia"); a step's heading goes in front.
-const pageTitle = document.title;
+// The page's own title ("RSVP · Sophia’s Quinceañera"); once the guest acts,
+// the step's heading goes in front (R-073).
+let pageTitle = document.title;
 let settled = false;
-// Puts a step in the portal and names it in the tab title. After the first
-// step (the page load), focus moves to the new heading or message, so
-// keyboard and screen-reader users land on what changed.
+// Puts a step in the portal. A step the guest moved to (any after the page
+// load, or the confirmation right after a save) is named in the tab title and
+// takes focus, its heading or message, so keyboard and screen-reader users
+// land on what changed. "contact us" in a step's alert becomes a link
+// (client.js sayError).
 function show(html, { focus = settled } = {}) {
   portal.innerHTML = html;
   settled = true;
   const heading = portal.querySelector("h2");
-  document.title = heading ? `${heading.textContent.trim()} · ${pageTitle}` : pageTitle;
+  document.title = heading && focus ? `${heading.textContent.trim()} · ${pageTitle}` : pageTitle;
+  for (const el of portal.querySelectorAll("[role=alert]:not(:empty)"))
+    if (!el.children.length) sayError(el, el.textContent);
   if (focus)
     focusOn(
       heading ||
         portal.querySelector("[role=alert]:not(:empty),[role=status]:not(:empty),.notice"),
     );
 }
+// A page that could not be drawn: why, and a way to reach us (once).
 const statusError = (message) =>
-  `<p class="notice" role="alert">${esc(message)}</p><a href="${route("contact")}">${tr("Contact us", "Escríbenos")}</a>`;
+  `<p class="notice" role="alert">${esc(message)}</p>${mentionsUs(message) ? "" : `<a href="${route("contact")}">${term(terms.contactUs)}</a>`}`;
 // GET /api/config, fetched once for the page by site/now.mjs (which also
 // takes the server's clock from it).
 const config = serverConfig;
@@ -172,15 +172,32 @@ function goBack(name) {
 }
 // Two ways in, matching the owner's model: the private invitation link or code
 // opens the RSVP; signing in with the household's email (emailed link, Microsoft
-// or Google) opens everything else. There is no registration step.
-const emailSignInHtml = () =>
-  `<h2>${tr("Sign in with your email", "Entra con tu correo")}</h2><form id="email-login">${field(tr("Email", "Correo electrónico"), "email", { type: "email", required: true, autocomplete: "email", hint: tr("Use the email where you received your invitation. We’ll email you a one-time link — no password needed.", "Usa el correo donde recibiste tu invitación. Te enviaremos un enlace de un solo uso; no necesitas contraseña.") })}<p role="alert" class="error"></p><button type="submit" class="button burgundy" data-busy="${tr("Sending…", "Enviando…")}">${tr("Email my sign-in link", "Enviar enlace de acceso")}</button></form>`;
+// or Google) opens everything else. There is no registration step. In
+// Spanish it speaks as the page does (to the household on the RSVP).
+const emailSignInHtml = ({
+  heading = tr("Sign in with your email", addressed("Entra con tu correo", "Entren con su correo")),
+  button = tr("Email my sign-in link", "Enviar enlace de acceso"),
+  intro = "",
+} = {}) =>
+  `<h2>${heading}</h2>${intro}<form id="email-login">${field(tr("Email", "Correo electrónico"), "email", { type: "email", required: true, autocomplete: "email", hint: tr("Use the email where you received your invitation. We’ll email you a one-time link — no password needed.", addressed("Usa el correo donde recibiste tu invitación. Te enviaremos un enlace de un solo uso; no necesitas contraseña.", "Usen el correo donde recibieron su invitación. Les enviaremos un enlace de un solo uso; no necesitan contraseña.")) })}<p role="alert" class="error"></p><button type="submit" class="button burgundy" data-busy="${tr("Sending…", "Enviando…")}">${button}</button></form>`;
+// Under "Check your email", for someone whose address isn't on the list (a
+// teen, a plus-one): the same words for every address, so nothing says who
+// is on it (R-023).
+const ours = `<a class="target" href="mailto:misxv@simplysoph.com">misxv@simplysoph.com</a>`;
+const nothingYet = () =>
+  tr(
+    `Nothing after a few minutes? Try the email where you got your invitation, or write to us at ${ours} and we’ll add yours.`,
+    addressed(
+      `¿No llega en unos minutos? Prueba con el correo donde recibiste tu invitación o escríbenos a ${ours} y agregamos el tuyo.`,
+      `¿No llega en unos minutos? Prueben con el correo donde recibieron su invitación o escríbannos a ${ours} y agregamos el suyo.`,
+    ),
+  );
 function wireEmailSignIn() {
   submit(document.querySelector("#email-login"), async (data) => {
     await api("auth/email/request", { email: data.get("email"), return: returnPage() });
     // The same answer whether or not the address is on the list.
     show(
-      `<div class="notice" role="status"><h2>${tr("Check your email", "Revisa tu correo")}</h2><p>${tr("If this email is on the guest list, a sign-in link is on its way. Check your inbox and spam folder; the link expires in 15 minutes.", "Si este correo está en la lista de invitados, te enviamos un enlace de acceso. Revisa tu bandeja de entrada y el correo no deseado; el enlace vence en 15 minutos.")}</p></div><p><a href="${esc(location.pathname + location.search)}">${tr("Back to sign-in", "Volver al acceso")}</a></p>`,
+      `<div class="notice" role="status"><h2>${tr("Check your email", addressed("Revisa tu correo", "Revisen su correo"))}</h2><p>${tr("If this email is on the guest list, a sign-in link is on its way. Check your inbox and spam folder; the link expires in 15 minutes.", addressed("Si este correo está en la lista de invitados, te enviamos un enlace de acceso. Revisa tu bandeja de entrada y el correo no deseado; el enlace vence en 15 minutos.", "Si este correo está en la lista de invitados, les enviamos un enlace de acceso. Revisen su bandeja de entrada y el correo no deseado; el enlace vence en 15 minutos."))}</p><p class="nothing-yet">${nothingYet()}</p></div><p><a href="${esc(location.pathname + location.search)}">${tr("Back to sign-in", "Volver al acceso")}</a></p>`,
     );
   });
   // Microsoft returns only to My account, so the buttons live there; other
@@ -255,9 +272,17 @@ function invitationFrom(text) {
 function accessForm(value = "", reason = "") {
   // After the deadline the RSVP pages say so first (the link or code below
   // still opens the household's saved answer).
-  const closed = portal.dataset.view.startsWith("rsvp") && !rsvpOpenNow();
+  const onRsvp = portal.dataset.view.startsWith("rsvp"),
+    closed = onRsvp && !rsvpOpenNow(),
+    alert = reason ? `<p class="notice" role="alert">${esc(reason)}</p>` : "",
+    codeForm = `<form id="access">${field(tr("Invitation link or code", "Enlace o código de invitación"), "token", { value, required: true, max: 1000, hint: term(terms.invitationCodeHint), attrs: 'autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off"' })}<p class="error" role="alert"></p><button type="submit" class="button burgundy" data-busy="${tr("Checking…", "Comprobando…")}">${tr("Continue", "Continuar")}</button></form>`;
   show(
-    `${reason ? `<p class="notice" role="alert">${esc(reason)}</p>` : ""}${closed ? closedNote(rsvpDeadline()) : ""}${anyDraft() ? `<p class="notice" role="status">${tr("Your answers are kept in this tab. Open your invitation email again, or paste its link below, to finish.", "Tus respuestas siguen guardadas en esta pestaña. Abre de nuevo tu correo de invitación, o pega el enlace aquí abajo, para terminar.")}</p>` : ""}<h2>${tr("Open your invitation", "Abre tu invitación")}</h2><p>${tr("The private link in your invitation opens your RSVP. You can also paste that link, or type the code from your invitation, below.", "El enlace privado de tu invitación abre tu respuesta. También puedes pegar ese enlace, o escribir el código de tu invitación, aquí abajo.")}</p><form id="access">${field(tr("Invitation link or code", "Enlace o código de invitación"), "token", { value, required: true, max: 1000, hint: tr("For example misxv.simplysoph.com/rsvp/#… from your invitation email or message.", "Por ejemplo misxv.simplysoph.com/rsvp/#… de tu correo o mensaje de invitación."), attrs: 'autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off"' })}<p class="error" role="alert"></p><button type="submit" class="button burgundy" data-busy="${tr("Checking…", "Comprobando…")}">${tr("Continue", "Continuar")}</button></form><hr>${emailSignInHtml()}`,
+    onRsvp
+      ? `${alert}${closed ? closedNote(rsvpDeadline()) : ""}${anyDraft() ? `<p class="notice" role="status">${tr("Your answers are kept in this tab. Open your invitation email again, or paste its link below, to finish.", addressed("Tus respuestas siguen guardadas en esta pestaña. Abre de nuevo tu correo de invitación, o pega el enlace aquí abajo, para terminar.", "Sus respuestas siguen guardadas en esta pestaña. Abran de nuevo su correo de invitación, o peguen el enlace aquí abajo, para terminar."))}</p>` : ""}<h2>${tr("Open your invitation", addressed("Abre tu invitación", "Abran su invitación"))}</h2><p>${tr("The private link in your invitation opens your RSVP. You can also paste that link, or type the code from your invitation, below.", addressed("El enlace privado de tu invitación abre tu respuesta. También puedes pegar ese enlace, o escribir el código de tu invitación, aquí abajo.", "El enlace privado de su invitación abre su respuesta. También pueden pegar ese enlace, o escribir el código de su invitación, aquí abajo."))}</p>${codeForm}<hr>${emailSignInHtml()}`
+      : // Signed out, My account is "Sign in" (R-041): the email sign-in
+        // first, in the first phone screen, then one line for an invitation
+        // link or code, which open the RSVP, with the code box folded.
+        `${alert}${emailSignInHtml()}<div class="invitation-way" data-invitation-way><hr><p>${tr(`Have an invitation link or code? It opens <a href="${route("rsvp")}">your RSVP</a>.`, `¿Tienes un enlace o código de invitación? Abre <a href="${route("rsvp")}">tu respuesta</a>.`)}</p><details><summary>${tr("Type the code from your invitation", "Escribe el código de tu invitación")}</summary>${codeForm}</details></div>`,
   );
   if (!closed)
     portal.querySelector("#access")?.insertAdjacentHTML("beforebegin", replyBy(rsvpDeadline()));
@@ -265,29 +290,35 @@ function accessForm(value = "", reason = "") {
     const { token, answer } = invitationFrom(data.get("token"));
     await api("invitation-session", { token });
     if (answer) quickAnswer = answer;
-    await showPortal();
+    // A code typed on My account opens the RSVP it belongs to.
+    if (onRsvp) await showPortal();
+    else location.assign(route("rsvp"));
   });
   wireEmailSignIn();
 }
-// Signed out on a page for messages or uploads: the email sign-in, and on the
-// contact page a reminder that plain email works too. The share page's own
-// steps already say to sign in (scripts/build-pages.mjs), so it is said once
-// there (R-088); `alert` is a note that replaces it, such as why a table
-// card did not open the upload.
+// Signed out on a page for messages or uploads: the email sign-in. The share
+// page's own steps already say to sign in (scripts/build-pages.mjs), so it is
+// said once there (R-088); `alert` is a note that replaces it, such as why a
+// table card did not open the upload. Contact leads with its address and says
+// where replies appear (built), so sending a message here is a quiet second
+// choice under it (R-084).
 function signedOut(view, alert = "") {
-  const note = alert
-    ? `<p class="notice" role="alert">${esc(alert)}</p>`
-    : view === "share"
-      ? ""
-      : `<p class="notice">${
-          view === "contact"
-            ? tr(
-                "You can email us at the address above. To send a message here, sign in with your email.",
-                "Puedes escribirnos al correo de arriba. Para enviar un mensaje aquí, entra con tu correo.",
-              )
-            : tr("Sign in with your email to continue.", "Entra con tu correo para continuar.")
-        }</p>`;
-  show(note + emailSignInHtml());
+  if (view === "contact" && !alert)
+    show(
+      emailSignInHtml({
+        heading: tr("Or send a message here", "O envíanos un mensaje aquí"),
+        intro: `<p>${tr("Sign in with your email first; the link we send brings you back here.", "Primero entra con tu correo; el enlace que te enviamos te trae de vuelta aquí.")}</p>`,
+      }),
+    );
+  else
+    show(
+      (alert
+        ? `<p class="notice" role="alert">${esc(alert)}</p>`
+        : view === "share"
+          ? ""
+          : `<p class="notice">${tr("Sign in with your email to continue.", "Entra con tu correo para continuar.")}</p>`) +
+        emailSignInHtml(),
+    );
   wireEmailSignIn();
 }
 // The printed table card opens /share/#party=<code>. The code is read once,
@@ -339,8 +370,10 @@ async function ssoChoices() {
       ? tr("Microsoft or Google", "Microsoft o Google")
       : "Microsoft"
     : "Google";
-  portal.insertAdjacentHTML(
-    "beforeend",
+  // Right under the email sign-in, above the line for invitation codes.
+  const way = portal.querySelector("[data-invitation-way]");
+  (way || portal).insertAdjacentHTML(
+    way ? "beforebegin" : "beforeend",
     `<div class="sso-choices"><h2>${tr("Or sign in with", "O entra con")}</h2>${ssoRow({
       microsoft:
         offered.microsoft && tr("Sign in with Microsoft", "Entrar con Microsoft"),
@@ -354,7 +387,7 @@ async function ssoChoices() {
   // Sign-in problems are shown here, next to the buttons.
   const failed = (message) => {
     const box = portal.querySelector("#sso-error");
-    if (box) box.textContent = message;
+    if (box) sayError(box, message);
   };
   const back = returnPage();
   const ms = portal.querySelector('[data-sso="microsoft"]');
@@ -379,139 +412,22 @@ async function ssoChoices() {
       failed,
     );
 }
-// My account: the household's RSVP first, then contact details, WhatsApp and
-// messages; signing out of every device comes last.
-function rsvpStatus(inv) {
-  const r = inv.response,
-    open = rsvpOpen(inv),
-    title = `<h3>${tr("Your RSVP", "Tu respuesta")}</h3>`;
-  let body;
-  if (!inv.invitationReady)
-    body = `<p>${tr("Your invitation hasn’t been sent yet. The RSVP opens here once we send it.", "Tu invitación aún no se ha enviado. Podrás responder aquí cuando te la enviemos.")}</p>`;
-  else if (!r)
-    body = open
-      ? `<p>${tr("You haven’t replied yet.", "Aún no has respondido.")}</p>${replyBy(inv.deadline)}<p><a class="button burgundy" href="${route("rsvp")}">${tr("RSVP now", "Responder ahora")}</a></p>`
-      : `<p>${tr("You didn’t reply before the deadline. To answer now, please contact us.", "No respondiste antes de la fecha límite. Para responder ahora, escríbenos.")}</p>`;
-  else {
-    const coming = invitedEvents(inv).filter(
-        (e) => r.attendance[e].adultsTeens + r.attendance[e].kids > 0,
-      ),
-      answer = coming.length
-        ? coming.map((e) => `${eventNames[e]} ${people(r.attendance[e])}`).join(" · ")
-        : tr("not attending", "no asistirán"),
-      saved = esc(dateIn(r.submittedAt, { month: "short", day: "numeric" }));
-    body = `<p>${answer} — ${tr(`saved ${saved}`, `guardada el ${saved}`)}</p>${
-      open
-        ? `<p><a class="button outline" href="${route("rsvp")}">${tr("Change your RSVP", "Cambiar tu respuesta")}</a></p>`
-        : `<p>${tr("The RSVP deadline has passed. To change your answer, please contact us.", "La fecha límite ya pasó. Para cambiar tu respuesta, escríbenos.")}</p>`
-    }`;
-  }
-  return `<section class="card rsvp-status">${title}${body}</section>`;
-}
-async function accountPage(inv) {
-  const data = await api("account");
-  let { profile } = await api("profile");
-  const signedInAs = data.account.email,
-    // As on the confirmation; no list of what's coming after a "no".
-    next = await whatsNext({}, !(inv.response && !attendingOf(inv).length));
-  show(
-    `<h2>${esc(data.account.name)}</h2><p class="hint">${tr("Signed in as", "Entraste con")} ${esc(signedInAs)}</p>${rsvpStatus(inv)}<div class="row-actions"><a href="${route("reception")}">${tr("Directions", "Cómo llegar")}</a><button id="guest-logout" class="plain-button">${tr("Sign out", "Cerrar sesión")}</button></div><form id="profile-form"><h3>${tr("Contact details", "Datos de contacto")}</h3>${field(tr("Contact email", "Correo de contacto"), "email", { type: "email", value: profile.contact.email, autocomplete: "email", hint: tr(`We use it to reach you about the celebration. You still sign in with ${signedInAs}.`, `Lo usamos para escribirte sobre la celebración. Sigues entrando con ${signedInAs}.`) })}${field(tr("Phone", "Teléfono"), "phone", { type: "tel", inputmode: "tel", autocomplete: "tel", value: profile.contact.phone, max: 40 })}${field(tr("Mailing address", "Dirección postal"), "address", { value: profile.contact.address || "", max: 500, autocomplete: "street-address" })}<p role="alert" class="error"></p><button type="submit" class="button burgundy">${tr("Save contact details", "Guardar datos")}</button><p class="saved-note" role="status"></p></form>${next}<section id="whatsapp-preferences" class="card" hidden></section><div id="family-chat"></div><div class="account-sign-out"><p class="hint">${tr("Signed in on a computer or phone that isn’t yours?", "¿Entraste en una computadora o teléfono que no es tuyo?")}</p><button id="guest-logout-all" class="button outline">${tr("Sign out on all devices", "Cerrar sesión en todos los dispositivos")}</button></div>`,
-  );
-  document.querySelector("#guest-logout").onclick = async () => {
-    await api("logout", {});
-    dropAllDrafts();
-    forgetReply();
-    location.reload();
-  };
-  document.querySelector("#guest-logout-all").onclick = async () => {
-    await api("logout-all", {});
-    dropAllDrafts();
-    forgetReply();
-    location.reload();
-  };
-  const profileForm = document.querySelector("#profile-form"),
-    profileNote = profileForm.querySelector(".saved-note");
-  submit(profileForm, async (f) => {
-    profileNote.textContent = "";
-    ({ profile } = await api("profile", {
-      ...Object.fromEntries(f),
-      version: profile.version,
-    }));
-    // Said next to the button, where the guest is.
-    profileNote.textContent = tr("Contact details saved.", "Datos guardados.");
-    focusOn(profileNote);
+// My account, signed in (site/guest-account.js, loaded only there), with what
+// it shares with this page.
+const account = () => import("./guest-account.js");
+const accountPage = async (inv) =>
+  (await account()).accountPage(inv, {
+    show,
+    replyBy,
+    rsvpOpen,
+    invitedEvents,
+    eventNames,
+    people,
+    dateIn,
+    dropAllDrafts,
+    whatsNext,
+    attendingOf,
   });
-  await (await whatsapp()).whatsappPreferences(
-    document.querySelector("#whatsapp-preferences"),
-    profile.contact.phone,
-  );
-  const box = document.querySelector("#family-chat");
-  const messagesHtml = (thread) =>
-    thread.messages
-      .map(
-        (m) =>
-          `<article class="card"><p>${esc(m.text)}</p>${m.replies.map((r) => `<blockquote><strong>${tr("Family", "Familia")}:</strong> ${esc(r.text)}</blockquote>`).join("")}</article>`,
-      )
-      .join("");
-  // The last markup drawn: the browser normalizes innerHTML (quotes, entities),
-  // so comparing with it would redraw the thread every minute.
-  const first = await api("messages");
-  let shown = messagesHtml(first);
-  // The thread is not a live region: redrawing it would read the whole thread
-  // again. Only replies that weren't there before are announced, one by one.
-  const replyKeys = (thread) =>
-    thread.messages.flatMap((m) => m.replies.map((r, i) => [`${m.id}#${i}`, r.text]));
-  const heard = new Set(replyKeys(first).map(([key]) => key));
-  const announceNew = (thread) => {
-    const fresh = replyKeys(thread).filter(([key]) => !heard.has(key));
-    for (const [key] of fresh) heard.add(key);
-    if (fresh.length)
-      announce(
-        fresh
-          .map(([, text]) => tr("New reply from the family: ", "Nueva respuesta de la familia: ") + text)
-          .join(" "),
-      );
-  };
-  box.innerHTML = `<h3>${tr("Messages with us", "Mensajes con nosotros")}</h3><div id="thread">${shown}</div><p class="hint">${tr("New replies appear here while this page is open.", "Las respuestas nuevas aparecen aquí mientras esta página esté abierta.")}</p><form id="family-message"><label>${tr("Your message", "Tu mensaje")}<textarea name="text" required maxlength="2000"></textarea></label><p role="alert" class="error"></p><button type="submit" class="button burgundy" data-busy="${tr("Sending…", "Enviando…")}">${tr("Send message", "Enviar mensaje")}</button><p class="saved-note" role="status"></p></form>`;
-  const messageForm = document.querySelector("#family-message"),
-    messageNote = messageForm.querySelector(".saved-note");
-  submit(messageForm, async (f) => {
-    messageNote.textContent = "";
-    await api("messages", {
-      kind: "contact",
-      name: data.account.name,
-      text: f.get("text"),
-    });
-    // Only the thread is redrawn; the guest stays at the form.
-    const thread = await api("messages");
-    document.querySelector("#thread").innerHTML = shown = messagesHtml(thread);
-    announceNew(thread);
-    messageForm.reset();
-    messageNote.textContent = tr(
-      "Sent. Our reply will appear here.",
-      "Enviado. Nuestra respuesta aparecerá aquí.",
-    );
-    focusOn(messageNote);
-  });
-  // FLOW-8: check for replies once a minute while the page is visible. Only
-  // the thread is redrawn, so a message being typed is never lost.
-  clearInterval(threadTimer);
-  threadTimer = setInterval(async () => {
-    const thread = document.querySelector("#thread");
-    if (!thread) return clearInterval(threadTimer);
-    if (document.visibilityState !== "visible") return;
-    try {
-      // ?poll=1: a background check does not keep the guest signed in.
-      const now = await api("messages?poll=1"),
-        html = messagesHtml(now);
-      if (html !== shown) thread.innerHTML = shown = html;
-      announceNew(now);
-    } catch {
-      clearInterval(threadTimer); // signed out or offline: stop quietly
-    }
-  }, 60000);
-}
-let threadTimer;
 // "Your invitation includes up to 2 adults/teens and 1 child."
 function allocation(capacity) {
   const most = adults(capacity.adultsTeens),
@@ -774,7 +690,7 @@ function rsvpForm(inv, values, { restored = false } = {}) {
       inv.contactHidden
         ? `<p class="hint">${tr("To change your contact details, sign in with your email on My account.", "Para cambiar sus datos de contacto, entren con su correo en Mi cuenta.")}</p>`
         : `<div class="field-grid">${field(tr("Email", "Correo electrónico"), "email", { type: "email", value: contact.email, autocomplete: "email", attrs: emailPattern })}${field(tr("Phone (optional)", "Teléfono (opcional)"), "phone", { type: "tel", inputmode: "tel", value: contact.phone, max: 40, autocomplete: "tel" })}</div>${field(tr("Mailing address (optional)", "Dirección postal (opcional)"), "address", { value: contact.address || "", max: 500, autocomplete: "street-address" })}`
-    }<label>${tr("Dietary/accessibility needs or song request (optional)", "Necesidades alimentarias/de accesibilidad o canción (opcional)")}<textarea name="requests" maxlength="1000">${esc(values.requests || "")}</textarea></label><p class="resume-note" role="status"></p><p class="error" role="alert"></p><button class="button burgundy" type="submit">${tr("Review response", "Revisar respuesta")}</button></form>`,
+    }<label>${tr("Anything we should know? Allergies, accessibility needs, or a song you’d love to hear (optional)", "¿Algo que debamos saber? Alergias, necesidades de accesibilidad o una canción que les gustaría escuchar (opcional)")}<textarea name="requests" maxlength="1000">${esc(values.requests || "")}</textarea></label><p class="resume-note" role="status"></p><p class="error" role="alert"></p><button class="button burgundy" type="submit">${tr("Review response", "Revisar respuesta")}</button></form>`,
   );
   const form = portal.querySelector("#response");
   const keep = () => {
@@ -866,13 +782,9 @@ function review(inv, values, { push = true } = {}) {
       // Not busy any more before the error is written, so it is announced.
       done();
       if (["SIGN_IN_REQUIRED", "CSRF_REJECTED"].includes(err.code)) timedOut(inv, portal);
-      else alert.textContent = err.message;
-      // Saved a moment too late: the server's answer, and who to write to.
-      if (err.code === "RSVP_CLOSED" && !portal.querySelector("[data-closed-contact]"))
-        alert.insertAdjacentHTML(
-          "afterend",
-          `<p data-closed-contact><a href="${route("contact")}">${tr("Contact us", "Escríbannos")}</a></p>`,
-        );
+      // Saved a moment too late: the server's answer, whose "contact us" is
+      // the way to write to us (client.js sayError).
+      else sayError(alert, err.message);
     }
     busy = false;
   };
@@ -995,6 +907,8 @@ function justSaved() {
 async function showPortal() {
   if (!portal) return;
   const session = await api("session");
+  labelled = true;
+  accountLabels(session);
   const view = portal.dataset.view;
   // In through the table card: the upload form, and nothing else anywhere
   // (every other page treats the card's session as signed out).
@@ -1071,23 +985,28 @@ async function showPortal() {
     await noteForm(session);
     return;
   }
-  if (view === "contact") {
+  // One thread with the family (R-085): a signed-in guest writes from My
+  // account, where our replies appear, instead of a second form here.
+  if (view === "contact")
     show(
-      `<form id="message">${field(tr("Your name", "Tu nombre"), "name", { required: true, max: 100, autocomplete: "name" })}${field(tr("Email", "Correo electrónico"), "email", { type: "email", required: true, value: inv.contact.email, autocomplete: "email" })}<label>${tr("Topic", "Tema")}<select name="topic">${contactTopics.map((t, i) => `<option value="${esc(t)}">${esc(es ? contactTopicsEs[i] : contactTopicsEn[i])}</option>`).join("")}</select></label><label>${tr("Your message", "Tu mensaje")}<textarea name="text" maxlength="2000" required></textarea></label><p class="error" role="alert"></p><button class="button burgundy" type="submit" data-busy="${tr("Sending…", "Enviando…")}">${tr("Send message", "Enviar mensaje")}</button></form>`,
+      `<h2>${tr("Your messages with us", "Tus mensajes con nosotros")}</h2><p>${tr("You’re signed in, so write to us from My account: your messages and our replies are kept together there.", "Ya entraste, así que escríbenos desde Mi cuenta: ahí quedan juntos tus mensajes y nuestras respuestas.")}</p><p><a class="button burgundy" href="${route("account")}">${tr("Write to us in My account", "Escríbenos en Mi cuenta")}</a></p>`,
     );
-    submit(document.querySelector("#message"), async (data) => {
-      await api("messages", {
-        kind: view,
-        email: data.get("email"),
-        topic: data.get("topic"),
-        name: data.get("name"),
-        text: data.get("text"),
-      });
-      show(
-        `<p class="notice success" role="status">${tr("Thank you. We got your message and will reply soon.", "Gracias. Recibimos tu mensaje y te responderemos pronto.")}</p>`,
-      );
-    });
-  }
+}
+// The header's sign-in item, and My account's own name, follow the session
+// (R-041, R-042): "Sign in" as built, "My account" once signed in with an
+// email. An invitation link opens only the RSVP, so it is not a sign-in.
+// The page's own check of the session (showPortal) is newer than the one
+// every page asks for as it opens (now.mjs sessionStatus), so it wins.
+const accountHeading = document.body.dataset.route === "account" && document.querySelector(".page-heading h1");
+let labelled = false;
+function accountLabels(session) {
+  const name = say(session?.kind === "guest" && session.verified ? terms.myAccount : terms.signIn, lang),
+    item = document.querySelector(".site-header .nav-signin a");
+  if (item) item.textContent = name;
+  if (!accountHeading || accountHeading.textContent === name) return;
+  pageTitle = pageTitle.replace(accountHeading.textContent, name);
+  document.title = document.title.replace(accountHeading.textContent, name);
+  accountHeading.textContent = name;
 }
 // Who can read approved notes: the family's switch from /api/site (read by
 // experience.js), "guests" until it answers (site/notes.mjs).
@@ -1163,6 +1082,7 @@ async function notesForSophia() {
     box.innerHTML = `<p class="hint">${tr("Notes for Sophia aren’t available right now.", "Los mensajes para Sophia no están disponibles por ahora.")}</p>`;
   }
 }
+sessionStatus().then((session) => labelled || accountLabels(session));
 await experienceReady;
 // The server's clock and RSVP deadline (both requests started with the page).
 await clockReady;
@@ -1196,7 +1116,25 @@ if (microsoft) {
     `<h2>${tr("Confirm sign-in", "Confirmar acceso")}</h2><p>${tr("Continue only if you requested this email link.", "Continúa solo si solicitaste este enlace por correo.")}</p><form id="email-verify"><p class="error" role="alert"></p><button type="submit" class="button burgundy" data-busy="${tr("Signing in…", "Entrando…")}">${tr("Continue", "Continuar")}</button></form>`,
   );
   submit(document.querySelector("#email-verify"), async () => {
-    const { returnTo } = await api("auth/email/verify", { token: fragment });
+    let returnTo;
+    try {
+      ({ returnTo } = await api("auth/email/verify", { token: fragment }));
+    } catch (e) {
+      if (e.code !== "EMAIL_LINK_INVALID") throw e;
+      // The link was already used (it works once) or is past its 15 minutes.
+      // The server answers both alike (server/accounts.mjs), so the page says
+      // both, and offers a new link in one step, not a Continue that can no
+      // longer work (R-078).
+      show(
+        emailSignInHtml({
+          heading: tr("Get a new sign-in link", "Pide un enlace nuevo"),
+          button: tr("Send me a new link", "Envíame un enlace nuevo"),
+          intro: `<p class="notice" role="alert">${tr("This sign-in link has expired or was already used. Each link works once, within 15 minutes.", "Este enlace de acceso ya venció o ya se usó. Cada enlace funciona una sola vez, durante 15 minutos.")}</p>`,
+        }),
+      );
+      wireEmailSignIn();
+      return;
+    }
     fragment = "";
     // Back to the page the sign-in was asked from; the name comes from the
     // link's record on the server and is checked against the list here.
@@ -1218,7 +1156,10 @@ if (microsoft) {
       e.code === "INVALID_INVITATION"
         ? tr(
             "This invitation link isn't working. It may be incomplete or replaced by a newer link; open your most recent invitation email or contact us.",
-            "Este enlace de invitación no funciona. Puede estar incompleto o haber sido reemplazado por uno más reciente; abre tu correo de invitación más reciente o escríbenos.",
+            addressed(
+              "Este enlace de invitación no funciona. Puede estar incompleto o haber sido reemplazado por uno más reciente; abre tu correo de invitación más reciente o escríbenos.",
+              "Este enlace de invitación no funciona. Puede estar incompleto o haber sido reemplazado por uno más reciente; abran su correo de invitación más reciente o escríbannos.",
+            ),
           )
         : e.message,
     );

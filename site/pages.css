@@ -213,6 +213,22 @@ body > main {
   border: 1px solid var(--line);
   margin: 24px 0;
 }
+/* Contact leads with its address; sending a message on the site is a second
+   choice under it, so it draws no panel and its heading is a step smaller
+   (R-084). */
+.portal-quiet {
+  padding: 24px 0 0;
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+.portal-quiet h2 {
+  font-size: var(--step-h3);
+}
+/* Signed out, My account's way in for an invitation link or code (R-041). */
+.invitation-way details {
+  margin-top: 8px;
+}
 /* Keep the sharing form, results and reminder to a compact column on the
    page's left edge. */
 body[data-route="share"] .page > :not(.page-heading) {
