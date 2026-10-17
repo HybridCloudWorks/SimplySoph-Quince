@@ -80,6 +80,8 @@ test("switching language on My account keeps the page the sign-in was asked from
   await page.goto(harness.url("/gallery/"));
   await page.getByRole("link", { name: "Sign in to see the gallery" }).click();
   await expect(page).toHaveURL(harness.url("/account/?return=gallery"));
+  // The page's script carries the return over to the switch once it runs.
+  await expect(page.getByRole("link", { name: "Español" })).toHaveAttribute("href", "/es/account/?return=gallery");
   await page.getByRole("link", { name: "Español" }).click();
   await expect(page).toHaveURL(harness.url("/es/account/?return=gallery"));
   await signIn(page, harness, households.morales.email, {
@@ -159,7 +161,8 @@ test("the quick answers check the contact email first, while it can still be fix
     await email.fill(typo);
     await page.getByRole("button", { name: "Everyone’s coming" }).click();
     await expect(summary).toBeFocused();
-    await expect(summary).toHaveText("Check the email address: Email");
+    await expect(summary.locator("p")).toHaveText(["Check the email address:"]);
+    await expect(summary.getByRole("listitem")).toHaveText(["Email"]);
     await expect(page.getByRole("heading", { name: "Review your response" })).toHaveCount(0);
   }
   // Only the contact details are checked: the counts come from the button.

@@ -127,9 +127,12 @@ test("the upload form lists what is missing and keeps focus on Send while sendin
   await send.click();
   const summary = form.locator(".error-summary");
   await expect(summary).toBeFocused();
-  await expect(summary).toHaveText(
-    "Choose: Photos & videosTick the box: Permission from the people pictured",
-  );
+  // One line per kind of problem, over a list of the fields to fix.
+  await expect(summary.locator("p")).toHaveText(["Choose:", "Tick the box:"]);
+  await expect(summary.getByRole("listitem")).toHaveText([
+    "Photos & videos",
+    "Permission from the people pictured",
+  ]);
   const chooser = page.getByLabel("Choose photos & videos");
   await expect(chooser).toHaveAttribute("aria-invalid", "true");
   await expect(chooser).toHaveAccessibleDescription(/Choose at least one file\./);
@@ -158,8 +161,11 @@ test("the upload form lists what is missing and keeps focus on Send while sendin
   await page.keyboard.press("Enter");
   await expect(page.locator("#upload-summary")).toContainText("Sending your files");
   await expect(summary).toHaveCount(0);
-  await expect(send).toHaveAttribute("aria-disabled", "true");
-  await expect(send).toBeFocused();
+  // While busy the button says what it is doing, so its name changes too.
+  const busy = form.locator("button[type=submit]");
+  await expect(busy).toHaveAccessibleName("Sending…");
+  await expect(busy).toHaveAttribute("aria-disabled", "true");
+  await expect(busy).toBeFocused();
   await expect(chooser).toBeDisabled();
   release();
   await expect(page.locator("#upload-summary")).toContainText("1 of 1 arrived. Thank you!");

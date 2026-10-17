@@ -9,6 +9,7 @@ import {
   scheduleList,
   invitationAlt,
   registryCards,
+  venueSection,
 } from "../site/celebration.mjs";
 import { validateSettings } from "../server/site-settings.mjs";
 test("separate calendars preserve Central-time instants, addresses and unique event identity", () => {
@@ -129,4 +130,40 @@ test("settings reject dangerous links, invalid event ordering and ambiguous date
       (e) => e.code === "INVALID_SITE_SETTINGS",
     );
   }
+});
+// R-052: the reception's range never splits "(Jan 16)" / "(16 de enero)" or a
+// time from its AM/PM: only the space after the en dash may break.
+test("the Schedule and the reception page keep each time and the next-day date unbroken", () => {
+  const NB = " ";
+  for (const [lang, range] of [
+    ["en", `7:30${NB}PM – 12:30${NB}AM${NB}(Jan${NB}16)`],
+    ["es", `7:30${NB}p.${NB}m. – 12:30${NB}a.${NB}m.${NB}(16${NB}de${NB}enero)`],
+  ]) {
+    const schedule = scheduleList(celebration, lang),
+      reception = venueSection("reception", celebration, lang);
+    assert.ok(schedule.includes(`<p class="schedule-time">${range}</p>`), `${lang} schedule`);
+    assert.ok(reception.includes(`<dd>${range}</dd>`), `${lang} reception page`);
+    // Breaks only around the dash, never inside a time or the date.
+    for (const html of [schedule, reception])
+      for (const [, text] of html.matchAll(/<(?:p class="schedule-time"|dd)>([^<]*)<\/(?:p|dd)>/g))
+        assert.deepEqual(text.split(" – ").map((part) => part.includes(" ")), [false, false], text);
+  }
+});
+// R-062: every calendar and map link names its event for screen readers, after
+// the visible words, so a page's links never share a name.
+test("calendar and map links carry their event's name, visually hidden", () => {
+  const hidden = (name) => `<span class="visually-hidden">: ${name}</span>`;
+  assert.ok(calendarLink("ceremony").includes(`Add to calendar${hidden("Ceremony")}`));
+  assert.ok(calendarLink("dinner", celebration, "es").includes(`Agregar al calendario${hidden("Cena")}`));
+  assert.ok(calendarLink("reception").includes(hidden("Reception &amp; dance")));
+  const schedule = scheduleList(celebration, "en");
+  for (const name of ["Religious ceremony", "Dinner", "Reception &amp; dance"])
+    assert.ok(schedule.includes(`Map${hidden(name)}`), name);
+  assert.ok(scheduleList(celebration, "es").includes(`Mapa${hidden("Cena")}`));
+  const ceremony = venueSection("ceremony", celebration, "en");
+  assert.ok(ceremony.includes(`Open in Google Maps${hidden("Religious ceremony")}`));
+  assert.ok(ceremony.includes(`Open in Apple Maps${hidden("Religious ceremony")}`));
+  assert.ok(venueSection("reception", celebration, "es").includes(`Abrir en Google Maps${hidden("Cena y recepción")}`));
+  // Without a name, maps() reads as before.
+  assert.doesNotMatch(maps(celebration.ceremony.address), /visually-hidden">:/);
 });

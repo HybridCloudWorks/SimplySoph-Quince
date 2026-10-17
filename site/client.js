@@ -400,8 +400,8 @@ export async function api(path, body, options = {}) {
 // The page-wide note at the bottom, for news that belongs to no control: what
 // a form or button caused is shown next to it instead. An optional
 // { href, label } adds a link after the message (built as DOM, not HTML). The
-// note can be closed, and while it shows, the page keeps the focused control
-// scrolled clear of it.
+// note stays until it is closed or replaced (never on a timer: WCAG 2.2.1),
+// and while it shows, the page keeps the focused control scrolled clear of it.
 export function notify(text, link) {
   const box = document.querySelector("#status");
   if (!box) return;
@@ -431,8 +431,6 @@ export function notify(text, link) {
   const focused = document.activeElement;
   if (focused && focused !== document.body && !box.contains(focused))
     focused.scrollIntoView({ block: "nearest", behavior: "instant" });
-  clearTimeout(notify.timer);
-  notify.timer = setTimeout(clearNote, 12000);
 }
 function clearNote() {
   const box = document.querySelector("#status");
@@ -540,8 +538,11 @@ export function checkForm(form, only = () => true) {
       const note = document.createElement("span");
       note.className = "field-error";
       note.id = control.id + "-error";
+      // A control's data-error names what to fix when the generic words
+      // would repeat down a form (the RSVP's counts, one pair per event).
       note.textContent =
-        v.valueMissing && control.type !== "checkbox"
+        control.dataset.error ||
+        (v.valueMissing && control.type !== "checkbox"
           ? control.tagName === "SELECT"
             ? tr("Choose one.", "Elige una opción.")
             : control.type === "file"
@@ -551,7 +552,7 @@ export function checkForm(form, only = () => true) {
             ? tr("Tick this box to continue.", "Marca esta casilla para continuar.")
             : control.type === "email"
               ? tr("Use an address like name@example.com.", "Usa un correo como nombre@ejemplo.com.")
-              : tr("Check this field.", "Revisa este campo.");
+              : tr("Check this field.", "Revisa este campo."));
       // Inside the label, so a field grid keeps its layout; hidden from the
       // label's own text (the field's name) and read as its description.
       note.setAttribute("aria-hidden", "true");
@@ -570,40 +571,111 @@ export function checkForm(form, only = () => true) {
     if (document.title.startsWith(prefix)) document.title = document.title.slice(prefix.length);
     return true;
   }
+  // Each kind of problem is a line ("Fill in:") over a list with one link
+  // per thing to fix, so no name breaks across a comma-separated line. The
+  // controls of a group that names itself (an RSVP event's fieldset,
+  // data-check-group) get one link, by the group's name, to the first of
+  // them to fix.
   const summary = document.createElement("div");
   summary.className = "error-summary";
   summary.setAttribute("role", "alert");
   summary.tabIndex = -1;
   for (const [opening, controls] of lines) {
-    const line = document.createElement("p");
-    line.append(opening + " ");
-    controls.forEach((control, i) => {
-      const a = document.createElement("a");
+    const line = document.createElement("p"),
+      list = document.createElement("ul"),
+      named = new Set();
+    line.textContent = opening;
+    for (const control of controls) {
+      const group = control.closest("fieldset[data-check-group]");
+      if (group && named.has(group)) continue;
+      if (group) named.add(group);
+      const item = document.createElement("li"),
+        a = document.createElement("a");
       a.href = "#" + control.id;
-      a.textContent = labelOf(control);
+      a.textContent = group ? group.dataset.checkGroup : labelOf(control);
       // Focus the field without putting its id in the address bar, where a
       // reload would read it as an invitation or sign-in link.
       a.addEventListener("click", (e) => {
         e.preventDefault();
         control.focus();
       });
-      line.append(...(i ? [", ", a] : [a]));
-    });
-    summary.append(line);
+      item.append(a);
+      list.append(item);
+    }
+    summary.append(line, list);
   }
   form.prepend(summary);
   if (!document.title.startsWith(prefix)) document.title = prefix + document.title;
   summary.focus();
   return false;
 }
-// Runs fn with the form's data once the form is complete. The submit button is
-// marked busy with aria-disabled rather than disabled: disabling the focused
-// button dropped focus to the page (Chromium), so keyboard and screen-reader
-// users lost their place. A second submit while busy is ignored. An error is
-// shown in the form's own alert, next to the button. A field's error note goes
-// as soon as what is typed is valid: waiting for "change", which fires when the
-// field loses focus, removed it during the press on the button, so the button
-// moved up under the pointer and the press was lost.
+// ---- Busy state (one for every submit) ----
+// Screen-reader news that belongs to no form: one polite region (#announce,
+// built with every page) outside all forms, so a busy form never holds it
+// back. The text is set a moment after clearing, so the same words said twice
+// are read twice; a later call or silence() replaces what is still pending.
+let announcing = 0,
+  pending = "";
+export function announce(text) {
+  let box = document.getElementById("announce");
+  if (!box) {
+    box = document.createElement("div");
+    box.id = "announce";
+    box.className = "visually-hidden";
+    box.setAttribute("role", "status");
+    document.body.append(box);
+  }
+  clearTimeout(announcing);
+  box.textContent = "";
+  pending = text;
+  announcing = setTimeout(() => {
+    box.textContent = text;
+    pending = "";
+  }, 100);
+}
+// Takes back words no longer true ("Saving…" once saved), said or still to be.
+function silence(text) {
+  if (pending === text) {
+    clearTimeout(announcing);
+    pending = "";
+  }
+  const box = document.getElementById("announce");
+  if (box?.textContent === text) box.textContent = "";
+}
+// Marks a button busy while its request is on its way: aria-disabled, not
+// disabled (disabling the focused button dropped focus to the page in
+// Chromium); its words become what is happening (data-busy, else "Saving…"),
+// at no narrower a width, so nothing moves under the pointer; aria-busy on the
+// region it belongs to (its form); and the same words announced. Returns the
+// function that puts everything back. It is undone before any error is
+// written, since aria-busy on an ancestor can hold back the error's alert.
+export function markBusy(button, region = button?.form) {
+  if (!button) return () => {};
+  const words = button.dataset.busy || tr("Saving…", "Guardando…"),
+    label = [...button.childNodes],
+    width = button.style.minInlineSize;
+  button.style.minInlineSize = button.getBoundingClientRect().width + "px";
+  button.setAttribute("aria-disabled", "true");
+  button.classList.add("is-busy");
+  button.replaceChildren(words);
+  region?.setAttribute("aria-busy", "true");
+  announce(words);
+  return () => {
+    region?.removeAttribute("aria-busy");
+    silence(words);
+    button.replaceChildren(...label);
+    button.style.minInlineSize = width;
+    button.classList.remove("is-busy");
+    button.removeAttribute("aria-disabled");
+  };
+}
+// Runs fn with the form's data once the form is complete, with the submit
+// button busy (markBusy) meanwhile. A second submit while busy is ignored. An
+// error is shown in the form's own alert, next to the button, once the form is
+// no longer busy. A field's error note goes as soon as what is typed is valid:
+// waiting for "change", which fires when the field loses focus, removed it
+// during the press on the button, so the button moved up under the pointer and
+// the press was lost.
 export async function submit(form, fn) {
   form.noValidate = true;
   form.addEventListener("input", (e) => {
@@ -616,16 +688,17 @@ export async function submit(form, fn) {
     const button = form.querySelector("[type=submit]"),
       target = form.querySelector(".error[role=alert]") || form.querySelector("[role=alert]:not(.error-summary)");
     busy = true;
-    button?.setAttribute("aria-disabled", "true");
     if (target) target.textContent = "";
+    const done = markBusy(button, form);
     try {
       await fn(new FormData(form));
+      done();
     } catch (err) {
+      done();
       if (target?.isConnected) target.textContent = err.message;
       else notify(err.message);
     } finally {
       busy = false;
-      button?.removeAttribute("aria-disabled");
     }
   });
 }
