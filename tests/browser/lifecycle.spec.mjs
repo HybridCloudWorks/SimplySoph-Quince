@@ -533,14 +533,14 @@ test.describe("the RSVP page on the server's clock", () => {
     await setNow(DEADLINE - 120_000);
     await page.goto(harness.forBrowser(link));
     await page.getByRole("button", { name: "Vamos todos" }).click();
-    await page.getByRole("button", { name: "Guardar mi respuesta" }).click();
+    await page.getByRole("button", { name: "Guardar la respuesta" }).click();
     await expect(page).toHaveURL(harness.url("/es/rsvp/confirmed/"));
     // A minute before the deadline they start changing it, and save too late.
     await setNow(DEADLINE - 60_000);
     await page.goto(harness.forBrowser(link + ".no"));
     await expect(page.getByRole("heading", { name: "Revisen su respuesta" })).toBeVisible();
     await setNow(AFTER_DEADLINE);
-    await page.getByRole("button", { name: "Guardar mi respuesta" }).click();
+    await page.getByRole("button", { name: "Guardar la respuesta" }).click();
     await expect(page.getByRole("heading", { name: "Las respuestas están cerradas" })).toBeFocused();
     await expect(page.getByRole("alert")).toHaveText("La fecha límite ya pasó. Por favor, escríbannos.");
     await expect(page.getByRole("alert").getByRole("link", { name: "escríbannos" })).toHaveAttribute("href", "/es/contact/");
@@ -548,7 +548,7 @@ test.describe("the RSVP page on the server's clock", () => {
     // The answer on file is still the "yes": the refused "no" changed nothing.
     await expect(page.getByText("Su respuesta guardada:")).toBeVisible();
     await expect(page.getByRole("main").getByRole("listitem").first()).toHaveText("Ceremonia: 2 adultos/jóvenes, 2 niños");
-    await expect(page.getByRole("button", { name: "Guardar mi respuesta" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Guardar la respuesta" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Cambiar cantidades" })).toHaveCount(0);
   });
 
@@ -715,7 +715,7 @@ test.describe("parking on the day itself, once the family posts it", () => {
 test.describe("a reply this device remembers can be forgotten here", () => {
   for (const [lang, household, quick, save, replied, prompt, button, countdown] of [
     ["en", households.rivera, "Everyone’s coming", "Save my RSVP", "You replied ✓ · you can change it until Sunday, November 15", "Not your family?", "Forget this on this device", /^Time left to RSVP/],
-    ["es", households.morales, "Vamos todos", "Guardar mi respuesta", "Ya respondieron ✓ · pueden cambiar su respuesta hasta el domingo 15 de noviembre", "¿No es su familia?", "Olvidar esto en este dispositivo", /^Tiempo para confirmar/],
+    ["es", households.morales, "Vamos todos", "Guardar la respuesta", "Ya respondieron ✓ · pueden cambiar su respuesta hasta el domingo 15 de noviembre", "¿No es su familia?", "Olvidar esto en este dispositivo", /^Tiempo para confirmar/],
   ])
     test(`${lang}: "${prompt} ${button}" clears the note and shows the honest unknown state`, async ({ page, context, harness }) => {
       const { link } = await harness.issueInvitation(household, { locale: lang });
@@ -798,7 +798,7 @@ test.describe("the walk for a household that replied, in English and Spanish", (
 });
 test.describe("the same states in Spanish at the review's other instants", () => {
   const es = [
-    ["2026-11-15T20:00:00-06:00", { phase: "rsvp-open", countdown: "Tiempo para confirmar 0 días 3 horas 59 minutos", replyBy: "Por favor, confirmen a más tardar el domingo 15 de noviembre", actions: ["Confirmar asistencia", "Ver el programa→"], pill: true }],
+    ["2026-11-15T20:00:00-06:00", { phase: "rsvp-open", countdown: "Tiempo para confirmar 0 días 3 horas 59 minutos", replyBy: "Por favor, confirmen su asistencia a más tardar el domingo 15 de noviembre", actions: ["Confirmar asistencia", "Ver el programa→"], pill: true }],
     [new Date(DEADLINE).toISOString(), { phase: "rsvp-closed", countdown: "Falta para la celebración 60 días 16 horas 1 minuto", actions: ["Ver el programa"], pill: true }],
     ["2027-01-08T12:00:00-06:00", { phase: "rsvp-closed", countdown: "Falta para la celebración 7 días 4 horas 0 minutos", actions: ["Ver el programa"], pill: true }],
     ["2027-01-15T15:00:00-06:00", { phase: "day-of", countdown: "¡Hoy es el gran día!", status: [`Después Ceremonia religiosa · 4:00 p. m. · ${church}`], actions: ["Cómo llegar a la ceremonia ↗", "Ver el programa→"], pill: true }],

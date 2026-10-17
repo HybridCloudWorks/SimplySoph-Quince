@@ -153,8 +153,8 @@ test("the email’s quick-answer link opens on the review step and saves nothing
 test.describe("on a 390×844 phone", () => {
   test.use({ viewport: { width: 390, height: 844 } });
   for (const [lang, household, name, replaces] of [
-    ["en", households.rivera, "Save my RSVP", "This replaces your saved answer."],
-    ["es", households.morales, "Guardar mi respuesta", "Esto reemplaza su respuesta guardada."],
+    ["en", households.rivera, "Save my RSVP", "This replaces your saved RSVP."],
+    ["es", households.morales, "Guardar la respuesta", "Esto reemplaza su respuesta guardada."],
   ])
     test(`${lang}: Save sits within the first 440 px of a quick answer's review, with and without a saved answer`, async ({ page, harness }) => {
       const { link } = await harness.issueInvitation(household, { locale: lang });
