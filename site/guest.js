@@ -1,4 +1,6 @@
-import { whatsappPreferences } from "./guest-whatsapp.js";
+import { whatsappPreferences, whatsappProgramPage } from "./guest-whatsapp.js";
+import { terms, say, registerFor } from "./lexicon.mjs";
+import { noteSentence, noteWords, visibilityOf } from "./notes.mjs";
 import { mediaUpload } from "./media-upload.js";
 import { experienceReady, eventContent, liveContent } from "./experience.js";
 import {
@@ -31,10 +33,15 @@ import {
 } from "./sso.js";
 import { galleryOpen } from "./lifecycle.mjs";
 import { date, at } from "./datetime.mjs";
-import { terms, say } from "./lexicon.mjs";
 import { siteClock } from "./site-clock.js";
 const portal = document.querySelector("#portal");
-const lang = es ? "es" : "en";
+// Shared wording (site/lexicon.mjs) in this page's language and, in Spanish,
+// its form of address.
+const lang = es ? "es" : "en",
+  register = registerFor(document.body.dataset.route || "");
+const term = (entry, form = register) => say(entry, lang, form);
+// Spanish written two ways: to one person (tú) or to the household (ustedes).
+const addressed = (tu, ustedes) => (register === "ustedes" ? ustedes : tu);
 const eventNames = {
   ceremony: tr("Ceremony", "Ceremonia"),
   dinner: tr("Dinner", "Cena"),
@@ -136,14 +143,39 @@ function wireEmailSignIn() {
       `<div class="notice" role="status"><h2>${tr("Check your email", "Revisa tu correo")}</h2><p>${tr("If this email is on the guest list, a sign-in link is on its way. Check your inbox and spam folder; the link expires in 15 minutes.", "Si este correo está en la lista de invitados, te enviamos un enlace de acceso. Revisa tu bandeja de entrada y el correo no deseado; el enlace vence en 15 minutos.")}</p></div><p><a href="${esc(location.pathname + location.search)}">${tr("Back to sign-in", "Volver al acceso")}</a></p>`,
     );
   });
-  // Microsoft returns only to My account, so the buttons live there.
+  // Microsoft returns only to My account, so the buttons live there; other
+  // pages link to it, naming only the providers this server offers guests.
   if (document.body.dataset.route === "account") ssoChoices();
-  else
-    portal.insertAdjacentHTML(
-      "beforeend",
-      `<p><a href="${route("account")}?return=${returnPage().replace(/^es\//, "")}">${tr("Sign in with Microsoft or Google instead", "O entra con Microsoft o Google")}</a></p>`,
-    );
+  else {
+    const back = returnPage().replace(/^es\//, "");
+    config()
+      .then((cfg) => {
+        const { microsoft, google } = providers(cfg);
+        const label = microsoft
+          ? google
+            ? tr("Sign in with Microsoft or Google instead", addressed("O entra con Microsoft o Google", "O entren con Microsoft o Google"))
+            : tr("Sign in with Microsoft instead", addressed("O entra con Microsoft", "O entren con Microsoft"))
+          : google
+            ? tr("Sign in with Google instead", addressed("O entra con Google", "O entren con Google"))
+            : "";
+        if (label && !portal.querySelector("[data-sso-link]"))
+          portal
+            .querySelector("#email-login")
+            ?.insertAdjacentHTML(
+              "afterend",
+              `<p data-sso-link><a href="${route("account")}?return=${back}">${label}</a></p>`,
+            );
+      })
+      .catch(() => {});
+  }
 }
+// The sign-in providers offered to guests: Google when configured, Microsoft
+// when configured and GUEST_MICROSOFT_SIGN_IN is not off (an API from before
+// that switch says nothing, and kept offering it).
+const providers = (cfg) => ({
+  microsoft: !!cfg.microsoftClientId && cfg.guestMicrosoft !== false,
+  google: !!cfg.clientId,
+});
 // What a guest may paste: the whole link, with or without https:// (even
 // wrapped in <> or split over lines by a mail app), the part after the #, or
 // the code from the invitation. Returns the credential and any quick answer.
@@ -260,17 +292,22 @@ async function ssoChoices() {
   } catch {
     return;
   }
-  if (!cfg.microsoftClientId && !cfg.clientId) return;
+  const offered = providers(cfg);
+  if (!offered.microsoft && !offered.google) return;
+  const which = offered.microsoft
+    ? offered.google
+      ? tr("Microsoft or Google", "Microsoft o Google")
+      : "Microsoft"
+    : "Google";
   portal.insertAdjacentHTML(
     "beforeend",
     `<div class="sso-choices"><h2>${tr("Or sign in with", "O entra con")}</h2>${ssoRow({
       microsoft:
-        cfg.microsoftClientId &&
-        tr("Sign in with Microsoft", "Iniciar sesión con Microsoft"),
-      google: !!cfg.clientId,
+        offered.microsoft && tr("Sign in with Microsoft", "Entrar con Microsoft"),
+      google: offered.google,
       note: tr(
-        "Use the Microsoft or Google account with the email where you received your invitation. No code or password needed.",
-        "Usa la cuenta de Microsoft o Google con el correo donde recibiste tu invitación. No necesitas código ni contraseña.",
+        `Use the ${which} account with the email where you received your invitation. No code or password needed.`,
+        `Usa la cuenta de ${which} con el correo donde recibiste tu invitación. No necesitas código ni contraseña.`,
       ),
     })}<p class="error" role="alert" id="sso-error"></p></div>`,
   );
@@ -336,7 +373,7 @@ async function accountPage(inv) {
   let { profile } = await api("profile");
   const signedInAs = data.account.email;
   show(
-    `<h2>${esc(data.account.name)}</h2><p class="hint">${tr("Signed in as", "Entraste con")} ${esc(signedInAs)}</p>${rsvpStatus(inv)}<div class="row-actions"><a href="${route("reception")}">${tr("Directions", "Cómo llegar")}</a><button id="guest-logout" class="plain-button">${tr("Sign out", "Cerrar sesión")}</button></div><form id="profile-form"><h3>${tr("Contact details", "Datos de contacto")}</h3>${field(tr("Contact email", "Correo de contacto"), "email", { type: "email", value: profile.contact.email, autocomplete: "email", hint: tr(`We use it to reach you about the celebration. You still sign in with ${signedInAs}.`, `Lo usamos para escribirte sobre la celebración. Sigues entrando con ${signedInAs}.`) })}${field(tr("Phone", "Teléfono"), "phone", { type: "tel", inputmode: "tel", autocomplete: "tel", value: profile.contact.phone, max: 40 })}${field(tr("Mailing address", "Dirección postal"), "address", { value: profile.contact.address || "", max: 500, autocomplete: "street-address" })}<p role="alert" class="error"></p><button type="submit" class="button burgundy">${tr("Save contact details", "Guardar datos")}</button><p class="saved-note" role="status"></p></form><section id="whatsapp-preferences" class="card"></section><div id="family-chat"></div><div class="account-sign-out"><p class="hint">${tr("Signed in on a computer or phone that isn’t yours?", "¿Entraste en una computadora o teléfono que no es tuyo?")}</p><button id="guest-logout-all" class="button outline">${tr("Sign out on all devices", "Cerrar sesión en todos los dispositivos")}</button></div>`,
+    `<h2>${esc(data.account.name)}</h2><p class="hint">${tr("Signed in as", "Entraste con")} ${esc(signedInAs)}</p>${rsvpStatus(inv)}<div class="row-actions"><a href="${route("reception")}">${tr("Directions", "Cómo llegar")}</a><button id="guest-logout" class="plain-button">${tr("Sign out", "Cerrar sesión")}</button></div><form id="profile-form"><h3>${tr("Contact details", "Datos de contacto")}</h3>${field(tr("Contact email", "Correo de contacto"), "email", { type: "email", value: profile.contact.email, autocomplete: "email", hint: tr(`We use it to reach you about the celebration. You still sign in with ${signedInAs}.`, `Lo usamos para escribirte sobre la celebración. Sigues entrando con ${signedInAs}.`) })}${field(tr("Phone", "Teléfono"), "phone", { type: "tel", inputmode: "tel", autocomplete: "tel", value: profile.contact.phone, max: 40 })}${field(tr("Mailing address", "Dirección postal"), "address", { value: profile.contact.address || "", max: 500, autocomplete: "street-address" })}<p role="alert" class="error"></p><button type="submit" class="button burgundy">${tr("Save contact details", "Guardar datos")}</button><p class="saved-note" role="status"></p></form><section id="whatsapp-preferences" class="card" hidden></section><div id="family-chat"></div><div class="account-sign-out"><p class="hint">${tr("Signed in on a computer or phone that isn’t yours?", "¿Entraste en una computadora o teléfono que no es tuyo?")}</p><button id="guest-logout-all" class="button outline">${tr("Sign out on all devices", "Cerrar sesión en todos los dispositivos")}</button></div>`,
   );
   document.querySelector("#guest-logout").onclick = async () => {
     await api("logout", {});
@@ -731,7 +768,10 @@ function review(inv, values, { push = true } = {}) {
     alert.replaceChildren();
     note.textContent = "";
     try {
-      await api("rsvp", answerFrom(inv, values), { headers: { "Idempotency-Key": key } });
+      // The page's language picks the receipt's (an older API ignores it).
+      await api("rsvp", answerFrom(inv, values), {
+        headers: { "Idempotency-Key": key, "X-Page-Language": lang },
+      });
       dropDraft(inv);
       try {
         sessionStorage.setItem("misxv-rsvp-saved", "1");
@@ -789,12 +829,9 @@ function confirmation(inv, session) {
     ? `<p><a class="button outline" href="${route("rsvp")}">${tr("Edit response", "Editar respuesta")}</a></p>`
     : `<p>${tr("The RSVP deadline has passed. To change your answer, please contact us.", "La fecha límite ya pasó. Para cambiar su respuesta, escríbannos.")}</p><p><a href="${route("contact")}">${tr("Contact us", "Escríbannos")}</a></p>`;
   if (!attending.length)
-    return `<div class="notice success"><h2>${tr("Thank you for letting us know.", "Gracias por avisarnos.")}</h2><p>${tr("We’ll miss you, and thank you for your love.", "Los vamos a extrañar; gracias por su cariño.")}</p></div>${saved}<p>${tr("Would you like to leave Sophia a note?", "¿Les gustaría dejarle un mensaje a Sophia?")}</p>${
-      // The guestbook is for signed-in guests; an invitation link only answers the RSVP.
-      session.verified
-        ? ""
-        : `<p class="hint">${tr("Writing in the guestbook needs a quick sign-in with your email. The link we send brings you right back to the guestbook.", "Para escribir en el libro de firmas hay que entrar con su correo. El enlace que les enviamos los lleva directo al libro de firmas.")}</p>`
-    }<p><a class="button burgundy" href="${route("guestbook")}">${tr("Write in the guestbook", "Escribir en el libro de firmas")}</a></p>${edit}`;
+    // The note page takes this household's note straight from the invitation
+    // link (one per link), or from an email sign-in: no second sign-in.
+    return `<div class="notice success"><h2>${tr("Thank you for letting us know.", "Gracias por avisarnos.")}</h2><p>${tr("We’ll miss you, and thank you for your love.", "Los vamos a extrañar; gracias por su cariño.")}</p></div>${saved}<p>${tr("Would you like to leave Sophia a note?", "¿Les gustaría dejarle un mensaje a Sophia?")}</p><p><a class="button burgundy" href="${route("guestbook")}">${esc(term(terms.leaveNote, "ustedes"))}</a></p>${edit}`;
   const calendars = attending
     .map(
       (e) =>
@@ -814,7 +851,8 @@ function confirmation(inv, session) {
   const whatsapp =
     session.scope === "rsvp"
       ? ""
-      : `<details class="card"><summary>${tr("Optional: get event updates on WhatsApp", "Opcional: recibe novedades del evento por WhatsApp")}</summary><section id="whatsapp-preferences"></section></details>`;
+      : // Shown only while WhatsApp is live (site/guest-whatsapp.js removes it otherwise).
+        `<details class="card" hidden><summary>${tr("Optional: WhatsApp updates", "Opcional: avisos por WhatsApp")}</summary><section id="whatsapp-preferences"></section></details>`;
   const account = `<p><a href="${route("account")}">${session.verified ? tr("Open my account", "Abrir mi cuenta") : tr("Sign in with your email for photos and messages", "Entra con tu correo para fotos y mensajes")}</a></p>`;
   return `<div class="notice success"><h2>${tr("We can’t wait to celebrate with you!", "¡Los esperamos con mucha ilusión!")}</h2><p>${tr("Thank you", "Gracias")}, ${esc(inv.name)}.</p></div>${summary(r.attendance, inv)}${saved}<h3>${tr("Add to your calendar", "Agregar al calendario")}</h3><div class="calendar-actions">${calendars}</div><h3>${tr("Getting there", "Cómo llegar")}</h3><div class="row-actions">${places}</div>${edit}${whatsapp}${account}`;
 }
@@ -844,6 +882,11 @@ async function showPortal() {
     // uploads offer the email sign-in alone (UI-11).
     if (["rsvp", "rsvp/confirmed", "account"].includes(view)) accessForm();
     else signedOut(view);
+    return;
+  }
+  // In with the invitation link, the household can still leave Sophia one note.
+  if (session.scope === "rsvp" && view === "guestbook") {
+    await noteForm(session);
     return;
   }
   if (session.scope === "rsvp" && !["rsvp", "rsvp/confirmed"].includes(view)) {
@@ -897,9 +940,13 @@ async function showPortal() {
     mediaUpload(portal, eventContent.albums);
     return;
   }
-  if (["contact", "guestbook"].includes(view)) {
+  if (view === "guestbook") {
+    await noteForm(session);
+    return;
+  }
+  if (view === "contact") {
     show(
-      `<form id="message">${field(tr("Your display name", "Nombre para mostrar"), "name", { required: true, max: 100, autocomplete: "name" })}${view === "contact" ? `${field(tr("Email", "Correo electrónico"), "email", { type: "email", required: true, value: inv.contact.email, autocomplete: "email" })}<label>${tr("Topic", "Tema")}<select name="topic">${contactTopics.map((t, i) => `<option value="${esc(t)}">${esc(es ? contactTopicsEs[i] : contactTopicsEn[i])}</option>`).join("")}</select></label>` : ""}<label>${tr("Message", "Mensaje")}<textarea name="text" maxlength="2000" required></textarea></label>${view === "guestbook" ? `<label class="check"><input type="checkbox" name="consent" required>${tr("We may publish this name and message after we read them.", "Podemos publicar este nombre y este mensaje después de leerlos.")}</label>` : ""}<p class="error" role="alert"></p><button class="button burgundy" type="submit">${tr("Send message", "Enviar mensaje")}</button></form>`,
+      `<form id="message">${field(tr("Your name", "Tu nombre"), "name", { required: true, max: 100, autocomplete: "name" })}${field(tr("Email", "Correo electrónico"), "email", { type: "email", required: true, value: inv.contact.email, autocomplete: "email" })}<label>${tr("Topic", "Tema")}<select name="topic">${contactTopics.map((t, i) => `<option value="${esc(t)}">${esc(es ? contactTopicsEs[i] : contactTopicsEn[i])}</option>`).join("")}</select></label><label>${tr("Your message", "Tu mensaje")}<textarea name="text" maxlength="2000" required></textarea></label><p class="error" role="alert"></p><button class="button burgundy" type="submit">${tr("Send message", "Enviar mensaje")}</button></form>`,
     );
     submit(document.querySelector("#message"), async (data) => {
       await api("messages", {
@@ -908,13 +955,50 @@ async function showPortal() {
         topic: data.get("topic"),
         name: data.get("name"),
         text: data.get("text"),
-        consent: data.has("consent"),
       });
       show(
-        `<p class="notice success" role="status">${view === "guestbook" ? tr("Thank you! Your note will appear here once we’ve read it.", "¡Gracias! Tu mensaje aparecerá aquí cuando lo hayamos leído.") : tr("Thank you. We got your message and will reply soon.", "Gracias. Recibimos tu mensaje y te responderemos pronto.")}</p>`,
+        `<p class="notice success" role="status">${tr("Thank you. We got your message and will reply soon.", "Gracias. Recibimos tu mensaje y te responderemos pronto.")}</p>`,
       );
     });
   }
+}
+// Who can read approved notes: the family's switch from /api/site (read by
+// experience.js), "guests" until it answers (site/notes.mjs).
+const noteVisibility = () => visibilityOf(liveContent ? eventContent : null);
+// "Leave Sophia a note": from an email sign-in, or once per invitation link
+// from the link itself (POST /api/guestbook-note), so a household that just
+// answered by its link needs no second sign-in. The box is a real choice,
+// unticked by default, worded for who would see the note.
+async function noteForm(session) {
+  const viaLink = session.scope === "rsvp";
+  let name = "";
+  if (viaLink)
+    try {
+      name = (await api("invitation")).name || "";
+    } catch {
+      /* the name stays for the guest to type */
+    }
+  const visibility = noteVisibility();
+  show(
+    `<h2>${esc(term(terms.leaveNote))}</h2>${viaLink ? `<p class="hint">${tr("You’re here with your invitation link, so you can send one note from it without signing in. To write more, sign in with your email.", "Entraste con tu enlace de invitación, así que puedes enviar un mensaje desde él sin entrar con tu correo. Para escribir más, entra con tu correo.")}</p>` : ""}<form id="message">${field(tr("Your name, as you’d like it to appear", "Tu nombre, como quieres que aparezca"), "name", { required: true, max: 100, autocomplete: "name", value: name })}<label>${tr("Your note", "Tu mensaje")}<textarea name="text" maxlength="2000" required></textarea></label><label class="check"><input type="checkbox" name="consent" aria-describedby="note-consent-hint">${esc(noteSentence("consent", visibility, lang))}</label><p class="hint" id="note-consent-hint">${esc(noteWords.consentHint[lang])}</p><p class="error" role="alert"></p><button class="button burgundy" type="submit">${esc(term(terms.sendNote))}</button></form>`,
+  );
+  submit(document.querySelector("#message"), async (data) => {
+    const note = {
+      name: data.get("name"),
+      text: data.get("text"),
+      consent: data.has("consent"),
+      // The wording the writer saw; the server never shows the note wider.
+      audience: visibility,
+    };
+    await (viaLink ? api("guestbook-note", note) : api("messages", { kind: "guestbook", ...note }));
+    show(
+      `<p class="notice success" role="status">${
+        note.consent
+          ? tr("Thank you! Your note will appear here once we’ve read it.", "¡Gracias! Tu mensaje aparecerá aquí cuando lo hayamos leído.")
+          : tr("Thank you! Sophia will read your note; it won’t appear on this page.", "¡Gracias! Sophia leerá tu mensaje; no aparecerá en esta página.")
+      }</p>`,
+    );
+  });
 }
 // Back from the confirmation can bring this page back as it was left (the
 // back/forward cache), mid-save; draw it again from the server instead.
@@ -923,36 +1007,54 @@ addEventListener("pageshow", (e) => {
     showPortal().catch((err) => show(statusError(err.message)));
 });
 async function publicContent() {
-  const nodes = document.querySelectorAll(
-    "[data-guestbook],[data-announcements]",
-  );
+  const nodes = document.querySelectorAll("[data-announcements]");
   if (!nodes.length) return;
   try {
     const data = await api("public");
-    for (const box of nodes) {
-      if (box.hasAttribute("data-guestbook"))
-        box.innerHTML = data.messages
-          .map(
-            (m) =>
-              `<article class="card"><blockquote>${esc(m.text)}</blockquote><p>— ${esc(m.name)}</p></article>`,
-          )
-          .join("");
-      if (box.hasAttribute("data-announcements"))
-        box.innerHTML = data.announcements
-          .map(
-            (a) =>
-              `<article class="notice"><h3>${esc(es && a.titleEs ? a.titleEs : a.title)}</h3><p>${esc(es && a.textEs ? a.textEs : a.text)}</p></article>`,
-          )
-          .join("");
-    }
-  } catch {
     for (const box of nodes)
-      box.innerHTML = box.hasAttribute("data-announcements")
-        ? ""
-        : `<p class="hint">${tr("This collection is not available yet.", "Esta colección aún no está disponible.")}</p>`;
+      box.innerHTML = data.announcements
+        .map(
+          (a) =>
+            `<article class="notice"><h3>${esc(es && a.titleEs ? a.titleEs : a.title)}</h3><p>${esc(es && a.textEs ? a.textEs : a.text)}</p></article>`,
+        )
+        .join("");
+  } catch {
+    for (const box of nodes) box.innerHTML = "";
+  }
+}
+// Every sentence that says who can read the notes (the note page, Privacy)
+// follows the family's switch; the built text is the default ("guests").
+function noteAudience() {
+  const visibility = noteVisibility();
+  for (const el of document.querySelectorAll("[data-note-audience]"))
+    el.textContent = noteSentence(el.dataset.noteAudience, visibility, lang);
+}
+// The notes on "A note for Sophia", above the way to leave one: from
+// /api/public while the family has made them public, otherwise only for a
+// verified sign-in (or an administrator) from /api/guestbook.
+async function notesForSophia() {
+  const box = document.querySelector("[data-notes]");
+  if (!box) return;
+  try {
+    let notes = [];
+    if (noteVisibility() === "public") notes = (await api("public")).messages;
+    else {
+      const session = await api("session");
+      if (session.kind === "admin" || session.verified) notes = (await api("guestbook")).messages;
+    }
+    box.innerHTML = notes
+      .map(
+        (m) =>
+          `<article class="card"><blockquote>${esc(m.text)}</blockquote><p>— ${esc(m.name)}</p></article>`,
+      )
+      .join("");
+  } catch {
+    box.innerHTML = `<p class="hint">${tr("Notes for Sophia aren’t available right now.", "Los mensajes para Sophia no están disponibles por ahora.")}</p>`;
   }
 }
 await experienceReady;
+noteAudience();
+whatsappProgramPage();
 reloadOnNewLink();
 let fragment = linkFragment();
 const microsoft =
@@ -1014,6 +1116,7 @@ if (microsoft) {
   }
 }
 await publicContent();
+await notesForSophia();
 
 
 // The guests' gallery shows one clear state: a sign-in panel (photos and

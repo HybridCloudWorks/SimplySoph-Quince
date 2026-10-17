@@ -126,8 +126,9 @@ test("an unknown key id refetches keys at most once every five minutes", async (
 });
 
 // ---- Routes: admin and guest stay separate ----------------------------------
-async function fixture() {
-  const ledger = new Ledger(memoryAdapter());
+async function fixture(options = {}) {
+  const ledger = new Ledger(memoryAdapter()),
+    sent = [];
   let clock = at;
   const row = {
     id: household,
@@ -154,7 +155,7 @@ async function fixture() {
       projectContact: async () => {},
       projectAccount: async () => {},
     },
-    mailer: { configured: true, send: async () => {} },
+    mailer: { configured: true, send: async (m) => void sent.push(m) },
     verifyGoogle: async () => ({ id: "g", email: "owner@outlook.com" }),
     verifyMicrosoft,
     verifyGoogleIdentity: async (credential, nonce) => {
@@ -168,6 +169,7 @@ async function fixture() {
     origin,
     adminEmails: ["owner@outlook.com"],
     now: () => clock,
+    ...options,
   });
   await ledger.transaction((s) => {
     s.invitations[household] = { id: household, name: row.name, active: true, generation: 1, invited: { ceremony: true, dinner: true, dance: true } };
@@ -190,13 +192,54 @@ async function fixture() {
   const session = (cookie) => app.dispatch({ path: "/api/session", method: "GET", headers: { origin, cookie }, ip: "x" });
   const start = (purpose) => post("auth/sso/start", { purpose });
   const ms = (t, email, extra = {}) => JSON.stringify({ nonce: t.nonce, email, sub: "s-" + email, ...extra });
-  return { app, ledger, row, post, session, start, ms, advance: (ms) => (clock += ms), now: () => clock };
+  return { app, ledger, row, post, session, start, ms, sent, advance: (ms) => (clock += ms), now: () => clock };
 }
 const cookieOf = (r) => r.setCookie.split(";")[0];
 
 test("config advertises the Microsoft client id", async () => {
   const f = await fixture();
   assert.equal((await f.app.dispatch({ path: "/api/config", method: "GET", headers: {} })).microsoftClientId, CLIENT);
+});
+
+// GUEST_MICROSOFT_SIGN_IN (an owner decision; on by default).
+test("guests may sign in with Microsoft while GUEST_MICROSOFT_SIGN_IN is on, the default", async () => {
+  const f = await fixture();
+  assert.equal((await f.app.dispatch({ path: "/api/config", method: "GET", headers: {} })).guestMicrosoft, true);
+  const t = await f.start("guest");
+  const r = await f.post("auth/sso/guest", { provider: "microsoft", ticket: t.ticket, credential: f.ms(t, "guest@outlook.com") });
+  assert.equal((await f.session(cookieOf(r))).verified, true);
+});
+test("with GUEST_MICROSOFT_SIGN_IN off, guest Microsoft sign-in is refused, the same guest signs in by email, and administrators still use Microsoft", async () => {
+  const f = await fixture({ guestMicrosoft: false });
+  const config = await f.app.dispatch({ path: "/api/config", method: "GET", headers: {} });
+  assert.equal(config.guestMicrosoft, false);
+  assert.equal(config.microsoftClientId, CLIENT, "the admin sign-in page still needs it");
+  // A guest who signed in with Microsoft before the switch went off…
+  await f.ledger.transaction((s) => {
+    s.ssoBindings = { [hash("microsoft:guest@outlook.com")]: hash("s-guest@outlook.com") };
+  });
+  const t = await f.start("guest");
+  await assert.rejects(
+    f.post("auth/sso/guest", { provider: "microsoft", ticket: t.ticket, credential: f.ms(t, "guest@outlook.com") }),
+    (e) => e.code === "SSO_NOT_CONFIGURED" && e.status === 404,
+  );
+  // …refused before the token was read: the ticket's nonce is unspent and no
+  // sign-in failure was counted.
+  assert.deepEqual((await f.ledger.read()).ssoNonces ?? {}, {});
+  // The emailed link to the same address still works.
+  await f.post("auth/email/request", { email: "guest@outlook.com", return: "account" });
+  const link = f.sent.at(-1).html.match(/account\/#([A-Za-z0-9_-]{43})/)[1];
+  const signedIn = await f.post("auth/email/verify", { token: link });
+  assert.equal((await f.session(cookieOf(signedIn))).verified, true);
+  // Google stays available to guests.
+  const g = await f.start("guest");
+  const google = await f.post("auth/sso/guest", { provider: "google", ticket: g.ticket, credential: f.ms(g, "guest@outlook.com") });
+  assert.equal((await f.session(cookieOf(google))).kind, "guest");
+  // Administrators' Microsoft sign-in is unchanged.
+  await enroll(f);
+  const a = await f.start("admin");
+  const admin = await f.post("auth/microsoft", { ticket: a.ticket, credential: f.ms(a, "owner@outlook.com", { mfa: true }) });
+  assert.ok(admin.challenge, "the admin goes on to the authenticator code");
 });
 
 // The owner set up an authenticator earlier through the emailed link (a first

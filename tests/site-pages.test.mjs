@@ -100,8 +100,8 @@ test("every hook the live event settings fill is on a built page", async () => {
 
 test("the header is a flat list: sections, sign in, language pill, RSVP and a menu button", async () => {
   for (const [lang, file, names, signIn] of [
-    ["en", "index.html", ["Schedule", "Travel", "Photos", "Gifts", "Questions", "Contact"], "Sign in"],
-    ["es", "es/index.html", ["Programa", "Viaje", "Fotos", "Mesa de regalos", "Preguntas", "Contacto"], "Iniciar sesión"],
+    ["en", "index.html", ["Schedule", "Travel", "Photos &amp; notes", "Gifts", "Questions", "Contact"], "Sign in"],
+    ["es", "es/index.html", ["Programa", "Viaje", "Fotos y mensajes", "Mesa de regalos", "Preguntas", "Contacto"], "Iniciar sesión"],
   ]) {
     const nav = header(await page(file));
     assert.doesNotMatch(nav, /<details|<summary/);

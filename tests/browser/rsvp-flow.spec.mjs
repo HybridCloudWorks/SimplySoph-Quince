@@ -43,7 +43,9 @@ test("“Everyone’s coming” fills each invited event with the whole invitati
   });
 });
 
-test("“We can’t make it” saves a decline; the note thanks the family and explains the guestbook sign-in", async ({
+// Before: the decline sent a household in by its invitation link to sign in by
+// email before it could leave a note (13 steps, a trip to the mail app).
+test("“We can’t make it” saves a decline; the note thanks the family, and the household leaves Sophia a note without signing in again", async ({
   page,
   harness,
 }) => {
@@ -65,19 +67,34 @@ test("“We can’t make it” saves a decline; the note thanks the family and e
     page.getByText("We’ll miss you, and thank you for your love."),
   ).toBeVisible();
   await expect(page.getByText(/in our hearts/)).toHaveCount(0);
-  await expect(
-    page.getByText(
-      "Writing in the guestbook needs a quick sign-in with your email. The link we send brings you right back to the guestbook.",
-    ),
-  ).toBeVisible();
+  await expect(page.getByText(/guestbook/i)).toHaveCount(0);
   await expect(
     page.getByRole("link", { name: "Edit response" }),
   ).toHaveClass(/\boutline\b/);
-  await page.getByRole("link", { name: "Write in the guestbook" }).click();
+  const sentBefore = harness.sent.length;
+  await page.getByRole("link", { name: "Leave Sophia a note" }).click();
   await expect(page).toHaveURL(harness.url("/guestbook/"));
-  await expect(
-    page.getByRole("heading", { name: "Sign in with your email" }),
-  ).toBeVisible();
+  // The same page offers the note from the link: no email sign-in.
+  await expect(page.getByRole("heading", { name: "Sign in with your email" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Leave Sophia a note" })).toBeVisible();
+  await expect(page.getByLabel("Your name, as you’d like it to appear")).toHaveValue("Rivera Family");
+  await page.getByLabel("Your note").fill("We’ll be thinking of you, Sophia!");
+  await page.getByRole("button", { name: "Send my note" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Thank you!" })).toHaveText(
+    "Thank you! Sophia will read your note; it won’t appear on this page.",
+  );
+  const [note] = Object.values((await harness.ledger.read()).messages);
+  expect(note).toMatchObject({
+    kind: "guestbook",
+    via: "link",
+    householdId: household.id,
+    name: "Rivera Family",
+    text: "We’ll be thinking of you, Sophia!",
+    display: "family",
+    state: "pending",
+  });
+  // No email went to the guest for it.
+  expect(harness.sent.slice(sentBefore).some((m) => m.to === household.email)).toBe(false);
   const [saved] = await responsesOf(harness, household);
   expect(Object.values(saved.attendance).every((v) => !v.adultsTeens && !v.kids)).toBe(true);
 });

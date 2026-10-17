@@ -1,10 +1,20 @@
 import { celebration } from "../site/celebration.mjs";
 import { registryDefaults } from "./registry-settings.mjs";
 import { error } from "./auth.mjs";
-export const siteSettings = (state) =>
-  structuredClone(
+import { visibilityOf } from "../site/notes.mjs";
+// The saved settings, or the defaults until the family first saves them.
+// site.guestbook.visibility (who can read approved notes for Sophia,
+// site/notes.mjs) is kept apart in the ledger, s.guestbook, and changed only on
+// Admin → Messages: switching it never saves the other defaults in place of
+// the code's, and a Website & event save never overwrites it. Until it is set,
+// notes are for signed-in guests.
+export const siteSettings = (state) => {
+  const site = structuredClone(
     state.site || { ...celebration, registries: registryDefaults },
   );
+  site.guestbook = { visibility: visibilityOf(state) };
+  return site;
+};
 export function validateSettings(input) {
   const bad = () => {
     throw error(422, "INVALID_SITE_SETTINGS");
@@ -104,5 +114,6 @@ export function validateSettings(input) {
   });
   if (new Set(next.registries.map((r) => r.id)).size !== next.registries.length)
     bad();
+  // `guestbook` is not taken from here (see siteSettings).
   return next;
 }

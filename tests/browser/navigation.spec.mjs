@@ -32,7 +32,7 @@ test.describe("on a phone", () => {
     await expect(links.getByRole("link")).toHaveText([
       "Schedule",
       "Travel",
-      "Photos",
+      "Photos & notes",
       "Gifts",
       "Questions",
       "Contact",
@@ -92,7 +92,7 @@ test.describe("on a phone", () => {
     await page.getByRole("button", { name: "Menú" }).click();
     await expect(
       page.getByRole("navigation", { name: "Navegación principal" }).getByRole("link"),
-    ).toHaveText(["Programa", "Viaje", "Fotos", "Mesa de regalos", "Preguntas", "Contacto", "Iniciar sesión"]);
+    ).toHaveText(["Programa", "Viaje", "Fotos y mensajes", "Mesa de regalos", "Preguntas", "Contacto", "Iniciar sesión"]);
   });
 
   test("the RSVP button is on the first screen of the home page", async ({

@@ -181,7 +181,15 @@ async function convertedVideo(input, directory) {
   return { video, poster, duration: 8 };
 }
 
-export async function startHarness({ now = BEFORE_DEADLINE } = {}) {
+// Options: `whatsapp: true` reports WhatsApp as live (a transport that never
+// sends: nothing can reach a guest), `sms: true` the same for SMS, and
+// `guestMicrosoft: false` stands for GUEST_MICROSOFT_SIGN_IN=false.
+export async function startHarness({
+  now = BEFORE_DEADLINE,
+  whatsapp = false,
+  sms = false,
+  guestMicrosoft = true,
+} = {}) {
   try {
     await stat(path.join(dist, "rsvp", "index.html"));
   } catch {
@@ -235,6 +243,30 @@ export async function startHarness({ now = BEFORE_DEADLINE } = {}) {
     verifyGoogle,
     // Shows the Microsoft button; its sign-in is not exercised.
     microsoftClientId: "00000000-0000-4000-8000-00000000c1d0",
+    guestMicrosoft,
+    // Switched-on channels whose sending always refuses.
+    ...(whatsapp
+      ? {
+          whatsappTransport: {
+            enabled: true,
+            configured: true,
+            async send() {
+              throw error(503, "WHATSAPP_NOT_ENABLED");
+            },
+          },
+        }
+      : {}),
+    ...(sms
+      ? {
+          smsTransport: {
+            enabled: true,
+            configured: true,
+            async send() {
+              throw error(503, "SMS_NOT_ENABLED");
+            },
+          },
+        }
+      : {}),
     clientId: "harness-client.apps.googleusercontent.com",
     // Photos really go through sharp; video conversion (ffmpeg, which CI does
     // not install) is stood in for by convertedVideo below.
@@ -308,6 +340,34 @@ export async function startHarness({ now = BEFORE_DEADLINE } = {}) {
           "x-csrf-token": ownerCsrf,
         },
         body: { id, collection: "photos", state },
+        ip: "harness",
+      });
+    },
+    // A signed-in owner for the browser: the cookie to add to the context.
+    async adminCookie() {
+      const value = token();
+      await ledger.transaction((s) => {
+        s.sessions[hash(value)] = {
+          kind: "admin",
+          actor: "owner:" + OWNER_EMAIL,
+          email: OWNER_EMAIL,
+          csrf: token(),
+          expiresAt: clock + 3_600_000,
+        };
+      });
+      return { name: "__session", value, url: origin + "/api/" };
+    },
+    // Any administrator action, as the admin pages send it (POST /api/admin/<path>).
+    async admin(path, body) {
+      return app.dispatch({
+        path: "/api/admin/" + path,
+        method: "POST",
+        headers: {
+          origin: siteOrigin,
+          cookie: "__session=" + ownerToken,
+          "x-csrf-token": ownerCsrf,
+        },
+        body,
         ip: "harness",
       });
     },

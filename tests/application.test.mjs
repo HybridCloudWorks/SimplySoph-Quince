@@ -398,13 +398,16 @@ test("TOTP follows RFC 6238 SHA1 vector at 59 seconds (six digit suffix)", () =>
   const secret = base32(Buffer.from("12345678901234567890"));
   assert.equal(totp(secret, 1), "287082");
 });
-test("guestbook stays private pending moderation; contact messages cannot be published", async () => {
+// Before: approved notes went to anyone through /api/public, while the note
+// form and Privacy never said who could read them (R-039/R-040).
+test("a note stays private pending review, then goes to signed-in guests and not the public API; contact messages cannot be published", async () => {
   const f = await fixture();
   const message = await f.guest("messages", {
     kind: "guestbook",
     name: "Test",
     text: "Best wishes",
     consent: true,
+    audience: "guests",
   });
   const pub = () => f.app.dispatch({ path: "/api/public", method: "GET" });
   assert.equal((await pub()).messages.length, 0);
@@ -413,7 +416,19 @@ test("guestbook stays private pending moderation; contact messages cannot be pub
     id: message.id,
     state: "approved",
   });
-  assert.equal((await pub()).messages.length, 1);
+  // Approved, it is still not for anyone with the address…
+  assert.deepEqual((await pub()).messages, []);
+  // …because the family's switch stays "guests" until they decide otherwise.
+  assert.equal((await f.admin("moderation")).guestbookVisibility, "guests");
+  assert.deepEqual((await f.guest("guestbook")).messages, [
+    { id: message.id, name: "Test", text: "Best wishes" },
+  ]);
+  // Signed out, or in with only the invitation link: no notes.
+  await assert.rejects(
+    () => f.app.dispatch({ path: "/api/guestbook", method: "GET", headers: {} }),
+    (e) => e.code === "SIGN_IN_REQUIRED",
+  );
+  await assert.rejects(() => f.linkGuest("guestbook"), (e) => e.code === "SIGN_IN_REQUIRED");
   const contact = await f.guest("messages", {
     kind: "contact",
     name: "Test",
@@ -428,6 +443,252 @@ test("guestbook stays private pending moderation; contact messages cannot be pub
       }),
     (e) => e.status === 422,
   );
+});
+// Who reads a note is the narrower of the family's switch and what its writer
+// agreed to (site/notes.mjs); the API enforces it.
+async function notesFixture() {
+  const f = await fixture();
+  const note = async (consent, audience, text = audience + " note") => {
+    const { id } = await f.guest("messages", { kind: "guestbook", name: "Writer", text, consent, audience });
+    return id;
+  };
+  const approve = (id) => f.admin("moderation", { collection: "messages", id, state: "approved" });
+  const shown = async () => ({
+    public: (await f.app.dispatch({ path: "/api/public", method: "GET" })).messages.map((m) => m.text),
+    guests: (await f.guest("guestbook")).messages.map((m) => m.text),
+  });
+  const setVisibility = (visibility) => f.admin("guestbook-visibility", { visibility });
+  return { ...f, note, approve, shown, setVisibility };
+}
+test("with the switch public, /api/public shows only notes their writers let anyone read; a guests-only note never becomes public, and switching back hides all at once", async () => {
+  const f = await notesFixture();
+  const guests = await f.note(true, "guests"),
+    everyone = await f.note(true, "public");
+  await f.approve(guests);
+  await f.approve(everyone);
+  assert.deepEqual(await f.shown(), { public: [], guests: ["guests note", "public note"] });
+  assert.deepEqual(await f.setVisibility("public"), { visibility: "public" });
+  assert.equal((await f.app.dispatch({ path: "/api/site", method: "GET" })).site.guestbook.visibility, "public");
+  assert.deepEqual(await f.shown(), { public: ["public note"], guests: ["guests note", "public note"] });
+  // Written while the switch says public, with the box ticked: public.
+  await f.approve(await f.note(true, "public", "later note"));
+  assert.deepEqual((await f.shown()).public, ["public note", "later note"]);
+  await f.setVisibility("guests");
+  assert.deepEqual((await f.shown()).public, []);
+  await assert.rejects(() => f.setVisibility("everyone"), (e) => e.code === "INVALID_FIELDS");
+  // Each note keeps what its writer agreed to.
+  const s = await f.ledger.read();
+  assert.equal(s.messages[guests].display, "guests");
+  assert.equal(s.messages[everyone].display, "public");
+  // The Website & event editor saves its whole settings object, possibly
+  // read before the switch changed: only Admin → Messages changes it. Turning
+  // the switch on does not save the other settings in place of the code's.
+  const { site } = await f.admin("site");
+  await f.setVisibility("public");
+  assert.equal((await f.ledger.read()).site, undefined, "the event defaults are not frozen");
+  await f.admin("site", site); // carries the old "guests"
+  await f.admin("site", { ...(await f.admin("site")).site, guestbook: { visibility: "anyone" } });
+  assert.equal((await f.admin("site")).site.guestbook.visibility, "public");
+  assert.equal((await f.app.dispatch({ path: "/api/site", method: "GET" })).site.guestbook.visibility, "public");
+});
+test("a note sent with the box unchecked reaches the family only: it cannot be approved for display and is never shown", async () => {
+  const f = await notesFixture();
+  const id = await f.note(false, "guests", "for the family");
+  assert.equal((await f.ledger.read()).messages[id].display, "family");
+  await assert.rejects(() => f.approve(id), (e) => e.code === "NOTE_IS_PRIVATE");
+  // Even if it were marked approved, no reader gets it, whatever the switch.
+  await f.ledger.transaction((s) => {
+    s.messages[id].state = "approved";
+  });
+  for (const visibility of ["guests", "public"]) {
+    await f.setVisibility(visibility);
+    assert.deepEqual(await f.shown(), { public: [], guests: [] });
+  }
+  // The family still reads it in the review queue.
+  assert.ok((await f.admin("moderation")).messages.some((m) => m.id === id && m.text === "for the family"));
+});
+test("a note kept from before the choice (no stored consent) counts as consented to publication, and shows to the narrower of that and the switch", async () => {
+  const f = await notesFixture();
+  // Written under the old required box "We may publish this name and message after we read them."
+  await f.ledger.transaction((s) => {
+    s.messages["legacy-note"] = {
+      id: "legacy-note",
+      email: "",
+      topic: "",
+      householdId: household,
+      accountId: null,
+      name: "Abuela",
+      text: "legacy note",
+      kind: "guestbook",
+      state: "approved",
+      at: at - 1000,
+    };
+  });
+  assert.deepEqual(await f.shown(), { public: [], guests: ["legacy note"] });
+  await f.setVisibility("public");
+  assert.deepEqual(await f.shown(), { public: ["legacy note"], guests: ["legacy note"] });
+  // A page from before the choice sends no audience: the same statement, the same rule.
+  const { id } = await f.guest("messages", { kind: "guestbook", name: "Old page", text: "old page", consent: true });
+  assert.equal((await f.ledger.read()).messages[id].display, "public");
+});
+// Before: the household budget (5 an hour) was charged before the request was
+// checked, so refused posts used it up and the real note was then refused.
+test("a refused note or message does not use the household's message budget", async () => {
+  const f = await fixture();
+  for (let i = 0; i < 5; i++)
+    await assert.rejects(
+      () => f.guest("messages", { kind: "guestbook", name: "Writer", text: "", consent: true }),
+      (e) => e.code === "MESSAGE_REQUIRED",
+    );
+  await assert.rejects(
+    () => f.guest("messages", { kind: "contact", name: "Writer", text: "Hi", topic: "Not a topic" }),
+    (e) => e.code === "INVALID_TOPIC",
+  );
+  await assert.rejects(
+    () => f.guest("messages", { kind: "guestbook", name: "Writer", text: "Hi", consent: true, audience: "everyone" }),
+    (e) => e.code === "INVALID_FIELDS",
+  );
+  for (let i = 0; i < 5; i++)
+    await f.guest("messages", { kind: "guestbook", name: "Writer", text: "Note " + i, consent: true, audience: "guests" });
+  await assert.rejects(
+    () => f.guest("messages", { kind: "guestbook", name: "Writer", text: "One too many", consent: true }),
+    (e) => e.code === "TOO_MANY_REQUESTS",
+  );
+});
+test("an invitation-link session leaves one note per household per link, reads nothing new, and the review says where it came from", async () => {
+  const f = await fixture();
+  // A refused note costs nothing.
+  await assert.rejects(
+    () => f.linkGuest("guestbook-note", { name: "Rivera Family", text: " ", consent: true, audience: "guests" }),
+    (e) => e.code === "MESSAGE_REQUIRED",
+  );
+  const sent = await f.linkGuest("guestbook-note", {
+    name: "Test family",
+    text: "We will miss you, Sophia.",
+    consent: true,
+    audience: "guests",
+  });
+  assert.equal(sent.state, "pending");
+  const stored = (await f.ledger.read()).messages[sent.id];
+  assert.equal(stored.via, "link");
+  assert.equal(stored.generation, 1);
+  assert.equal(stored.accountId, null);
+  assert.equal(stored.display, "guests");
+  assert.equal(stored.email, "");
+  // The family is told, as for any note (no email to the guest).
+  assert.ok((await f.admin("notifications")).notifications.some((n) => n.id === sent.id && n.kind === "guestbook"));
+  assert.ok(f.sent.every((m) => m.to !== "test@example.com"));
+  // A second note from the same link is refused politely.
+  await assert.rejects(
+    () => f.linkGuest("guestbook-note", { name: "Test family", text: "One more", consent: false }),
+    (e) => e.code === "LINK_NOTE_ALREADY_SENT" && e.status === 409,
+  );
+  // The link still opens only the RSVP: no notes, messages, gallery, profile or WhatsApp.
+  for (const [path, body] of [
+    ["guestbook", undefined],
+    ["messages", undefined],
+    ["messages", { kind: "guestbook", name: "A", text: "Hi", consent: true }],
+    ["gallery", undefined],
+    ["profile", undefined],
+    ["whatsapp/consent", undefined],
+    ["account", undefined],
+  ])
+    await assert.rejects(() => f.linkGuest(path, body), (e) => e.code === "SIGN_IN_REQUIRED", path);
+  // The review queue shows it came from the invitation link, pending until approved.
+  const listed = (await f.admin("moderation")).messages.find((m) => m.id === sent.id);
+  assert.equal(listed.via, "link");
+  assert.equal(listed.state, "pending");
+  // A signed-in guest writes through /api/messages instead.
+  await assert.rejects(
+    () => f.guest("guestbook-note", { name: "A", text: "Hi", consent: true }),
+    (e) => e.code === "LINK_SESSION_REQUIRED",
+  );
+  // A new link for the household (generation 2) allows one more note; the old link is over.
+  const { link } = await f.admin("invitation", {
+    id: household,
+    locale: "en",
+    invited: { ceremony: true, dinner: true, dance: false },
+  });
+  await assert.rejects(
+    () => f.linkGuest("guestbook-note", { name: "Test family", text: "Again", consent: true }),
+    (e) => e.code === "SIGN_IN_REQUIRED",
+  );
+  const fresh = await f.app.dispatch({
+    path: "/api/invitation-session",
+    method: "POST",
+    body: { token: link.split("#")[1] },
+    headers: { origin },
+    ip: "guest",
+  });
+  const second = await f.app.dispatch({
+    path: "/api/guestbook-note",
+    method: "POST",
+    body: { name: "Test family", text: "From the new link", consent: false },
+    headers: { origin, cookie: fresh.setCookie.split(";")[0], "x-csrf-token": fresh.csrf },
+    ip: "guest",
+  });
+  assert.equal((await f.ledger.read()).messages[second.id].display, "family");
+});
+test("the link-session note route needs the link session's CSRF token and the site's origin", async () => {
+  const f = await fixture();
+  const body = { name: "Test family", text: "Hello", consent: true, audience: "guests" };
+  await assert.rejects(
+    () => f.linkGuest("guestbook-note", body, { "x-csrf-token": "wrong" }),
+    (e) => e.code === "CSRF_REJECTED",
+  );
+  await assert.rejects(
+    () => f.linkGuest("guestbook-note", body, { origin: "https://elsewhere.example" }),
+    (e) => e.code === "ORIGIN_REJECTED",
+  );
+  // Neither refusal used up the household's one note.
+  assert.equal((await f.linkGuest("guestbook-note", body)).state, "pending");
+});
+test("/api/config reports WhatsApp and SMS as live only from the server's own switches", async () => {
+  const config = async (options) =>
+    (await (await fixture(options)).app.dispatch({ path: "/api/config", method: "GET", headers: {} })).channels;
+  assert.deepEqual(await config({}), {
+    whatsapp: false,
+    sms: false,
+    smsKeyword: "SOPHIA",
+    smsNumber: "+1 682-786-8002",
+  });
+  const on = await config({
+    smsTransport: { enabled: true, configured: true },
+    whatsappTransport: { enabled: true, configured: true },
+  });
+  assert.equal(on.whatsapp, true);
+  assert.equal(on.sms, true);
+  // Configured but not switched on is not live.
+  assert.equal((await config({ whatsappTransport: { enabled: false, configured: true } })).whatsapp, false);
+});
+// Before: receipts used the invitation's language even when the household
+// answered from the other language's page (R-045).
+test("the receipt follows the language of the page the RSVP was saved from, kept on the response only", async () => {
+  const f = await fixture();
+  await f.ledger.transaction((s) => {
+    s.invitations[household].locale = "en";
+  });
+  const saved = await f.linkGuest("rsvp", f.input(), {
+    "idempotency-key": "61616161-6161-4161-8161-616161616161",
+    "x-page-language": "es",
+  });
+  assert.equal(f.sent.at(-1).subject, "Recibimos su respuesta · Los XV de Sophia");
+  const s = await f.ledger.read();
+  assert.equal(s.responses[saved.id].locale, "es");
+  assert.equal(s.invitations[household].locale, "en", "the invitation's language is unchanged");
+  // No header, or one that is not a language we write: the invitation's language.
+  for (const [key, header] of [
+    ["62626262-6262-4262-8262-626262626262", {}],
+    ["63636363-6363-4363-8363-636363636363", { "x-page-language": "fr" }],
+  ]) {
+    const again = await f.linkGuest(
+      "rsvp",
+      { ...f.input(), previousSubmissionId: (await f.ledger.read()).invitations[household].latestSubmissionId },
+      { "idempotency-key": key, ...header },
+    );
+    assert.equal(f.sent.at(-1).subject, "Your RSVP was updated · Sophia’s quinceañera");
+    assert.equal((await f.ledger.read()).responses[again.id].locale, undefined);
+  }
 });
 test("seating rejects over-capacity and duplicate placement; email never sends twice", async () => {
   const f = await fixture();
