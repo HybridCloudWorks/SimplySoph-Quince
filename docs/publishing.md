@@ -16,6 +16,42 @@ The REST publisher preserves only the reviewed `/api/**` rewrite to `misxv-api` 
 
 PR #2 is merged into main and its feature branch is retired. Production publishing trusts only main.
 
+## Link previews follow the celebration's phase
+
+The pages themselves follow the date in the browser, on the server's clock (`site/now.mjs`, `site/lifecycle.mjs`): the answered home page, "Until the celebration", the day-of and evening views, the thank-you after the party, and the closed RSVP. Nothing needs publishing for those.
+
+Link previews are different. WhatsApp, iMessage and Facebook read only the `<meta>` tags in the published HTML, so the build chooses their text for the phase at build time (`node scripts/build-pages.mjs`, which uses the real time unless `--now=<ISO>` is given):
+
+| Phase at build time | Home and RSVP preview | Every page |
+|---|---|---|
+| Before November 15, 2026, 11:59 PM Central | "Friday, January 15, 2027 in Fort Worth, Texas. Please RSVP by Sunday, November 15, 2026." | `<meta name="misxv-phase" content="rsvp-open">` |
+| From the deadline to the end of the party | "Friday, January 15, 2027 in Fort Worth, Texas." (no RSVP line anywhere) | `rsvp-closed`, `day-of` or `live` |
+| From January 16, 2027, 12:30 AM Central | "Thank you for celebrating with us on Friday, January 15, 2027." | `after` |
+
+Share your photos, the gallery, the note for Sophia and the thank-you page have previews without any date, the same in every phase, so a link to them shared in January never carries a stale invitation. The tests build with a pinned `--now` (package.json), so the calendar never changes what they check.
+
+### Owner runbook: two re-publishes
+
+The site is published only by a push to `main`, so the previews change at the next publish after each boundary. If nothing is merged in the hours after a boundary, re-run the latest publish:
+
+1. After **Sunday, November 15, 2026, 11:59 PM Central**, and again after **Saturday, January 16, 2027, 12:30 AM Central** (the end of the reception), open GitHub → Actions → **Website and service checks**, choose the most recent run on `main` and select **Re-run all jobs**. Re-run the latest one: an older run's publish step skips itself because `main` has moved on.
+2. When it finishes, check the phase the live site was built in:
+   `curl -s https://misxv.simplysoph.com/ | grep -o '<meta name="misxv-phase" content="[^"]*">'`
+   It should say `rsvp-closed` after the first re-run and `after` after the second. The job's own check compares only `X-Release-Commit`, which is the same commit before and after a re-run, so this line is the one that shows the new release is live.
+3. Send a link to the home page to yourself on WhatsApp to see the preview. Previews already sent keep the old text; apps such as Facebook can keep a preview for days.
+
+If the re-run's checks fail on something unrelated to the site (for example a new advisory in `npm audit`), fix that first; the deploy job runs only after the checks pass.
+
+### Automatic publishing at the boundaries (owner decision, not built)
+
+A scheduled workflow could re-publish at both boundaries without a person, but today's deploy safeguards deliberately refuse it, and only the owner can relax them:
+
+1. `.github/workflows/check.yml` runs the deploy job only when `github.event_name == 'push'` on `main`.
+2. `scripts/deploy-hosting.mjs` (`assertReleaseContext`) refuses any release whose `GITHUB_EVENT_NAME` is not `push`.
+3. The Workload Identity Federation provider admits only push events on `main` running `check.yml` (its attribute condition, set in Google Cloud, outside this repository).
+
+If the owner wants it, the safe shape is a separate workflow (schedule plus a manual button) admitted by name and branch in all three places, publishing only a commit whose checks already passed and verifying `misxv-phase` as well as `X-Release-Commit`. GitHub's scheduled runs are best-effort (they can start late) and are switched off after 60 days without repository activity, so the manual re-run above stays the fallback.
+
 ## Images and caching
 
 The build makes every published image from the originals in `site/assets/` (`scripts/images.mjs`): AVIF, WebP and JPEG at the widths the pages show, the 1200 × 630 link-preview card used by WhatsApp and iMessage, the 180px home-screen icon, a 32px favicon and `/favicon.ico`. They are published under `/assets/img/` with a hash in each name, so `firebase.json` lets browsers keep that folder for a year (`public, max-age=31536000, immutable`); a changed picture gets a new name. Everything else (pages, scripts, stylesheets, calendars) keeps `public, max-age=0, must-revalidate`, and `/api/**` stays `private, no-store`. The original PNGs are no longer published; "Open the full invitation" opens the 1024px JPEG.

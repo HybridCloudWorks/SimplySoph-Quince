@@ -212,8 +212,21 @@ test("every page has a title, link preview and icons, and stays out of search", 
     const title = html.match(/<title>([^<]+)<\/title>/)[1];
     if (route === "") assert.equal(title, site);
     else assert.ok(title.endsWith(" · " + site), `${file}: ${title}`);
-    assert.equal(og(html, "og:title"), es ? "Los XV de Sophia · 15 de enero de 2027" : "Sophia’s Quinceañera · January 15, 2027");
-    assert.match(og(html, "og:description"), es ? /15 de noviembre de 2026/ : /November 15, 2026/);
+    // The test build is pinned before the deadline (package.json --now): home
+    // and RSVP invite; pages about photos and notes never mention a date
+    // (tests/previews.test.mjs builds the other phases).
+    assert.equal(html.match(/<meta name="misxv-phase" content="([^"]+)">/)?.[1], "rsvp-open", file);
+    const dateFree = ["share", "gallery", "guestbook", "thank-you"].includes(route);
+    if (dateFree) {
+      assert.equal(og(html, "og:title"), `${html.match(/<h1>([^<]+)<\/h1>/)?.[1] || og(html, "og:title").split(" · ")[0]} · ${site}`, file);
+      assert.doesNotMatch(og(html, "og:description"), /2026|2027|RSVP|confirm/i, file);
+    } else {
+      assert.equal(og(html, "og:title"), es ? "Los XV de Sophia · 15 de enero de 2027" : "Sophia’s Quinceañera · January 15, 2027");
+      if (route === "" || route === "rsvp")
+        assert.match(og(html, "og:description"), es ? /confirmen su asistencia a más tardar el domingo 15 de noviembre de 2026/ : /Please RSVP by Sunday, November 15, 2026/);
+      else assert.doesNotMatch(og(html, "og:description"), /RSVP|confirm/i, file);
+    }
+    assert.equal(html.match(/<meta name="description" content="([^"]+)">/)[1], og(html, "og:description"));
     assert.equal(og(html, "og:locale"), es ? "es_US" : "en_US");
     assert.match(og(html, "og:image"), /^https:\/\/misxv\.simplysoph\.com\/assets\/img\/og-invitation\.[0-9a-f]{10}\.jpg$/);
     assert.match(html, /<meta name="twitter:card" content="summary_large_image">/);

@@ -11,15 +11,15 @@
   "scripts": {
     "build": "node scripts/build-pages.mjs",
     "start": "node server/start.mjs",
-    "pretest": "node scripts/build-pages.mjs",
+    "pretest": "node scripts/build-pages.mjs --now=2026-10-01T18:00:00Z",
     "test": "node --test tests/*.test.mjs",
-    "pretest:browser": "node scripts/build-pages.mjs",
+    "pretest:browser": "node scripts/build-pages.mjs --now=2026-10-01T18:00:00Z",
     "test:browser": "playwright test",
     "emails:preview": "node scripts/preview-emails.mjs",
     "sms:setup": "node scripts/twilio-setup.mjs",
     "notion:inspect": "node scripts/inspect-notion.mjs",
     "cleanup:plan": "node scripts/cleanup-plan.mjs",
-    "check": "node scripts/build-pages.mjs && node scripts/check.mjs && node --test tests/*.test.mjs"
+    "check": "node scripts/build-pages.mjs --now=2026-10-01T18:00:00Z && node scripts/check.mjs && node --test tests/*.test.mjs"
   },
   "dependencies": {
     "@google-cloud/storage": "^8.4.0",
