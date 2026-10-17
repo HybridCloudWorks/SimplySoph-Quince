@@ -57,6 +57,25 @@ test('a receipt lists the answer for the invited events, until when it can chang
   const declined=renderEmail({...base,type:'receipt',url:'https://misxv.example/details/',attendance:none,invited,rsvpDeadline:'Sunday, November 15, 2026'});
   assert.ok(declined.text.includes('no one in your family can attend')&&!declined.text.includes('Ceremony:'));
 });
+// R-092: a receipt holds no link to keep private, and the English "no" thanks once.
+test('a receipt has no warning about a link it does not contain, and a decline says thank you once',()=>{
+  const attendance={ceremony:{adultsTeens:1,kids:0},dinner:{adultsTeens:0,kids:0},dance:{adultsTeens:0,kids:0}};
+  const none={ceremony:{adultsTeens:0,kids:0},dinner:{adultsTeens:0,kids:0},dance:{adultsTeens:0,kids:0}};
+  const invited={ceremony:true,dinner:true,dance:true};
+  for(const locale of ['en','es'])for(const type of ['receipt','update'])for(const answer of [attendance,none]){
+    const r=renderEmail({...base,type,locale,url:'https://misxv.example/details/',attendance:answer,invited,rsvpDeadline:'Sunday, November 15, 2026'});
+    for(const out of [r.text,r.html]){
+      assert.ok(!/Your invitation link is just for your family|El enlace de su invitación es solo para su familia/.test(out),`${locale}/${type}`);
+      assert.ok(!/share it|no lo compartan/.test(out),`${locale}/${type}`);
+    }
+    assert.ok(!/<p style="font-size:14px"><\/p>/.test(r.html),'no empty paragraph in its place');
+  }
+  const declined=renderEmail({...base,type:'receipt',url:'https://misxv.example/details/',attendance:none,invited,rsvpDeadline:'Sunday, November 15, 2026'});
+  assert.equal((declined.text.match(/thank you/gi)||[]).length,1,declined.text);
+  assert.ok(declined.text.includes('You let us know no one in your family can attend. We’ll miss you, and we send you our love.'));
+  // Emails without a private link still remind the family to keep their invitation link to themselves.
+  for(const type of ['details','thanks'])assert.ok(renderEmail({...base,type,url:'https://misxv.example/details/'}).text.includes('Your invitation link is just for your family. Please don’t share it.'),type);
+});
 test('first sentence quotes only a short opening line',()=>{
   assert.equal(firstSentence('One line. Two lines.'),'One line.');
   assert.equal(firstSentence('x'.repeat(300)+'.'),'');

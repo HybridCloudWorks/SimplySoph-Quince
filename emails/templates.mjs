@@ -57,7 +57,8 @@ const copy = {
     adults: (n) => `${n} ${n === 1 ? "adult/teen" : "adults/teens"}`,
     kids: (n) => `${n} ${n === 1 ? "child" : "children"}`,
     absent: "not attending",
-    declined: "You let us know no one in your family can attend. We’ll miss you, and thank you for your love.",
+    // The receipt's title already thanks them, so this line doesn't again.
+    declined: "You let us know no one in your family can attend. We’ll miss you, and we send you our love.",
     changeUntil: (d) =>
       `You can change it until ${d}: open your invitation email again and tap its RSVP button.`,
     private: "This RSVP link is just for your family, so please don’t forward this email.",
@@ -334,7 +335,13 @@ export function renderEmail({
     /^#[A-Za-z0-9_-]{43}$/.test(target.hash)
       ? { yes: target.href + ".yes", no: target.href + ".no" }
       : null;
-  const privacyNote = target.hash ? c.private : c.keepPrivate;
+  // A receipt carries no link (it was the household's own answer), so it has
+  // no link to keep private.
+  const privacyNote = target.hash
+    ? c.private
+    : ["receipt", "update"].includes(type)
+      ? ""
+      : c.keepPrivate;
   const lines = [
     preview ? c.preview : "",
     c.greeting(household),
@@ -365,7 +372,7 @@ export function renderEmail({
     locale,
     subject,
     preheader,
-    `${preview ? `<p style="font-size:13px;color:#651625">${c.preview}</p>` : ""}<p>${escape(c.greeting(household))}</p>${title ? `<h1 style="font:30px/1.2 Georgia,serif;color:#651625">${escape(title)}</h1>` : ""}<p>${escape(lead)}</p>${updateText ? `<p>${escape(updateText)}</p>` : ""}${said.length ? `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin:0 0 16px">${said.map((a) => `<tr><td style="padding:8px 12px 8px 0;border-top:1px solid #ecdfc8;font-weight:bold;color:#651625;white-space:nowrap;vertical-align:top">${escape(a.event)}</td><td style="padding:8px 0;border-top:1px solid #ecdfc8;vertical-align:top">${escape(a.count)}</td></tr>`).join("")}</table>` : ""}${change ? `<p>${escape(change)}</p>` : ""}${quote ? `<p style="margin:0 0 16px;border-left:3px solid #e9c77b;padding:4px 0 4px 14px;font:italic 18px/1.5 Georgia,serif;color:#4a2a2e">“${escape(quote)}” <span style="font-style:normal;color:#651625">Sophia</span></p>` : ""}${rows.length ? `${eventDate ? `<p style="margin:0 0 6px"><strong>${escape(eventDate)}</strong></p>` : ""}<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin:0 0 16px">${rows.map((r) => `<tr><td style="padding:8px 12px 8px 0;border-top:1px solid #ecdfc8;font-weight:bold;color:#651625;white-space:nowrap;vertical-align:top">${escape(r.time)}</td><td style="padding:8px 0;border-top:1px solid #ecdfc8;vertical-align:top">${escape(r.text)}</td></tr>`).join("")}</table>` : eventDate ? `<p><strong>${c.date}:</strong> ${escape(eventDate)}</p>` : ""}${reply ? `<p>${c.replyBy(`<strong>${escape(rsvpDeadline)}</strong>`)}</p>` : ""}${button(target.href, cta)}${quick ? `<p style="margin:0 0 24px">${escape(c.quick[0])}: <a href="${escape(quick.yes)}" style="color:#651625;font-weight:bold">${escape(c.quick[1])}</a> · <a href="${escape(quick.no)}" style="color:#651625;font-weight:bold">${escape(c.quick[2])}</a></p>` : ""}<p style="font-size:14px">${escape(privacyNote)}</p><p>${escape(c.help)}</p><p style="font-family:Georgia,serif">${escape(c.sign)}</p>`,
+    `${preview ? `<p style="font-size:13px;color:#651625">${c.preview}</p>` : ""}<p>${escape(c.greeting(household))}</p>${title ? `<h1 style="font:30px/1.2 Georgia,serif;color:#651625">${escape(title)}</h1>` : ""}<p>${escape(lead)}</p>${updateText ? `<p>${escape(updateText)}</p>` : ""}${said.length ? `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin:0 0 16px">${said.map((a) => `<tr><td style="padding:8px 12px 8px 0;border-top:1px solid #ecdfc8;font-weight:bold;color:#651625;white-space:nowrap;vertical-align:top">${escape(a.event)}</td><td style="padding:8px 0;border-top:1px solid #ecdfc8;vertical-align:top">${escape(a.count)}</td></tr>`).join("")}</table>` : ""}${change ? `<p>${escape(change)}</p>` : ""}${quote ? `<p style="margin:0 0 16px;border-left:3px solid #e9c77b;padding:4px 0 4px 14px;font:italic 18px/1.5 Georgia,serif;color:#4a2a2e">“${escape(quote)}” <span style="font-style:normal;color:#651625">Sophia</span></p>` : ""}${rows.length ? `${eventDate ? `<p style="margin:0 0 6px"><strong>${escape(eventDate)}</strong></p>` : ""}<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin:0 0 16px">${rows.map((r) => `<tr><td style="padding:8px 12px 8px 0;border-top:1px solid #ecdfc8;font-weight:bold;color:#651625;white-space:nowrap;vertical-align:top">${escape(r.time)}</td><td style="padding:8px 0;border-top:1px solid #ecdfc8;vertical-align:top">${escape(r.text)}</td></tr>`).join("")}</table>` : eventDate ? `<p><strong>${c.date}:</strong> ${escape(eventDate)}</p>` : ""}${reply ? `<p>${c.replyBy(`<strong>${escape(rsvpDeadline)}</strong>`)}</p>` : ""}${button(target.href, cta)}${quick ? `<p style="margin:0 0 24px">${escape(c.quick[0])}: <a href="${escape(quick.yes)}" style="color:#651625;font-weight:bold">${escape(c.quick[1])}</a> · <a href="${escape(quick.no)}" style="color:#651625;font-weight:bold">${escape(c.quick[2])}</a></p>` : ""}${privacyNote ? `<p style="font-size:14px">${escape(privacyNote)}</p>` : ""}<p>${escape(c.help)}</p><p style="font-family:Georgia,serif">${escape(c.sign)}</p>`,
   );
   return { subject, html, text: lines.join("\n\n") };
 }
