@@ -64,7 +64,13 @@ test("a refused upload names the limit, how many were used and when the next one
 });
 
 test("the refusal reaches the browser as JSON with a Retry-After header, through the real HTTP server", async (t) => {
-  const f = await setup({ at: Date.now() });
+  // The fixture's own instant (December 1, 2026: outside the party upload
+  // window, so the ordinary limit and a one-hour wait), like every test here.
+  // The real HTTP server needs no real time: it reads the wall clock only to
+  // time how fast a body arrives (server/http.mjs), while the sessions, the
+  // limit and Retry-After all come from the app's injected clock. On the real
+  // clock this test failed inside the window (R-008).
+  const f = await setup();
   const first = f.now() - 23 * HOUR;
   await seed(f, Array.from({ length: quota.perDay }, (_, i) => first + i));
   const server = createHttpServer({ app: f.app, root: process.cwd(), origin });
