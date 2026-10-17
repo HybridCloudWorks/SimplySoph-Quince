@@ -43,8 +43,10 @@ export async function accountPage(inv, page) {
   const data = await api("account");
   let { profile } = await api("profile");
   const signedInAs = data.account.email,
-    // As on the confirmation; no list of what's coming after a "no".
-    next = await page.whatsNext({}, !(inv.response && !page.attendingOf(inv).length));
+    declined = !!inv.response && !page.attendingOf(inv).length,
+    // As on the confirmation: nothing once the party is over, and no list of
+    // what's coming after a "no", only where the photos will be.
+    next = page.partyOver() ? "" : await page.whatsNext({}, !declined, { photos: declined });
   page.show(
     `<h2>${esc(data.account.name)}</h2><p class="hint">${tr("Signed in as", "Entraste con")} ${esc(signedInAs)}</p>${rsvpStatus(inv, page)}<div class="row-actions"><a href="${route("reception")}">${tr("Directions", "Cómo llegar")}</a><button id="guest-logout" class="plain-button">${tr("Sign out", "Cerrar sesión")}</button></div><form id="profile-form"><h3>${tr("Contact details", "Datos de contacto")}</h3>${field(tr("Contact email", "Correo de contacto"), "email", { type: "email", value: profile.contact.email, autocomplete: "email", hint: tr(`We use it to reach you about the celebration. You still sign in with ${signedInAs}.`, `Lo usamos para escribirte sobre la celebración. Sigues entrando con ${signedInAs}.`) })}${field(tr("Phone", "Teléfono"), "phone", { type: "tel", inputmode: "tel", autocomplete: "tel", value: profile.contact.phone, max: 40 })}${field(tr("Mailing address", "Dirección postal"), "address", { value: profile.contact.address || "", max: 500, autocomplete: "street-address" })}<p role="alert" class="error"></p><button type="submit" class="button burgundy">${tr("Save contact details", "Guardar datos")}</button><p class="saved-note" role="status"></p></form>${next}<section id="whatsapp-preferences" class="card" hidden></section><div id="family-chat"></div><div class="account-sign-out"><p class="hint">${tr("Signed in on a computer or phone that isn’t yours?", "¿Entraste en una computadora o teléfono que no es tuyo?")}</p><button id="guest-logout-all" class="button outline">${tr("Sign out on all devices", "Cerrar sesión en todos los dispositivos")}</button></div>`,
   );

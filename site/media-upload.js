@@ -1,4 +1,5 @@
-import { api, esc, es, tr, route, field, submit, focusOn, markBusy, announce, sessionLimit, cardEnded } from "./client.js";
+import { api, esc, es, tr, route, field, submit, focusOn, markBusy, announce, cardEnded } from "./client.js";
+import { sessionLimit } from "./session-limit.js";
 import {
   createUploadBatch,
   sendUploadBatch,
@@ -189,6 +190,16 @@ function sendPiece(csrf, id, offset, blob, onBytes) {
     xhr.send(blob);
   });
 }
+// "1 of 2 arrived." In Spanish the verb agrees: "Llegó 1 de 2.", "Llegaron
+// 2 de 2.", and none is said as none (QA-10).
+const arrivedLine = (n, of) =>
+  es
+    ? n === 0
+      ? of === 1
+        ? "El archivo no llegó."
+        : `No llegó ninguno de los ${of}.`
+      : `${n === 1 ? "Llegó" : "Llegaron"} ${n} de ${of}.`
+    : `${n} of ${of} arrived.`;
 // "3 photos chosen", in the page's language (the browser's own file control
 // would speak the browser's language).
 function chosenText(files) {
@@ -303,7 +314,7 @@ export function mediaUpload(portal, albums, { party = false } = {}) {
   const stopped = () => {
     const sendable = entries.filter((e) => !e.problem).length,
       arrived = entries.filter((e) => ["received", "processing"].includes(e.state)).length,
-      head = tr(`${arrived} of ${sendable} arrived.`, `Llegaron ${arrived} de ${sendable}.`),
+      head = arrivedLine(arrived, sendable),
       first = (state) => entries.find((e) => e.state === state);
     const limited = first("limited"),
       waiting = first("waiting"),
@@ -352,13 +363,13 @@ export function mediaUpload(portal, albums, { party = false } = {}) {
     const text = busy
       ? tr(
           `Sending your files: ${arrived} of ${sendable} arrived. Keep this page open until they finish.`,
-          `Enviando tus archivos: llegaron ${arrived} de ${sendable}. Mantén esta página abierta hasta que terminen.`,
+          `Enviando tus archivos: ${arrived === 1 ? "llegó" : "llegaron"} ${arrived} de ${sendable}. Mantén esta página abierta hasta que terminen.`,
         )
       : stop ||
         (entries.some((e) => !["queued"].includes(e.state)) && arrived
           ? tr(
               `${arrived} of ${sendable} arrived. Thank you! We'll review them before they appear in the gallery. You can choose more files above.`,
-              `Llegaron ${arrived} de ${sendable}. ¡Gracias! Los revisaremos antes de que aparezcan en la galería. Puedes elegir más archivos arriba.`,
+              `${arrivedLine(arrived, sendable)} ¡Gracias! Los revisaremos antes de que aparezcan en la galería. Puedes elegir más archivos arriba.`,
             ) +
             (party
               ? " " +
@@ -406,7 +417,7 @@ export function mediaUpload(portal, albums, { party = false } = {}) {
   // typing keep it, the page warns two minutes before the end, and once it
   // is over the guest learns how to come back, with focus on it. A table
   // card guest has no invitation link or account: only the card brings
-  // them back (site/client.js sessionLimit).
+  // them back (site/session-limit.js).
   const kind = party ? "party" : "guest";
   // `reason`: why a card session ended ("expired", "rotated", "closed").
   const ended = (reason) =>

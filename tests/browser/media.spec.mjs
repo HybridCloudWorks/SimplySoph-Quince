@@ -229,7 +229,7 @@ for (const lang of ["en", "es"])
     const send = page.getByRole("button", { name: es ? "Enviar mis fotos y videos" : "Send my photos & videos" });
     await send.click();
     const summary = page.locator("#upload-summary");
-    await expect(summary).toHaveText(`${es ? "Llegaron 0 de 2." : "0 of 2 arrived."} ${sentence}`);
+    await expect(summary).toHaveText(`${es ? "No llegó ninguno de los 2." : "0 of 2 arrived."} ${sentence}`);
     await expect(page.locator(".upload-result")).toHaveCount(2);
     for (const row of await page.locator(".upload-result").all())
       await expect(row).toContainText(es ? "No se envió: se alcanzó el límite." : "Not sent: the limit is reached.");
@@ -242,7 +242,7 @@ for (const lang of ["en", "es"])
       { name: "IMG_0303.JPG", mimeType: "image/jpeg", buffer: photo },
     ]);
     await send.click();
-    await expect(summary).toHaveText(`${es ? "Llegaron 0 de 1." : "0 of 1 arrived."} ${sentence}`);
+    await expect(summary).toHaveText(`${es ? "El archivo no llegó." : "0 of 1 arrived."} ${sentence}`);
     expect(Object.keys((await harness.ledger.read()).uploads || {})).toEqual([]);
   });
 

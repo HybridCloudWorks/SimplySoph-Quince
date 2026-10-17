@@ -10,7 +10,9 @@
 //     and those pages' link previews);
 //   - the hosts speaking to one person, and information pages: tú (My
 //     account, the sign-in email, the venue and policy pages, the WhatsApp
-//     replies and the WhatsApp card, which is one phone's own choice);
+//     replies); the WhatsApp card speaks as the page it is on (ustedes on
+//     the RSVP confirmation, tú on My account), its consent in the guest's
+//     own words;
 //   - never usted; Sophia's own words are hers and keep their tú;
 //   - chrome shared by every page (header, buttons, titles): neutral nouns or
 //     infinitives, so it never carries a form into a page.

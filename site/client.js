@@ -197,7 +197,10 @@ const messages = {
   ],
   WHATSAPP_PHONE_INVALID: [
     "WhatsApp can't use this number. Check the country code and the number, like +52 55 1234 5678.",
-    "WhatsApp no puede usar este número. Revisa el código de país y el número, como +52 55 1234 5678.",
+    {
+      tu: "WhatsApp no puede usar este número. Revisa el código de país y el número, como +52 55 1234 5678.",
+      ustedes: "WhatsApp no puede usar este número. Revisen el código de país y el número, como +52 55 1234 5678.",
+    },
   ],
   // site/guest-whatsapp.js adds the SMS keyword when SMS is live.
   WHATSAPP_US_NUMBER: [
@@ -270,7 +273,10 @@ function trouble(sending, network) {
         ustedes: "Algo falló de nuestro lado. Inténtenlo de nuevo en un minuto o escríbannos a misxv@simplysoph.com.",
       });
 }
+// `options.typed`: whether a failure keeps something the guest typed (a POST
+// does unless it says otherwise: opening a link or a card types nothing).
 export async function api(path, body, options = {}) {
+  const typed = options.typed ?? body !== undefined;
   let res;
   try {
     res = await fetch("/api/" + path, {
@@ -286,7 +292,7 @@ export async function api(path, body, options = {}) {
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
-    throw Object.assign(new Error(trouble(body !== undefined, true)), {
+    throw Object.assign(new Error(trouble(typed, true)), {
       code: "NETWORK_ERROR",
     });
   }
@@ -294,14 +300,14 @@ export async function api(path, body, options = {}) {
   try {
     data = await res.json();
   } catch {
-    throw Object.assign(new Error(trouble(body !== undefined, false)), {
+    throw Object.assign(new Error(trouble(typed, false)), {
       code: "SERVER_UNAVAILABLE",
       status: res.status,
     });
   }
   if (!res.ok) {
     // A page that holds a table card session never reads the sign-in words.
-    const code = data?.error === "SIGN_IN_REQUIRED" && sessionKind === "party" ? "PARTY_SESSION_ENDED" : data?.error,
+    const code = data?.error === "SIGN_IN_REQUIRED" && session.kind === "party" ? "PARTY_SESSION_ENDED" : data?.error,
       pair = messages[code];
     throw Object.assign(
       new Error(
@@ -310,7 +316,7 @@ export async function api(path, body, options = {}) {
           : pair
           ? tr(...pair)
           : res.status >= 500
-            ? trouble(body !== undefined, false)
+            ? trouble(typed, false)
             : tr("We couldn’t finish that. Please try again, or contact us.", {
                 tu: "No pudimos completar la solicitud. Inténtalo de nuevo o escríbenos.",
                 ustedes: "No pudimos completar la solicitud. Inténtenlo de nuevo o escríbannos.",
@@ -325,128 +331,15 @@ export async function api(path, body, options = {}) {
   if (path.split("?")[0] === "session") sessionSeen(data);
   return data;
 }
-// ---- A session that ends while its page is open (WCAG 2.2.1) ----
-// GET /api/session says how long this page's guest or table card session has
-// left (expiresIn) and, unless it is a background check (?poll=1), renews it
-// in its last 15 minutes. sessionLimit() keeps it while the guest uses `form`
-// (a check-in in those 15 minutes, at most once a minute, or every 5 minutes
-// to learn early that it ended elsewhere); two minutes before the end it
-// warns in the page-wide note, with a button that keeps it; and once it is
-// over it calls ended(). The end is always confirmed with the server first
-// (?poll=1, which renews nothing), so a page whose uploads or other tabs kept
-// the session going is never told it ended. One limit per page.
-const WARN = 120000;
-let ends = 0,
-  limit = null,
-  // The kind of session this page last had ("guest", "party", …).
-  sessionKind = null;
+// What GET /api/session last said, for site/session-limit.js: when the
+// session ends (on this device's clock) and its kind ("guest", "party", …),
+// and who wants to hear each answer.
+export const session = { ends: 0, kind: null, seen: null };
 function sessionSeen(data) {
-  ends = Number.isFinite(data.expiresIn) ? Date.now() + data.expiresIn : 0;
-  if (data.kind) sessionKind = data.kind;
-  else if (data.partyEnded) sessionKind = "party";
-  limit?.seen(data);
-}
-// `words`: warn(minutes), keep (the button), kept (said once kept), final
-// (said when it can't be kept any longer).
-export function sessionLimit({ kind, form, ended, words }) {
-  limit?.stop();
-  let timer = 0,
-    asked = 0,
-    warned = false,
-    confirming = false,
-    stopped = false;
-  const self = {
-    seen(data) {
-      if (data.kind !== kind) end(data);
-      else tick();
-    },
-    stop() {
-      stopped = true;
-      clearTimeout(timer);
-      if (warned && document.querySelector("#status [data-session-note]")) clearNote();
-      form?.removeEventListener("input", active);
-      form?.removeEventListener("change", active);
-      document.removeEventListener("visibilitychange", tick);
-      if (limit === self) limit = null;
-    },
-  };
-  // ended(data): what GET /api/session said, if it said why.
-  const end = (data = {}) => {
-    if (stopped) return;
-    self.stop();
-    ended(data);
-  };
-  function tick() {
-    if (stopped || confirming || !ends) return;
-    clearTimeout(timer);
-    const left = ends - Date.now();
-    if (left <= WARN) {
-      // Asked with ?poll=1, so the question itself renews nothing.
-      confirming = true;
-      api("session?poll=1").then(
-        () => {
-          confirming = false;
-          const now = ends - Date.now();
-          if (stopped) return;
-          if (now <= 0) return end();
-          if (now <= WARN && !warned) warn(now);
-          if (now > WARN && warned) unwarn();
-          timer = setTimeout(tick, now <= WARN ? now : now - WARN);
-        },
-        () => {
-          // Offline: ask again in a minute, and say nothing yet.
-          confirming = false;
-          timer = setTimeout(tick, 60000);
-        },
-      );
-      return;
-    }
-    if (warned) unwarn();
-    timer = setTimeout(tick, left - WARN);
-  }
-  function warn(left) {
-    warned = true;
-    notify(words.warn(Math.max(1, Math.ceil(left / 60000))), { label: words.keep, onClick: keep });
-    document.querySelector("#status > span")?.setAttribute("data-session-note", "");
-  }
-  function unwarn() {
-    warned = false;
-    if (document.querySelector("#status [data-session-note]")) clearNote();
-  }
-  async function keep(e) {
-    const button = e.currentTarget,
-      before = ends;
-    button.dataset.busy = tr("One moment…", "Un momento…");
-    const done = markBusy(button, null);
-    try {
-      await api("session");
-    } catch {
-      /* offline: the note stays, and so does its button */
-    }
-    done();
-    if (stopped) return;
-    if (ends > before + 60000) {
-      unwarn();
-      announce(words.kept);
-    } else if (ends > Date.now()) {
-      // It can't run longer (a link's 2 hours, the table card's window).
-      notify(words.final);
-      document.querySelector("#status > span")?.setAttribute("data-session-note", "");
-    }
-    tick();
-  }
-  function active() {
-    const since = Date.now() - asked;
-    if (stopped || !ends || !(since >= 300000 || (since >= 60000 && ends - Date.now() < 900000))) return;
-    asked = Date.now();
-    api("session").catch(() => {});
-  }
-  form?.addEventListener("input", active);
-  form?.addEventListener("change", active);
-  document.addEventListener("visibilitychange", tick);
-  limit = self;
-  tick();
-  return self.stop;
+  session.ends = Number.isFinite(data.expiresIn) ? Date.now() + data.expiresIn : 0;
+  if (data.kind) session.kind = data.kind;
+  else if (data.partyEnded) session.kind = "party";
+  session.seen?.(data);
 }
 // The page-wide note at the bottom, for news that belongs to no control: what
 // a form or button caused is shown next to it instead. An optional
@@ -492,7 +385,7 @@ export function notify(text, link) {
   else if (focused && focused !== document.body && !box.contains(focused))
     focused.scrollIntoView({ block: "nearest", behavior: "instant" });
 }
-function clearNote() {
+export function clearNote() {
   const box = document.querySelector("#status");
   if (box?.contains(document.activeElement) && notify.returnTo?.isConnected)
     notify.returnTo.focus();

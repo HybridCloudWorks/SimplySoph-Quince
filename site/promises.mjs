@@ -113,6 +113,8 @@ export function coming(f) {
 //   - WhatsApp (everyone else): from an invitation-link session, a pointer to
 //     the email sign-in on My account, where the choice is; signed in, the
 //     WhatsApp card that follows this block;
+//   - for a household that is not coming (`photos`), where the photos will
+//     be after the celebration, in place of what to bring or wear;
 //   - the home page, where news is posted, always.
 // `register` is the page's Spanish form of address (site/lexicon.mjs); the
 // Spanish is a string or { tu, ustedes }, as in site/client.js tr().
@@ -123,7 +125,7 @@ const short = {
 };
 const list = (items, lang) =>
   items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} ${lang === "es" ? "y" : "and"} ${items.at(-1)}`;
-export function whatsNext({ coming: next = {}, channels = {}, linkSession = false, lang = "en", register = "tu", now } = {}) {
+export function whatsNext({ coming: next = {}, channels = {}, linkSession = false, photos = false, lang = "en", register = "tu", now } = {}) {
   const es = lang === "es",
     tr = (en, spanish) => say({ en, es: spanish }, lang, register);
   // Kinds that share a date share a sentence; undated ones come last.
@@ -163,6 +165,16 @@ export function whatsNext({ coming: next = {}, channels = {}, linkSession = fals
             tu: "¿Fuera de Estados Unidos y Canadá? Puedes suscribirte a los avisos por WhatsApp aquí abajo.",
             ustedes: "¿Fuera de Estados Unidos y Canadá? Pueden suscribirse a los avisos por WhatsApp aquí abajo.",
           }),
+    );
+  if (photos)
+    lines.push(
+      tr(
+        `After the celebration, we’ll share our guests’ photos on the <a href="${pageHref("gallery", lang)}">Photos</a> page${linkSession ? "; sign in with your email to see them" : ""}.`,
+        {
+          tu: `Después de la celebración, compartiremos las fotos de nuestros invitados en la página <a href="${pageHref("gallery", lang)}">Fotos</a>${linkSession ? "; entra con tu correo para verlas" : ""}.`,
+          ustedes: `Después de la celebración, compartiremos las fotos de nuestros invitados en la página <a href="${pageHref("gallery", lang)}">Fotos</a>${linkSession ? "; entren con su correo para verlas" : ""}.`,
+        },
+      ),
     );
   lines.push(
     tr(

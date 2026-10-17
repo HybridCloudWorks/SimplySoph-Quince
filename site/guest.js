@@ -36,12 +36,11 @@ import {
   markBusy,
   sayError,
   mentionsUs,
-  sessionLimit,
   cardEnded,
 } from "./client.js";
 import { galleryOpen } from "./lifecycle.mjs";
 import { date, dayMonth, time, at } from "./datetime.mjs";
-import { siteClock, clock } from "./now.mjs";
+import { siteClock, clock, answer as deviceReply } from "./now.mjs";
 // The upload form, the WhatsApp choices, "Download all photos" and "What's
 // next" load only on the pages that show them, so every other page (the home
 // page above all) stays light (tests/home-weight.test.mjs).
@@ -122,14 +121,17 @@ const invitedEvents = (inv) => Object.keys(eventNames).filter((e) => inv.invited
 const attendingOf = ({ invited, response: r }) =>
   Object.keys(eventNames).filter((e) => invited[e] && r.attendance[e].adultsTeens + r.attendance[e].kids > 0);
 // "What's next" (site/promises.mjs): what is still to come (data-coming, from
-// the build) unless `pending` is false, and the channels the server has live.
-async function whatsNext(session, pending = true) {
+// the build) unless `pending` is false, and the channels the server has live;
+// `photos`: where the photos will be, for a household that is not coming.
+async function whatsNext(session, pending = true, { photos = false } = {}) {
   try {
     const [m, cfg] = await Promise.all([promises(), config().catch(() => ({}))]);
     return m.whatsNext({
-      coming: pending ? JSON.parse(portal.dataset.coming || "{}") : {},
+      // Nothing is promised "soon" on the day itself (or after it).
+      coming: pending && ["rsvp-open", "rsvp-closed"].includes(lifecycleState()?.phase ?? "rsvp-open") ? JSON.parse(portal.dataset.coming || "{}") : {},
       channels: cfg.channels,
       linkSession: session.scope === "rsvp",
+      photos,
       lang,
       register,
       now: clock(),
@@ -267,17 +269,39 @@ function accessForm(value = "", reason = "") {
   // still opens the household's saved answer).
   const onRsvp = portal.dataset.view.startsWith("rsvp"),
     closed = onRsvp && !rsvpOpenNow(),
+    // This device's note that the family replied (site/now.mjs, the one the
+    // home page reads): a bookmarked RSVP opened after the session ended
+    // says so instead of asking for an RSVP (QA-07). The note holds yes or
+    // no and when, never the counts, so the page shows no counts.
+    replied = onRsvp ? deviceReply() : null,
+    repliedNote = replied
+      ? `<div class="notice" role="status"><p class="home-replied">${
+          replied === "yes"
+            ? tr("You replied", "Ya respondieron") + ' <span aria-hidden="true">✓</span>'
+            : tr("Thank you for letting us know", "Gracias por avisarnos")
+        }</p><p>${
+          closed
+            ? tr("This device remembers that your family replied. To see your RSVP, open your invitation link again, from the email or message we sent you, or paste it below.", {
+                tu: "Este dispositivo recuerda que tu familia ya respondió. Para ver tu respuesta, abre de nuevo tu enlace de invitación, del correo o mensaje que te enviamos, o pégalo aquí abajo.",
+                ustedes: "Este dispositivo recuerda que su familia ya respondió. Para ver su respuesta, abran de nuevo su enlace de invitación, del correo o mensaje que les enviamos, o péguenlo aquí abajo.",
+              })
+            : tr("This device remembers that your family replied. To see or change your RSVP, open your invitation link again, from the email or message we sent you, or paste it below.", {
+                tu: "Este dispositivo recuerda que tu familia ya respondió. Para ver o cambiar tu respuesta, abre de nuevo tu enlace de invitación, del correo o mensaje que te enviamos, o pégalo aquí abajo.",
+                ustedes: "Este dispositivo recuerda que su familia ya respondió. Para ver o cambiar su respuesta, abran de nuevo su enlace de invitación, del correo o mensaje que les enviamos, o péguenlo aquí abajo.",
+              })
+        }</p></div>`
+      : "",
     alert = reason ? `<p class="notice" role="alert">${esc(reason)}</p>` : "",
     codeForm = `<form id="access">${field(tr("Invitation link or code", "Enlace o código de invitación"), "token", { value, required: true, max: 1000, hint: term(terms.invitationCodeHint), attrs: 'autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off"' })}<p class="error" role="alert"></p><button type="submit" class="button burgundy" data-busy="${tr("Checking…", "Comprobando…")}">${tr("Continue", "Continuar")}</button></form>`;
   show(
     onRsvp
-      ? `${alert}${closed ? closedNote(rsvpDeadline()) : ""}${anyDraft() ? `<p class="notice" role="status">${tr("Your answers are kept in this tab. Open your invitation email again, or paste its link below, to finish.", { tu: "Tus respuestas siguen guardadas en esta pestaña. Abre de nuevo tu correo de invitación, o pega el enlace aquí abajo, para terminar.", ustedes: "Sus respuestas siguen guardadas en esta pestaña. Abran de nuevo su correo de invitación, o peguen el enlace aquí abajo, para terminar." })}</p>` : ""}<h2>${tr("Open your invitation", { tu: "Abre tu invitación", ustedes: "Abran su invitación" })}</h2><p>${tr("The private link in your invitation opens your RSVP. You can also paste that link, or type the code from your invitation, below.", { tu: "El enlace privado de tu invitación abre tu respuesta. También puedes pegar ese enlace, o escribir el código de tu invitación, aquí abajo.", ustedes: "El enlace privado de su invitación abre su respuesta. También pueden pegar ese enlace, o escribir el código de su invitación, aquí abajo." })}</p>${codeForm}<hr>${emailSignInHtml()}`
+      ? `${alert}${closed ? closedNote(rsvpDeadline()) : ""}${repliedNote}${anyDraft() ? `<p class="notice" role="status">${tr("Your answers are kept in this tab. Open your invitation email again, or paste its link below, to finish.", { tu: "Tus respuestas siguen guardadas en esta pestaña. Abre de nuevo tu correo de invitación, o pega el enlace aquí abajo, para terminar.", ustedes: "Sus respuestas siguen guardadas en esta pestaña. Abran de nuevo su correo de invitación, o peguen el enlace aquí abajo, para terminar." })}</p>` : ""}<h2>${tr("Open your invitation", { tu: "Abre tu invitación", ustedes: "Abran su invitación" })}</h2><p>${tr("The private link in your invitation opens your RSVP. You can also paste that link, or type the code from your invitation, below.", { tu: "El enlace privado de tu invitación abre tu respuesta. También puedes pegar ese enlace, o escribir el código de tu invitación, aquí abajo.", ustedes: "El enlace privado de su invitación abre su respuesta. También pueden pegar ese enlace, o escribir el código de su invitación, aquí abajo." })}</p>${codeForm}<hr>${emailSignInHtml()}`
       : // Signed out, My account is "Sign in" (R-041): the email sign-in
         // first, in the first phone screen, then one line for an invitation
         // link or code, which open the RSVP, with the code box folded.
         `${alert}${emailSignInHtml()}<div class="invitation-way" data-invitation-way><hr><p>${tr(`Have an invitation link or code? It opens <a href="${route("rsvp")}">your RSVP</a>.`, `¿Tienes un enlace o código de invitación? Abre <a href="${route("rsvp")}">tu respuesta</a>.`)}</p><details><summary>${tr("Type the code from your invitation", "Escribe el código de tu invitación")}</summary>${codeForm}</details></div>`,
   );
-  if (!closed)
+  if (!closed && !replied)
     portal.querySelector("#access")?.insertAdjacentHTML("beforebegin", replyBy(rsvpDeadline()));
   submit(document.querySelector("#access"), async (data) => {
     const { token, answer } = invitationFrom(data.get("token"));
@@ -309,7 +333,11 @@ function signedOut(view, alert = "") {
         ? `<p class="notice" role="alert">${esc(alert)}</p>`
         : view === "share"
           ? ""
-          : `<p class="notice">${tr("Sign in with your email to continue.", "Entra con tu correo para continuar.")}</p>`) +
+          : view === "guestbook"
+            ? // A household that answered by its invitation link can send its
+              // one note from that link, with no sign-in (QA-07).
+              `<p class="notice">${tr("Answered with your invitation link? Open it again and you can send Sophia one note from it without signing in. Or sign in with your email.", "¿Respondiste con tu enlace de invitación? Ábrelo de nuevo y podrás enviarle a Sophia un mensaje desde él sin entrar con tu correo. O entra con tu correo.")}</p>`
+            : `<p class="notice">${tr("Sign in with your email to continue.", "Entra con tu correo para continuar.")}</p>`) +
         emailSignInHtml(),
     );
   wireEmailSignIn();
@@ -322,7 +350,7 @@ async function fromTableCard(code) {
   try {
     const session = await api("session");
     if (!(session.kind === "guest" && session.verified))
-      await api("party-session", { token: code });
+      await api("party-session", { token: code }, { typed: false });
     await showPortal();
   } catch (e) {
     signedOut("share", cardRefusal(e));
@@ -420,6 +448,7 @@ const accountPage = async (inv) =>
     dropAllDrafts,
     whatsNext,
     attendingOf,
+    partyOver,
   });
 // "Your invitation includes up to 2 adults/teens and 1 child."
 function allocation(capacity) {
@@ -653,9 +682,13 @@ function timedOut(inv, box) {
 }
 // While the RSVP is on screen, a session that is about to end says so in
 // time to keep it (WCAG 2.2.1): filling in the form keeps it, and two minutes
-// before the end the page offers to (site/client.js sessionLimit). If it ends
+// before the end the page offers to (site/session-limit.js). If it ends
 // anyway, the step says so now rather than after Save, and keeps the answers.
-function rsvpLimit(inv, box) {
+async function rsvpLimit(inv, box) {
+  const { sessionLimit } = await import("./session-limit.js");
+  // Another step may have replaced this one while the module loaded.
+  if (!box.isConnected) return;
+  stopLimit?.();
   stopLimit = sessionLimit({
     kind: "guest",
     form: box.matches("form") ? box : box.querySelector("form"),
@@ -866,6 +899,14 @@ function confirmation(inv, session, next = "") {
       : `<p>${tr("The RSVP deadline has passed. To change your RSVP, please contact us.", "La fecha límite ya pasó. Para cambiar su respuesta, escríbannos.")}</p><p><a class="target" href="${route("contact")}">${term(terms.contactUs)}</a></p>`;
   // The same link on both confirmations (and under the home page's quote).
   const note = `<p class="note-link"><a class="target" href="${route("guestbook")}">${esc(term(terms.leaveNote))}<span class="arrow" aria-hidden="true">→</span></a></p>`;
+  // WhatsApp opt-in changes data, so it needs the email sign-in; an
+  // invitation-link session is pointed to My account instead (in `next`).
+  const whatsapp =
+    session.scope === "rsvp" || over
+      ? ""
+      : // Shown only while WhatsApp is live (site/guest-whatsapp.js removes it otherwise).
+        `<details class="card" hidden><summary>${tr("Optional: WhatsApp updates", "Opcional: avisos por WhatsApp")}</summary><section id="whatsapp-preferences"></section></details>`;
+  const account = `<p><a class="target" href="${route("account")}">${session.verified ? tr("Open my account", "Abrir mi cuenta") : tr("Sign in with your email to see photos and send us messages", { tu: "Entra con tu correo para ver fotos y enviarnos mensajes", ustedes: "Entren con su correo para ver fotos y enviarnos mensajes" })}</a></p>`;
   if (!attending.length)
     // The note page takes this household's note straight from the invitation
     // link (one per link), or from an email sign-in: no second sign-in.
@@ -873,7 +914,7 @@ function confirmation(inv, session, next = "") {
       over
         ? tr("We missed you, and we send you our love.", "Los extrañamos y les mandamos todo nuestro cariño.")
         : tr("We’ll miss you, and we send you our love.", "Los vamos a extrañar y les mandamos todo nuestro cariño.")
-    }</p></div>${saved}${note}${edit}`;
+    }</p></div>${saved}${note}${edit}${over ? "" : `${next}${whatsapp}${account}`}`;
   const calendars = attending
     .map(
       (e) =>
@@ -892,14 +933,6 @@ function confirmation(inv, session, next = "") {
   ]
     .filter(Boolean)
     .join("");
-  // WhatsApp opt-in changes data, so it needs the email sign-in; an
-  // invitation-link session is pointed to My account instead (in `next`).
-  const whatsapp =
-    session.scope === "rsvp" || over
-      ? ""
-      : // Shown only while WhatsApp is live (site/guest-whatsapp.js removes it otherwise).
-        `<details class="card" hidden><summary>${tr("Optional: WhatsApp updates", "Opcional: avisos por WhatsApp")}</summary><section id="whatsapp-preferences"></section></details>`;
-  const account = `<p><a class="target" href="${route("account")}">${session.verified ? tr("Open my account", "Abrir mi cuenta") : tr("Sign in with your email to see photos and send us messages", { tu: "Entra con tu correo para ver fotos y enviarnos mensajes", ustedes: "Entren con su correo para ver fotos y enviarnos mensajes" })}</a></p>`;
   if (over)
     return `<div class="notice success"><h2>${tr("Thank you for celebrating with us!", "¡Gracias por celebrar con nosotros!")}</h2><p>${tr("Thank you", "Gracias")}, ${esc(inv.name)}.</p></div>${summary(r.attendance, inv)}${saved}<div class="row-actions"><a class="button burgundy" href="${route("gallery")}">${term(terms.seePhotos)}</a><a href="${route("share")}">${esc(term(terms.sharePhotos))}<span class="arrow" aria-hidden="true">→</span></a></div>${note}${account}`;
   return `<div class="notice success"><h2>${tr("We can’t wait to celebrate with you!", "¡Los esperamos con mucha ilusión!")}</h2><p>${tr("Thank you", "Gracias")}, ${esc(inv.name)}.</p></div>${summary(r.attendance, inv)}${saved}<h3>${tr("Add to your calendar", "Agregar al calendario")}</h3><div class="calendar-actions">${calendars}</div><h3>${tr("Getting there", "Cómo llegar")}</h3><div class="row-actions">${places}</div>${edit}${note}${next}${whatsapp}${account}`;
@@ -989,7 +1022,13 @@ async function showPortal() {
       );
       return;
     }
-    const next = !partyOver() && attendingOf(inv).length ? await whatsNext(session) : "";
+    // A household that is not coming still hears how news and the photos
+    // reach them (QA-05), without what to wear or where to park.
+    const next = partyOver()
+      ? ""
+      : attendingOf(inv).length
+        ? await whatsNext(session)
+        : await whatsNext(session, false, { photos: true });
     show(confirmation(inv, session, next), { focus: justSaved() });
     const updates = portal.querySelector("#whatsapp-preferences");
     if (updates) (await whatsapp()).whatsappPreferences(updates, inv.contact.phone || "");
@@ -1143,7 +1182,7 @@ if (microsoft) {
   submit(document.querySelector("#email-verify"), async () => {
     let returnTo;
     try {
-      ({ returnTo } = await api("auth/email/verify", { token: fragment }));
+      ({ returnTo } = await api("auth/email/verify", { token: fragment }, { typed: false }));
     } catch (e) {
       if (e.code !== "EMAIL_LINK_INVALID") throw e;
       // The link was already used (it works once) or is past its 15 minutes.
@@ -1171,7 +1210,7 @@ if (microsoft) {
   fragment = linkToken;
   if (["yes", "no"].includes(answer)) quickAnswer = answer;
   try {
-    await api("invitation-session", { token: fragment });
+    await api("invitation-session", { token: fragment }, { typed: false });
     fragment = "";
     await showPortal();
   } catch (e) {

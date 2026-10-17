@@ -711,6 +711,7 @@ for (const file of [
   "pages.css",
   "guest.js",
   "media-upload.js",
+  "session-limit.js",
   "upload-batch.mjs",
   "admin.js",
   "client.js",
