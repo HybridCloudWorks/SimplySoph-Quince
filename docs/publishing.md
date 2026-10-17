@@ -133,7 +133,7 @@ npx -y firebase-tools@15.31.0 deploy --only hosting:misxv --project simplysoph-6
 npx -y firebase-tools@15.31.0 deploy --only hosting:misxv --project simplysoph-66c78 --account <project-owner-account> --non-interactive
 ```
 
-The Hosting predeploy hook runs `npm run check`, which builds pages and runs route/asset and behavior checks. Do not use an unscoped `firebase deploy` in this shared project. Firebase CLI 15.31.0 performed the deployment. Node 24 is the CI and API runtime target; guest pages are static and the dedicated Cloud Run container handles API requests. Gemini and a new load balancer are not required. Existing shared billing still applies; this does not promise zero charges.
+The Hosting predeploy hook runs `npm run check` (route/asset and behavior checks, on a build pinned to a test date), then `npm run build`, the same real-clock build the publish job makes, so a manual deploy publishes the pages and link previews of the current phase, never the test build (`tests/deploy-hosting.test.mjs` keeps the two equal). Do not use an unscoped `firebase deploy` in this shared project. Firebase CLI 15.31.0 performed the deployment. Node 24 is the CI and API runtime target; guest pages are static and the dedicated Cloud Run container handles API requests. Gemini and a new load balancer are not required. Existing shared billing still applies; this does not promise zero charges.
 
 Changes reach `main` only through pull requests whose `check` job passes (ruleset "Protect main"), and the publish job runs in the GitHub `production` environment, which only `main` can use. Publishing authenticates through Workload Identity Federation; its condition admits only pushes to `main` running this repository's `check.yml`.
 
