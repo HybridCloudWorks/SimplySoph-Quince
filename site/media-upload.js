@@ -1,4 +1,4 @@
-import { api, esc, es, tr, route, field, submit, focusOn } from "./client.js";
+import { api, esc, es, tr, route, field, submit, focusOn, markBusy, announce, sessionLimit, cardEnded } from "./client.js";
 import {
   createUploadBatch,
   sendUploadBatch,
@@ -224,7 +224,7 @@ export function mediaUpload(portal, albums, { party = false } = {}) {
         hint: tr("So we know who took them.", "Para que sepamos quién los tomó."),
       })
     : "";
-  portal.innerHTML = `<form id="photo"><h2>${tr("Add your photos & videos", "Agrega tus fotos y videos")}</h2>${intro}<p id="upload-help">${help}</p><p id="upload-room" class="hint" hidden></p><div class="file-picker"><input type="file" id="upload-files" class="file-input" name="file" accept="${esc(uploadAccept)}" multiple required aria-describedby="upload-help upload-chosen" data-label="${tr("Photos & videos", "Fotos y videos")}"><label for="upload-files" class="button outline file-button">${tr("Choose photos & videos", "Elige fotos y videos")}</label><p id="upload-chosen" class="file-count" aria-live="polite">${chosenText([])}</p></div><div class="upload-fields">${name}<label>${tr("Album", "Álbum")}<select name="album">${albums.map((a) => `<option value="${esc(a.id)}"${a.id === "event" ? " selected" : ""}>${esc(es ? a.es : a.en)}</option>`).join("")}</select></label>${field(tr("Caption for these files (optional)", "Descripción para estos archivos (opcional)"), "caption", { max: 200 })}</div><label class="check upload-consent"><input type="checkbox" name="consent" required data-label="${tr("Permission from the people pictured", "Permiso de las personas que aparecen")}"><span>${tr("I have permission from the people pictured and agree to the", "Tengo permiso de las personas que aparecen y acepto lo indicado en")} <a href="${route("terms")}" target="_blank" rel="noopener">${tr("Photo & video policy", "Uso de fotos y videos")}</a>.</span></label><p class="error" role="alert"></p><div class="upload-actions"><button type="submit" class="button burgundy" data-busy="${tr("Sending…", "Enviando…")}">${tr("Send my photos & videos", "Enviar mis fotos y videos")}</button>${party ? "" : `<a href="${route("gallery")}">${tr("View the gallery", "Ver la galería")}</a>`}</div><div id="upload-summary" role="status" aria-live="polite"></div><ol id="upload-results" aria-label="${tr("Your files", "Tus archivos")}"></ol></form>`;
+  portal.innerHTML = `<form id="photo"><h2>${tr("Add your photos & videos", "Agrega tus fotos y videos")}</h2>${intro}<p id="upload-help">${help}</p><p id="upload-room" class="hint" hidden></p><div class="file-picker"><input type="file" id="upload-files" class="file-input" name="file" accept="${esc(uploadAccept)}" multiple required aria-describedby="upload-help upload-chosen" data-label="${tr("Photos & videos", "Fotos y videos")}"><label for="upload-files" class="button outline file-button">${tr("Choose photos & videos", "Elige fotos y videos")}</label><p id="upload-chosen" class="file-count">${chosenText([])}</p></div><div class="upload-fields">${name}<label>${tr("Album", "Álbum")}<select name="album">${albums.map((a) => `<option value="${esc(a.id)}"${a.id === "event" ? " selected" : ""}>${esc(es ? a.es : a.en)}</option>`).join("")}</select></label>${field(tr("Caption for these files (optional)", "Descripción para estos archivos (opcional)"), "caption", { max: 200 })}</div><label class="check upload-consent"><input type="checkbox" name="consent" required data-label="${tr("Permission from the people pictured", "Permiso de las personas que aparecen")}"><span>${tr("I have permission from the people pictured and agree to the", "Tengo permiso de las personas que aparecen y acepto lo indicado en")} <a href="${route("terms")}" target="_blank" rel="noopener">${tr("Photo & video policy", "Uso de fotos y videos")}</a>.</span></label><p class="error" role="alert"></p><div class="upload-actions"><button type="submit" class="button burgundy" data-busy="${tr("Sending…", "Enviando…")}">${tr("Send my photos & videos", "Enviar mis fotos y videos")}</button>${party ? "" : `<a href="${route("gallery")}">${tr("View the gallery", "Ver la galería")}</a>`}</div></form><div id="upload-summary" role="status" aria-live="polite"></div><ol id="upload-results" aria-label="${tr("Your files", "Tus archivos")}"></ol>`;
   // Signed in, or in through the table card: the page's "How to share" steps
   // (for signed-out visitors, scripts/build-pages.mjs) have done their job.
   document.querySelector("[data-share-steps]")?.setAttribute("hidden", "");
@@ -234,8 +234,10 @@ export function mediaUpload(portal, albums, { party = false } = {}) {
     room = form.querySelector("#upload-room"),
     button = form.querySelector('[type="submit"]'),
     error = form.querySelector('[role="alert"]'),
-    results = form.querySelector("#upload-results"),
-    summary = form.querySelector("#upload-summary");
+    // Outside the form, so a busy form (aria-busy) never holds back what
+    // happened to the files.
+    results = portal.querySelector("#upload-results"),
+    summary = portal.querySelector("#upload-summary");
   let entries = [],
     busy = false,
     checking = false,
@@ -347,7 +349,7 @@ export function mediaUpload(portal, albums, { party = false } = {}) {
     const arrived = entries.filter((e) => ["received", "processing"].includes(e.state)).length,
       sendable = entries.filter((e) => !e.problem).length,
       stop = busy ? null : stopped();
-    summary.textContent = busy
+    const text = busy
       ? tr(
           `Sending your files: ${arrived} of ${sendable} arrived. Keep this page open until they finish.`,
           `Enviando tus archivos: llegaron ${arrived} de ${sendable}. Mantén esta página abierta hasta que terminen.`,
@@ -366,9 +368,11 @@ export function mediaUpload(portal, albums, { party = false } = {}) {
                 )
               : "")
           : "");
-    summary.className = summary.textContent
-      ? `notice${!busy && !stop && arrived === sendable ? " success" : ""}`
-      : "";
+    // Written only when the words change: progress alone would rewrite the
+    // same sentence several times a second, and each write can be read again.
+    const look = text ? `notice${!busy && !stop && arrived === sendable ? " success" : ""}` : "";
+    if (summary.textContent !== text) summary.textContent = text;
+    if (summary.className !== look) summary.className = look;
     // A limit that passes while the page is open brings Try again back then.
     clearTimeout(wake);
     const next = entries
@@ -398,11 +402,64 @@ export function mediaUpload(portal, albums, { party = false } = {}) {
     room.hidden = !room.textContent;
   }
   showRoom();
+  // A session that ends while the page is open (WCAG 2.2.1): choosing and
+  // typing keep it, the page warns two minutes before the end, and once it
+  // is over the guest learns how to come back, with focus on it. A table
+  // card guest has no invitation link or account: only the card brings
+  // them back (site/client.js sessionLimit).
+  const kind = party ? "party" : "guest";
+  // `reason`: why a card session ended ("expired", "rotated", "closed").
+  const ended = (reason) =>
+    (party
+      ? cardEnded(reason)
+      : tr(
+          "Your sign-in timed out. Reload this page and sign in again to keep sharing.",
+          "Tu acceso venció. Vuelve a cargar esta página y entra de nuevo para seguir compartiendo.",
+        )) +
+    (entries.some((e) => ["received", "processing"].includes(e.state))
+      ? " " + tr("The files that already arrived are safe.", "Los archivos que ya llegaron están a salvo.")
+      : "");
+  const over = (data = {}) => {
+    error.textContent = ended(data.partyEnded);
+    focusOn(error);
+  };
+  sessionLimit({
+    kind,
+    form,
+    ended: over,
+    words: {
+      warn: (n) =>
+        tr(
+          `Still there? This page stops sending in ${n} ${n === 1 ? "minute" : "minutes"}.`,
+          `¿Sigues ahí? Esta página dejará de enviar en ${n} ${n === 1 ? "minuto" : "minutos"}.`,
+        ),
+      keep: tr("Keep sharing", "Seguir compartiendo"),
+      kept: tr("You have more time.", "Tienes más tiempo."),
+      final: party
+        ? tr(
+            "This page can’t be kept open any longer. To share more after that, scan the table card again.",
+            "Esta página ya no se puede mantener abierta más tiempo. Para compartir más después, vuelve a escanear la tarjeta de la mesa.",
+          )
+        : tr(
+            "This page can’t be kept open any longer. To share more after that, sign in again.",
+            "Esta página ya no se puede mantener abierta más tiempo. Para compartir más después, vuelve a entrar.",
+          ),
+    },
+  });
+  // A sign-in or card that ended while files were on their way says the same.
+  const lost = (err) => {
+    if (["SIGN_IN_REQUIRED", "CSRF_REJECTED", "PARTY_SESSION_ENDED"].includes(err.code))
+      err.message = ended(err.details?.reason);
+    throw err;
+  };
   input.addEventListener("change", async () => {
     error.textContent = "";
     const mine = ++choice,
       files = Array.from(input.files);
+    // Said in the page's language (the browser's file control speaks its
+    // own); resetting the chooser after a send says nothing.
     chosen.textContent = chosenText(files);
+    announce(chosen.textContent);
     try {
       entries = createUploadBatch(files);
     } catch {
@@ -456,8 +513,15 @@ export function mediaUpload(portal, albums, { party = false } = {}) {
     controls.forEach((el) => (el.disabled = true));
     render();
     try {
-      // The token for the X-CSRF-Token header of each piece.
-      const { csrf } = await api("session");
+      // The token for the X-CSRF-Token header of each piece, and whether the
+      // session is still there: if not, nothing is sent and the guest is told
+      // how to come back.
+      const session = await api("session");
+      if (session.kind !== kind) {
+        over(session);
+        return;
+      }
+      const { csrf } = session;
       await sendUploadBatch(
         entries,
         {
@@ -470,8 +534,8 @@ export function mediaUpload(portal, albums, { party = false } = {}) {
               caption,
               consent: true,
               ...(party ? { name: named } : {}),
-            }),
-          put: (id, offset, blob, onBytes) => sendPiece(csrf, id, offset, blob, onBytes),
+            }).catch(lost),
+          put: (id, offset, blob, onBytes) => sendPiece(csrf, id, offset, blob, onBytes).catch(lost),
         },
         render,
       );
@@ -480,6 +544,9 @@ export function mediaUpload(portal, albums, { party = false } = {}) {
     } finally {
       for (const e of entries) if (e.serverNow) noteServerTime(new Date(e.serverNow).toISOString());
       busy = false;
+      // The pieces renewed the session; the page learns for how long now
+      // (a background check, which renews nothing itself).
+      api("session?poll=1").catch(() => {});
       button.removeAttribute("aria-disabled");
       controls.forEach((el) => (el.disabled = false));
       // Clear the chooser, so picking the same file again (after "Not
@@ -516,7 +583,13 @@ export function mediaUpload(portal, albums, { party = false } = {}) {
   });
   results.addEventListener("click", async (event) => {
     if (event.target.closest("[data-retry]")) {
-      send();
+      if (busy) return;
+      // Try again goes away while the files are sent: focus moves to Send,
+      // which is busy as it is for a first send ("Sending…", announced).
+      button.focus();
+      const done = markBusy(button, form);
+      await send();
+      done();
       return;
     }
     const take = event.target.closest("[data-withdraw]");

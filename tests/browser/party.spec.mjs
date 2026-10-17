@@ -206,3 +206,39 @@ test("Admin → Photos: the family turns the card on, downloads it once, sees ta
   await expect(card).toContainText("The table card is off");
   expect((await harness.admin("party-card")).state).toBe("closed");
 });
+
+// P5-A11Y-05: progress used to rewrite the same status sentence several times
+// a second, inside a form marked aria-busy (which can hold announcements
+// back), and resetting the chooser announced "No files chosen yet".
+test("the upload's status is written only when its words change, never inside the busy form, and resetting the chooser says nothing", async ({
+  page,
+  harness,
+  setNow,
+}) => {
+  await setNow(PARTY_NIGHT);
+  await page.goto((await tableCard(harness)).url);
+  await expect(page.getByRole("heading", { name: "Add your photos & videos" })).toBeVisible();
+  await page.evaluate(() => {
+    const box = document.querySelector("#upload-summary");
+    window.writes = [];
+    new MutationObserver(() =>
+      window.writes.push({ text: box.textContent, busy: !!box.closest("[aria-busy=true]") }),
+    ).observe(box, { childList: true, characterData: true, subtree: true });
+  });
+  const chosen = page.locator("#upload-chosen");
+  await expect(chosen).not.toHaveAttribute("aria-live", /.*/);
+  await page.getByLabel("Choose photos & videos").setInputFiles([
+    { name: "IMG_2301.JPG", mimeType: "image/jpeg", buffer: await jpeg(1600, 1200) },
+  ]);
+  // Said once, in the page's language, through the page's own region.
+  await expect(page.locator("#announce")).toHaveText("1 photo chosen");
+  await page.getByLabel(/I have permission from the people pictured/).check();
+  await page.getByRole("button", { name: "Send my photos & videos" }).click();
+  await expect(page.locator("#upload-summary")).toContainText("1 of 1 arrived. Thank you!");
+  await expect(chosen).toHaveText("No files chosen yet");
+  const writes = await page.evaluate(() => window.writes);
+  expect(writes.length).toBeGreaterThan(1);
+  for (let i = 1; i < writes.length; i++) expect(writes[i].text, `write ${i} repeats the one before`).not.toBe(writes[i - 1].text);
+  expect(writes.filter((w) => w.busy)).toEqual([]);
+  await expect(page.locator("#announce")).not.toHaveText("No files chosen yet");
+});

@@ -253,10 +253,14 @@ test("a lost connection still pauses with the connection message and Try again, 
   await signIn(page, harness, household.email);
   // The page's quick retries wait 1, 3, 8 and 15 seconds before it pauses.
   test.setTimeout(75_000);
-  let online = false;
-  await page.route(/\/api\/uploads\/[a-f0-9-]{36}\?offset=\d+$/, (route) =>
-    online ? route.continue() : route.abort("internetdisconnected"),
-  );
+  let online = false,
+    release;
+  const held = new Promise((resolve) => (release = resolve));
+  await page.route(/\/api\/uploads\/[a-f0-9-]{36}\?offset=\d+$/, async (route) => {
+    if (!online) return route.abort("internetdisconnected");
+    await held;
+    return route.continue();
+  });
   const photo = await sharp({ create: { width: 40, height: 30, channels: 3, background: "#651625" } }).jpeg().toBuffer();
   await page.getByLabel("Choose photos & videos").setInputFiles([{ name: "IMG_0401.JPG", mimeType: "image/jpeg", buffer: photo }]);
   await page.getByLabel(/I have permission/).check();
@@ -268,8 +272,21 @@ test("a lost connection still pauses with the connection message and Try again, 
   const again = page.getByRole("button", { name: "Try again" });
   await expect(again).toBeVisible();
   online = true;
-  await again.click();
+  // P5-A11Y-04: Try again goes away while it works, so focus moves to Send,
+  // which is busy as for a first send: "Sending…", the form aria-busy, said.
+  await again.focus();
+  await page.keyboard.press("Enter");
+  const send = page.locator("#photo [type=submit]");
+  await expect(send).toBeFocused();
+  await expect(send).toHaveText("Sending…");
+  await expect(send).toHaveAttribute("aria-disabled", "true");
+  await expect(page.locator("#photo")).toHaveAttribute("aria-busy", "true");
+  await expect(page.locator("#announce")).toHaveText("Sending…");
+  release();
   await expect(summary).toContainText("1 of 1 arrived. Thank you!");
+  await expect(send).toBeFocused();
+  await expect(send).toHaveText("Send my photos & videos");
+  await expect(page.locator("#photo")).not.toHaveAttribute("aria-busy", /.*/);
 });
 
 test("the gallery shows one clear state: sign in, nothing yet, then only albums and sections that have something", async ({

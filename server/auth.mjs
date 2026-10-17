@@ -301,22 +301,40 @@ export function microsoftVerifier({
 // ledger object. Limits therefore apply per Cloud Run instance (max 2).
 const counters = new WeakMap(),
   maxCounters = 20000;
-export async function rateLimit(ledger, key, max, windowMs, now) {
-  let map = counters.get(ledger);
-  if (!map) counters.set(ledger, (map = { rows: new Map(), prunedAt: 0 }));
-  // Prune expired rows at most once a minute. A counter whose window is still
-  // open is never evicted: flooding the table with junk keys used to push out
-  // live counters and reset every budget (SEC-6). Every key is now bounded (a
-  // global budget, a guest-list address, a verified identity or a signed-in
-  // household), so a full table means abuse, and new keys are refused instead.
+// `minted`: a key anyone can make more of at will (a table card phone gets a
+// new random name with each scan without a cookie). Those live in a table of
+// their own, which drops its least recently used counters when full, so they
+// can never fill the table that sign-in, RSVP and invitation links depend on
+// (QA-06). A minted key never fails open: the one being counted is the most
+// recently used, so it is never the one dropped, and a phone that sheds its
+// counter gains nothing it could not get by scanning the card again.
+export async function rateLimit(ledger, key, max, windowMs, now, { minted = false } = {}) {
+  let tables = counters.get(ledger);
+  if (!tables)
+    counters.set(ledger, (tables = { bounded: { rows: new Map(), prunedAt: 0 }, minted: { rows: new Map(), prunedAt: 0 } }));
+  let map = tables[minted ? "minted" : "bounded"];
+  // Prune expired rows at most once a minute. A bounded counter whose window
+  // is still open is never evicted: flooding the table with junk keys used to
+  // push out live counters and reset every budget (SEC-6). Every bounded key
+  // is a global budget, a guest-list address, a verified identity or a
+  // signed-in household, so a full table means abuse, and new keys are
+  // refused instead.
   if (now - map.prunedAt > 60000 || map.rows.size >= maxCounters) {
     map.prunedAt = now;
     for (const [k, v] of map.rows) if (v.until <= now) map.rows.delete(k);
   }
   map = map.rows;
   let row = map.get(key);
+  if (minted && row) {
+    // Most recently used last (a Map keeps insertion order).
+    map.delete(key);
+    map.set(key, row);
+  }
   if (!row || row.until <= now) {
-    if (!row && map.size >= maxCounters) throw error(429, "TOO_MANY_REQUESTS");
+    if (!row && map.size >= maxCounters) {
+      if (!minted) throw error(429, "TOO_MANY_REQUESTS");
+      map.delete(map.keys().next().value);
+    }
     map.set(key, (row = { count: 0, until: now + windowMs }));
   }
   // The budget comes back when its window ends; the page can say when.

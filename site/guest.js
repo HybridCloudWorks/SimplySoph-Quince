@@ -36,6 +36,8 @@ import {
   markBusy,
   sayError,
   mentionsUs,
+  sessionLimit,
+  cardEnded,
 } from "./client.js";
 import { galleryOpen } from "./lifecycle.mjs";
 import { date, dayMonth, time, at } from "./datetime.mjs";
@@ -63,12 +65,16 @@ const eventNames = {
 // the step's heading goes in front (R-073).
 let pageTitle = document.title;
 let settled = false;
+// The RSVP step's session limit, stopped when another step replaces it.
+let stopLimit = null;
 // Puts a step in the portal. A step the guest moved to (any after the page
 // load, or the confirmation right after a save) is named in the tab title and
 // takes focus, its heading or message, so keyboard and screen-reader users
 // land on what changed. "contact us" in a step's alert becomes a link
 // (client.js sayError).
 function show(html, { focus = settled } = {}) {
+  stopLimit?.();
+  stopLimit = null;
   portal.innerHTML = html;
   settled = true;
   const heading = portal.querySelector("h2");
@@ -645,19 +651,29 @@ function timedOut(inv, box) {
   addEventListener("focus", resume);
   document.addEventListener("visibilitychange", resume);
 }
-// While a guest fills in the form, the page checks in now and then: that
-// request keeps the session open (link and email sessions renew while used).
-// If the session has already ended, say so now rather than after Save.
-let checkedAt = Date.now();
-function stillHere(inv, form) {
-  if (Date.now() - checkedAt < 300000) return;
-  checkedAt = Date.now();
-  api("session").then(
-    (s) => {
-      if (s.kind !== "guest" && form.isConnected) timedOut(inv, form);
+// While the RSVP is on screen, a session that is about to end says so in
+// time to keep it (WCAG 2.2.1): filling in the form keeps it, and two minutes
+// before the end the page offers to (site/client.js sessionLimit). If it ends
+// anyway, the step says so now rather than after Save, and keeps the answers.
+function rsvpLimit(inv, box) {
+  stopLimit = sessionLimit({
+    kind: "guest",
+    form: box.matches("form") ? box : box.querySelector("form"),
+    ended: () => box.isConnected && timedOut(inv, box),
+    words: {
+      warn: (n) =>
+        tr(`Still there? For your security, this page stops saving in ${n} ${n === 1 ? "minute" : "minutes"}.`, {
+          tu: `¿Sigues ahí? Por seguridad, esta página dejará de guardar en ${n} ${n === 1 ? "minuto" : "minutos"}.`,
+          ustedes: `¿Siguen ahí? Por seguridad, esta página dejará de guardar en ${n} ${n === 1 ? "minuto" : "minutos"}.`,
+        }),
+      keep: tr("Keep going", "Continuar"),
+      kept: tr("You have more time.", { tu: "Tienes más tiempo.", ustedes: "Tienen más tiempo." }),
+      final: tr("This page can’t be kept open any longer. Your answers stay here even if it stops saving.", {
+        tu: "Esta página ya no se puede mantener abierta más tiempo. Tus respuestas se quedan aquí aunque deje de guardar.",
+        ustedes: "Esta página ya no se puede mantener abierta más tiempo. Sus respuestas se quedan aquí aunque deje de guardar.",
+      }),
     },
-    () => {},
-  );
+  });
 }
 // The server's own test for a contact email (server/rsvp-validation.mjs), so
 // the form catches "name@family" too, not only an address without an @.
@@ -680,10 +696,10 @@ function rsvpForm(inv, values, { restored = false } = {}) {
     }<label>${tr("Anything we should know? Allergies, accessibility needs, or a song you’d love to hear (optional)", "¿Algo que debamos saber? Alergias, necesidades de accesibilidad o una canción que les gustaría escuchar (opcional)")}<textarea name="requests" maxlength="1000">${esc(values.requests || "")}</textarea></label><p class="resume-note" role="status"></p><p class="error" role="alert"></p><button class="button burgundy" type="submit">${term(terms.reviewRsvp)}</button></form>`,
   );
   const form = portal.querySelector("#response");
+  rsvpLimit(inv, form);
   const keep = () => {
     current.values = formValues(form, inv);
     keepDraft(inv, current.values);
-    stillHere(inv, form);
   };
   form.addEventListener("input", keep);
   form.addEventListener("change", keep);
@@ -728,6 +744,7 @@ function review(inv, values, { push = true } = {}) {
     if (history.state?.rsvp !== "form") history.replaceState({ rsvp: "form" }, "");
     history.pushState({ rsvp: "review" }, "");
   }
+  rsvpLimit(inv, portal);
   const alert = portal.querySelector("[role=alert]"),
     note = portal.querySelector(".resume-note"),
     save = portal.querySelector("#confirm");
@@ -914,6 +931,10 @@ async function showPortal() {
     // The invitation code only opens the RSVP, so pages for messages and
     // uploads offer the email sign-in alone (UI-11).
     if (["rsvp", "rsvp/confirmed", "account"].includes(view)) accessForm();
+    // A phone whose table card session ended (a reload after a long pause, a
+    // new card, the window's close) is told how to come back: the card.
+    else if (view === "share" && session.partyEnded)
+      signedOut(view, session.partyEnded === "closed" ? cardRefusal({ code: "PARTY_CLOSED" }) : cardEnded(session.partyEnded));
     else signedOut(view);
     return;
   }

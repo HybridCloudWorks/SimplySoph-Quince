@@ -176,6 +176,17 @@ const messages = {
     "Sharing from the table card has closed.",
     "Ya no se puede compartir desde la tarjeta de la mesa.",
   ],
+  // A table card session that ended (server: PARTY_SESSION_ENDED, with its
+  // reason): a card phone has no invitation link or account, so it is told
+  // to scan the card again, never to sign in (QA-01, QA-02).
+  PARTY_SESSION_ENDED: [
+    "Your time with the table card ran out. Scan the card on your table again to keep sharing.",
+    "Se terminó tu tiempo con la tarjeta de la mesa. Vuelve a escanear la tarjeta de tu mesa para seguir compartiendo.",
+  ],
+  PARTY_CARD_REPLACED: [
+    "This table card was replaced with a new one. Scan the new card on your table to keep sharing.",
+    "Esta tarjeta de la mesa se cambió por una nueva. Escanea la tarjeta nueva de tu mesa para seguir compartiendo.",
+  ],
   MEDIA_BUSY: [
     "This video is being prepared right now. Try again in a few minutes.",
     "Este video se está preparando en este momento. Inténtalo de nuevo en unos minutos.",
@@ -207,6 +218,9 @@ const messages = {
     "Abre de nuevo tu enlace de invitación para enviar tu mensaje desde él.",
   ],
 };
+// Why a table card session ended ("expired", "rotated" or "closed"), in words.
+export const cardEnded = (reason) =>
+  tr(...messages[{ rotated: "PARTY_CARD_REPLACED", closed: "PARTY_CLOSED" }[reason] || "PARTY_SESSION_ENDED"]);
 // Admin pages add their own errors, and their own wording of some of the
 // above (site/admin-messages.js), so guest pages never download them.
 export const addMessages = (more) => Object.assign(messages, more);
@@ -286,10 +300,14 @@ export async function api(path, body, options = {}) {
     });
   }
   if (!res.ok) {
-    const pair = messages[data?.error];
+    // A page that holds a table card session never reads the sign-in words.
+    const code = data?.error === "SIGN_IN_REQUIRED" && sessionKind === "party" ? "PARTY_SESSION_ENDED" : data?.error,
+      pair = messages[code];
     throw Object.assign(
       new Error(
-        pair
+        code === "PARTY_SESSION_ENDED"
+          ? cardEnded(data.reason)
+          : pair
           ? tr(...pair)
           : res.status >= 500
             ? trouble(body !== undefined, false)
@@ -300,25 +318,157 @@ export async function api(path, body, options = {}) {
       ),
       // `details`: the facts behind a refusal (a limit, how many were used,
       // when more fit), for pages that say more than the code's sentence.
-      { code: data?.error, status: res.status, details: data },
+      { code, status: res.status, details: data },
     );
   }
   if (data.csrf) setCsrf(data.csrf);
+  if (path.split("?")[0] === "session") sessionSeen(data);
   return data;
+}
+// ---- A session that ends while its page is open (WCAG 2.2.1) ----
+// GET /api/session says how long this page's guest or table card session has
+// left (expiresIn) and, unless it is a background check (?poll=1), renews it
+// in its last 15 minutes. sessionLimit() keeps it while the guest uses `form`
+// (a check-in in those 15 minutes, at most once a minute, or every 5 minutes
+// to learn early that it ended elsewhere); two minutes before the end it
+// warns in the page-wide note, with a button that keeps it; and once it is
+// over it calls ended(). The end is always confirmed with the server first
+// (?poll=1, which renews nothing), so a page whose uploads or other tabs kept
+// the session going is never told it ended. One limit per page.
+const WARN = 120000;
+let ends = 0,
+  limit = null,
+  // The kind of session this page last had ("guest", "party", …).
+  sessionKind = null;
+function sessionSeen(data) {
+  ends = Number.isFinite(data.expiresIn) ? Date.now() + data.expiresIn : 0;
+  if (data.kind) sessionKind = data.kind;
+  else if (data.partyEnded) sessionKind = "party";
+  limit?.seen(data);
+}
+// `words`: warn(minutes), keep (the button), kept (said once kept), final
+// (said when it can't be kept any longer).
+export function sessionLimit({ kind, form, ended, words }) {
+  limit?.stop();
+  let timer = 0,
+    asked = 0,
+    warned = false,
+    confirming = false,
+    stopped = false;
+  const self = {
+    seen(data) {
+      if (data.kind !== kind) end(data);
+      else tick();
+    },
+    stop() {
+      stopped = true;
+      clearTimeout(timer);
+      if (warned && document.querySelector("#status [data-session-note]")) clearNote();
+      form?.removeEventListener("input", active);
+      form?.removeEventListener("change", active);
+      document.removeEventListener("visibilitychange", tick);
+      if (limit === self) limit = null;
+    },
+  };
+  // ended(data): what GET /api/session said, if it said why.
+  const end = (data = {}) => {
+    if (stopped) return;
+    self.stop();
+    ended(data);
+  };
+  function tick() {
+    if (stopped || confirming || !ends) return;
+    clearTimeout(timer);
+    const left = ends - Date.now();
+    if (left <= WARN) {
+      // Asked with ?poll=1, so the question itself renews nothing.
+      confirming = true;
+      api("session?poll=1").then(
+        () => {
+          confirming = false;
+          const now = ends - Date.now();
+          if (stopped) return;
+          if (now <= 0) return end();
+          if (now <= WARN && !warned) warn(now);
+          if (now > WARN && warned) unwarn();
+          timer = setTimeout(tick, now <= WARN ? now : now - WARN);
+        },
+        () => {
+          // Offline: ask again in a minute, and say nothing yet.
+          confirming = false;
+          timer = setTimeout(tick, 60000);
+        },
+      );
+      return;
+    }
+    if (warned) unwarn();
+    timer = setTimeout(tick, left - WARN);
+  }
+  function warn(left) {
+    warned = true;
+    notify(words.warn(Math.max(1, Math.ceil(left / 60000))), { label: words.keep, onClick: keep });
+    document.querySelector("#status > span")?.setAttribute("data-session-note", "");
+  }
+  function unwarn() {
+    warned = false;
+    if (document.querySelector("#status [data-session-note]")) clearNote();
+  }
+  async function keep(e) {
+    const button = e.currentTarget,
+      before = ends;
+    button.dataset.busy = tr("One moment…", "Un momento…");
+    const done = markBusy(button, null);
+    try {
+      await api("session");
+    } catch {
+      /* offline: the note stays, and so does its button */
+    }
+    done();
+    if (stopped) return;
+    if (ends > before + 60000) {
+      unwarn();
+      announce(words.kept);
+    } else if (ends > Date.now()) {
+      // It can't run longer (a link's 2 hours, the table card's window).
+      notify(words.final);
+      document.querySelector("#status > span")?.setAttribute("data-session-note", "");
+    }
+    tick();
+  }
+  function active() {
+    const since = Date.now() - asked;
+    if (stopped || !ends || !(since >= 300000 || (since >= 60000 && ends - Date.now() < 900000))) return;
+    asked = Date.now();
+    api("session").catch(() => {});
+  }
+  form?.addEventListener("input", active);
+  form?.addEventListener("change", active);
+  document.addEventListener("visibilitychange", tick);
+  limit = self;
+  tick();
+  return self.stop;
 }
 // The page-wide note at the bottom, for news that belongs to no control: what
 // a form or button caused is shown next to it instead. An optional
-// { href, label } adds a link after the message (built as DOM, not HTML). The
-// note stays until it is closed or replaced (never on a timer: WCAG 2.2.1),
-// and while it shows, the page keeps the focused control scrolled clear of it.
+// { href, label } adds a link after the message, and { label, onClick } a
+// button (built as DOM, not HTML). The note stays until it is closed or
+// replaced (never on a timer: WCAG 2.2.1), and while it shows, the page keeps
+// the focused control scrolled clear of it. A note replaced while it has
+// focus hands focus to the new note's Close.
 export function notify(text, link) {
   const box = document.querySelector("#status");
   if (!box) return;
-  const message = document.createElement("span");
+  const message = document.createElement("span"),
+    hadFocus = box.contains(document.activeElement);
   message.textContent = text;
   if (link) {
-    const a = document.createElement("a");
-    a.href = link.href;
+    const a = document.createElement(link.href ? "a" : "button");
+    if (link.href) a.href = link.href;
+    else {
+      a.type = "button";
+      a.className = "status-action plain-button";
+      a.addEventListener("click", link.onClick);
+    }
     a.textContent = link.label;
     message.append(" ", a);
   }
@@ -338,7 +488,8 @@ export function notify(text, link) {
   document.documentElement.style.scrollPaddingBottom = room;
   document.body.style.paddingBottom = room;
   const focused = document.activeElement;
-  if (focused && focused !== document.body && !box.contains(focused))
+  if (hadFocus) close.focus();
+  else if (focused && focused !== document.body && !box.contains(focused))
     focused.scrollIntoView({ block: "nearest", behavior: "instant" });
 }
 function clearNote() {
