@@ -246,6 +246,35 @@ test("nothing that identifies the card or the guest reaches the logs; the phone'
   assert.equal(row.uploaderName, "Mia Example");
 });
 
+test("Privacy and the Photo & video policy say what the table card keeps, for how long, and how to ask for removal, in both languages", async () => {
+  const { policies } = await import("../site/policies.mjs");
+  const { readFile } = await import("node:fs/promises");
+  const page = (p) => readFile(new URL("../dist/" + p, import.meta.url), "utf8");
+  for (const [lang, prefix] of [["en", ""], ["es", "es/"]]) {
+    const privacy = policies.tableCard.privacy[lang],
+      terms = policies.tableCard.terms[lang];
+    assert.ok(policies.privacy[lang].includes(privacy));
+    assert.ok(policies.terms[lang].includes(terms));
+    if (lang === "en") {
+      assert.match(privacy, /name and caption only if you type them/);
+      assert.match(privacy, /never your IP address/);
+      assert.match(privacy, /delete those counts a week after the celebration/);
+      assert.match(privacy, /Every file waits for our review/);
+      assert.match(privacy, /reference shown after you sent it/);
+      assert.match(terms, /reference/);
+    } else {
+      assert.match(privacy, /solo si los escribes/);
+      assert.match(privacy, /nunca tu dirección IP/);
+      assert.match(privacy, /una semana después de la celebración/);
+      assert.match(privacy, /referencia/);
+    }
+    // On the built pages (dist/, from the pretest build).
+    const opening = privacy.slice(2, 40);
+    assert.ok((await page(prefix + "privacy/index.html")).includes(opening), lang + " privacy page");
+    assert.ok((await page(prefix + "terms/index.html")).includes(terms.slice(2, 40)), lang + " terms page");
+  }
+});
+
 test("a family uploading during the party is unaffected by the card, and its upload is not labelled", async () => {
   const f = await setup();
   await createCard(f);

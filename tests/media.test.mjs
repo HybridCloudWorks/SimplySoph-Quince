@@ -10,6 +10,7 @@ import path from "node:path";
 import sharp from "sharp";
 import { Ledger, memoryAdapter, memoryMedia, UPLOAD_UNIT } from "../server/store.mjs";
 import { createApplication } from "../server/application.mjs";
+import { uploadQuota } from "../server/upload-quota.mjs";
 import { hash, token } from "../server/auth.mjs";
 import { createGate } from "../server/gate.mjs";
 import { conversionSlot } from "../server/video.mjs";
@@ -289,7 +290,7 @@ test("uploads are refused up front when too large, of an unknown or HEIC type, o
   // The real limits pass: a 300 MB iPhone video and a 40 MB photo.
   assert.ok((await ask({ kind: "video", type: "video/quicktime", size: 300 * MiB })).id);
   assert.ok((await ask({ kind: "photo", type: "image/jpeg", size: 40 * MiB })).id);
-  for (let i = 2; i < 20; i++) await ask({ kind: "photo", type: "image/png", size: 10 });
+  for (let i = 2; i < uploadQuota.perDay; i++) await ask({ kind: "photo", type: "image/png", size: 10 });
   await assert.rejects(ask({ kind: "photo", type: "image/webp", size: 10 }), (e) => e.status === 429 && e.code === "DAILY_UPLOAD_LIMIT");
 });
 
@@ -321,7 +322,7 @@ test("the 20 a day per household is counted in the ledger: a restart or a second
 
 test("two uploads at once for the household's last place today: one is refused as it is saved, and its storage session is cancelled", async () => {
   const f = await fixture();
-  await f.ledger.transaction((s) => (s.uploadsBegun = { [household]: Array(19).fill(at - 3600000) }));
+  await f.ledger.transaction((s) => (s.uploadsBegun = { [household]: Array(uploadQuota.perDay - 1).fill(at - 3600000) }));
   const cancelled = [],
     cancel = f.media.cancel.bind(f.media);
   f.media.cancel = (uri) => (cancelled.push(uri), cancel(uri));
