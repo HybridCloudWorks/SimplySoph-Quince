@@ -37,13 +37,6 @@ import {
   sayError,
   mentionsUs,
 } from "./client.js";
-import {
-  startMicrosoft,
-  microsoftReturn,
-  finishMicrosoft,
-  ssoRow,
-  googleButton,
-} from "./sso.js";
 import { galleryOpen } from "./lifecycle.mjs";
 import { date, dayMonth, time, at } from "./datetime.mjs";
 import { siteClock, clock } from "./now.mjs";
@@ -54,6 +47,8 @@ const uploads = () => import("./media-upload.js");
 const whatsapp = () => import("./guest-whatsapp.js");
 const downloads = () => import("./gallery-download.js");
 const promises = () => import("./promises.mjs");
+// Microsoft and Google sign-in, only where their buttons or return are.
+const sso = () => import("./sso.js");
 const portal = document.querySelector("#portal");
 // Shared wording (site/lexicon.mjs) comes in this page's language and, in
 // Spanish, its form of address: tr(en, { tu, ustedes }) and term(entry)
@@ -349,14 +344,15 @@ function signInOnly() {
   wireEmailSignIn();
 }
 async function ssoChoices() {
-  let cfg;
+  let cfg, ssoRow, googleButton, startMicrosoft;
   try {
     cfg = await config();
+    if (!providers(cfg).microsoft && !providers(cfg).google) return;
+    ({ ssoRow, googleButton, startMicrosoft } = await sso());
   } catch {
     return;
   }
   const offered = providers(cfg);
-  if (!offered.microsoft && !offered.google) return;
   const which = offered.microsoft
     ? offered.google
       ? tr("Microsoft or Google", "Microsoft o Google")
@@ -1097,12 +1093,14 @@ if (document.querySelector("[data-whatsapp-signup]")) (await whatsapp()).whatsap
 reloadOnNewLink();
 let fragment = linkFragment();
 const microsoft =
-  portal && document.body.dataset.route === "account" ? microsoftReturn() : null;
+  portal && document.body.dataset.route === "account" && /state=/.test(location.hash)
+    ? (await sso()).microsoftReturn()
+    : null;
 if (microsoft) {
   portal.innerHTML = `<p role="status">${tr("Finishing Microsoft sign-in…", "Terminando el acceso con Microsoft…")}</p>`;
   try {
     const cfg = await api("config");
-    const { back, ...proof } = await finishMicrosoft(cfg.microsoftClientId, "guest", microsoft);
+    const { back, ...proof } = await (await sso()).finishMicrosoft(cfg.microsoftClientId, "guest", microsoft);
     await api("auth/sso/guest", { provider: "microsoft", ...proof });
     fragment = "";
     if (!goBack(back)) await showPortal();
