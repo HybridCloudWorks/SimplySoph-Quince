@@ -1,11 +1,12 @@
 // What guests can share and how it travels, used by the upload page
 // (site/media-upload.js) and checked again by the API (server/application.mjs
-// and server/http.mjs), so both always state the same limits.
+// and server/http.mjs), so both always state the same limits. How many may be
+// shared in 24 hours is the API's setting alone (server/upload-quota.mjs):
+// the page shows the numbers the API answers.
 const MB = 1024 * 1024;
 export const uploadLimits = {
-  // Chosen at once, and per household per day.
+  // Chosen at once.
   files: 10,
-  perDay: 20,
   // A 48-megapixel iPhone photo saved as JPEG is about 15–25 MB.
   photoBytes: 40 * MB,
   // 60 seconds of 1080p from any phone, or of iPhone 4K (about 170 MB).
@@ -132,24 +133,54 @@ export async function checkVideoLengths(entries, measure = videoSeconds) {
       if (entry.seconds >= uploadLimits.videoSeconds + 1) entry.problem = "video-long";
     }
 }
-// Server answers that mean "this file, as sent, will never be accepted".
-// Everything else (a dropped connection, a busy or restarting server, a
-// timeout) is worth another try, and trying again is always safe: the server
-// keeps what it received and says where to continue, so no byte is stored
-// twice and a finished file is never added twice.
-const final = (err) =>
-  err.status >= 400 &&
-  err.status < 500 &&
-  ![408, 409, 429].includes(err.status);
-// A limit (429) passes only with time, so quick retries would not help.
-const waitForLimit = (err) => err.status === 429;
+// The short reference a guest can quote to ask for a file's removal, and that
+// the family sees next to it in Admin: the first 8 characters of its id.
+export const referenceCode = (id) =>
+  String(id || "")
+    .replace(/[^a-f0-9]/gi, "")
+    .slice(0, 8)
+    .toUpperCase()
+    .replace(/^(.{4})(.{4})$/, "$1-$2");
+// Why a file did not get through, as one of six reasons. Only "network" and
+// "busy" are worth trying again at once; trying again is always safe: the
+// server keeps what it received and says where to continue, so no byte is
+// stored twice and a finished file is never added twice.
+//   network     no answer, a timeout, a dropped connection
+//   busy        the server or a proxy answered 5xx, or 409
+//   quota       a limit on how many may be shared (it says when, if ever)
+//   rate        too many requests this hour (it says when)
+//   auth        the sign-in or table card session ended
+//   validation  this file, as sent, will never be accepted
+const quotaCodes = ["DAILY_UPLOAD_LIMIT", "PARTY_DEVICE_LIMIT", "PARTY_CARD_FULL"];
+const authCodes = ["SIGN_IN_REQUIRED", "CSRF_REJECTED", "VERIFIED_ACCOUNT_REQUIRED", "ORIGIN_REJECTED"];
+export function failureKind(err) {
+  const status = err?.status;
+  if (!status || err.timeout || status === 408) return "network";
+  if (status === 429)
+    return quotaCodes.includes(err.code) || err.details?.reason === "quota" ? "quota" : "rate";
+  if (status === 401 || status === 403 || authCodes.includes(err.code)) return "auth";
+  if (status >= 500 || status === 409) return "busy";
+  return "validation";
+}
+// Whether Try again can succeed now: after a lost connection or a busy
+// server at once, after a limit only once its time has come (never when the
+// server gave none), and never for a refused file or a lost sign-in.
+export function retryable(entry, now = Date.now()) {
+  if (entry.state === "paused") return true;
+  if (["limited", "waiting"].includes(entry.state)) return entry.retryAt !== null && entry.retryAt <= now;
+  return false;
+}
+const resumable = ["queued", "paused", "limited", "waiting"];
 // Sends the batch one file at a time, in order. `transport` talks to the API:
 //   start({ kind, type, size }) -> { id }
 //   put(id, offset, blob, onBytes) -> { received, complete, state }
 //     (`onBytes(n)` reports bytes of this piece sent so far)
-// After a few quick retries a file is "paused" and the batch stops there, so
-// a lost connection does not burn through the remaining files; calling
-// sendUploadBatch again (the page's Try again button) resumes from what the
+// After a few quick retries a lost connection or a busy server leaves the
+// file "paused" and the batch stops there, so the remaining files are not
+// burnt through; a limit leaves this file and every later one "limited"
+// (with the server's reset time, if any); an hourly budget leaves it
+// "waiting"; a lost sign-in leaves it "blocked". Calling sendUploadBatch again
+// (the page's Try again, offered only when retryable()) resumes from what the
 // server already has.
 export async function sendUploadBatch(
   entries,
@@ -161,8 +192,8 @@ export async function sendUploadBatch(
     retries = [1000, 3000, 8000, 15000],
   } = {},
 ) {
-  for (const entry of entries) {
-    if (!["queued", "paused"].includes(entry.state)) continue;
+  for (const [i, entry] of entries.entries()) {
+    if (!resumable.includes(entry.state)) continue;
     if (entry.problem) {
       entry.state = "invalid";
       changed();
@@ -170,10 +201,24 @@ export async function sendUploadBatch(
     }
     entry.state = "uploading";
     entry.message = "";
+    entry.reason = undefined;
+    entry.retryAt = undefined;
     changed();
     const outcome = await sendFile(entry, transport, changed, { sleep, clock, retries });
+    if (outcome === "limited")
+      // Nothing more can be shared until the limit passes: the files after
+      // this one are not sent, and say so.
+      for (const later of entries.slice(i + 1))
+        if (resumable.includes(later.state) && !later.problem)
+          Object.assign(later, {
+            state: "limited",
+            reason: "quota",
+            retryAt: entry.retryAt,
+            limit: entry.limit,
+            message: entry.message,
+          });
     changed();
-    if (outcome === "paused") break;
+    if (["paused", "limited", "waiting", "blocked"].includes(outcome)) break;
   }
 }
 async function sendFile(entry, transport, changed, { sleep, clock, retries }) {
@@ -203,6 +248,7 @@ async function sendFile(entry, transport, changed, { sleep, clock, retries }) {
         // (an earlier answer was lost) or less (continue from there).
         entry.sent = Math.min(entry.size, result.received);
         if (result.complete) {
+          entry.reason = entry.retryAt = undefined;
           entry.state = result.state === "processing" ? "processing" : "received";
           return entry.state;
         }
@@ -220,12 +266,18 @@ async function sendFile(entry, transport, changed, { sleep, clock, retries }) {
     } catch (err) {
       entry.inFlight = 0;
       entry.message = err.message;
-      if (final(err)) {
-        entry.state = "rejected";
+      const reason = failureKind(err),
+        at = Date.parse(err.details?.retryAt);
+      entry.reason = reason;
+      entry.retryAt = Number.isFinite(at) ? at : null;
+      if (Number.isSafeInteger(err.details?.limit)) entry.limit = err.details.limit;
+      const final = { validation: "rejected", quota: "limited", rate: "waiting", auth: "blocked" }[reason];
+      if (final) {
+        entry.state = final;
         return entry.state;
       }
       if (err.timeout) entry.piece = Math.max(uploadLimits.unit, entry.piece / 4);
-      if (waitForLimit(err) || attempt >= retries.length) {
+      if (attempt >= retries.length) {
         entry.state = "paused";
         return entry.state;
       }

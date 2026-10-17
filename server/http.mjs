@@ -22,6 +22,20 @@ const types = {
 // string code; anything else (GCS ApiError, ECONNRESET, bugs) is unexpected.
 const expected = (e) =>
   !!e && Number.isInteger(e.status) && typeof e.code === "string";
+// What an expected refusal may tell the page besides its code (auth.mjs
+// error()): why, the limit, how many were used, and the times that matter.
+// Only these keys, and only plain numbers, short strings or null, are sent.
+const detailKeys = ["reason", "scope", "limit", "used", "retryAt", "opensAt", "closesAt", "now"];
+function publicDetails(details) {
+  const out = {};
+  if (!details || typeof details !== "object") return out;
+  for (const k of detailKeys) {
+    const v = details[k];
+    if (v === null || Number.isSafeInteger(v) || (typeof v === "string" && v.length <= 40))
+      out[k] = v;
+  }
+  return out;
+}
 // Structured log entry for API traffic. Paths only: query strings, bodies,
 // cookies and invitation fragments are never logged.
 function apiLog(log, req, res, started, error) {
@@ -289,10 +303,16 @@ export function createHttpServer({ app = null, root, origin, log = null }) {
     } catch (e) {
       failure = e;
       // Unexpected errors never leak provider or system codes to the client.
-      res.statusCode = expected(e) ? e.status : 503;
+      const known = expected(e);
+      res.statusCode = known ? e.status : 503;
       res.setHeader("Content-Type", "application/json");
+      if (known && Number.isSafeInteger(e.retryAfter) && e.retryAfter > 0)
+        res.setHeader("Retry-After", String(e.retryAfter));
       res.end(
-        JSON.stringify({ error: expected(e) ? e.code : "SERVICE_UNAVAILABLE" }),
+        JSON.stringify({
+          error: known ? e.code : "SERVICE_UNAVAILABLE",
+          ...(known ? publicDetails(e.details) : {}),
+        }),
       );
     } finally {
       // Held until the upload has been handled, not only read.

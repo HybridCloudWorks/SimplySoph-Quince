@@ -19,8 +19,16 @@ export function invitationCredential(value) {
   return /^[A-Z2-7]{16}$/.test(code) ? code : null;
 }
 export const hash = (value) => createHash("sha256").update(value).digest("hex");
-export const error = (status, code) =>
-  Object.assign(new Error(code), { status, code });
+// `details` are facts the guest's page may show (a limit, how many were used,
+// when the next one fits); server/http.mjs sends only the known keys, and
+// `retryAfter` (seconds) becomes a Retry-After header.
+export const error = (status, code, details, retryAfter) =>
+  Object.assign(new Error(code), {
+    status,
+    code,
+    ...(details ? { details } : {}),
+    ...(retryAfter > 0 ? { retryAfter } : {}),
+  });
 export function seal(value, key) {
   const iv = randomBytes(12),
     c = createCipheriv("aes-256-gcm", key, iv);
@@ -311,7 +319,14 @@ export async function rateLimit(ledger, key, max, windowMs, now) {
     if (!row && map.size >= maxCounters) throw error(429, "TOO_MANY_REQUESTS");
     map.set(key, (row = { count: 0, until: now + windowMs }));
   }
-  if (row.count >= max) throw error(429, "TOO_MANY_REQUESTS");
+  // The budget comes back when its window ends; the page can say when.
+  if (row.count >= max)
+    throw error(
+      429,
+      "TOO_MANY_REQUESTS",
+      { reason: "rate", retryAt: new Date(row.until).toISOString() },
+      Math.ceil((row.until - now) / 1000),
+    );
   row.count++;
 }
 // Like rateLimit, but reports exhaustion instead of throwing, for budgets whose
