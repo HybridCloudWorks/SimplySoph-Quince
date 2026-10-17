@@ -4,9 +4,9 @@ import {
   registryCards,
   scheduleStrip,
   scheduleList,
-  localDate,
   escapeHtml as esc,
 } from "./celebration.mjs";
+import { date, capitalize } from "./datetime.mjs";
 import { sample, setSite, siteSettled } from "./now.mjs";
 import { announce } from "./client.js";
 // For site/guest.js (one import, one round trip fewer on every page).
@@ -86,10 +86,9 @@ export const experienceReady = (async () => {
       el.innerHTML = scheduleStrip(c, lang);
     for (const el of document.querySelectorAll("[data-schedule]"))
       el.innerHTML = scheduleList(c, lang, true);
-    // "viernes, 15 de enero de 2027" starts a line, so it takes a capital.
-    const day = localDate(c.ceremony.start, lang);
-    for (const el of document.querySelectorAll("[data-event-date]"))
-      el.textContent = day.charAt(0).toUpperCase() + day.slice(1);
+    // "viernes 15 de enero de 2027" starts a line, so it takes a capital.
+    const day = capitalize(date(c.ceremony.start, lang));
+    for (const el of document.querySelectorAll("[data-event-date]")) el.textContent = day;
     // Contact's named host, from the event settings (never in this public
     // repo): nothing until the family writes it (server/site-settings.mjs).
     const host = document.querySelector("[data-contact-host]"),

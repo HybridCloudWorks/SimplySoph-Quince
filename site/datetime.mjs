@@ -120,5 +120,7 @@ export function timeRange(start, end, l = "en", { prose = false, nbsp = false } 
     return (es ? `de ${time(start, l, { nbsp })} a ${time(end, l, { nbsp })}` : `from ${time(start, l, { nbsp })} to ${time(end, l, { nbsp })}`) + day;
   return `${time(start, l, { nbsp })} – ${time(end, l, { nbsp })}${day}`;
 }
+// "October 16, 2026, 4:00 PM": when something happened, for Admin's records.
+export const stamp = (value, l = "en") => `${date(value, l, { weekday: false })}, ${time(value, l)}`;
 // Only for text that starts a line or a sentence.
 export const capitalize = (s) => s.charAt(0).toLocaleUpperCase("es") + s.slice(1);

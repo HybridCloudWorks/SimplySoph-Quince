@@ -53,7 +53,8 @@ test("Spanish has one verb for signing in, “Entrar” (with “acceso”), on 
     eventDate: "viernes 15 de enero de 2027",
   });
   assert.doesNotMatch(mail.subject + mail.html + mail.text, other);
-  assert.match(mail.subject, /entrar/);
+  // The link is named as the button that asks for it ("Enviar enlace de acceso").
+  assert.ok(mail.subject.includes(terms.signInLink.es), mail.subject);
   assert.deepEqual([terms.signIn.es, terms.signInLink.es, terms.myAccount.es], ["Entrar", "enlace de acceso", "Mi cuenta"]);
   // The header, and the account page as built (signed out): the sign-in's name.
   for (const [file, link, name, site] of [

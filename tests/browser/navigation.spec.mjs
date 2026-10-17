@@ -207,7 +207,7 @@ test.describe("the home page countdown", () => {
     await expect(page.getByText("Please RSVP by Sunday, November 15")).toBeVisible();
     await page.goto(harness.url("/es/"));
     await expect(countdown(page)).toHaveText("Tiempo para confirmar 45 días 11 horas 59 minutos");
-    await expect(page.getByText("Por favor, confirmen a más tardar el domingo 15 de noviembre")).toBeVisible();
+    await expect(page.getByText("Por favor, confirmen su asistencia a más tardar el domingo 15 de noviembre")).toBeVisible();
   });
 
   test("then counts to the celebration, and disappears once it is over", async ({
@@ -226,7 +226,7 @@ test.describe("the home page countdown", () => {
     await expect(page.getByRole("main").getByRole("link", { name: "See the schedule" })).toHaveClass(/\bbutton\b/);
     await expect(page.locator("header").getByRole("link", { name: "RSVP" })).toHaveAttribute("href", "/rsvp/");
     await page.goto(harness.url("/es/"));
-    await expect(page.getByText("Por favor, confirmen a más tardar")).toBeHidden();
+    await expect(page.getByText("Por favor, confirmen su asistencia a más tardar")).toBeHidden();
     await setNow(Date.parse("2027-01-15T23:00:00Z"));
     await page.goto(harness.url("/"));
     await expect(countdown(page)).toHaveText("Today is the day!");

@@ -116,13 +116,21 @@ test("what's next offers SMS only while the server reports it live, and never Wh
   // The website itself is always how news reaches a household.
   assert.match(off, /href="\/">home page<\/a>/);
   const sms = whatsNext({ coming: { dressCode: null }, channels: live });
-  assert.match(sms, /Text <strong>SOPHIA<\/strong> to <a class="nowrap" href="sms:\+16827868002\?body=SOPHIA">\+1 682-786-8002<\/a> to hear when they’re posted\./);
+  // R-029: what the registered program sends (schedule and venue updates,
+  // docs/sms-campaign-registration.md), the same line whatever is still to
+  // come: no text goes out when something is posted, so none is promised.
+  assert.match(sms, /Text <strong>SOPHIA<\/strong> to <a class="nowrap" href="sms:\+16827868002\?body=SOPHIA">\+1 682-786-8002<\/a> to get our event texts, such as schedule or venue updates\./);
   assert.match(text(sms), /Texts go to US and Canadian mobile numbers\./);
   assert.doesNotMatch(sms, /WhatsApp/);
-  assert.match(text(whatsNext({ channels: live })), /to hear about any change to the schedule or the places\./);
+  assert.equal(text(whatsNext({ channels: live })).match(/Text SOPHIA[^.]*\./)[0], text(sms).match(/Text SOPHIA[^.]*\./)[0]);
+  for (const coming of [{ dressCode: null }, { hotels: "2026-12-01" }, {}])
+    for (const lang of ["en", "es"]) {
+      const line = text(whatsNext({ coming, channels: live, lang })).match(/(?:Text|Envía) SOPHIA[^.]*\./)[0];
+      assert.doesNotMatch(line, /posted|publicad|dress|vestimenta|hotel|Oct 31/, line);
+    }
   // Spanish, to the household (the confirmation) and to one person (My account).
-  assert.match(text(whatsNext({ coming: { parking: null }, channels: live, lang: "es", register: "ustedes" })), /Envíen SOPHIA al \+1 682-786-8002 para enterarse cuando estén publicados\./);
-  assert.match(text(whatsNext({ coming: { parking: null }, channels: live, lang: "es", register: "tu" })), /Envía SOPHIA al \+1 682-786-8002 para enterarte cuando estén publicados\./);
+  assert.match(text(whatsNext({ coming: { parking: null }, channels: live, lang: "es", register: "ustedes" })), /Envíen SOPHIA al \+1 682-786-8002 para recibir nuestros mensajes del evento, como cambios de horario o lugar\./);
+  assert.match(text(whatsNext({ coming: { parking: null }, channels: live, lang: "es", register: "tu" })), /Envía SOPHIA al \+1 682-786-8002 para recibir nuestros mensajes del evento, como cambios de horario o lugar\./);
   // An API from before channels, or one that is down: nothing offered.
   assert.doesNotMatch(whatsNext({ channels: undefined }), /Text|WhatsApp/);
   assert.doesNotMatch(whatsNext({ channels: { sms: true } }), /Text/);

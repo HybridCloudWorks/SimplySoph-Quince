@@ -10,22 +10,26 @@ test('receipt requires durable acceptance before rendering live copy',()=>{asser
 test('change notice requires specific change copy',()=>{assert.throws(()=>renderEmail({...base,type:'change'}));});
 test('rendered copy has no encoding damage or stale "original code" advice',()=>{for(const locale of ['en','es'])for(const type of templateKeys){const r=renderEmail({...base,type,locale,updateText:type==='change'?'Approved sample change':''});for(const out of [r.subject,r.text,r.html]){assert.ok(!out.includes('�'),`${locale}/${type}`);assert.ok(!/original invitation code|c[oó]digo de tu invitaci[oó]n original/i.test(out),`${locale}/${type}`);}}});
 test('quick answers appear only on personal invitation and reminder links',()=>{const link='https://misxv.example/rsvp/#'+'A'.repeat(43);for(const type of ['invitation','reminder']){const r=renderEmail({...base,type,url:link});assert.ok(r.html.includes(link+'.yes')&&r.html.includes(link+'.no'));assert.ok(r.text.includes(link+'.no'));}assert.ok(!renderEmail({...base,type:'details',url:link}).html.includes('.yes'));assert.ok(!renderEmail({...base,type:'invitation'}).html.includes('.yes'));});
-import {emailSchedule,firstSentence,longDate} from '../emails/templates.mjs';
+import {emailSchedule,firstSentence} from '../emails/templates.mjs';
+import {date} from '../site/datetime.mjs';
 import {celebration} from '../site/celebration.mjs';
 test('schedule lists only the events the household is invited to',()=>{
   const all=emailSchedule(celebration,{ceremony:true,dinner:true,dance:true});
   assert.deepEqual(all.map(r=>r.time),['4:00 PM','6:30 PM']);
-  assert.match(all[1].text,/^Dinner, then the reception at 7:30 PM · The AMZ Event Center/);
+  // Named as the website names each part of the day (site/lexicon.mjs).
+  assert.match(all[0].text,/^Religious ceremony · Our Lady of Guadalupe Church/);
+  assert.match(all[1].text,/^Dinner, then the reception and dance at 7:30 PM · The AMZ Event Center/);
   assert.deepEqual(emailSchedule(celebration,{ceremony:true,dinner:false,dance:false}).length,1);
   const dance=emailSchedule(celebration,{ceremony:false,dinner:false,dance:true});
-  assert.equal(dance.length,1);assert.equal(dance[0].time,'7:30 PM');assert.match(dance[0].text,/^Reception · /);
+  assert.equal(dance.length,1);assert.equal(dance[0].time,'7:30 PM');assert.match(dance[0].text,/^Reception & dance · /);
   assert.equal(emailSchedule(celebration,{ceremony:false,dinner:true,dance:false})[0].text.split(' · ')[0],'Dinner');
   assert.deepEqual(emailSchedule(celebration,undefined),[]);
   assert.equal(emailSchedule(celebration,{ceremony:true},'es')[0].time,'4:00 p. m.');
 });
 test('dates and times stay in Windows-1252 and read naturally',()=>{
-  assert.equal(longDate('2026-11-15T23:59:00-06:00'),'Sunday, November 15, 2026');
-  assert.equal(longDate('2026-11-15T23:59:00-06:00','es'),'domingo 15 de noviembre de 2026');
+  assert.equal(date('2026-11-15T23:59:00-06:00'),'Sunday, November 15, 2026');
+  assert.equal(date('2026-11-15T23:59:00-06:00','es'),'domingo 15 de noviembre de 2026');
+  assert.equal(emailSchedule(celebration,{ceremony:true,dinner:true,dance:true},'es')[1].text.split(' · ')[0],'Cena y, a las 7:30 p. m., la recepción y el baile');
   for(const r of emailSchedule(celebration,{ceremony:true,dinner:true,dance:true},'es'))assert.ok(!/[\u202f\u00a0]/.test(r.time+r.text));
 });
 test('invitation reads like a letter: date subject, places, Sophia’s words, contacts line',()=>{
@@ -33,7 +37,8 @@ test('invitation reads like a letter: date subject, places, Sophia’s words, co
   assert.equal(r.subject,'Sophia’s quinceañera · Friday, January 15, 2027');
   assert.ok(r.html.includes('Our Lady of Guadalupe Church')&&r.html.includes('4:00 PM'));
   assert.ok(r.html.includes('Turning 15 is such a special moment in my life'));
-  assert.ok(r.html.includes('Please let us know by <strong>Sunday, November 15, 2026</strong>.'));
+  // The deadline sentence of the site, the previews and the WhatsApp templates (R-036).
+  assert.ok(r.html.includes('Please RSVP by <strong>Sunday, November 15, 2026</strong>.'));
   assert.ok(r.text.includes('Add misxv@simplysoph.com to your contacts'));
   assert.ok(!/view your invitation|keep it private/i.test(r.html));
   assert.ok(!renderEmail({...base,type:'receipt'}).html.includes('Our Lady of Guadalupe'));
@@ -73,8 +78,21 @@ test('a receipt has no warning about a link it does not contain, and a decline s
   const declined=renderEmail({...base,type:'receipt',url:'https://misxv.example/details/',attendance:none,invited,rsvpDeadline:'Sunday, November 15, 2026'});
   assert.equal((declined.text.match(/thank you/gi)||[]).length,1,declined.text);
   assert.ok(declined.text.includes('You let us know no one in your family can attend. We’ll miss you, and we send you our love.'));
-  // Emails without a private link still remind the family to keep their invitation link to themselves.
-  for(const type of ['details','thanks'])assert.ok(renderEmail({...base,type,url:'https://misxv.example/details/'}).text.includes('Your invitation link is just for your family. Please don’t share it.'),type);
+  // The Spanish decline thanks once too (the title, "Gracias por responder.").
+  const no=renderEmail({...base,type:'receipt',locale:'es',url:'https://misxv.example/es/details/',attendance:none,invited,rsvpDeadline:'domingo 15 de noviembre de 2026'});
+  assert.equal((no.text.match(/gracias/gi)||[]).length,1,no.text);
+  assert.ok(no.text.includes('Los vamos a extrañar y les mandamos todo nuestro cariño.'));
+  // Only an email that carries the household's private link asks them to
+  // keep it; details, a change and the thanks hold no link to keep.
+  const link='https://misxv.example/rsvp/#'+'A'.repeat(43);
+  for(const locale of ['en','es']){
+    for(const type of ['details','change','thanks']){
+      const r=renderEmail({...base,type,locale,url:'https://misxv.example/details/',updateText:type==='change'?'Approved sample change':''});
+      for(const out of [r.text,r.html])assert.ok(!/invitation link is just for your family|link is just for|enlace de su invitación es solo|enlace de invitación es solo|no reenvíen|share it|compartan/.test(out),`${locale}/${type}`);
+    }
+    for(const type of ['invitation','reminder'])
+      assert.ok(renderEmail({...base,type,locale,url:link}).text.includes(locale==='en'?'This invitation link is just for your family, so please don’t forward this email.':'Este enlace de invitación es solo para su familia; por favor, no reenvíen este correo.'),`${locale}/${type}`);
+  }
 });
 test('first sentence quotes only a short opening line',()=>{
   assert.equal(firstSentence('One line. Two lines.'),'One line.');
@@ -82,15 +100,15 @@ test('first sentence quotes only a short opening line',()=>{
   assert.equal(firstSentence(undefined),'');
 });
 import {renderSignInEmail} from '../emails/templates.mjs';
-test('the sign-in email greets the household the way the other emails do',()=>{
+// R-034: the sign-in email speaks to the one person who asked (tú), so it
+// greets them plainly ("Hola:"); the household emails greet the family.
+test('the sign-in email greets one person ("Hola:"), the household emails the family',()=>{
   const greeting=(html)=>html.match(/<p>((?:Hello|Hola)[^<]*)<\/p>/)[1],url='https://misxv.example/account/#sample';
-  for(const [locale,expected] of [['en','Hello Familia Morales,'],['es','Hola, Familia Morales:']]){
+  for(const [locale,person,family] of [['en','Hello,','Hello Familia Morales,'],['es','Hola:','Hola, Familia Morales:']]){
     const signIn=renderSignInEmail({locale,household:'Familia Morales',url});
-    assert.equal(greeting(signIn.html),expected);
-    assert.equal(greeting(renderEmail({...base,locale,household:'Familia Morales'}).html),expected);
-    assert.equal(signIn.text.split('\n\n')[0],expected);
+    assert.equal(greeting(signIn.html),person);
+    assert.equal(signIn.text.split('\n\n')[0],person);
+    assert.ok(!signIn.text.includes('Familia Morales'));
+    assert.equal(greeting(renderEmail({...base,locale,household:'Familia Morales'}).html),family);
   }
-  // Without a name, still a greeting with its punctuation.
-  assert.equal(renderSignInEmail({locale:'en',url}).text.split('\n\n')[0],'Hello,');
-  assert.equal(renderSignInEmail({locale:'es',url}).text.split('\n\n')[0],'Hola:');
 });

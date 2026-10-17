@@ -326,14 +326,18 @@ test("Privacy and the Photo & video policy say what the table card keeps, for ho
     if (lang === "en") {
       assert.match(privacy, /name and caption only if you type them/);
       assert.match(privacy, /never your IP address/);
-      assert.match(privacy, /delete those counts a week after the celebration/);
+      // R-161: the counts go a week after the card's window closes (the
+      // drain above), and the card is off until we turn it on.
+      assert.match(privacy, /delete those counts a week after sharing from the card closes/);
+      assert.match(privacy, /off unless we turn it on/);
       assert.match(privacy, /Every file waits for our review/);
       assert.match(privacy, /reference shown after you sent it/);
       assert.match(terms, /reference/);
     } else {
       assert.match(privacy, /solo si los escribes/);
       assert.match(privacy, /nunca tu dirección IP/);
-      assert.match(privacy, /una semana después de la celebración/);
+      assert.match(privacy, /una semana después de que se cierra el envío desde la tarjeta/);
+      assert.match(privacy, /apagada salvo que la activemos/);
       assert.match(privacy, /referencia/);
     }
     // On the built pages (dist/, from the pretest build).
@@ -351,4 +355,21 @@ test("a family uploading during the party is unaffected by the card, and its upl
   assert.equal(row.source, undefined);
   assert.ok(row.accountId);
   assert.equal((await f.request("guest", "uploads/quota")).limit, quota.perDayInUploadWindow);
+});
+
+// R-022: the table-card page says only what the code does. A phone's count
+// lasts while its visit does (a random name in the session cookie, renewed
+// while used), so a later scan can start a new one: "at a time", never "the
+// most one phone can send". A file taken back while it waits for review was
+// still seen by us in Admin: "before we published it", never "before anyone
+// saw it".
+test("the table card's words promise only what the code does: a count per visit, and a withdrawn file never published", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const source = (f) => readFile(new URL("../site/" + f, import.meta.url), "utf8");
+  const page = (await source("media-upload.js")) + (await source("client.js"));
+  assert.doesNotMatch(page, /most one phone can send|one phone can send|máximo por teléfono|que se pueden enviar desde la tarjeta|anyone saw it|alguien lo viera/);
+  assert.match(page, /the most we take from one phone at a time/);
+  assert.match(page, /el máximo que recibimos de un teléfono a la vez/);
+  assert.match(page, /Removed before we published it\./);
+  assert.match(page, /Lo quitaste antes de que lo publicáramos\./);
 });

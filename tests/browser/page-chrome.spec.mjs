@@ -168,18 +168,18 @@ test("a form lists what is missing in the page’s language and moves focus to t
   const summary = form.locator(".error-summary");
   await expect(summary).toBeFocused();
   // A line per kind of problem over a list, one link per field to fix.
-  await expect(summary.locator("p")).toHaveText(["Completa:"]);
+  await expect(summary.locator("p")).toHaveText(["Completar:"]);
   await expect(summary.getByRole("listitem")).toHaveText(["Correo electrónico"]);
   const email = page.getByRole("textbox", { name: "Correo electrónico" });
   await expect(email).toHaveAttribute("aria-invalid", "true");
-  await expect(email).toHaveAccessibleDescription(/Completa este campo\./);
+  await expect(email).toHaveAccessibleDescription(/Falta este dato\./);
   await expect(page).toHaveTitle(/^Error: /);
   await summary.getByRole("link", { name: "Correo electrónico" }).click();
   await expect(email).toBeFocused();
   // An address that isn't one.
   await email.fill("rivera.family");
   await page.getByRole("button", { name: "Enviar enlace de acceso" }).click();
-  await expect(summary.locator("p")).toHaveText(["Revisa el correo:"]);
+  await expect(summary.locator("p")).toHaveText(["Revisar el correo:"]);
   await expect(summary.getByRole("listitem")).toHaveText(["Correo electrónico"]);
   expect(harness.sent).toEqual([]);
 });

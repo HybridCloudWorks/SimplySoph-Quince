@@ -24,9 +24,9 @@ test("“Everyone’s coming” fills each invited event with the whole invitati
   await page.goto(harness.forBrowser(link));
   await page.getByRole("button", { name: "Everyone’s coming" }).click();
 
-  const heading = page.getByRole("heading", { name: "Review your response" });
+  const heading = page.getByRole("heading", { name: "Review your RSVP" });
   await expect(heading).toBeFocused();
-  await expect(page).toHaveTitle(/^Review your response · /);
+  await expect(page).toHaveTitle(/^Review your RSVP · /);
   await expect(page.getByRole("main").getByRole("listitem")).toHaveText([
     "Ceremony: 2 adults/teens, 1 child",
     "Dinner: 2 adults/teens, 1 child",
@@ -64,12 +64,12 @@ test("“We can’t make it” saves a decline; the note thanks the family, and 
     page.getByRole("heading", { name: "Thank you for letting us know." }),
   ).toBeFocused();
   await expect(
-    page.getByText("We’ll miss you, and thank you for your love."),
+    page.getByText("We’ll miss you, and we send you our love."),
   ).toBeVisible();
   await expect(page.getByText(/in our hearts/)).toHaveCount(0);
   await expect(page.getByText(/guestbook/i)).toHaveCount(0);
   await expect(
-    page.getByRole("link", { name: "Edit response" }),
+    page.getByRole("link", { name: "Change your RSVP" }),
   ).toHaveClass(/\boutline\b/);
   const sentBefore = harness.sent.length;
   await page.getByRole("link", { name: "Leave Sophia a note" }).click();
@@ -112,7 +112,7 @@ test("the email’s quick-answer link opens on the review step and saves nothing
   ).toBeVisible();
   await expect(page).toHaveURL(harness.url("/es/rsvp/"));
   await expect(page.getByRole("main").getByRole("button")).toHaveText([
-    "Guardar mi respuesta",
+    "Guardar la respuesta",
     "Cambiar cantidades",
   ]);
   await expect(page.getByRole("main").getByRole("listitem")).toHaveText([
@@ -139,9 +139,9 @@ test("the email’s quick-answer link opens on the review step and saves nothing
   await expect(page.getByRole("main").getByRole("listitem").first()).toHaveText(
     "Ceremonia: no asistirán",
   );
-  await page.getByRole("button", { name: "Guardar mi respuesta" }).click();
+  await page.getByRole("button", { name: "Guardar la respuesta" }).click();
   await expect(
-    page.getByText("Los vamos a extrañar; gracias por su cariño."),
+    page.getByText("Los vamos a extrañar y les mandamos todo nuestro cariño."),
   ).toBeVisible();
   expect(await responsesOf(harness, household)).toHaveLength(1);
 });
@@ -158,9 +158,9 @@ test("answers survive Back from the review, a reload and a switch to Spanish, an
     "Anything we should know? Allergies, accessibility needs, or a song you’d love to hear (optional)",
   );
   await requests.fill("A song for Sophia");
-  await page.getByRole("button", { name: "Review response" }).click();
+  await page.getByRole("button", { name: "Review your RSVP" }).click();
   await expect(
-    page.getByRole("heading", { name: "Review your response" }),
+    page.getByRole("heading", { name: "Review your RSVP" }),
   ).toBeVisible();
 
   // Back returns to the form, on this page, with the answers.
@@ -173,7 +173,7 @@ test("answers survive Back from the review, a reload and a switch to Spanish, an
   // Forward goes back to the review.
   await page.goForward();
   await expect(
-    page.getByRole("heading", { name: "Review your response" }),
+    page.getByRole("heading", { name: "Review your RSVP" }),
   ).toBeVisible();
   await page.goBack();
 
@@ -192,8 +192,8 @@ test("answers survive Back from the review, a reload and a switch to Spanish, an
   await expect(
     eventGroup(page, "Recepción y baile").getByLabel("Adultos / jóvenes"),
   ).toHaveValue("1");
-  await page.getByRole("button", { name: "Revisar respuesta" }).click();
-  await page.getByRole("button", { name: "Guardar mi respuesta" }).click();
+  await page.getByRole("button", { name: "Revisar la respuesta" }).click();
+  await page.getByRole("button", { name: "Guardar la respuesta" }).click();
   await expect(page).toHaveURL(harness.url("/es/rsvp/confirmed/"));
   const [saved] = await responsesOf(harness, household);
   expect(saved).toMatchObject({
@@ -301,7 +301,7 @@ test("a session kept busy stays open past 30 minutes", async ({
     .toBe(opened + 50 * 60_000);
   await setNow(opened + 45 * 60_000);
   await chooseCounts(page, { "Reception & dance": [0, 0] });
-  await page.getByRole("button", { name: "Review response" }).click();
+  await page.getByRole("button", { name: "Review your RSVP" }).click();
   await page.getByRole("button", { name: "Save my RSVP" }).click();
   await expect(page).toHaveURL(harness.url("/rsvp/confirmed/"));
 });
@@ -315,7 +315,7 @@ test("an invitation link that timed out keeps the answers and saves once the inv
   const { link } = await harness.issueInvitation(household);
   await page.goto(harness.forBrowser(link));
   await chooseCounts(page, everyCount);
-  await page.getByRole("button", { name: "Review response" }).click();
+  await page.getByRole("button", { name: "Review your RSVP" }).click();
   // The guest steps away for 31 minutes before tapping Save.
   await setNow(harness.now() + 31 * 60_000);
   const save = page.getByRole("button", { name: "Save my RSVP" });
@@ -338,7 +338,7 @@ test("an invitation link that timed out keeps the answers and saves once the inv
   await page.goto(harness.forBrowser(link));
   await expect(page.getByText("We kept the answers you started.")).toBeVisible();
   await expect(eventGroup(page, "Reception & dance").getByLabel("Adults / teens")).toHaveValue("1");
-  await page.getByRole("button", { name: "Review response" }).click();
+  await page.getByRole("button", { name: "Review your RSVP" }).click();
 
   // It times out again; this time the email opens in another tab.
   await setNow(harness.now() + 31 * 60_000);
@@ -369,7 +369,7 @@ test("the form checks itself: one summary in the page’s language, linked to ea
   await page.goto(harness.forBrowser(link));
   await expect(page.locator("#response")).toHaveAttribute("novalidate", "");
   await chooseCounts(page, { Ceremony: [2] });
-  const review = page.getByRole("button", { name: "Review response" });
+  const review = page.getByRole("button", { name: "Review your RSVP" });
   await review.click();
 
   const summary = page.locator(".error-summary");
@@ -404,7 +404,7 @@ test("the form checks itself: one summary in the page’s language, linked to ea
 
   // In Spanish, in Spanish.
   await page.goto(harness.url("/es/rsvp/"));
-  await page.getByRole("button", { name: "Revisar respuesta" }).click();
+  await page.getByRole("button", { name: "Revisar la respuesta" }).click();
   await expect(page.locator(".error-summary p")).toHaveText(["Elijan cuántos para:"]);
   await expect(page.locator(".error-summary").getByRole("listitem")).toHaveText(["Cena", "Recepción y baile"]);
   await expect(eventGroup(page, "Cena").getByLabel("Niños")).toHaveAccessibleDescription(
@@ -427,7 +427,7 @@ test("an invitation without children asks only about adults and teens", async ({
   await expect(page.getByRole("main").getByLabel("Children")).toHaveCount(0);
   await expect(page.getByRole("main").getByRole("group")).toHaveCount(1);
   await chooseCounts(page, { Ceremony: [1] });
-  await page.getByRole("button", { name: "Review response" }).click();
+  await page.getByRole("button", { name: "Review your RSVP" }).click();
   await expect(page.getByRole("main").getByRole("listitem")).toHaveText([
     "Ceremony: 1 adult/teen",
   ]);
@@ -444,7 +444,7 @@ test("a server error page reads as trouble on our end, and Save keeps focus and 
   const { link } = await harness.issueInvitation(households.rivera);
   await page.goto(harness.forBrowser(link));
   await chooseCounts(page, everyCount);
-  await page.getByRole("button", { name: "Review response" }).click();
+  await page.getByRole("button", { name: "Review your RSVP" }).click();
   await page.route("**/api/rsvp", (route) =>
     route.fulfill({
       status: 502,
@@ -481,7 +481,7 @@ test("a pasted invitation link works without https://, with stray spaces, or as 
     "For example misxv.simplysoph.com/rsvp/#… from your invitation email or message, or a code of 16 letters and numbers, like ABCD-EFGH-…",
   );
   await expect(page.locator("#portal .deadline")).toHaveText(
-    "Please reply by Sunday, November 15.",
+    "Please RSVP by Sunday, November 15.",
   );
   const continueButton = page.getByRole("button", { name: "Continue" });
 

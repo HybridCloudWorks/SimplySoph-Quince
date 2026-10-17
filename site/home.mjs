@@ -15,14 +15,14 @@
 // The newest announcement, dated, sits under the status; older ones below.
 import { watch, lifecycle, answer, serverReply, sessionStatus } from "./now.mjs";
 import { date, dayMonth, time, timeRange } from "./datetime.mjs";
-import { terms, say, registerFor } from "./lexicon.mjs";
+import { terms } from "./lexicon.mjs";
 import { mapLinks, newTab, arrow, pageHref, escapeHtml as esc } from "./celebration.mjs";
+// The page's words and form of address: the hosts speak to the household
+// here (ustedes, site/lexicon.mjs registers).
+import { tr, term as t } from "./client.js";
 
 export function startHome({ lang, content }) {
   const es = lang === "es",
-    tr = (en, spanish) => (es ? spanish : en),
-    // The hosts speak to the household here (ustedes).
-    t = (entry) => say(entry, lang, registerFor("")),
     $ = (selector) => document.querySelector(selector),
     hero = $("[data-home]");
   if (!hero) return;
@@ -112,9 +112,9 @@ export function startHome({ lang, content }) {
     return {
       rsvp: () => page("rsvp", t(terms.rsvpAction), primary),
       "change-rsvp": () => page("rsvp", t(terms.changeRsvp), primary),
-      schedule: () => page("details", tr("See the schedule", "Ver el programa"), primary),
+      schedule: () => page("details", t(terms.seeSchedule), primary),
       share: () => page("share", t(terms.sharePhotos), primary, "#media-upload"),
-      gallery: () => page("gallery", tr("See the photos", "Ver las fotos"), primary),
+      gallery: () => page("gallery", t(terms.seePhotos), primary),
       note: () => page("guestbook", t(terms.leaveNote), primary),
     }[key]();
   }
@@ -139,7 +139,7 @@ export function startHome({ lang, content }) {
     } else put(nodes.choices, "");
     put(
       nodes.replyBy,
-      s.showReplyBy ? tr(`Please RSVP by ${day(m.deadline)}`, `Por favor, confirmen a más tardar el ${day(m.deadline)}`) : "",
+      s.showReplyBy ? `${t(terms.rsvpBy)} ${day(m.deadline)}` : "",
     );
     let status = "",
       clock = "",
@@ -173,12 +173,12 @@ export function startHome({ lang, content }) {
   // Signed in: the server says whether this household replied (only that; a
   // background check that does not keep the session open).
   sessionStatus().then((session) => session?.kind === "guest" && serverReply(session.household));
-  announcements(lang, tr);
+  announcements(lang);
 }
 
 // The newest announcement under the status line, dated; older ones lower down.
 // On /es/, a part that has no Spanish shows the English, marked as English.
-async function announcements(lang, tr) {
+async function announcements(lang) {
   const latest = document.querySelector("[data-latest-update]"),
     older = document.querySelector("[data-announcements]");
   let list = [];

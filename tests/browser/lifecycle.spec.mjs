@@ -176,7 +176,7 @@ test.describe("the same states in Spanish, speaking to the household", () => {
     ["2026-10-17T10:00:00-05:00", {
       phase: "rsvp-open",
       countdown: "Tiempo para confirmar 29 días 14 horas 59 minutos",
-      replyBy: "Por favor, confirmen a más tardar el domingo 15 de noviembre",
+      replyBy: "Por favor, confirmen su asistencia a más tardar el domingo 15 de noviembre",
       actions: ["Confirmar asistencia", "Ver el programa→"],
       href: "/es/rsvp/",
       pill: true,
@@ -294,11 +294,11 @@ test.describe("on a wrong device clock the page follows the server", () => {
     await page.clock.setFixedTime(DEADLINE + 60_000);
     await page.goto(harness.forBrowser(link));
     await expect(page.getByRole("heading", { name: "Rivera Family" })).toBeVisible();
-    await expect(page.locator("#portal .deadline")).toHaveText("Please reply by Sunday, November 15.");
+    await expect(page.locator("#portal .deadline")).toHaveText("Please RSVP by Sunday, November 15.");
     await page.getByRole("button", { name: "Everyone’s coming" }).click();
     await page.getByRole("button", { name: "Save my RSVP" }).click();
     await expect(page).toHaveURL(harness.url("/rsvp/confirmed/"));
-    await expect(page.getByText("Saved Nov 15 · you can change it until November 15")).toBeVisible();
+    await expect(page.getByText("Saved November 15 · you can change it until Sunday, November 15")).toBeVisible();
     // The home page counts the last minute on the server's clock.
     await page.goto(harness.url("/"));
     await expect(home.status(page)).toHaveText(["You replied ✓ · you can change it until Sunday, November 15"]);
@@ -406,7 +406,7 @@ test.describe("a household that replied", () => {
   });
 
   test("in Spanish, the home page speaks to the household that replied", async ({ page, harness }) => {
-    await answer(page, harness, households.morales, { button: "Vamos todos", save: "Guardar mi respuesta", locale: "es" });
+    await answer(page, harness, households.morales, { button: "Vamos todos", save: "Guardar la respuesta", locale: "es" });
     await expect(page.getByRole("link", { name: "Déjenle un mensaje a Sophia" })).toHaveAttribute("href", "/es/guestbook/");
     await openHome(page, harness, "es");
     await expectHome(page, {
@@ -466,19 +466,19 @@ test.describe("the RSVP page on the server's clock", () => {
     await setNow(DEADLINE - 1000);
     await page.goto(harness.url("/rsvp/"));
     await expect(page.getByRole("heading", { name: "Open your invitation" })).toBeVisible();
-    await expect(page.locator("#portal .deadline")).toHaveText("Please reply by Sunday, November 15.");
+    await expect(page.locator("#portal .deadline")).toHaveText("Please RSVP by Sunday, November 15.");
     await expect(page.getByRole("heading", { name: "RSVPs are closed" })).toHaveCount(0);
     await setNow(DEADLINE);
     await page.goto(harness.url("/rsvp/"));
     await expect(page.getByRole("heading", { level: 2 }).first()).toHaveText("RSVPs are closed");
-    await expect(page.getByText("RSVPs closed on November 15. To answer or change your answer now, please contact us.")).toBeVisible();
+    await expect(page.getByText("RSVPs closed on Sunday, November 15. To RSVP or change your RSVP now, please contact us.")).toBeVisible();
     await expect(page.getByRole("main").getByRole("link", { name: "Contact us" })).toHaveAttribute("href", "/contact/");
     await expect(page.locator("#portal .deadline")).toHaveCount(0);
     // The link or code still opens the household's saved answer.
     await expect(page.getByRole("heading", { name: "Open your invitation" })).toBeVisible();
     await page.goto(harness.url("/es/rsvp/"));
     await expect(page.getByRole("heading", { level: 2 }).first()).toHaveText("Las respuestas están cerradas");
-    await expect(page.getByText("Las respuestas cerraron el 15 de noviembre. Para responder o cambiar su respuesta, escríbannos.")).toBeVisible();
+    await expect(page.getByText("Las respuestas cerraron el domingo 15 de noviembre. Para confirmar su asistencia o cambiar su respuesta, escríbannos.")).toBeVisible();
   });
 
   test("a form left open across the deadline turns into the closed note with the saved answer", async ({ context, harness }) => {
@@ -505,7 +505,7 @@ test.describe("the RSVP page on the server's clock", () => {
     harness.setNow(DEADLINE + 1000);
     await page.clock.runFor(12_000);
     await expect(page.getByRole("heading", { name: "RSVPs are closed" })).toBeVisible();
-    await expect(page.getByText("Your saved answer:")).toBeVisible();
+    await expect(page.getByText("Your saved RSVP:")).toBeVisible();
     await expect(page.getByRole("main").getByRole("listitem").first()).toHaveText("Ceremony: 2 adults/teens, 1 child");
     await expect(page.getByRole("button", { name: "Save my RSVP" })).toHaveCount(0);
   });

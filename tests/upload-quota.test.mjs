@@ -153,3 +153,14 @@ test("each family has its own count; an invitation link (RSVP only) or no sessio
   await assert.rejects(f.request("link", "uploads/quota"), (e) => e.status === 401);
   await assert.rejects(f.request(null, "uploads/quota"), (e) => e.status === 401);
 });
+
+// The deployment guide states the same rule as the code: a rolling 24 hours,
+// with the party window's higher limit, never "20 a day".
+import { readFile as readDoc } from "node:fs/promises";
+test("docs/deployment.md gives the upload limits server/upload-quota.mjs enforces", async () => {
+  const doc = await readDoc(new URL("../docs/deployment.md", import.meta.url), "utf8");
+  assert.doesNotMatch(doc, /\b20 (?:uploads )?(?:begun )?a day\b|a day per household/);
+  assert.ok(doc.includes(`${uploadQuota.perDay} in any rolling 24 hours`));
+  assert.ok(doc.includes(`or ${uploadQuota.perDayInUploadWindow} inside the party upload window`));
+  assert.ok(doc.includes(`a table-card phone may send ${uploadQuota.perPartyDevice} per visit and the card ${uploadQuota.perPartyCard.toLocaleString("en-US")} in all`));
+});

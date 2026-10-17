@@ -1,5 +1,5 @@
 import { terms } from "./lexicon.mjs";
-import { timeRange as clockRange } from "./datetime.mjs";
+import { date, time, at, timeRange, capitalize } from "./datetime.mjs";
 // The Target card names the list as Target's English page does. The live text
 // is in the event settings (docs/publishing.md).
 export const registryDescription = {
@@ -111,35 +111,10 @@ export const contactTopicsEs = [
   "Otro",
 ];
 const label = (en, es, lang) => (lang === "es" ? es : en);
-export const localTime = (value, lang = "en") =>
-  new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", {
-    timeZone: "America/Chicago",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(new Date(value));
-export const localDate = (value, lang = "en") =>
-  new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", {
-    timeZone: "America/Chicago",
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  }).format(new Date(value));
-export function timeRange(item, lang = "en") {
-  if (!item.end) return localTime(item.start, lang);
-  const next = localDate(item.start, lang) !== localDate(item.end, lang);
-  const day = new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", {
-    timeZone: "America/Chicago",
-    month: "short",
-    day: "numeric",
-  }).format(new Date(item.end));
-  return (
-    localTime(item.start, lang) +
-    " – " +
-    localTime(item.end, lang) +
-    (next ? " (" + day + ")" : "")
-  );
-}
+// A term in a page's language (these pages' terms have one Spanish form).
+const term = (entry, lang) => label(entry.en, entry.es, lang);
+// Times on a page never split from their "PM" (site/datetime.mjs).
+const nb = { nbsp: true };
 // Link affordances, one meaning each: → goes to another page of this site, ↗
 // opens another site in a new tab (and says so to screen readers), and the
 // calendar mark downloads an .ics file. The marks themselves are decoration.
@@ -204,47 +179,48 @@ export function calendarActions(kind, c = celebration, lang = "en", live = false
 export function venueSection(kind, c = celebration, lang = "en", live = false, parking = "") {
   const v = c[kind],
     e = escapeHtml;
-  return `<article class="venue-details"><p class="eyebrow">${e(localDate(v.start, lang))}</p><h2>${e(v.name)}</h2><address>${e(v.address)}</address>${kind === "reception" ? `<dl class="venue-schedule"><dt>${label("Dinner", "Cena", lang)}</dt><dd>${e(clockRange(c.dinner.start, c.dinner.end, lang, { nbsp: true }))}</dd><dt>${label("Reception & dance", "Recepción y baile", lang)}</dt><dd>${e(clockRange(v.start, v.end, lang, { nbsp: true }))}</dd></dl>` : `<p class="lead">${e(localTime(v.start, lang))}${v.end ? " – " + e(localTime(v.end, lang)) : ""}</p>`}${maps(v.address, lang, label(...(kind === "ceremony" ? [terms.ceremonyLong.en, terms.ceremonyLong.es] : [terms.dinnerAndReception.en, terms.dinnerAndReception.es]), lang))}${v.notes[lang] ? `<p>${e(v.notes[lang])}</p>` : ""}${parking ? `<p class="venue-parking">${e(parking)}</p>` : ""}<div class="calendar-actions">${kind === "reception" ? `<div><strong>${label("Dinner", "Cena", lang)}</strong>${calendarActions("dinner", c, lang, live)}</div>` : ""}<div><strong>${label(kind === "ceremony" ? "Ceremony" : "Reception", kind === "ceremony" ? "Ceremonia" : "Recepción", lang)}</strong>${calendarActions(kind, c, lang, live)}</div></div></article>`;
+  return `<article class="venue-details"><p class="eyebrow">${e(date(v.start, lang))}</p><h2>${e(v.name)}</h2><address>${e(v.address)}</address>${kind === "reception" ? `<dl class="venue-schedule"><dt>${term(terms.dinner, lang)}</dt><dd>${e(timeRange(c.dinner.start, c.dinner.end, lang, nb))}</dd><dt>${term(terms.receptionDance, lang)}</dt><dd>${e(timeRange(v.start, v.end, lang, nb))}</dd></dl>` : `<p class="lead">${e(timeRange(v.start, v.end, lang, nb))}</p>`}${maps(v.address, lang, term(kind === "ceremony" ? terms.ceremonyLong : terms.dinnerAndReception, lang))}${v.notes[lang] ? `<p>${e(v.notes[lang])}</p>` : ""}${parking ? `<p class="venue-parking">${e(parking)}</p>` : ""}<div class="calendar-actions">${kind === "reception" ? `<div><strong>${term(terms.dinner, lang)}</strong>${calendarActions("dinner", c, lang, live)}</div>` : ""}<div><strong>${term(kind === "ceremony" ? terms.ceremony : terms.receptionDance, lang)}</strong>${calendarActions(kind, c, lang, live)}</div></div></article>`;
 }
 // The day at a glance, from the confirmed schedule: the church, then dinner and
 // the dance at the reception venue, each linking to its venue page.
 export function scheduleStrip(c = celebration, lang = "en") {
   const e = escapeHtml,
-    at = (item) => `<b>${e(localTime(item.start, lang))}</b>`;
-  return `<ul class="schedule-strip"><li><a href="${pageHref("ceremony", lang)}"><span class="strip-times">${at(c.ceremony)} ${label("Ceremony", "Ceremonia", lang)}</span><span class="strip-venue">${e(c.ceremony.name)}</span>${arrow}</a></li><li><a href="${pageHref("reception", lang)}"><span class="strip-times">${at(c.dinner)} ${label("Dinner", "Cena", lang)} · ${at(c.reception)} ${label("Reception & dance", "Recepción y baile", lang)}</span><span class="strip-venue">${e(c.reception.name)}</span>${arrow}</a></li></ul>`;
+    when = (item) => `<b>${e(time(item.start, lang, nb))}</b>`;
+  return `<ul class="schedule-strip"><li><a href="${pageHref("ceremony", lang)}"><span class="strip-times">${when(c.ceremony)} ${term(terms.ceremony, lang)}</span><span class="strip-venue">${e(c.ceremony.name)}</span>${arrow}</a></li><li><a href="${pageHref("reception", lang)}"><span class="strip-times">${when(c.dinner)} ${term(terms.dinner, lang)} · ${when(c.reception)} ${term(terms.receptionDance, lang)}</span><span class="strip-venue">${e(c.reception.name)}</span>${arrow}</a></li></ul>`;
 }
 // The Schedule page: each part of the day with its time, venue, address, a map
 // and its calendar file.
 export function scheduleList(c = celebration, lang = "en", live = false) {
   const e = escapeHtml;
   return `<ol class="schedule-list">${[
-    ["ceremony", "ceremony", label("Religious ceremony", "Ceremonia religiosa", lang)],
-    ["dinner", "reception", label("Dinner", "Cena", lang)],
-    ["reception", "reception", label("Reception & dance", "Recepción y baile", lang)],
+    ["ceremony", "ceremony", term(terms.ceremonyLong, lang)],
+    ["dinner", "reception", term(terms.dinner, lang)],
+    ["reception", "reception", term(terms.receptionDance, lang)],
   ]
     .map(([kind, place, name]) => {
       const venue = c[place];
-      return `<li class="schedule-item"><p class="schedule-time">${e(clockRange(c[kind].start, c[kind].end, lang, { nbsp: true }))}</p><div><h2>${name}</h2><p class="schedule-venue"><a href="${pageHref(place, lang)}">${e(venue.name)}${arrow}</a></p><address>${e(venue.address)}</address><p class="schedule-actions"><a href="https://www.google.com/maps/search/?api=1&amp;query=${encodeURIComponent(venue.address)}" target="_blank" rel="noopener noreferrer">${label("Map", "Mapa", lang)}${subject(name)}${newTab(lang)}</a>${calendarActions(kind, c, lang, live)}</p></div></li>`;
+      return `<li class="schedule-item"><p class="schedule-time">${e(timeRange(c[kind].start, c[kind].end, lang, nb))}</p><div><h2>${name}</h2><p class="schedule-venue"><a href="${pageHref(place, lang)}">${e(venue.name)}${arrow}</a></p><address>${e(venue.address)}</address><p class="schedule-actions"><a href="https://www.google.com/maps/search/?api=1&amp;query=${encodeURIComponent(venue.address)}" target="_blank" rel="noopener noreferrer">${label("Map", "Mapa", lang)}${subject(name)}${newTab(lang)}</a>${calendarActions(kind, c, lang, live)}</p></div></li>`;
     })
     .join("")}</ol>`;
 }
 // The invitation's words and schedule for people who can't see the artwork.
 export function invitationAlt(c = celebration, lang = "en") {
-  const t = (v) => localTime(v, lang);
+  const t = (v) => time(v, lang);
   return label(
-    `Sophia’s invitation: “Today begins a new chapter… join me to celebrate it.” Religious ceremony on ${localDate(c.ceremony.start, "en")} at ${t(c.ceremony.start)} at ${c.ceremony.name}; dinner ${t(c.dinner.start)} to ${t(c.dinner.end)}; reception and dance from ${t(c.reception.start)} at ${c.reception.name}, ${c.reception.address}. With love, Sophia.`,
-    `Invitación de Sophia: “Hoy comienza un nuevo capítulo… acompáñame a celebrarlo.” Ceremonia religiosa el ${localDate(c.ceremony.start, "es").replace(",", "")} a las ${t(c.ceremony.start)} en ${c.ceremony.name}; cena de ${t(c.dinner.start)} a ${t(c.dinner.end)}; recepción y baile desde las ${t(c.reception.start)} en ${c.reception.name}, ${c.reception.address}. Con cariño, Sophia.`,
+    `Sophia’s invitation: “Today begins a new chapter… join me to celebrate it.” Religious ceremony on ${date(c.ceremony.start, "en")} ${at(c.ceremony.start, "en")} at ${c.ceremony.name}; dinner ${timeRange(c.dinner.start, c.dinner.end, "en", { prose: true })}; reception and dance from ${t(c.reception.start)} at ${c.reception.name}, ${c.reception.address}. With love, Sophia.`,
+    `Invitación de Sophia: “Hoy comienza un nuevo capítulo… acompáñame a celebrarlo.” Ceremonia religiosa el ${date(c.ceremony.start, "es")} ${at(c.ceremony.start, "es")} en ${c.ceremony.name}; cena ${timeRange(c.dinner.start, c.dinner.end, "es", { prose: true })}; recepción y baile desde ${at(c.reception.start, "es").replace(/^a /, "")} en ${c.reception.name}, ${c.reception.address}. Con cariño, Sophia.`,
     lang,
   );
 }
 export function registryCards(items, lang = "en") {
-  return `<div class="registry-grid">${items.map((r) => `<article class="registry-card">${r.logo ? `<img src="${escapeHtml(r.logo)}" width="72" height="72" alt="${escapeHtml(r.name)}">` : ""}<h2>${escapeHtml(r.name)}</h2><p>${escapeHtml(r.description[lang])}</p>${r.url ? `<a class="button burgundy" href="${escapeHtml(r.url)}" target="_blank" rel="noopener noreferrer">${label("See the registry", "Ver mesa de regalos", lang)}${newTab(lang)}</a>` : `<p class="hint">${label("Registry link coming soon.", "El enlace estará disponible pronto.", lang)}</p>`}</article>`).join("")}</div>`;
+  return `<div class="registry-grid">${items.map((r) => `<article class="registry-card">${r.logo ? `<img src="${escapeHtml(r.logo)}" width="72" height="72" alt="${escapeHtml(r.name)}">` : ""}<h2>${escapeHtml(r.name)}</h2><p>${escapeHtml(r.description[lang])}</p>${r.url ? `<a class="button burgundy" href="${escapeHtml(r.url)}" target="_blank" rel="noopener noreferrer">${label("See the gift registry", "Ver la mesa de regalos", lang)}${newTab(lang)}</a>` : `<p class="hint">${label("Registry link coming soon.", "El enlace estará disponible pronto.", lang)}</p>`}</article>`).join("")}</div>`;
 }
 // One event's facts, for its calendar file (site/calendar-file.mjs) and its
 // Google Calendar link alike. A saved event lives in a calendar for good, so
 // the description holds only confirmed facts and the venue page (the notes
 // stay on the website). Times are UTC. "Sophia’s quinceañera — Religious
-// ceremony" / "XV de Sophia — Ceremonia religiosa".
+// ceremony" / "XV de Sophia — Ceremonia religiosa"; the description names the
+// celebration and its time zone with the site's own words (site/lexicon.mjs).
 const eventTitles = {
   ceremony: terms.ceremonyLong,
   dinner: terms.dinner,
@@ -267,11 +243,7 @@ export function calendarFacts(kind, c = celebration, lang = "en") {
     end: utc(item.end),
     title: `${say(terms.calendarTitle)} — ${say(eventTitles[kind])}`,
     location: venue.name + ", " + venue.address,
-    description: label(
-      `${c.name}’s quinceañera. ${venue.name}, ${venue.address}. Times are Central Time. Latest details: ${page}`,
-      `Quinceañera de ${c.name}. ${venue.name}, ${venue.address}. Horarios en hora del centro. Detalles actualizados: ${page}`,
-      lang,
-    ),
+    description: `${capitalize(say(terms.eventProse))}. ${venue.name}, ${venue.address}. ${say(terms.timeZoneNote)} ${label("Latest details", "Detalles actualizados", lang)}: ${page}`,
     page,
   };
 }

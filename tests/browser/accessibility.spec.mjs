@@ -128,8 +128,8 @@ test("the Spanish header fits its RSVP pill at 320px with 16, 20 and 24px text",
     await defaultFontSize(tab, size);
     await tab.setViewportSize({ width: 320, height: 640 });
     await tab.goto(harness.url("/es/"));
-    // The label the Spanish header uses (or will), in place of today's.
-    await tab.locator(".nav-rsvp").evaluate((pill, html) => (pill.innerHTML = html), label);
+    // The label the Spanish header uses, as the build writes it.
+    expect(await tab.locator(".nav-rsvp").innerHTML()).toBe(label);
     for (const width of [320, 360, 390]) {
       await tab.setViewportSize({ width, height: 640 });
       const m = await tab.evaluate(() => ({
@@ -488,9 +488,9 @@ test.describe("the RSVP on a phone", () => {
       });
     const widths = (locator) => locator.evaluateAll((all) => all.map((el) => Math.round(el.getBoundingClientRect().width)));
     // The form: the main button is the panel's width, like the quick answers.
-    await expect(page.getByRole("button", { name: "Review response" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Review your RSVP" })).toBeVisible();
     const full = Math.round(await inner());
-    expect(await widths(page.getByRole("button", { name: "Review response" }))).toEqual([full]);
+    expect(await widths(page.getByRole("button", { name: "Review your RSVP" }))).toEqual([full]);
     expect(await widths(portal.locator(".quick-answers .button"))).toEqual([full, full]);
     // The legend sits inside its box: no gap in the fieldset's top border.
     for (const fieldset of await portal.locator("fieldset").all()) {
@@ -499,7 +499,7 @@ test.describe("the RSVP on a phone", () => {
     }
     // The error summary: a list, one link per event, none broken across
     // lines; the notes under the six counts are six different sentences.
-    await page.getByRole("button", { name: "Review response" }).click();
+    await page.getByRole("button", { name: "Review your RSVP" }).click();
     const summary = portal.locator(".error-summary");
     await expect(summary).toBeFocused();
     await expect(summary.getByRole("listitem")).toHaveText(["Ceremony", "Dinner", "Reception & dance"]);
@@ -530,7 +530,7 @@ test.describe("the RSVP on a phone", () => {
       expect(Math.abs((await textLeft(place)) - start)).toBeLessThan(0.5);
       expect(await height(place)).toBeGreaterThanOrEqual(43.9);
     }
-    expect(await widths(page.getByRole("link", { name: "Edit response" }))).toEqual([Math.round(await inner())]);
+    expect(await widths(page.getByRole("link", { name: "Change your RSVP" }))).toEqual([Math.round(await inner())]);
     expect(sharedNames(await linkNames(page))).toEqual([]);
     for (const name of ["Ceremony", "Dinner", "Reception & dance"])
       await expect(page.getByRole("link", { name: new RegExp(`^Add to calendar ?: ${name}$`) })).toHaveCount(1);
@@ -578,7 +578,7 @@ test("My account's thread announces only replies that are new, not a redraw", as
   await page.clock.runFor(60_000);
   await checked;
   await page.clock.runFor(1_000);
-  await expect(announced).toHaveText("New reply from the family: And there is a ramp at the side door.");
+  await expect(announced).toHaveText("We replied: And there is a ramp at the side door.");
   await expect(thread).toContainText("And there is a ramp at the side door.");
 });
 

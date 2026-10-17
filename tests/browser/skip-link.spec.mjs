@@ -58,7 +58,7 @@ test("the skip link on the RSVP review keeps the review, and Back still returns 
   const { link } = await harness.issueInvitation(households.rivera);
   await page.goto(harness.forBrowser(link));
   await page.getByRole("button", { name: "Everyone’s coming" }).click();
-  const review = page.getByRole("heading", { name: "Review your response" });
+  const review = page.getByRole("heading", { name: "Review your RSVP" });
   await expect(review).toBeFocused();
   await markDocument(page);
   await useSkipLink(page);
@@ -92,11 +92,11 @@ test("Back from a review reached after the skip link returns to the form", async
   await expect(page.getByRole("heading", { name: "Rivera Family" })).toBeVisible();
   await useSkipLink(page);
   await page.getByRole("button", { name: "We can’t make it" }).click();
-  await expect(page.getByRole("heading", { name: "Review your response" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Review your RSVP" })).toBeVisible();
   await page.goBack();
   await expect(page).toHaveURL(/\/rsvp\/#main$/);
   await expect(page.getByRole("heading", { name: "Rivera Family" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Review your response" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Review your RSVP" })).toHaveCount(0);
 });
 
 test("opening /rsvp/#main shows the invitation form without a broken-link error", async ({

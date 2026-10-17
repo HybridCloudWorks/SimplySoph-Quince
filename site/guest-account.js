@@ -2,24 +2,25 @@
 // WhatsApp and messages with us; signing out of every device comes last.
 // site/guest.js loads this only for that page (tests/home-weight.test.mjs),
 // and hands over what the two share in `page`.
-import { api, esc, tr, route, field, submit, focusOn, announce } from "./client.js";
-import { forgetReply, terms, say } from "./experience.js";
+import { api, esc, tr, term, lang, route, field, submit, focusOn, announce } from "./client.js";
+import { forgetReply, terms } from "./experience.js";
+import { date, dayMonth } from "./datetime.mjs";
 
-const lang = tr("en", "es");
 const whatsapp = () => import("./guest-whatsapp.js");
 // "contact us" in a sentence, as a link to Contact (R-075).
 const contactUs = (words) => `<a href="${route("contact")}">${words}</a>`;
 function rsvpStatus(inv, page) {
   const r = inv.response,
     open = page.rsvpOpen(inv),
-    title = `<h3>${tr("Your RSVP", "Tu respuesta")}</h3>`;
+    title = `<h3>${term(terms.yourRsvp)}</h3>`,
+    closedOn = esc(date(inv.deadline, lang, { year: false }));
   let body;
   if (!inv.invitationReady)
-    body = `<p>${tr("Your invitation hasn’t been sent yet. The RSVP opens here once we send it.", "Tu invitación aún no se ha enviado. Podrás responder aquí cuando te la enviemos.")}</p>`;
+    body = `<p>${tr("Your invitation hasn’t been sent yet. The RSVP opens here once we send it.", "Tu invitación aún no se ha enviado. Podrás confirmar tu asistencia aquí cuando te la enviemos.")}</p>`;
   else if (!r)
     body = open
-      ? `<p>${tr("You haven’t replied yet.", "Aún no has respondido.")}</p>${page.replyBy(inv.deadline)}<p><a class="button burgundy" href="${route("rsvp")}">${tr("RSVP now", say(terms.rsvpAction, "es"))}</a></p>`
-      : `<p>${tr(`You didn’t reply before the deadline. To answer now, please ${contactUs("contact us")}.`, `No respondiste antes de la fecha límite. Para responder ahora, ${contactUs("escríbenos")}.`)}</p>`;
+      ? `<p>${tr("We haven’t received your RSVP yet.", "Aún no recibimos tu respuesta.")}</p>${page.replyBy(inv.deadline)}<p><a class="button burgundy" href="${route("rsvp")}">${term(terms.rsvpAction)}</a></p>`
+      : `<p>${tr(`RSVPs closed on ${closedOn}. To RSVP now, please ${contactUs("contact us")}.`, `Las respuestas cerraron el ${closedOn}. Para confirmar tu asistencia ahora, ${contactUs("escríbenos")}.`)}</p>`;
   else {
     // "Ceremony: 2 adults/teens, 1 child · Dinner: …" (R-090).
     const coming = page.invitedEvents(inv).filter(
@@ -28,11 +29,11 @@ function rsvpStatus(inv, page) {
       answer = coming.length
         ? coming.map((e) => `${page.eventNames[e]}: ${page.people(r.attendance[e])}`).join(" · ")
         : tr("not attending", "no asistirán"),
-      saved = esc(page.dateIn(r.submittedAt, { month: "short", day: "numeric" }));
+      saved = esc(dayMonth(r.submittedAt, lang));
     body = `<p>${answer} — ${tr(`saved ${saved}`, `guardada el ${saved}`)}</p>${
       open
-        ? `<p><a class="button outline" href="${route("rsvp")}">${tr("Change your RSVP", "Cambiar tu respuesta")}</a></p>`
-        : `<p>${tr(`The RSVP deadline has passed. To change your answer, please ${contactUs("contact us")}.`, `La fecha límite ya pasó. Para cambiar tu respuesta, ${contactUs("escríbenos")}.`)}</p>`
+        ? `<p><a class="button outline" href="${route("rsvp")}">${term(terms.changeRsvp)}</a></p>`
+        : `<p>${tr(`The RSVP deadline has passed. To change your RSVP, please ${contactUs("contact us")}.`, `La fecha límite ya pasó. Para cambiar tu respuesta, ${contactUs("escríbenos")}.`)}</p>`
     }`;
   }
   return `<section class="card rsvp-status">${title}${body}</section>`;
@@ -81,7 +82,7 @@ export async function accountPage(inv, page) {
     thread.messages
       .map(
         (m) =>
-          `<article class="card"><p>${esc(m.text)}</p>${m.replies.map((r) => `<blockquote><strong>${esc(say(terms.familyReplyLabel, lang))}</strong> ${esc(r.text)}</blockquote>`).join("")}</article>`,
+          `<article class="card"><p>${esc(m.text)}</p>${m.replies.map((r) => `<blockquote><strong>${esc(term(terms.familyReplyLabel))}</strong> ${esc(r.text)}</blockquote>`).join("")}</article>`,
       )
       .join("");
   // The last markup drawn: the browser normalizes innerHTML (quotes, entities),
@@ -99,7 +100,7 @@ export async function accountPage(inv, page) {
     if (fresh.length)
       announce(
         fresh
-          .map(([, text]) => tr("New reply from the family: ", "Nueva respuesta de la familia: ") + text)
+          .map(([, text]) => tr("We replied: ", "Te respondimos: ") + text)
           .join(" "),
       );
   };

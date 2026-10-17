@@ -84,6 +84,22 @@ Some guest-facing words live in the event settings on the server, not in this re
 
 Check afterwards on `/ceremony/`, `/reception/` and `/registry/` (and their `/es/` pages) that each says the parking promise once and that Gifts names the list.
 
+### Owner action: the Spanish wording held on the live server
+
+The website speaks one Spanish (`site/lexicon.mjs`): ustedes where we speak to an invited family (home, RSVP, confirmation, thank-you, the family's emails), tú to one person and on information pages, never usted, and one name per thing ("Confirmar asistencia", "mensaje" for the note, "Entrar" and "enlace de acceso", "Avisos por WhatsApp", "los XV de Sophia", times as "4:00 p. m."). `npm run check` enforces it on everything in this repository, but the event settings and the announcements are written in Admin and live only on the server, so the repository's tests cannot see them.
+
+Admin now checks them for you. **Admin → Website & event** shows "Check the Spanish wording" above the form when a Spanish text uses a retired word or mixes tú and ustedes, both when the page opens and after **Save website & calendars**; **Admin → Communications → Publish on website** shows the same box after publishing an announcement. It is a warning, never a refusal: the text is saved and shown as written, and you decide. The repository's defaults pass the check. For the texts already live:
+
+1. Open **Admin → Website & event**. If the box appears, it names each field and what it found. Fix the Spanish there and save; nothing else changes.
+   - **Guest notes (Español)** appear on the venue pages, which speak to one person (tú): "Silencia tu teléfono y sigue las indicaciones de la iglesia durante la ceremonia." and "La cena y la recepción serán en el mismo lugar." are the repository's wording.
+   - **Registries → Description (Español)** and the **album names (Español)** appear on Gifts and Photos (tú or neutral).
+   - **Contact page · who reads the messages (Español)**, if you write one, appears on Contact (tú).
+   - **Homepage message** is Sophia's own words; only retired words are flagged there, never her tú.
+2. Write each new announcement's Spanish to the family (ustedes: "Los esperamos", "confirmen"), as the home page does; the form says so too. Announcements already published cannot be edited: if one of them uses tú (for example "Confirma tu asistencia"), archive it on **Record history → Announcements** and publish it again in ustedes.
+3. Leave alone what is registered elsewhere, word for word: the Meta-approved WhatsApp templates ("Confirma tu asistencia antes del 15 de noviembre de 2026", one phone, tú; resubmitting needs a new approval, `docs/whatsapp-activation.md`) and the three SMS replies, which stay in English (`docs/sms-campaign-registration.md`). The Spanish SMS pages say the replies arrive in English.
+
+Three wording questions are the family's and are not decided here: whether the church service is a Mass ("Ceremonia religiosa" until then, one entry in `site/lexicon.mjs`), whether "mensaje" stays the Spanish name of the note, and whether the Spanish SMS page should keep its current casing (the registered campaign quotes the English page).
+
 ## Exact hosting target
 
 - Google account: the project owner's Google account (shown as `<project-owner-account>` below); the HybridCloudWorks account does not have access

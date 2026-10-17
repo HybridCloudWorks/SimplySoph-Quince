@@ -117,7 +117,7 @@ test("ES: the card in Spanish, the file picker in Spanish, and a file taken back
   await expect(row).toContainText(/Referencia: [2-9A-HJKMNP-TV-Z]{4}-[2-9A-HJKMNP-TV-Z]{4}\./);
   // Taken back: the button goes, focus lands on what happened to the file.
   await row.getByRole("button", { name: "Quitar IMG_3102.JPG" }).click();
-  await expect(row).toContainText("Lo quitaste antes de que alguien lo viera.");
+  await expect(row).toContainText("Lo quitaste antes de que lo publicáramos.");
   await expect(row.locator("[data-status]")).toBeFocused();
   expect(Object.values((await harness.ledger.read()).photos).length).toBe(1);
 });
@@ -156,7 +156,7 @@ test("dormant: with no card created, a card address opens nothing", async ({ pag
   await setNow(PARTY_NIGHT);
   await page.goto(harness.url("/share/#party=" + "A".repeat(43)));
   await expect(page.locator("[role=alert].notice")).toHaveText(
-    "This table card isn’t working. Ask the family for the current card.",
+    "This table card isn’t working. Ask us for the current card.",
   );
   await expect(page.getByRole("button", { name: "Email my sign-in link" })).toBeVisible();
   expect(Object.values((await harness.ledger.read()).sessions).some((s) => s.kind === "party")).toBe(false);

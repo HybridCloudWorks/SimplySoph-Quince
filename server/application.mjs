@@ -45,12 +45,8 @@ import {
   invitationCredential,
 } from "./auth.mjs";
 import { validateHouseholdRsvp } from "./rsvp-validation.mjs";
-import {
-  renderEmail,
-  emailSchedule,
-  firstSentence,
-  longDate,
-} from "../emails/templates.mjs";
+import { householdEmail, renderReplyNotice } from "../emails/templates.mjs";
+import { settingsWarnings, announcementWarnings } from "./copy-check.mjs";
 import { event as eventInfo, ready } from "../site/content.mjs";
 import { previewRoutes } from "../site/preview-content.mjs";
 import { notionOutage } from "./notion.mjs";
@@ -479,7 +475,7 @@ export function createApplication({
       text = safeText(body.text, 2000);
     if (!name || !text) throw error(422, "MESSAGE_REQUIRED");
     // What the writer agreed to, given the sentence the page showed them
-    // (`audience`); unchecked means only Sophia and her family read it.
+    // (`audience`); unchecked means only we read it (site/notes.mjs "family").
     if (body.audience !== undefined && !visibilities.includes(body.audience))
       throw error(422, "INVALID_FIELDS");
     return { name, text, display: displayFor(body.consent, body.audience) };
@@ -857,7 +853,9 @@ export function createApplication({
   ) {
     const site = siteSettings(s),
       id = randomUUID(),
-      rendered = renderEmail({
+      // The dates, schedule and Sophia's words come from the admin's event
+      // settings, so a schedule change reaches new emails (householdEmail).
+      rendered = householdEmail({
         type,
         locale,
         household: household.name,
@@ -866,20 +864,9 @@ export function createApplication({
         url:
           url ||
           origin + (locale === "es" ? "/es" : "") + (responseId ? "/details/" : "/rsvp/"),
-        // From the admin's event settings, so a schedule change reaches new emails.
-        eventDate: ((d) => d[0].toUpperCase() + d.slice(1))(
-          longDate(site.ceremony.start, locale),
-        ),
-        rsvpDeadline: longDate(deadline, locale),
-        schedule: emailSchedule(
-          site,
-          s.invitations[household.id]?.invited,
-          locale,
-        ),
-        note: firstSentence(site.quote?.[locale]),
-        dateConfirmed: true,
+        site,
+        deadline,
         receiptCommitted: !!responseId,
-        preview: false,
         updateText,
         attendance: responseId ? s.responses[responseId]?.attendance : null,
         invited: s.invitations[household.id]?.invited,
@@ -2499,8 +2486,10 @@ export function createApplication({
         });
         return { binary: html, contentType: "text/html; charset=utf-8" };
       }
-      if (path === "/api/admin/site" && method === "GET")
-        return { site: siteSettings(ctx.state) };
+      if (path === "/api/admin/site" && method === "GET") {
+        const site = siteSettings(ctx.state);
+        return { site, warnings: settingsWarnings(site) };
+      }
       if (path === "/api/admin/site" && method === "POST") {
         const site = validateSettings(body);
         return ledger.transaction((s) => {
@@ -2521,7 +2510,7 @@ export function createApplication({
           site.version++;
           s.site = site;
           audit(s, session.actor, "site-settings", "event", now());
-          return { site };
+          return { site, warnings: settingsWarnings(site) };
         });
       }
       // Cheap change check for open admin tabs (ledger read only, no Notion call).
@@ -2939,15 +2928,16 @@ export function createApplication({
         // verified address now. Checked before the reply is saved, so a refusal
         // never leaves a saved reply that tempts a second try.
         const notifying = body.notify === true;
+        // The household's language for the email; unknown, it is written in both.
         let to = null,
-          locale = "en";
+          locale;
         if (notifying) {
           if (!mailer.configured) throw error(409, "EMAIL_NOT_CONFIGURED");
           const found = ctx.state.messages[body.id];
           if (!found || found.kind !== "contact") throw error(404, "NOT_FOUND");
           const row = await notion.read(found.householdId, { fresh: true }).catch(() => null);
           to = replyRecipient(ctx.state, found, row);
-          locale = ctx.state.invitations[found.householdId]?.locale || "en";
+          locale = ctx.state.invitations[found.householdId]?.locale;
           if (!to || to !== body.to) throw error(409, "RECIPIENT_CHANGED");
         }
         await ledger.transaction((s) => {
@@ -2962,12 +2952,8 @@ export function createApplication({
         if (!notifying) return { saved: true, emailed: false };
         let emailed = true;
         try {
-          await mailer.send({
-            id: token(),
-            to,
-            subject: "We answered your message / Te respondimos · Sophia’s quinceañera",
-            html: `<p>We answered your message on Sophia’s quinceañera website.</p><p>Te respondimos en el sitio de los XV de Sophia.</p><p><a href="${origin}${locale === "es" ? "/es" : ""}/account/">Sign in to read our reply / Entra para leer nuestra respuesta</a></p>`,
-          });
+          const notice = renderReplyNotice({ locale, origin });
+          await mailer.send({ id: token(), to, subject: notice.subject, html: notice.html, text: notice.text });
         } catch {
           emailed = false;
         }
@@ -3118,7 +3104,7 @@ export function createApplication({
             publishedAt: now(),
           };
           audit(s, session.actor, "announcement-published", id, now());
-          return { id };
+          return { id, warnings: announcementWarnings({ titleEs, textEs }) };
         });
       }
       if (path === "/api/admin/audience" && method === "GET") {

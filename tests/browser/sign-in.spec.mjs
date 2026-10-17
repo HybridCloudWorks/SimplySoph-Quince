@@ -32,8 +32,8 @@ test("the emailed sign-in link is in the guest’s language and brings them back
   await expect(page.getByRole("heading", { name: "Revisa tu correo" })).toBeFocused();
 
   const mail = harness.sent.at(-1);
-  expect(mail.subject).toBe("Tu enlace para entrar · Los XV de Sophia");
-  expect(mail.html).toContain("Hola, Familia Morales:");
+  expect(mail.subject).toBe("Tu enlace de acceso · Los XV de Sophia");
+  expect(mail.html).toContain("Hola:");
   expect(mail.html).toContain("viernes 15 de enero de 2027");
   expect(mail.html).toContain("¿No lo pediste? Ignora este correo");
   // One name for the note (R-038): never the party's physical "libro de firmas".
@@ -170,12 +170,12 @@ test("the quick answers check the contact email first, while it can still be fix
     await expect(summary).toBeFocused();
     await expect(summary.locator("p")).toHaveText(["Check the email address:"]);
     await expect(summary.getByRole("listitem")).toHaveText(["Email"]);
-    await expect(page.getByRole("heading", { name: "Review your response" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Review your RSVP" })).toHaveCount(0);
   }
   // Only the contact details are checked: the counts come from the button.
   await email.fill("rivera@family.example");
   await page.getByRole("button", { name: "Everyone’s coming" }).click();
-  await expect(page.getByRole("heading", { name: "Review your response" })).toBeFocused();
+  await expect(page.getByRole("heading", { name: "Review your RSVP" })).toBeFocused();
   await page.getByRole("button", { name: "Save my RSVP" }).click();
   await expect(page).toHaveURL(harness.url("/rsvp/confirmed/"));
 });
@@ -217,8 +217,8 @@ test("My account puts the household’s RSVP first, labels contact fields for au
   await signIn(page, harness, household.email);
   await expect(page).toHaveURL(harness.url("/account/"));
   const status = page.locator(".rsvp-status");
-  await expect(status).toContainText("You haven’t replied yet.");
-  await expect(status.getByRole("link", { name: "RSVP now" })).toHaveAttribute("href", "/rsvp/");
+  await expect(status).toContainText("We haven’t received your RSVP yet.");
+  await expect(status.getByRole("link", { name: "RSVP", exact: true })).toHaveAttribute("href", "/rsvp/");
 
   const email = page.getByRole("textbox", { name: "Contact email" });
   await expect(email).toHaveAttribute("autocomplete", "email");
@@ -257,14 +257,14 @@ test("My account puts the household’s RSVP first, labels contact fields for au
   await expect(saved).toBeFocused();
 
   // After an RSVP, the account shows the answer and a way to change it.
-  await page.getByRole("link", { name: "RSVP now" }).click();
+  await page.locator(".rsvp-status").getByRole("link", { name: "RSVP", exact: true }).click();
   await page.getByRole("button", { name: "Everyone’s coming" }).click();
   await page.getByRole("button", { name: "Save my RSVP" }).click();
   await expect(page).toHaveURL(harness.url("/rsvp/confirmed/"));
   await page.goto(harness.url("/account/"));
   // Each event and its count, with a colon (R-090).
   await expect(status).toContainText(
-    "Ceremony: 2 adults/teens, 1 child · Dinner: 2 adults/teens, 1 child — saved Oct 1",
+    "Ceremony: 2 adults/teens, 1 child · Dinner: 2 adults/teens, 1 child — saved October 1",
   );
   await expect(status.getByRole("link", { name: "Change your RSVP" })).toHaveAttribute(
     "href",

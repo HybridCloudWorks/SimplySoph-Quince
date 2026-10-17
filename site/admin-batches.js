@@ -1,4 +1,5 @@
 import { api, esc, notify } from "./client.js";
+import { stamp } from "./datetime.mjs";
 
 // Bulk invitations with a person in the loop: select households, review the
 // recipients, skips and one sample per language, type the count to confirm,
@@ -98,7 +99,7 @@ async function recentBatches(box, panel, guests, reload) {
     ? `<h2>Recent email batches</h2><div class="table-wrap"><table><thead><tr><th scope="col">Created</th><th scope="col">Type</th><th scope="col">State</th><th scope="col">Emails</th><th scope="col">Waiting to send</th><th scope="col"></th></tr></thead><tbody>${batches
         .map(
           (b) =>
-            `<tr><td>${esc(new Date(b.createdAt).toLocaleString())}</td><td>${esc(typeNames[b.type])}</td><td>${esc(b.state)}</td><td>${b.total}</td><td>${b.remaining}</td><td><button type="button" class="plain-button" data-open-batch="${esc(b.id)}">Open</button></td></tr>`,
+            `<tr><td>${esc(stamp(b.createdAt))}</td><td>${esc(typeNames[b.type])}</td><td>${esc(b.state)}</td><td>${b.total}</td><td>${b.remaining}</td><td><button type="button" class="plain-button" data-open-batch="${esc(b.id)}">Open</button></td></tr>`,
         )
         .join("")}</tbody></table></div>`
     : "";
@@ -112,7 +113,7 @@ export async function openBatch(panel, id, guests, reload) {
   const canConfirm = d.state === "draft" && d.remaining > 0,
     canSend = ["confirmed", "sending"].includes(d.state) && d.remaining > 0,
     canCancel = ["draft", "confirmed", "sending"].includes(d.state) && d.remaining > 0;
-  panel.innerHTML = `<section class="card" aria-labelledby="batch-title"><h2 id="batch-title">${esc(typeNames[d.type])} · ${d.total} recipient${d.total === 1 ? "" : "s"} · ${d.skipped} skipped</h2><p>State: <strong>${esc(d.state)}</strong>${d.confirmedAt ? ` · confirmed ${esc(new Date(d.confirmedAt).toLocaleString())}` : ""}</p>${
+  panel.innerHTML = `<section class="card" aria-labelledby="batch-title"><h2 id="batch-title">${esc(typeNames[d.type])} · ${d.total} recipient${d.total === 1 ? "" : "s"} · ${d.skipped} skipped</h2><p>State: <strong>${esc(d.state)}</strong>${d.confirmedAt ? ` · confirmed ${esc(stamp(d.confirmedAt))}` : ""}</p>${
     d.recipients.length
       ? `<h3>Recipients</h3><div class="table-wrap"><table><thead><tr><th scope="col">Household</th><th scope="col">Email</th><th scope="col">Language</th><th scope="col">Status</th></tr></thead><tbody>${d.recipients
           .map(

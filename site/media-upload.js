@@ -47,8 +47,8 @@ function limitSentence({ scope, limit, retryAt }) {
   const n = Number.isSafeInteger(limit) ? limit : null;
   if (scope === "device")
     return tr(
-      `This phone has shared ${n ?? "the most"} photos and videos from the table card, the most one phone can send. Thank you!`,
-      `Este teléfono ya compartió ${n ?? "el máximo de"} fotos y videos desde la tarjeta de la mesa, el máximo por teléfono. ¡Gracias!`,
+      `This phone has shared ${n ?? "the most"} photos and videos from the table card, the most we take from one phone at a time. Thank you!`,
+      `Este teléfono ya compartió ${n ?? "el máximo de"} fotos y videos desde la tarjeta de la mesa, el máximo que recibimos de un teléfono a la vez. ¡Gracias!`,
     );
   if (scope === "card")
     return tr(
@@ -122,12 +122,12 @@ const answers = {
   INVALID_VIDEO: () =>
     tr(
       "This video couldn't be opened. Choose it again from your Photos or Gallery app; if it still fails, contact us.",
-      "No se pudo abrir este video. Vuelve a elegirlo desde tu app de Fotos o Galería; si sigue fallando, comunícate con nosotros.",
+      "No se pudo abrir este video. Vuelve a elegirlo desde tu app de Fotos o Galería; si sigue fallando, escríbenos.",
     ),
   PROCESSING_FAILED: () =>
     tr(
       "This video couldn't be prepared for the gallery. Try a shorter clip, or contact us.",
-      "No se pudo preparar este video para la galería. Prueba con un clip más corto o comunícate con nosotros.",
+      "No se pudo preparar este video para la galería. Prueba con un clip más corto o escríbenos.",
     ),
   UPLOAD_EXPIRED: () =>
     tr(
@@ -136,8 +136,8 @@ const answers = {
     ),
   SIGN_IN_REQUIRED: () =>
     tr(
-      "Your sign-in ended. Sign in again, then choose the file again.",
-      "Tu sesión terminó. Vuelve a entrar y elige el archivo otra vez.",
+      "Your sign-in timed out. Sign in again, then choose the file again.",
+      "Tu acceso venció. Vuelve a entrar y elige el archivo otra vez.",
     ),
   CSRF_REJECTED: () =>
     tr(
@@ -154,7 +154,7 @@ answers.NOT_FOUND = answers.UPLOAD_EXPIRED;
 const answer = (code) =>
   (answers[code] || (() => tr(
     "This file couldn't be sent. Choose it again; if it keeps failing, contact us.",
-    "No se pudo enviar este archivo. Vuelve a elegirlo; si sigue fallando, comunícate con nosotros.",
+    "No se pudo enviar este archivo. Vuelve a elegirlo; si sigue fallando, escríbenos.",
   )))();
 // One piece of a file, as raw bytes. XMLHttpRequest (not fetch) because it
 // reports upload progress. 50 seconds stays inside Hosting's 60-second limit;
@@ -221,7 +221,7 @@ export function mediaUpload(portal, albums, { party = false } = {}) {
     ? field(tr("Your name (optional)", "Tu nombre (opcional)"), "name", {
         max: 60,
         autocomplete: "name",
-        hint: tr("So the family knows who took them.", "Para que la familia sepa quién los tomó."),
+        hint: tr("So we know who took them.", "Para que sepamos quién los tomó."),
       })
     : "";
   portal.innerHTML = `<form id="photo"><h2>${tr("Add your photos & videos", "Agrega tus fotos y videos")}</h2>${intro}<p id="upload-help">${help}</p><p id="upload-room" class="hint" hidden></p><div class="file-picker"><input type="file" id="upload-files" class="file-input" name="file" accept="${esc(uploadAccept)}" multiple required aria-describedby="upload-help upload-chosen" data-label="${tr("Photos & videos", "Fotos y videos")}"><label for="upload-files" class="button outline file-button">${tr("Choose photos & videos", "Elige fotos y videos")}</label><p id="upload-chosen" class="file-count" aria-live="polite">${chosenText([])}</p></div><div class="upload-fields">${name}<label>${tr("Album", "Álbum")}<select name="album">${albums.map((a) => `<option value="${esc(a.id)}"${a.id === "event" ? " selected" : ""}>${esc(es ? a.es : a.en)}</option>`).join("")}</select></label>${field(tr("Caption for these files (optional)", "Descripción para estos archivos (opcional)"), "caption", { max: 200 })}</div><label class="check upload-consent"><input type="checkbox" name="consent" required data-label="${tr("Permission from the people pictured", "Permiso de las personas que aparecen")}"><span>${tr("I have permission from the people pictured and agree to the", "Tengo permiso de las personas que aparecen y acepto lo indicado en")} <a href="${route("terms")}" target="_blank" rel="noopener">${tr("Photo & video policy", "Uso de fotos y videos")}</a>.</span></label><p class="error" role="alert"></p><div class="upload-actions"><button type="submit" class="button burgundy" data-busy="${tr("Sending…", "Enviando…")}">${tr("Send my photos & videos", "Enviar mis fotos y videos")}</button>${party ? "" : `<a href="${route("gallery")}">${tr("View the gallery", "Ver la galería")}</a>`}</div><div id="upload-summary" role="status" aria-live="polite"></div><ol id="upload-results" aria-label="${tr("Your files", "Tus archivos")}"></ol></form>`;
@@ -286,7 +286,7 @@ export function mediaUpload(portal, albums, { party = false } = {}) {
         ) + arrivedNote(e)
       );
     if (e.state === "withdrawn")
-      return tr("Removed before anyone saw it.", "Lo quitaste antes de que alguien lo viera.");
+      return tr("Removed before we published it.", "Lo quitaste antes de que lo publicáramos.");
     return checking && e.kind === "video"
       ? tr("Checking the video…", "Revisando el video…")
       : tr("Ready to send", "Listo para enviar");

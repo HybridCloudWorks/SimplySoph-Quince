@@ -1,5 +1,6 @@
 import { terms } from "./lexicon.mjs";
 import { posted } from "./promises.mjs";
+import { date, capitalize } from "./datetime.mjs";
 export const event = {
   name: "Sophia",
   date: "2027-01-15",
@@ -72,26 +73,30 @@ export const padrinoTraditions = {
   pastel: { es: "de Pastel", en: "Cake", meaning: { en: "The cake for the celebration.", es: "El pastel de la celebración." } },
   brindis: { es: "de Brindis", en: "Toast", meaning: { en: "The glasses for the family toast.", es: "Las copas para el brindis de la familia." } },
 };
-// One name per page: the header, section links and page titles all use these.
+// One name per page: the header, section links and page titles all use these
+// (the shared names from site/lexicon.mjs). Titles are chrome, so the Spanish
+// is a noun or an infinitive, except the confirmation's, which names the
+// household's answer the way that page speaks to them ("Su respuesta").
+const named = (entry, es = entry.es) => [entry.en, es];
 export const routes = [
   ["", "Home", "Inicio"],
   ["sophia", "Meet Sophia", "Conoce a Sophia"],
-  ["details", "Schedule", "Programa"],
-  ["ceremony", "Religious ceremony", "Ceremonia religiosa"],
-  ["reception", "Dinner & reception", "Cena y recepción"],
-  ["rsvp", "RSVP", "Confirma tu asistencia"],
-  ["rsvp/confirmed", "Your response", "Tu respuesta"],
+  ["details", ...named(terms.schedule)],
+  ["ceremony", ...named(terms.ceremonyLong)],
+  ["reception", ...named(terms.dinnerAndReception)],
+  ["rsvp", ...named(terms.rsvpAction)],
+  ["rsvp/confirmed", ...named(terms.yourRsvp, terms.yourRsvp.es.ustedes)],
   // Built as "Sign in", which is what a signed-out guest finds there; a
   // signed-in guest's page and header item read "My account" (site/guest.js).
   ["account", terms.signIn.en, terms.signIn.es],
   ["court", "Court of honor", "Corte de honor"],
   ["padrinos", "Padrinos", "Padrinos"],
-  ["gallery", "Photos", "Fotos"],
-  ["share", "Share your photos", "Comparte tus fotos"],
-  ["registry", "Gifts", "Mesa de regalos"],
+  ["gallery", ...named(terms.photos)],
+  ["share", ...named(terms.sharePhotos)],
+  ["registry", ...named(terms.gifts)],
   ["travel", "Travel", "Viaje"],
   ["faq", "Questions", "Preguntas"],
-  ["guestbook", "A note for Sophia", "Un mensaje para Sophia"],
+  ["guestbook", ...named(terms.noteTitle)],
   ["contact", "Contact", "Contacto"],
   ["privacy", "Privacy policy", "Política de privacidad"],
   ["terms", "Photo & video policy", "Uso de fotos y videos"],
@@ -146,14 +151,17 @@ export const adminRoutes = [
   ["admin/updates", "Communications"],
   ["admin/history", "Record history"],
 ];
+// The date lines come from site/datetime.mjs: "Friday, January 15, 2027" /
+// "Viernes 15 de enero de 2027" (a line of its own, so a capital), and the
+// deadline inside a sentence ("domingo 15 de noviembre de 2026").
 export const copy = {
   en: {
-    date: "Friday, January 15, 2027",
-    deadline: "Sunday, November 15, 2026",
+    date: date(event.startsAt, "en"),
+    deadline: date(event.deadline, "en"),
     tagline: "Please join us as Sophia celebrates her fifteenth birthday.",
     intro: "Today begins a new chapter… join me to celebrate it.",
-    rsvp: "RSVP",
-    all: "See the schedule",
+    rsvp: terms.rsvpAction.en,
+    all: terms.seeSchedule.en,
     home: "Home",
     language: "Español",
     languageShort: "ES",
@@ -169,12 +177,12 @@ export const copy = {
     loading: "Loading…",
   },
   es: {
-    date: "Viernes, 15 de enero de 2027",
-    deadline: "domingo 15 de noviembre de 2026",
+    date: capitalize(date(event.startsAt, "es")),
+    deadline: date(event.deadline, "es"),
     tagline: "Acompáñennos a celebrar los quince años de Sophia.",
     intro: "Hoy comienza un nuevo capítulo… acompáñame a celebrarlo.",
-    rsvp: "Confirmar asistencia",
-    all: "Ver el programa",
+    rsvp: terms.rsvpAction.es,
+    all: terms.seeSchedule.es,
     home: "Inicio",
     language: "English",
     languageShort: "EN",

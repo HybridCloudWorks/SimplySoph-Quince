@@ -335,7 +335,8 @@ test("a tab title names a step only once the guest has acted", async ({ page, ha
 // ---- R-075: "contact us" in an error is a link ----
 for (const [lang, alert, words, contact] of [
   ["en", "That invitation could not be opened. Check the link or contact us.", "contact us", "/contact/"],
-  ["es", "No pudimos abrir la invitación. Revisa el enlace o escríbenos.", "escríbenos", "/es/contact/"],
+  // The RSVP speaks to the household (ustedes), its errors too (R-034).
+  ["es", "No pudimos abrir la invitación. Revisen el enlace o escríbannos.", "escríbannos", "/es/contact/"],
 ])
   test(`“${words}” in an error is a link to Contact, made from text, never markup (${lang})`, async ({ page, harness }) => {
     await page.goto(harness.url(pathOf("rsvp", lang)));

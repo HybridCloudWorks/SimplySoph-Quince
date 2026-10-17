@@ -5,7 +5,7 @@ import { audienceComposer } from "./admin-audience.js";
 import { smsComposer } from "./admin-sms.js";
 import { batchToolbar, eventNames } from "./admin-batches.js";
 import { startPulse, activityBanner } from "./admin-pulse.js";
-import { websiteEditor, notificationInbox } from "./admin-experience.js";
+import { websiteEditor, notificationInbox, copyWarnings } from "./admin-experience.js";
 import {
   api,
   esc,
@@ -14,6 +14,7 @@ import {
   notify,
   linkFragment,
   reloadOnNewLink,
+  addMessages,
 } from "./client.js";
 import {
   startMicrosoft,
@@ -23,8 +24,11 @@ import {
   googleButton,
 } from "./sso.js";
 import { contactTopics, contactTopicsEn } from "./celebration.mjs";
-import { date, time } from "./datetime.mjs";
+import { date, time, stamp as recordedAt } from "./datetime.mjs";
+import { adminMessages } from "./admin-messages.js";
 import { audienceOf } from "./notes.mjs";
+// Admin's own error wording (guest pages never load it).
+addMessages(adminMessages);
 const root = document.querySelector("#admin-app"),
   view = root.dataset.view;
 // Contact messages store the topic value the server checks; show the label
@@ -251,7 +255,7 @@ function showMfa(data) {
 // access; the owner can only reset a lost authenticator.
 async function accountAccess() {
   const data = await api("admin/accounts");
-  const when = (t) => (t ? esc(new Date(t).toLocaleString()) : "—");
+  const when = (t) => (t ? esc(recordedAt(t)) : "—");
   root.innerHTML = `<section class="card"><h2>Administrators</h2><p>Administrators are managed in Notion. To add someone, tick <strong>Administrator Eligible</strong> on their row and make sure the row has their email. To remove them, untick it; they are signed out on their next click. Everyone sets up an authenticator app the first time they sign in.</p><div class="table-wrap"><table><thead><tr><th>Name</th><th>Email</th><th>Authenticator</th>${data.owner ? "<th></th>" : ""}</tr></thead><tbody>${data.administrators
     .map(
       (a) =>
@@ -290,7 +294,7 @@ async function accountAccess() {
     };
     root.insertAdjacentHTML(
       "beforeend",
-      `<section class="card" id="recovery"><h2>Your recovery codes</h2><p>If you lose your phone, a recovery code lets you sign in once and set up a new authenticator. You have <strong>${data.recoveryCodesLeft}</strong> unused ${data.recoveryCodesLeft === 1 ? "code" : "codes"}. Creating a new set cancels the old one.</p><div id="recovery-panel"><button type="button" class="button outline" id="recovery-new">Create new recovery codes</button></div></section><section class="card"><h2>Authenticator history</h2>${r.events.length ? `<ul>${r.events.map((e) => `<li>${esc(new Date(e.at).toLocaleString())} · ${esc(changes[e.change] || e.change)} · ${esc(e.target)}</li>`).join("")}</ul>` : "<p>No changes recorded yet.</p>"}</section>`,
+      `<section class="card" id="recovery"><h2>Your recovery codes</h2><p>If you lose your phone, a recovery code lets you sign in once and set up a new authenticator. You have <strong>${data.recoveryCodesLeft}</strong> unused ${data.recoveryCodesLeft === 1 ? "code" : "codes"}. Creating a new set cancels the old one.</p><div id="recovery-panel"><button type="button" class="button outline" id="recovery-new">Create new recovery codes</button></div></section><section class="card"><h2>Authenticator history</h2>${r.events.length ? `<ul>${r.events.map((e) => `<li>${esc(recordedAt(e.at))} · ${esc(changes[e.change] || e.change)} · ${esc(e.target)}</li>`).join("")}</ul>` : "<p>No changes recorded yet.</p>"}</section>`,
     );
     root.querySelector("#recovery-new").onclick = () => {
       const panel = root.querySelector("#recovery-panel");
@@ -346,13 +350,7 @@ const statusLabels = {
   attending: "Attending",
   declined: "Declined",
 };
-const when = (iso) =>
-  iso
-    ? new Date(iso).toLocaleString("en-US", {
-        dateStyle: "medium",
-        timeStyle: "short",
-      })
-    : "";
+const when = (iso) => (iso ? recordedAt(iso) : "");
 let guests = [];
 async function guestList() {
   const data = await api("admin/guests");
@@ -676,11 +674,13 @@ async function updates() {
       .filter((a) => !a.archived)
       .sort(newestFirst)
       .slice(0, 5);
-    panel.innerHTML = `<form id="announcement" class="card"><h2>Publish a website announcement</h2>${field("English title", "title", { required: true, max: 140 })}<label>English message<textarea name="text" required maxlength="2000"></textarea></label>${field("Spanish title", "titleEs", { required: true, max: 140 })}<label>Spanish message<textarea name="textEs" required maxlength="2000"></textarea></label><p class="hint">Guests read the website in English and Spanish, so each announcement needs both.</p>${formEnd("Publish on website")}<section class="recent-records"><h2>Latest five announcements</h2><a href="/admin/history/?kind=announcements">View full announcement history</a>${announcements.map((a) => `<article class="compact-record"><h3>${esc(a.title)}</h3><p>${esc(a.text)}</p><small>${a.at ? esc(new Date(a.at).toLocaleString()) : ""} · ${a.published ? "Published" : "Unpublished"}</small></article>`).join("") || "<p>No announcements yet.</p>"}</section>`;
+    panel.innerHTML = `<form id="announcement" class="card"><h2>Publish a website announcement</h2>${field("English title", "title", { required: true, max: 140 })}<label>English message<textarea name="text" required maxlength="2000"></textarea></label>${field("Spanish title", "titleEs", { required: true, max: 140 })}<label>Spanish message<textarea name="textEs" required maxlength="2000"></textarea></label><p class="hint">Guests read the website in English and Spanish, so each announcement needs both. The home page speaks to each family, so write the Spanish to them as ustedes (“Los esperamos”, “confirmen”).</p>${formEnd("Publish on website")}<section class="recent-records"><h2>Latest five announcements</h2><a href="/admin/history/?kind=announcements">View full announcement history</a>${announcements.map((a) => `<article class="compact-record"><h3>${esc(a.title)}</h3><p>${esc(a.text)}</p><small>${a.at ? esc(recordedAt(a.at)) : ""} · ${a.published ? "Published" : "Unpublished"}</small></article>`).join("") || "<p>No announcements yet.</p>"}</section>`;
     submit(panel.querySelector("#announcement"), async (f) => {
-      await api("admin/updates", Object.fromEntries(f));
+      const { warnings } = await api("admin/updates", Object.fromEntries(f));
       notify("Announcement published. No email sent.");
       await updates();
+      // Published as written; the family decides about any flagged wording.
+      panel.insertAdjacentHTML("afterbegin", copyWarnings(warnings));
     });
     return;
   }

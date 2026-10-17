@@ -38,7 +38,7 @@ export async function startMicrosoft(clientId, purpose, back = "") {
     throw new Error(
       tr(
         "This browser blocked sign-in storage. Use the emailed sign-in link instead.",
-        "Este navegador bloqueó el almacenamiento del acceso. Usa el enlace por correo.",
+        "Este navegador bloqueó el almacenamiento del acceso. Usa el enlace de acceso por correo.",
       ),
     );
   }

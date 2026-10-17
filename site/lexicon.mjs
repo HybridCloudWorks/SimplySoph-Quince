@@ -1,17 +1,28 @@
 // One name per thing, in English and Mexican Spanish, and who the Spanish
 // addresses on each page. The pages, the browser scripts, the emails and the
 // server replies take shared wording from here, so a wording decision is made
-// once; tests/language.test.mjs fails on the variants listed in `banned`.
+// once; tests/language.test.mjs fails on the variants listed in `banned`, and
+// on a page or an email that mixes the two forms of address.
 //
 // Spanish form of address (the family's rule, from the round 2 review):
 //   - the hosts speaking to an invited family: ustedes (the RSVP and its
-//     confirmation, the home page, the family's emails);
-//   - the hosts speaking to one person, and information pages: tú;
+//     confirmation, the home page, the thank-you page, the family's emails,
+//     and those pages' link previews);
+//   - the hosts speaking to one person, and information pages: tú (My
+//     account, the sign-in email, the venue and policy pages, the WhatsApp
+//     replies and the WhatsApp card, which is one phone's own choice);
 //   - never usted; Sophia's own words are hers and keep their tú;
 //   - chrome shared by every page (header, buttons, titles): neutral nouns or
 //     infinitives, so it never carries a form into a page.
 // Values in `terms` are { en, es }. A Spanish value that depends on who is
 // addressed is { tu, ustedes }; say() picks the form for the page.
+//
+// In the browser every page carries its form on <body data-register> (the
+// build writes registers[route] there) and site/client.js reads it: tr(en, es)
+// takes the Spanish as a string or as { tu, ustedes }, and term(entry) says
+// an entry below, both in the page's language and form. Admin's check of the
+// Spanish free text in the event settings (server/copy-check.mjs) uses
+// `banned` too.
 
 export const terms = {
   siteName: { en: "Sophia’s Quinceañera", es: "Los XV de Sophia" },
@@ -23,6 +34,15 @@ export const terms = {
   // the accessible name equal to rsvpAction.
   rsvpPill: { en: "RSVP", es: "Confirmar" },
   rsvpPillHidden: { en: "", es: " asistencia" },
+  // The deadline sentence, before the date: "Please RSVP by Sunday, November
+  // 15." (the approved WhatsApp templates' verb too).
+  rsvpBy: {
+    en: "Please RSVP by",
+    es: {
+      tu: "Por favor, confirma tu asistencia a más tardar el",
+      ustedes: "Por favor, confirmen su asistencia a más tardar el",
+    },
+  },
   rsvpRecord: { en: "RSVP", es: "respuesta" },
   yourRsvp: { en: "Your RSVP", es: { tu: "Tu respuesta", ustedes: "Su respuesta" } },
   reviewRsvp: { en: "Review your RSVP", es: "Revisar la respuesta" },
@@ -48,6 +68,8 @@ export const terms = {
   photos: { en: "Photos", es: "Fotos" },
   photosAndNotes: { en: "Photos & notes", es: "Fotos y mensajes" },
   sharePhotos: { en: "Share your photos", es: "Compartir fotos" },
+  seePhotos: { en: "See the photos", es: "Ver las fotos" },
+  seeSchedule: { en: "See the schedule", es: "Ver el programa" },
   // The gallery's action for saving every approved photo and video at once.
   downloadAll: { en: "Download all photos", es: "Descargar todas las fotos" },
   family: { en: "family", es: "familia" },
@@ -109,19 +131,35 @@ export const banned = {
   en: [
     [/\bguestbook\b/i, "the note's name is 'note' (A note for Sophia)"],
     [/\bLog in\b|\blogin\b/i, "use Sign in"],
-    [/\bEdit response\b|\bReview response\b|\bYour response\b/, "the saved answer is 'your RSVP'"],
-    [/\bPlease reply by\b/, "the deadline sentence is 'Please RSVP by …'"],
+    [/\b(?:edit|review|your|saved) response\b/i, "the saved answer is 'your RSVP'"],
+    [/\bPlease (?:reply|let us know) by\b|\bLeft to reply\b/, "the deadline sentence is 'Please RSVP by …'"],
     [/\bdisplay name\b/i, "say 'Your name, as you'd like it to appear'"],
+    [/\bRSVP link\b/i, "the private link is the 'invitation link'"],
+    [/\bWe['’]ll be there\b/i, "the quick answers are 'Everyone’s coming' and 'We can’t make it'"],
+    [/\bhousehold\b/i, "the invited group is the 'family'"],
+    [/\bPhotographs\b|\bThe video collection\b/, "'Photos' and 'Videos'"],
   ],
   es: [
     [/libro de firmas/i, "el mensaje para Sophia se llama 'mensaje'"],
     [/iniciar sesi[oó]n|inicia sesi[oó]n|iniciando sesi[oó]n/i, "usar 'Entrar' / 'acceso'"],
+    [/Tu enlace para entrar/, "'Tu enlace de acceso'"],
     [/MIS QUINCEAÑERA/i, "'mis' es plural: 'MIS XV AÑOS'"],
-    [/Responder ahora|Preguntas sobre RSVP/, "una sola forma: 'Confirmar asistencia'"],
+    [/Responder ahora|Preguntas sobre RSVP|botón para responder/, "una sola forma: 'Confirmar asistencia'"],
     [/Confirma tu asistencia/, "título neutro: 'Confirmar asistencia'"],
+    [/Fecha límite para responder/, "la fecha límite: 'confirmen su asistencia a más tardar el …'"],
+    [/Editar respuesta|Cambiar tu respuesta|Revisar respuesta\b/, "botones neutros: 'Cambiar la respuesta', 'Revisar la respuesta'"],
     [/Mensajes WhatsApp|Actualizaciones por WhatsApp|novedades del evento por WhatsApp/i, "'Avisos por WhatsApp'"],
+    [/Mensajes SMS|Términos SMS/, "'Avisos por SMS', 'Términos de SMS'"],
+    [/recordatorios de (?:confirmación|asistencia)/i, "'recordatorios para confirmar'"],
     [/Nombre para mostrar/, "'Tu nombre, como quieres que aparezca'"],
     [/\bhogar\b/i, "'familia'"],
-    [/\b\d{1,2}:\d{2} ?p\.m\.|\b\d{1,2}:\d{2} ?a\.m\./, "la hora se escribe '4:00 p. m.' (con espacio)"],
+    [/comunícate con nosotros/i, "'escríbenos' / 'escríbannos'"],
+    [/Ahí estaremos|No podremos ir\b/, "las respuestas rápidas: 'Vamos todos' y 'No podremos asistir'"],
+    [/quinceañera de Sophia/i, "la fiesta es 'los XV de Sophia' (la quinceañera es Sophia)"],
+    [/Fotografías|La colección de videos/, "'Fotos' y 'Videos'"],
+    [/\b\d{1,2}:\d{2}\s?[ap]\.m\./, "la hora se escribe '4:00 p. m.' (con espacio)"],
+    [/\b(?:lunes|martes|miércoles|jueves|viernes|sábado|domingo), \d/i, "sin coma después del día: 'viernes 15 de enero de 2027'"],
+    [/\b\d{1,2} de (?:Enero|Febrero|Marzo|Abril|Mayo|Junio|Julio|Agosto|Septiembre|Octubre|Noviembre|Diciembre)\b/, "los meses van en minúscula"],
+    [/\b\d{1,2}\s(?:ene|feb|mar|abr|may|jun|jul|ago|sept?|oct|nov|dic)\b/i, "el mes completo: '16 de enero'"],
   ],
 };
