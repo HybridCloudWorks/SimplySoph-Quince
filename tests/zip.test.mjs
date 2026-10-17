@@ -211,6 +211,19 @@ test("an entry that gives more or fewer bytes than its size fails the archive in
     },
   ]);
   await assert.rejects(bytesOf(broken), (e) => e.code === "ECONNRESET" && e.entry === 1);
+  // So does a file that is gone from storage when its turn comes.
+  const missing = zipStream([
+    entry("a.jpg", Buffer.alloc(4)),
+    {
+      name: "b.jpg",
+      size: 1,
+      mtime: 0,
+      open: async () => {
+        throw Object.assign(new Error("No such media object"), { code: 404 });
+      },
+    },
+  ]);
+  await assert.rejects(bytesOf(missing), (e) => e.code === 404 && e.entry === 1);
 });
 
 test("names are plain file names: no separators, no dot names, no control characters", async () => {

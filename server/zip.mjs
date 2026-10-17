@@ -258,11 +258,12 @@ export async function* zipChunks(entries, options = {}) {
       header = localHeader(e);
     yield header;
     let crc = 0,
-      received = 0;
-    const source = await entry.open();
-    const stop = () => source.destroy?.(signal.reason);
+      received = 0,
+      source = null;
+    const stop = () => source?.destroy?.(signal.reason);
     signal?.addEventListener("abort", stop, { once: true });
     try {
+      source = await entry.open();
       signal?.throwIfAborted();
       for await (const chunk of source) {
         const bytes = Buffer.isBuffer(chunk)
@@ -278,7 +279,7 @@ export async function* zipChunks(entries, options = {}) {
       throw Object.assign(error, { entry: index });
     } finally {
       signal?.removeEventListener("abort", stop);
-      source.destroy?.();
+      source?.destroy?.();
     }
     if (received !== e.size) throw new ZipError("ZIP_ENTRY_SIZE", index);
     const descriptor = dataDescriptor(e, crc);
