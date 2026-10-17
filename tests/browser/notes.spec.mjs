@@ -145,9 +145,12 @@ test("a Spanish household in by its invitation link leaves Sophia one note witho
   await page.getByRole("button", { name: "Enviar mi mensaje" }).click();
   // R-024: notes are for guests signed in by email (the default), so a
   // household in by its link is not told it will see its note here.
-  await expect(page.locator("#portal [role=status]")).toHaveText(
+  // The thanks takes focus, which announces it (no live region: P5-A11Y-10).
+  await expect(page.locator("#portal .notice.success")).toHaveText(
     "¡Gracias! Cuando lo hayamos leído, tu mensaje aparecerá aquí para los invitados que entran al sitio.",
   );
+  await expect(page.locator("#portal .notice.success")).toBeFocused();
+  await expect(page.locator("#portal .notice.success")).not.toHaveAttribute("role", /.*/);
   const [note] = Object.values((await harness.ledger.read()).messages);
   expect(note).toMatchObject({
     via: "link",

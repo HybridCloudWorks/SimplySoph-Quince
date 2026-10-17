@@ -65,6 +65,23 @@ const fixture = fixturePath
 // The public build uses the family's approved content; the admin preview swaps
 // in the idea-book examples (see the end of this file).
 const publicFamily = { ...approvedFamily, ...fixture.family };
+// The family's own prose shows on the English and the Spanish pages, so it is
+// written in both ({ en, es }): English alone would sit on a Spanish page not
+// marked as English (WCAG 3.1.2, P5-A11Y-13). The build refuses it, saying where.
+function bothLanguages(f) {
+  const check = (value, where) => {
+    if (value === null || value === undefined || value === "") return;
+    if (typeof value !== "object" || ![value.en, value.es].every((t) => typeof t === "string" && t.trim()))
+      throw new Error(`family.${where} must be written in English and Spanish: { en: "…", es: "…" }`);
+  };
+  for (const key of ["bio", "parentsMessage", "dressCode", "parking", "children", "thanksNote"]) check(f[key], key);
+  (f.moments || []).forEach((m, i) => check(m.text, `moments[${i}].text`));
+  (f.court || []).forEach((p, i) => check(p.line, `court[${i}].line`));
+  (f.hotels || []).forEach((h, i) => (check(h.where, `hotels[${i}].where`), check(h.notes, `hotels[${i}].notes`)));
+  if (f.airport) check(f.airport.notes, "airport.notes");
+  (f.portraits || []).forEach((p, i) => check(p.caption, `portraits[${i}].caption`));
+}
+bothLanguages(publicFamily);
 let family = publicFamily;
 const outBase = outName ? `../.cache/builds/${outName}/` : "../";
 const root = new URL(outBase + "dist/", import.meta.url),

@@ -1095,8 +1095,9 @@ async function noteForm(session) {
     // Said for who will really see it (R-024): with notes for signed-in
     // guests (site/notes.mjs), a household in by its invitation link does
     // not see the notes here itself.
+    // It takes focus (show), which announces it once: no live region too.
     show(
-      `<p class="notice success" role="status">${
+      `<p class="notice success">${
         !note.consent
           ? tr("Thank you! Sophia will read your note; it won’t appear on this page.", "¡Gracias! Sophia leerá tu mensaje; no aparecerá en esta página.")
           : visibility === "public" || !viaLink

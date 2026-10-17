@@ -139,15 +139,19 @@ export async function gallery() {
       .join("")}</div>`;
     cards.hidden = false;
   }
-  const alt = (p) => p.caption || tr("Photo from the celebration", "Foto de la celebración");
+  const alt = (p) =>
+    p.caption || (p.kind === "video" ? tr("Video from the celebration", "Video de la celebración") : tr("Photo from the celebration", "Foto de la celebración"));
+  // Each Download says what it saves, for screen readers (P5-A11Y-12).
+  const saves = (p) => `${tr("Download", "Descargar")}<span class="visually-hidden">: ${esc(alt(p))}</span>`;
   const figure = (p) => {
     // No empty caption box under media that has none.
     const caption = p.caption ? `<figcaption>${esc(p.caption)}</figcaption>` : "",
-      download = `<a class="target" href="${esc(p.url)}?download=1" download>${tr("Download", "Descargar")}</a>`;
+      download = `<a class="target" href="${esc(p.url)}?download=1" download>${saves(p)}</a>`;
     // A photo opens larger with a tap on it, or with its own button for the
-    // keyboard and screen readers. Videos keep their own controls.
+    // keyboard and screen readers. Videos keep their own controls, and are
+    // named by their caption, or as a video from the celebration.
     return p.kind === "video"
-      ? `<figure><video controls playsinline preload="${p.poster ? "none" : "metadata"}"${p.poster ? ` poster="${esc(p.poster)}"` : ""} src="${esc(p.url)}"></video>${caption}${download}</figure>`
+      ? `<figure><video controls playsinline aria-label="${esc(alt(p))}" preload="${p.poster ? "none" : "metadata"}"${p.poster ? ` poster="${esc(p.poster)}"` : ""} src="${esc(p.url)}"></video>${caption}${download}</figure>`
       : `<figure><img loading="lazy" alt="${esc(alt(p))}" src="${esc(p.url)}" data-enlarge="${esc(p.id)}">${caption}<p class="media-actions"><button type="button" class="plain-button" data-enlarge="${esc(p.id)}" aria-haspopup="dialog" aria-label="${esc(tr(`View larger: ${alt(p)}`, `Ver más grande: ${alt(p)}`))}">${tr("View larger", "Ver más grande")}</button>${download}</p></figure>`;
   };
   // The larger view: a modal dialog (the page behind it is inert), named, with
@@ -157,7 +161,7 @@ export async function gallery() {
   const viewer = document.createElement("dialog");
   viewer.className = "media-viewer";
   viewer.setAttribute("aria-labelledby", "media-viewer-title");
-  viewer.innerHTML = `<div class="media-viewer-bar"><h2 id="media-viewer-title"></h2><button type="button" class="button outline" data-close>${tr("Close", "Cerrar")}</button></div><img alt=""><p class="media-actions"><a download>${tr("Download", "Descargar")}</a></p>`;
+  viewer.innerHTML = `<div class="media-viewer-bar"><h2 id="media-viewer-title"></h2><button type="button" class="button outline" data-close>${tr("Close", "Cerrar")}</button></div><img alt=""><p class="media-actions"><a class="target" download></a></p>`;
   document.body.append(viewer);
   let opener = null;
   const enlarge = (id, from) => {
@@ -168,7 +172,9 @@ export async function gallery() {
     const img = viewer.querySelector("img");
     img.src = p.url;
     img.alt = alt(p);
-    viewer.querySelector("a[download]").href = p.url + "?download=1";
+    const save = viewer.querySelector("a[download]");
+    save.href = p.url + "?download=1";
+    save.innerHTML = saves(p);
     viewer.showModal();
     viewer.querySelector("[data-close]").focus();
   };

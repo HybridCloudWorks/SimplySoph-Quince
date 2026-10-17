@@ -558,7 +558,7 @@ export function checkForm(form, only = () => true) {
   // them to fix.
   const summary = document.createElement("div");
   summary.className = "error-summary";
-  summary.setAttribute("role", "alert");
+  // Not a live region: it takes focus, which announces it once (P5-A11Y-10).
   summary.tabIndex = -1;
   for (const [opening, controls] of lines) {
     const line = document.createElement("p"),
