@@ -98,7 +98,7 @@ This repository is public, so no guest's or helper's name is ever committed to i
 
 ### Site and photo lifespan
 
-How long the site stays up and until when guests can download the photos is the family's decision, set in **Admin → Website & event → Site and photo lifespan** (`site.lifespan` in the event settings, blank until then). Once set, the gallery and the thank-you page say "The site stays up through …" and "Download your photos by …"; nothing about it shows before. The photos date can't be earlier than February 1, 2027, the review date in the Privacy policy and [cleanup.md](cleanup.md), or later than the site's date.
+How long the site stays up and until when guests can download the photos is the family's decision, set in **Admin → Website & event → Site and photo lifespan** (`site.lifespan` in the event settings, blank until then). Once set, the gallery and the thank-you page say "The site stays up through …" and "Download your photos by …", and the Privacy policy adds the same two lines to its item on how long we keep information (all three from `site/lifespan.mjs`, so they always give the same dates); nothing about it shows before, and Privacy keeps its review-date sentence alone. The photos date can't be earlier than February 1, 2027, the review date in the Privacy policy and [cleanup.md](cleanup.md), or later than the site's date.
 
 ### Owner action: event settings text on the live server
 

@@ -110,9 +110,9 @@ test("every hook the live event settings fill is on a built page", async () => {
 test("the header is a flat list: sections, sign in, language pill, RSVP and a menu button", async () => {
   // Travel waits for hotels or the airport note (R-012), so it is not here yet.
   for (const [lang, file, names, signIn] of [
-    ["en", "index.html", ["Schedule", "Photos &amp; notes", "Gifts", "Questions", "Contact"], "Sign in"],
+    ["en", "index.html", ["Schedule", "Photos", "A note for Sophia", "Gifts", "Questions", "Contact"], "Sign in"],
     // One Spanish verb for signing in (R-042): "Entrar", as in the emails.
-    ["es", "es/index.html", ["Programa", "Fotos y mensajes", "Mesa de regalos", "Preguntas", "Contacto"], "Entrar"],
+    ["es", "es/index.html", ["Programa", "Fotos", "Un mensaje para Sophia", "Mesa de regalos", "Preguntas", "Contacto"], "Entrar"],
   ]) {
     const nav = header(await page(file));
     assert.doesNotMatch(nav, /<details|<summary/);

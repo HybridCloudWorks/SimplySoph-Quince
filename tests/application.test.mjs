@@ -3485,6 +3485,27 @@ test("every email built with a text version hands it to the mailer next to the H
   const { outbox } = await f.admin("updates");
   assert.equal(outbox.length, 3);
   assert.ok(outbox.every((r) => !("textContent" in r) && !("content" in r)));
+  // The family's own emails too. A message from a guest notifies the family...
+  const { id: asked } = await f.guest("messages", { kind: "contact", name: "Test", text: "Where do we park?" });
+  const notice = f.sent.findLast((m) => m.subject === "SimplySoph · New contact form submission");
+  assert.ok(notice.text.includes(`Sign in to review: ${origin}/admin/notifications/`));
+  assert.ok(!notice.text.includes("Where do we park"), "the guest's words stay in Admin");
+  // ...the family's answer tells the guest where to read it...
+  const shown = (await f.admin("moderation")).messages.find((m) => m.id === asked);
+  await f.admin("message-reply", { id: asked, text: "Behind the hall.", notify: true, to: shown.replyTo });
+  const answered = last();
+  assert.match(answered.subject, /^We answered your message/);
+  // (The household's language is not known here, so it is written in both.)
+  assert.ok(answered.text.endsWith(`Sign in to read our reply / Entra para leer nuestra respuesta: ${origin}/account/`), answered.text);
+  assert.ok(answered.html.includes(`href="${origin}/account/"`));
+  assert.ok(!answered.text.includes("Behind the hall"), "the reply itself stays on the site");
+  // ...and an administrator's sign-in link is a secret like a guest's, with
+  // the same link in its text version.
+  await f.publicPost("auth/admin-email/request", { email: "organizer@gmail.com" });
+  assert.equal(last().subject, "SimplySoph · Administrator sign-in");
+  assert.equal(last().secret, true);
+  const adminLink = last().html.match(/href="(https:[^"]+\/admin\/login\/#[A-Za-z0-9_-]{43})"/)[1];
+  assert.ok(last().text.includes(`Confirm email and continue: ${adminLink}\n`));
 });
 
 // R-164: the Spanish free text in the event settings and the announcements
@@ -3492,6 +3513,27 @@ test("every email built with a text version hands it to the mailer next to the H
 // (tests/language.test.mjs). Admin says when it uses a retired word or mixes
 // tú and ustedes (server/copy-check.mjs); the family decides, so the save
 // goes through either way.
+// R-160: whether the device that saved an RSVP remembers it is the owner's
+// switch in the event settings. Unsaved it is absent, and the pages remember
+// as before; saved, "remember" or "off" and nothing else; and a save from an
+// older admin page, which does not send it, keeps the owner's choice.
+test("the switch for this device's reply note is checked, served by GET /api/site and kept by a save that leaves it out (R-160)", async () => {
+  const f = await fixture();
+  const served = async () => (await f.app.dispatch({ path: "/api/site", method: "GET", headers: {} })).site;
+  assert.equal((await served()).device, undefined, "nothing saved: the pages keep today's behaviour");
+  let { site } = await f.admin("site");
+  for (const bad of [{ reply: "on" }, { reply: true }, {}, null, "off"])
+    await assert.rejects(() => f.admin("site", { ...site, device: bad }), (e) => e.code === "INVALID_SITE_SETTINGS", JSON.stringify(bad));
+  site = (await f.admin("site", { ...site, device: { reply: "off" } })).site;
+  assert.deepEqual((await served()).device, { reply: "off" });
+  // An older admin page sends no switch: the owner's "off" stays.
+  const { device: _sent, ...older } = site;
+  await f.admin("site", older);
+  assert.deepEqual((await served()).device, { reply: "off" });
+  await f.admin("site", { ...(await f.admin("site")).site, device: { reply: "remember" } });
+  assert.deepEqual((await served()).device, { reply: "remember" });
+});
+
 test("saving event settings or an announcement warns about retired Spanish words and mixed forms, and still saves", async () => {
   const f = await fixture();
   const { site, warnings: before } = await f.admin("site");

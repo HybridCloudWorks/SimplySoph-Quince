@@ -45,6 +45,13 @@ const venueFacts = (notes) =>
       ),
     ]),
   );
+// Whether the device that saved an RSVP remembers that its household replied
+// (R-160: site/now.mjs "misxv-replied", the home page's "You replied ✓" on a
+// later visit). The owner's choice (docs/account-access.md): "remember", the
+// default, or "off", where the pages neither keep nor read that note and
+// delete one already kept. Settings saved before the choice existed, and an
+// API that does not send it, mean "remember".
+export const deviceReplyChoices = ["remember", "off"];
 export function validateSettings(input) {
   // `reason` names the rule a field broke, when Admin can point to it.
   const bad = (reason) => {
@@ -185,6 +192,11 @@ export function validateSettings(input) {
   if (input.gallery !== undefined) {
     if (!galleryDownloadChoices.includes(input.gallery?.download)) bad();
     next.gallery = { download: input.gallery.download };
+  }
+  // This device's "you replied" note (deviceReplyChoices above).
+  if (input.device !== undefined) {
+    if (!deviceReplyChoices.includes(input.device?.reply)) bad();
+    next.device = { reply: input.device.reply };
   }
   return next;
 }

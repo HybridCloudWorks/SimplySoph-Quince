@@ -19,6 +19,15 @@ const retention = {
 };
 // The same sentence continuing a list item: "How long we keep it: after …".
 const lowerFirst = (s) => s.charAt(0).toLowerCase() + s.slice(1);
+// Privacy's summary item for it. On the page it ends with the site and photo
+// lifespan once the family sets one (R-171): scripts/build-pages.mjs leaves
+// a slot after this item that site/lifespan.mjs fills with the same lines
+// and dates the gallery and the thank-you page show, and leaves hidden
+// until then, when this review-date sentence is all there is.
+const retentionItem = {
+  en: "- How long we keep it: " + lowerFirst(retention.en),
+  es: "- Cuánto tiempo la guardamos: " + lowerFirst(retention.es),
+};
 // Who "Simply Soph Media" is. The SMS program registered under that name
 // (a sole-proprietor brand) is run by the family itself.
 const host = {
@@ -40,8 +49,8 @@ const lastDay = (lang) =>
   date(milestones({ deadline: event.deadline, site: celebration }).uploadsUntil - 1, lang, { weekday: false, year: false });
 const tableCard = {
   privacy: {
-    en: `- Photos from the table card: the card on the tables is off unless we turn it on. While it is on, anyone with its QR code can send us photos and videos without signing in, from the start of the ceremony until the end of ${lastDay("en")} (Fort Worth time). We keep the files, when you agreed to our Photo & video policy, and a name and caption only if you type them. We don’t ask for your email. To count how many each phone sends, we give your visit a random code through a cookie, never your IP address or anything about your phone, and we delete those counts a week after sharing from the card closes. Every file waits for our review, and only guests who sign in see the ones we approve. To have one removed, email us the reference shown after you sent it.`,
-    es: `- Fotos desde la tarjeta de la mesa: la tarjeta de la mesa está desactivada salvo que la activemos. Mientras está activa, cualquier persona con su código QR puede enviarnos fotos y videos sin entrar a una cuenta, desde el inicio de la ceremonia hasta el final del ${lastDay("es")} (hora de Fort Worth). Guardamos los archivos, cuándo aceptaste nuestra política de uso de fotos y videos y, solo si los escribes, el nombre y la descripción. No te pedimos tu correo. Para contar cuántos envía cada teléfono, le damos a tu visita un código al azar mediante una cookie, nunca tu dirección IP ni datos de tu teléfono, y borramos esos conteos una semana después de que se cierre el envío desde la tarjeta. Revisamos cada archivo, y solo los invitados que entran al sitio ven los que aprobamos. Para que quitemos alguno, escríbenos con la referencia que aparece después de enviarlo.`,
+    en: `- Photos from the table card: the card on the tables is off unless we turn it on. While it is on, anyone with its QR code can send us photos and videos without signing in, from the start of the ceremony until the end of ${lastDay("en")} (Fort Worth time). We keep the files, when you agreed to our Photo & video policy, and a name and caption only if you type them. We don’t ask for your email. To count how many arrive during each visit, we give your visit a random code through a cookie, never your IP address or anything about your phone, and we delete those counts a week after sharing from the card closes. Every file waits for our review, and only guests who sign in see the ones we approve. To have one removed, email us the reference shown after you sent it.`,
+    es: `- Fotos desde la tarjeta de la mesa: la tarjeta de la mesa está desactivada salvo que la activemos. Mientras está activa, cualquier persona con su código QR puede enviarnos fotos y videos sin entrar a una cuenta, desde el inicio de la ceremonia hasta el final del ${lastDay("es")} (hora de Fort Worth). Guardamos los archivos, cuándo aceptaste nuestra política de uso de fotos y videos y, solo si los escribes, el nombre y la descripción. No te pedimos tu correo. Para contar cuántos llegan en cada visita, le damos a tu visita un código al azar mediante una cookie, nunca tu dirección IP ni datos de tu teléfono, y borramos esos conteos una semana después de que se cierre el envío desde la tarjeta. Revisamos cada archivo, y solo los invitados que entran al sitio ven los que aprobamos. Para que quitemos alguno, escríbenos con la referencia que aparece después de enviarlo.`,
   },
   terms: {
     en: "- While the table card is on, you can share from it without signing in. The same rules apply, and each file shows a reference after it arrives: email it to misxv@simplysoph.com to have that file removed.",
@@ -50,13 +59,23 @@ const tableCard = {
 };
 // What this device keeps after an RSVP (R-160, site/now.mjs "misxv-replied"):
 // "yes" or "no" and when, so the home page can say "You replied" next time;
-// no name. Read after the party it is deleted, and signing out deletes it.
+// no name. Read after the party it is deleted, and signing out or the home
+// page's "Forget this reply on this device" (site/home.mjs) deletes it. We can
+// turn it off (site.device.reply, server/site-settings.mjs): the page then
+// shows `off` in its place (scripts/build-pages.mjs builds both, site/guest.js
+// shows the one that applies).
 const deviceNote = {
-  en: "- On this device: after you RSVP, the site remembers whether your family replied (yes or no) and when, so the home page can say so next time. It keeps no name or other detail, and it is deleted the first time you open the site after the party, when you sign out, or when you clear this site’s data in your browser.",
-  es: "- En este dispositivo: cuando confirmas tu asistencia, el sitio recuerda si tu familia respondió (sí o no) y cuándo, para que la página de inicio lo diga la próxima vez. No guarda ningún nombre ni otro dato, y se borra la primera vez que abres el sitio después de la fiesta, cuando cierras sesión o cuando borras los datos de este sitio en tu navegador.",
+  en: "- On this device: after you RSVP, the site remembers whether your family replied (yes or no) and when, so the home page can say so next time. It keeps no name or other detail, and it is deleted the first time you open the site after the party, when you sign out, or when you clear this site’s data in your browser. If you share this phone or computer, “Forget this reply on this device” on the home page deletes it at once, and we can turn it off for everyone.",
+  es: "- En este dispositivo: cuando confirmas tu asistencia, el sitio recuerda si tu familia respondió (sí o no) y cuándo, para que la página de inicio lo diga la próxima vez. No guarda ningún nombre ni otro dato, y se borra la primera vez que abres el sitio después de la fiesta, cuando cierras sesión o cuando borras los datos de este sitio en tu navegador. Si compartes este teléfono o esta computadora, “Olvidar esta respuesta en este dispositivo”, en la página de inicio, lo borra de inmediato, y podemos desactivarlo para todos.",
+  off: {
+    en: "- On this device: we have turned this off, so the site keeps nothing on your device about whether your family replied.",
+    es: "- En este dispositivo: lo desactivamos, así que el sitio no guarda nada en tu dispositivo sobre si tu familia respondió.",
+  },
 };
 export const policies = {
   retention,
+  retentionItem,
+  deviceNote,
   host,
   tableCard,
   privacy: {
@@ -70,7 +89,7 @@ export const policies = {
       tableCard.privacy.en,
       deviceNote.en,
       "- To see, correct or delete your information: email misxv@simplysoph.com.",
-      "- How long we keep it: " + lowerFirst(retention.en),
+      retentionItem.en,
       "The details are below.",
     ],
     es: [
@@ -83,7 +102,7 @@ export const policies = {
       tableCard.privacy.es,
       deviceNote.es,
       "- Para ver, corregir o borrar tu información: escríbenos a misxv@simplysoph.com.",
-      "- Cuánto tiempo la guardamos: " + lowerFirst(retention.es),
+      retentionItem.es,
       "Abajo están los detalles.",
     ],
   },
@@ -130,8 +149,10 @@ export const policyUpdated = {
   // page); the table card as it works (off until we turn it on, its window,
   // when its counts go); what this device keeps after an RSVP. Then the
   // round 5 wording review (the same day): the hosts say "we", one Spanish
-  // word for marketing, the table card's sentence reordered.
-  privacy: { on: "2026-10-17", text: "20dbd31afb2d8794" },
+  // word for marketing, the table card's sentence reordered. Then, the same
+  // day again: this device's note names "Forget this reply on this device"
+  // and that we can turn it off, and says what it keeps once we have.
+  privacy: { on: "2026-10-17", text: "55d43e78e60a598a" },
   // Sharing from the table card while it is on; "for us and our guests".
   terms: { on: "2026-10-17", text: "2f61d7efc7921588" },
   // The Spanish page: the registered replies arrive in English, and the

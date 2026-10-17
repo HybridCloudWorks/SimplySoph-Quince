@@ -2548,6 +2548,9 @@ export function createApplication({
           if (!site.contact && s.site?.contact) site.contact = s.site.contact;
           // And the site and photo lifespan (R-171).
           if (site.lifespan === undefined && s.site?.lifespan) site.lifespan = s.site.lifespan;
+          // And whether a device remembers a reply (R-160): an older page
+          // must not switch the owner's "off" back on.
+          if (!site.device && s.site?.device) site.device = s.site.device;
           site.version++;
           s.site = site;
           audit(s, session.actor, "site-settings", "event", now());

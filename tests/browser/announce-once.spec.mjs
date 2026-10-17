@@ -47,3 +47,43 @@ test("“Check your email” fits a 320 px screen with a 24 px default font", as
   await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
 });
+
+// V-08: a message to us, the way a guest finds it (Contact, sign in there,
+// then "Write to us in My account", where our replies appear), and once it
+// is sent: focus lands on what happened, next to the button, and stays there
+// (never lost to the page); it is said once, by the focus, with no live
+// region saying it again and the busy "Sending…" taken back.
+for (const [lang, household, words] of [
+  ["en", households.rivera, { write: "Write to us in My account", message: "Your message", send: "Send message", sent: "Sent. Our reply will appear here." }],
+  ["es", households.morales, { write: "Escríbenos en Mi cuenta", message: "Tu mensaje", send: "Enviar mensaje", sent: "Enviado. Nuestra respuesta aparecerá aquí." }],
+])
+  test(`after a message to us is sent, focus is on “${words.sent}”, said once (${lang})`, async ({ page, harness }) => {
+    await harness.issueInvitation(household, { locale: lang });
+    const es = lang === "es",
+      path = (p) => harness.url((es ? "/es" : "") + p);
+    await page.goto(path("/contact/"));
+    await signIn(page, harness, household.email, { es });
+    await expect(page).toHaveURL(path("/contact/"));
+    await page.getByRole("link", { name: words.write }).click();
+    await expect(page).toHaveURL(path("/account/"));
+    const form = page.locator("#family-message"),
+      text = es ? "¿Hay estacionamiento?" : "Is there parking?";
+    await form.getByRole("textbox", { name: words.message, exact: true }).fill(text);
+    await form.getByRole("button", { name: words.send }).click();
+    const note = form.locator(".saved-note");
+    await expect(note).toHaveText(words.sent);
+    await expect(note).toBeFocused();
+    // Said by the focus alone: not a live region, and no region says it too.
+    await expect(note).not.toHaveAttribute("role", /.*/);
+    await expect(note).not.toHaveAttribute("aria-live", /.*/);
+    await expect(page.locator("#announce")).toBeEmpty();
+    await expect(page.locator("#status")).toBeEmpty();
+    // The message is in the thread and the form is ready for another, while
+    // focus stays on the note, not on the page.
+    await expect(page.locator("#thread")).toContainText(text);
+    await expect(form.getByRole("textbox", { name: words.message, exact: true })).toHaveValue("");
+    await expect(form.getByRole("button", { name: words.send })).not.toHaveAttribute("aria-disabled");
+    await page.waitForTimeout(300);
+    await expect(note).toBeFocused();
+    expect(await page.evaluate(() => document.activeElement === document.body)).toBe(false);
+  });

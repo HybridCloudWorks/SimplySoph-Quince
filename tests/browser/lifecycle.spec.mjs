@@ -754,6 +754,99 @@ test.describe("a reply this device remembers can be forgotten here", () => {
     });
 });
 
+// R-160: the owner's switch for that note (Admin → Website & event). Until
+// it is saved, GET /api/site has no switch and the pages keep the note as
+// before. Switched off, no page keeps, reads or shows it, one already kept
+// is deleted, and Privacy says so; back on, the device remembers again.
+test("switched off in Admin, no page keeps, shows or leaves a note that the household replied, and Privacy says so", async ({ page, context, harness }) => {
+  test.setTimeout(90_000);
+  // Whether "You replied" ever appeared on the page, even for a moment.
+  await page.addInitScript(() => {
+    window.repliedShown = false;
+    new MutationObserver(() => {
+      if (document.querySelector(".home-replied")) window.repliedShown = true;
+    }).observe(document, { childList: true, subtree: true });
+  });
+  const note = () => page.evaluate(() => localStorage.getItem("misxv-replied"));
+  async function answer(household, lang) {
+    const { link } = await harness.issueInvitation(household, { locale: lang });
+    await page.goto(harness.forBrowser(link));
+    await page.getByRole("button", { name: lang === "es" ? "Vamos todos" : "Everyone’s coming" }).click();
+    await page.getByRole("button", { name: lang === "es" ? "Guardar la respuesta" : "Save my RSVP" }).click();
+    await expect(page).toHaveURL(/\/rsvp\/confirmed\/$/);
+  }
+  async function turn(value) {
+    await context.addCookies([harness.ownerCookie()]);
+    await page.goto(harness.url("/admin/site/"));
+    const form = page.locator("#site-settings");
+    await form.getByLabel("After an RSVP, the phone or computer that saved it").selectOption(value);
+    await form.getByRole("button", { name: "Save website & calendars" }).click();
+    await expect(page.locator("#status")).toContainText("Website settings saved.");
+    expect((await harness.admin("site")).site.device).toEqual({ reply: value });
+    await context.clearCookies();
+  }
+  const privacy = {
+    en: {
+      on: /On this device: after you RSVP, the site remembers whether your family replied[^]*If you share this phone or computer, “Forget this reply on this device” on the home page deletes it at once, and we can turn it off for everyone\.$/,
+      off: "On this device: we have turned this off, so the site keeps nothing on your device about whether your family replied.",
+    },
+    es: {
+      on: /En este dispositivo: cuando confirmas tu asistencia, el sitio recuerda si tu familia respondió[^]*Si compartes este teléfono o esta computadora, “Olvidar esta respuesta en este dispositivo”, en la página de inicio, lo borra de inmediato, y podemos desactivarlo para todos\.$/,
+      off: "En este dispositivo: lo desactivamos, así que el sitio no guarda nada en tu dispositivo sobre si tu familia respondió.",
+    },
+  };
+  async function privacySays(state) {
+    for (const lang of ["en", "es"]) {
+      await page.goto(harness.url(lang === "es" ? "/es/privacy/" : "/privacy/"));
+      const on = page.locator('[data-device-reply="remember"]'),
+        off = page.locator('[data-device-reply="off"]');
+      if (state === "on") {
+        await expect(on).toBeVisible();
+        await expect(on).toHaveText(privacy[lang].on);
+        await expect(off).toBeHidden();
+      } else {
+        await expect(off).toBeVisible();
+        await expect(off).toHaveText(privacy[lang].off);
+        await expect(on).toBeHidden();
+      }
+    }
+  }
+  // Nothing saved yet: no switch in GET /api/site, and a save keeps the note.
+  expect((await (await page.request.get(harness.url("/api/site"))).json()).site.device).toBeUndefined();
+  await answer(households.rivera, "en");
+  expect(JSON.parse(await note())).toMatchObject({ v: 1, answer: "yes" });
+  await privacySays("on");
+  // Off. The note kept before is deleted at the next page and never shown,
+  // here with no session left (so only the device could have said it).
+  await turn("off");
+  await openHome(page, harness);
+  await expect(home.countdown(page)).toHaveText(/^Time left to RSVP/);
+  await expect(home.status(page)).toHaveCount(0);
+  await expect(page.locator(".home-forget")).toBeHidden();
+  await expect(home.pill(page)).toBeVisible();
+  expect(await note()).toBe(null);
+  expect(await page.evaluate(() => window.repliedShown)).toBe(false);
+  // A new save keeps nothing; once its session is gone the device knows nothing.
+  await answer(households.morales, "es");
+  expect(await note()).toBe(null);
+  await context.clearCookies();
+  await openHome(page, harness, "es");
+  await expect(home.countdown(page)).toHaveText(/^Para confirmar quedan/);
+  await expect(home.status(page)).toHaveCount(0);
+  expect(await page.evaluate(() => window.repliedShown)).toBe(false);
+  expect(await note()).toBe(null);
+  await privacySays("off");
+  // Back on: the device remembers again.
+  await turn("remember");
+  await answer(households.rivera, "en");
+  expect(JSON.parse(await note())).toMatchObject({ v: 1, answer: "yes" });
+  await context.clearCookies();
+  await openHome(page, harness);
+  await expect(home.status(page)).toHaveText(["You replied ✓ · you can change it until Sunday, November 15"]);
+  await expect(page.locator(".home-forget")).toHaveText("Not your family? Forget this reply on this device");
+  await privacySays("on");
+});
+
 // R-006: the family's own thank-you sentence after the party (the default is
 // in the walk above), and no "RSVP" asked of anyone once the party is over:
 // the 404 and the pages waiting for content had kept their RSVP button.
@@ -848,6 +941,72 @@ test("the gallery and the thank-you page say how long the site and photos stay o
   await expect(page.locator("[data-lifespan]")).toHaveText("Download your photos by Monday, February 1, 2027.");
   // A photos date before the Privacy policy's review date is refused.
   await expect(harness.admin("site", { ...(await harness.admin("site")).site, lifespan: { siteUntil: "", photosUntil: "2027-01-31" } })).rejects.toMatchObject({ code: "INVALID_SITE_SETTINGS" });
+});
+
+// R-171: the dates the family sets in Admin → Website & event are the ones
+// Privacy gives too, next to the gallery and the thank-you page, in English
+// and Spanish; with none set, Privacy says its review-date sentence alone.
+test("Privacy, the gallery and the thank-you page give the same lifespan dates once set in Admin, and Privacy falls back to its review date", async ({ page, context, harness }) => {
+  test.setTimeout(60_000);
+  const review = {
+    en: "How long we keep it: after the celebration, starting February 1, 2027, we review the information we collected for it and delete what we no longer need. You can ask us to delete your information at any time.",
+    es: "Cuánto tiempo la guardamos: después de la celebración, a partir del 1 de febrero de 2027, revisamos la información que reunimos para ella y borramos lo que ya no necesitamos. Puedes pedirnos que borremos tu información en cualquier momento.",
+  };
+  const retention = (lang) => page.locator("main li").filter({ hasText: lang === "es" ? "Cuánto tiempo la guardamos" : "How long we keep it" });
+  const fallback = async () => {
+    for (const lang of ["en", "es"]) {
+      await page.goto(harness.url(lang === "es" ? "/es/privacy/" : "/privacy/"));
+      await expect(page.locator("[data-lifespan]")).toBeAttached();
+      await expect(retention(lang)).toHaveText(review[lang]);
+      await expect(page.locator("[data-lifespan]")).toBeHidden();
+    }
+    for (const path of ["/gallery/", "/thank-you/", "/es/gallery/", "/es/thank-you/"]) {
+      await page.goto(harness.url(path));
+      await expect(page.locator("[data-lifespan]"), path).toBeHidden();
+    }
+  };
+  // Until the family decides: the review date alone.
+  await fallback();
+  // Admin → Website & event, as the family sets it.
+  const save = async (siteUntil, photosUntil) => {
+    await context.addCookies([harness.ownerCookie()]);
+    await page.goto(harness.url("/admin/site/"));
+    const form = page.locator("#site-settings");
+    await form.getByLabel("The site stays up through").fill(siteUntil);
+    await form.getByLabel("Download your photos by").fill(photosUntil);
+    await form.getByRole("button", { name: "Save website & calendars" }).click();
+    await expect(page.locator("#status")).toContainText("Website settings saved.");
+    await context.clearCookies();
+  };
+  await save("2027-06-30", "2027-03-31");
+  const site = { en: "The site stays up through Wednesday, June 30, 2027.", es: "El sitio seguirá disponible hasta el miércoles 30 de junio de 2027." };
+  const photos = {
+    en: "Download your photos by Wednesday, March 31, 2027.",
+    tu: "Descarga tus fotos a más tardar el miércoles 31 de marzo de 2027.",
+    ustedes: "Descarguen sus fotos a más tardar el miércoles 31 de marzo de 2027.",
+  };
+  for (const [path, lines] of [
+    ["/gallery/", `${site.en} ${photos.en}`],
+    ["/thank-you/", `${site.en} ${photos.en}`],
+    ["/es/gallery/", `${site.es} ${photos.tu}`],
+    ["/es/thank-you/", `${site.es} ${photos.ustedes}`],
+  ]) {
+    await page.goto(harness.url(path));
+    await expect(page.locator("[data-lifespan]"), path).toHaveText(lines);
+  }
+  // Privacy says the same dates, after its review-date sentence.
+  for (const [lang, lines] of [
+    ["en", `${site.en} ${photos.en}`],
+    ["es", `${site.es} ${photos.tu}`],
+  ]) {
+    await page.goto(harness.url(lang === "es" ? "/es/privacy/" : "/privacy/"));
+    await expect(page.locator("[data-lifespan]")).toHaveText(lines);
+    await expect(retention(lang)).toHaveText(`${review[lang]} ${lines}`);
+  }
+  // Cleared again in Admin: back to the review date alone everywhere.
+  await save("", "");
+  expect((await harness.admin("site")).site.lifespan).toBe(null);
+  await fallback();
 });
 
 // R-009: the end of the upload window, the home page and the table card at

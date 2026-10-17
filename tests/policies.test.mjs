@@ -102,3 +102,28 @@ test("Privacy describes the table card, its counts, this device's note and who r
   // The photo policy says the same of the card.
   assert.match((await page("terms/index.html")).match(/<main[\s\S]*?<\/main>/)[0], /While the table card is on, you can share from it without signing in\./);
 });
+
+// R-160: Privacy names the home page's control that forgets this device's
+// note, in its own words, and that we can turn the note off; and it carries
+// what it keeps once we have, hidden until the family's switch says "off"
+// (site/guest.js shows the line that applies).
+test("Privacy names “Forget this reply on this device” and the switch, and says what is kept once the note is off", async () => {
+  const home = await readFile(new URL("../site/home.mjs", import.meta.url), "utf8");
+  assert.ok(home.includes('tr("Forget this reply on this device", "Olvidar esta respuesta en este dispositivo")'), "the control's own words");
+  const literal = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  for (const [file, forget, off] of [
+    [
+      "privacy/index.html",
+      "If you share this phone or computer, “Forget this reply on this device” on the home page deletes it at once, and we can turn it off for everyone.",
+      "On this device: we have turned this off, so the site keeps nothing on your device about whether your family replied.",
+    ],
+    [
+      "es/privacy/index.html",
+      "Si compartes este teléfono o esta computadora, “Olvidar esta respuesta en este dispositivo”, en la página de inicio, lo borra de inmediato, y podemos desactivarlo para todos.",
+      "En este dispositivo: lo desactivamos, así que el sitio no guarda nada en tu dispositivo sobre si tu familia respondió.",
+    ],
+  ]) {
+    const html = (await page(file)).match(/<main[\s\S]*?<\/main>/)[0];
+    assert.match(html, new RegExp(`<li><span data-device-reply="remember">[^<]*${literal(forget)}</span><span data-device-reply="off" hidden>${literal(off)}</span></li>`), file);
+  }
+});

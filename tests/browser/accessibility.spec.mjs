@@ -794,7 +794,7 @@ test("the keyboard reaches the header's controls in reading order, on a phone an
     ["link", "Skip to content"],
     ["link", home],
     // (Travel joins once it has hotels or an airport note, R-012.)
-    ...["Schedule", "Photos & notes", "Gifts", "Questions", "Contact", "Sign in"].map((n) => ["link", n]),
+    ...["Schedule", "Photos", "A note for Sophia", "Gifts", "Questions", "Contact", "Sign in"].map((n) => ["link", n]),
     ["link", "Español"],
     ["link", "RSVP"],
   ]);

@@ -1,16 +1,19 @@
-// How long the site and the photos stay, on the gallery and the thank-you page
-// (R-171): "The site stays up through …" and "Download your photos by …", once
-// the family sets site.lifespan in the event settings (server/site-settings.mjs
-// checks it against the Privacy policy's review date). Until then nothing is
-// shown: no date is ever made up here. Loaded only by those two pages
-// (scripts/build-pages.mjs), never with the home page.
+// How long the site and the photos stay (R-171): "The site stays up through …"
+// and "Download your photos by …", once the family sets site.lifespan in the
+// event settings (server/site-settings.mjs checks it against the Privacy
+// policy's review date). The gallery and the thank-you page show it, and the
+// Privacy policy adds the same lines to its item on how long we keep
+// information, so all three always give the same dates. Until then nothing is
+// shown (Privacy keeps its review-date sentence alone): no date is ever made
+// up here. Loaded only by those three pages (scripts/build-pages.mjs), never
+// with the home page.
 import { experienceReady } from "./experience.js";
 import * as live from "./experience.js";
 import { date } from "./datetime.mjs";
 
 const es = document.documentElement.lang === "es",
-  // The thank-you page speaks to the household (ustedes), the gallery to one
-  // person (site/lexicon.mjs registers).
+  // The thank-you page speaks to the household (ustedes), the gallery and
+  // Privacy to one person (site/lexicon.mjs registers).
   household = document.body.dataset.route === "thank-you";
 // A "YYYY-MM-DD" day; noon UTC is the same calendar day in Fort Worth.
 const day = (d) => date(Date.parse(d + "T12:00:00Z"), es ? "es" : "en");

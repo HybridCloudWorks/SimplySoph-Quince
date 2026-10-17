@@ -16,7 +16,9 @@
 //     Coming back to the tab (visibility, Back, focus) redraws too.
 //   - Whether this household replied: the server's answer on a signed-in visit
 //     (site/home.mjs asks), otherwise this device's note (replyMarker), which
-//     holds no identity and goes once the party is over or on sign-out.
+//     holds no identity and goes once the party is over or on sign-out. The
+//     family's switch (site.device.reply, GET /api/site) says whether a
+//     device keeps that note at all; it is read only once the switch is known.
 //   - The header's RSVP pill, which stops asking once there is nothing to ask,
 //     and the RSVP button of a page's "next steps" with it.
 import {
@@ -130,7 +132,32 @@ export function siteClock() {
 }
 
 // This device's note that the household replied (localStorage, one key).
+// Whether a device may keep it is the family's switch, site.device.reply in
+// the event settings (server/site-settings.mjs; docs/account-access.md):
+// "remember", the default, or "off". The note is neither read nor written
+// until GET /api/site has answered (or failed); with "off" it never is, and
+// one already kept is deleted. An API without the switch, or no answer at
+// all, means "remember", as before the switch existed.
 const KEY = "misxv-replied";
+let remember = null; // true or false once known
+// GET /api/site's settings, from site/experience.js.
+export function deviceRule(site) {
+  remember = site?.device?.reply !== "off";
+}
+export const remembersReplies = () => remember !== false;
+// Whether there is a note here at all (not what it says): site/home.mjs
+// then waits for the switch before drawing, so a household that replied
+// never sees the countdown first, and a note switched off is never shown.
+export function replyNoteKept() {
+  try {
+    return localStorage.getItem(KEY) !== null;
+  } catch {
+    return false;
+  }
+}
+let replyKnown;
+// Settled once this device's note has been read, deleted or left alone.
+export const replySettled = new Promise((resolve) => (replyKnown = resolve));
 function stored() {
   try {
     return JSON.parse(localStorage.getItem(KEY));
@@ -145,13 +172,16 @@ function drop() {
     /* storage is off: nothing was kept */
   }
 }
+// Written only once the switch is known, and only while it says "remember".
 function keep(value, savedAt) {
-  if (!m) return;
-  try {
-    localStorage.setItem(KEY, JSON.stringify(replyMarker(value, savedAt, m)));
-  } catch {
-    /* storage is off: the next visit just won't know */
-  }
+  replySettled.then(() => {
+    if (!m || !remember) return;
+    try {
+      localStorage.setItem(KEY, JSON.stringify(replyMarker(value, savedAt, m)));
+    } catch {
+      /* storage is off: the next visit just won't know */
+    }
+  });
 }
 function fromDevice() {
   const raw = stored();
@@ -160,8 +190,19 @@ function fromDevice() {
   if (!marker) drop();
   return marker?.answer ?? null;
 }
-reply = fromDevice();
-told = "device";
+// Once the event settings have answered (site/experience.js siteSettled):
+// "off" deletes the note; otherwise it is read, unless the server (a live
+// session) or a save on this page already said.
+siteReady.then(() => {
+  remember ??= true;
+  if (!remember) drop();
+  else if (told === null) {
+    reply = fromDevice();
+    told = "device";
+  }
+  replyKnown();
+  run();
+});
 // After a successful save (site/guest.js): "yes" when anyone is coming.
 export function rememberReply(value, savedAt) {
   keep(value, savedAt);
@@ -184,19 +225,21 @@ export const sessionStatus = () =>
     .then((res) => (res.ok ? res.json() : null))
     .catch(() => null));
 // What GET /api/session says about the signed-in household: it overrides the
-// device. A note that disagrees is rewritten or deleted; no note is created
-// here (only a save does that).
+// device. A note that disagrees is rewritten (where the switch lets a device
+// keep one) or deleted; no note is created here (only a save does that).
 export function serverReply(household) {
   if (!household) return;
-  const raw = stored();
   told = "server";
   if (!household.answered) {
     drop();
     reply = false;
   } else {
     reply = household.answer;
-    if (raw && (raw.answer !== household.answer || raw.savedAt !== household.answeredAt))
-      keep(household.answer, household.answeredAt);
+    replySettled.then(() => {
+      const raw = remember ? stored() : null;
+      if (raw && (raw.answer !== household.answer || raw.savedAt !== household.answeredAt))
+        keep(household.answer, household.answeredAt);
+    });
   }
   run();
 }

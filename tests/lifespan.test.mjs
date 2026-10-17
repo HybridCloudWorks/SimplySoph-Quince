@@ -80,7 +80,7 @@ test("a refused lifespan says which rule it broke, and Admin's form uses the sam
   assert.ok(admin.includes(`const reviewDay = "${retentionReview}";`), "Admin's earliest photos date is the review date");
 });
 
-test("the gallery and the thank-you page carry an empty, hidden slot for it, and only they load its script", async () => {
+test("the gallery, the thank-you page and Privacy's retention item carry an empty, hidden slot for it, and only they load its script", async () => {
   const page = (file) => readFile(new URL("dist/" + file, repo), "utf8");
   for (const lang of ["", "es/"])
     for (const route of ["gallery", "thank-you"]) {
@@ -88,7 +88,19 @@ test("the gallery and the thank-you page carry an empty, hidden slot for it, and
       assert.ok(html.includes('<p class="lifespan" data-lifespan hidden></p>'), `${lang}${route}`);
       assert.ok(html.includes('<script type="module" src="/lifespan.mjs"></script>'), `${lang}${route}`);
     }
-  for (const file of ["index.html", "es/index.html", "share/index.html", "details/index.html"])
+  // Privacy (R-171): at the end of its summary item on how long we keep
+  // information, after the review-date sentence it falls back to.
+  for (const [file, lang] of [
+    ["privacy/index.html", "en"],
+    ["es/privacy/index.html", "es"],
+  ]) {
+    const html = await page(file);
+    assert.ok(html.includes(`<li>${policies.retentionItem[lang].slice(2)} <span data-lifespan hidden></span></li>`), file);
+    assert.equal(html.match(/data-lifespan/g).length, 1, file);
+    assert.ok(html.includes('<script type="module" src="/lifespan.mjs"></script>'), file);
+  }
+  assert.ok(policies.retentionItem.en.includes(policies.retention.en.slice(1)) && policies.retentionItem.es.includes(policies.retention.es.slice(1)));
+  for (const file of ["index.html", "es/index.html", "share/index.html", "details/index.html", "terms/index.html", "whatsapp/index.html"])
     assert.doesNotMatch(await page(file), /lifespan/, file);
   // It never states a date of its own: every date comes from the settings.
   const script = await readFile(new URL("site/lifespan.mjs", repo), "utf8");

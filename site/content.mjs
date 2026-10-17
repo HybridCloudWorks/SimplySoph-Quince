@@ -138,8 +138,11 @@ export const sections = [
   { name: ["Sophia", "Sophia"], pages: ["sophia", "court", "padrinos"] },
   { pages: ["details", "ceremony", "reception"] },
   { pages: ["travel"] },
-  // Named for both, so the note for Sophia is found from the header.
-  { name: [terms.photosAndNotes.en, terms.photosAndNotes.es], pages: ["gallery", "share", "guestbook"] },
+  { pages: ["gallery", "share"] },
+  // The note for Sophia has its own item, in every phase (R-027): two taps
+  // from any page on a phone (Menu, then the note), and named, like every
+  // item, as the page it opens (docs/page-scope.md).
+  { pages: ["guestbook"] },
   { pages: ["registry"] },
   { pages: ["faq"] },
   { pages: ["contact"] },

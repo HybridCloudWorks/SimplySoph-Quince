@@ -366,8 +366,9 @@ test("a family uploading during the party is unaffected by the card, and its upl
 // saw it".
 test("the table card's words promise only what the code does: a count per visit, and a withdrawn file never published", async () => {
   // What the code does: scanning again during a visit keeps the phone's count;
-  // once the visit's session has ended (30 minutes unused), a scan starts a
-  // new one. So the count is per visit, not per phone.
+  // once the visit's session has ended (15 to 30 minutes after it was last
+  // used: it is renewed only in its last 15), a scan starts a new one. So the
+  // count is per visit, not per phone.
   const f = await setup();
   const code = codeOf((await createCard(f)).url);
   const visit = await exchange(f, code);
@@ -405,4 +406,13 @@ test("the table card's words promise only what the code does: a count per visit,
   assert.match(page, /Puedes compartir \$\{q\.remaining\} más en esta visita\./);
   assert.match(page, /Removed before we published it\./);
   assert.match(page, /Lo quitaste antes de que lo publicáramos\./);
+  // The same rule for the family's card status and for Privacy: they count
+  // visits, so neither may say "each phone" or "phones".
+  const family = (await source("admin.js")) + (await source("policies.mjs"));
+  assert.doesNotMatch(family, /each phone (?:can )?sends?|Each phone can send|phones so far|cuántos envía cada teléfono/);
+  assert.match(family, /\$\{st\.phones === 1 \? "visit" : "visits"\} so far/);
+  assert.match(family, /Each visit can send up to \$\{st\.perPhone\}/);
+  assert.match(family, /it ends 15 to 30 minutes after the phone last used it, or when sharing closes/);
+  assert.match(family, /To count how many arrive during each visit, we give your visit a random code/);
+  assert.match(family, /Para contar cuántos llegan en cada visita, le damos a tu visita un código al azar/);
 });
