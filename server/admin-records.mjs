@@ -86,6 +86,9 @@ export function createAdminRecords({ ledger, key, now = Date.now }) {
         for (const [k, v] of Object.entries(values)) {
           if (["read", "published"].includes(k)) {
             if (typeof v !== "boolean") throw error(422, "INVALID_VALUE");
+            // Guests see when an announcement was published: the moment it
+            // last went from hidden to shown.
+            if (k === "published" && v && !row.published) row.publishedAt = now();
             row[k] = v;
           } else {
             const value = text(
@@ -105,6 +108,9 @@ export function createAdminRecords({ ledger, key, now = Date.now }) {
         }
         if (action === "create" && (!row.title || !row.text))
           throw error(422, "MESSAGE_REQUIRED");
+        // A new announcement is written in both languages guests read.
+        if (action === "create" && kind === "announcements" && (!row.titleEs || !row.textEs))
+          throw error(422, "SPANISH_REQUIRED");
       }
       row.recordVersion = (row.recordVersion || 0) + 1;
       row.updatedAt = now();

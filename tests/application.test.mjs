@@ -1371,7 +1371,12 @@ test("the event log records the invitation lifecycle in order without contact de
 
 test("public announcements carry only what the page shows, never admin notes", async () => {
   const f = await fixture();
-  await f.admin("updates", { title: "Parking", text: "Use the north lot" });
+  await f.admin("updates", {
+    title: "Parking",
+    text: "Use the north lot",
+    titleEs: "Estacionamiento",
+    textEs: "Usen el estacionamiento norte",
+  });
   const [a] = Object.values((await f.ledger.read()).announcements);
   await f.admin("records", {
     kind: "announcements",
@@ -1382,7 +1387,7 @@ test("public announcements carry only what the page shows, never admin notes", a
   });
   const pub = await f.app.dispatch({ path: "/api/public", method: "GET" });
   assert.equal(pub.announcements.length, 1);
-  assert.deepEqual(Object.keys(pub.announcements[0]).sort(), ["at", "id", "text", "textEs", "title", "titleEs"]);
+  assert.deepEqual(Object.keys(pub.announcements[0]).sort(), ["at", "id", "publishedAt", "text", "textEs", "title", "titleEs"]);
   assert.ok(!JSON.stringify(pub).includes("PRIVATE-ADMIN-NOTE"));
 });
 
