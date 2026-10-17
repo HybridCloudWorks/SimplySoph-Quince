@@ -338,12 +338,13 @@ test("if this session's renewal cannot be saved, nothing is held or counted: the
     });
   await assert.rejects(f.guest("gallery/archive/1"), { status: 503, code: "BUSY" });
   f.ledger.transaction = real;
-  assert.equal(Object.keys((await f.ledger.read()).archiveParts || {}).length, 0, "the hour's count was not charged");
+  // The next request streams (it used to be ARCHIVE_BUSY until a restart).
   const part = await f.guest("gallery/archive/1");
   assert.ok(part.stream && part.setCookie, "streams, and renews this time");
   await bytesOf(part);
   await new Promise((r) => setImmediate(r));
   assert.equal((await f.guest("gallery/archive")).limits.busy, false);
+  // Only that part is counted: the refused request charged nothing.
   assert.equal(Object.values((await f.ledger.read()).archiveParts)[0].length, 1);
 });
 
