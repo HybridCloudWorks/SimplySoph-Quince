@@ -1,5 +1,6 @@
 import { whatsappPreferences } from "./guest-whatsapp.js";
 import { mediaUpload } from "./media-upload.js";
+import { downloadAll } from "./gallery-download.js";
 import { experienceReady, eventContent, liveContent } from "./experience.js";
 import {
   registryCards,
@@ -1017,6 +1018,8 @@ async function gallery() {
   }
   state.hidden = true;
   document.querySelector("[data-gallery-share]")?.removeAttribute("hidden");
+  // "Download all photos", above the albums (site/gallery-download.js).
+  downloadAll(cards);
   const name = (id) => {
     const album = eventContent.albums.find((a) => a.id === id);
     return album ? (es ? album.es : album.en) : "";
