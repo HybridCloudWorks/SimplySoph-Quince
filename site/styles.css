@@ -503,6 +503,17 @@ address {
 .home-replied {
   font-weight: 600;
 }
+/* "Not your family? Forget this on this device", in the hero's colours. */
+.home-forget {
+  margin: 0;
+  font-size: 0.9rem;
+}
+.home-forget .plain-button {
+  color: inherit;
+}
+main .home-forget .plain-button:not([aria-disabled="true"]):active {
+  color: var(--gold);
+}
 .now-next-label {
   display: inline-block;
   min-width: 4.5em;

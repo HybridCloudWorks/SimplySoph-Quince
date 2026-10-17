@@ -8,12 +8,16 @@
 //                Maps, with Apple Maps and Waze beside it)
 //   live         Now / Next from the schedule; "Share your photos" leads from
 //                dinner (the family's shareFrom)
-//   after        "Thank you for celebrating with us." in place of the
-//                invitation's line, then the photos, sharing and a note for
-//                Sophia; no RSVP, countdown, past schedule or invitation art
+//   after        "Thank you for celebrating with us." (or the family's own
+//                sentence, family.thankYou, carried as data-thanks) in place
+//                of the invitation's line, then the photos, sharing and a note
+//                for Sophia; no RSVP, countdown, past schedule or invitation art
 //   archived     the photos only
+// On the day and the evening, the family's parking line (data-parking, built
+// from family.parking once it exists) follows Now / Next. A reply known only
+// from this device's note can be forgotten here ("Not your family?").
 // The newest announcement, dated, sits under the status; older ones below.
-import { watch, lifecycle, answer, serverReply, sessionStatus } from "./now.mjs";
+import { watch, lifecycle, answer, replyFrom, forgetReply, serverReply, sessionStatus, state, clock as serverNow } from "./now.mjs";
 import { date, dayMonth, time, timeRange } from "./datetime.mjs";
 import { terms } from "./lexicon.mjs";
 import { mapLinks, newTab, arrow, pageHref, escapeHtml as esc } from "./celebration.mjs";
@@ -41,6 +45,12 @@ export function startHome({ lang, content }) {
   choices.hidden = true;
   nodes.actions?.after(choices);
   nodes.choices = choices;
+  // "Not your family? Forget this on this device", under "You replied ✓".
+  const forget = document.createElement("p");
+  forget.className = "home-forget";
+  forget.hidden = true;
+  nodes.status?.after(forget);
+  nodes.forget = forget;
   // Redraw only what changed (compared as the browser writes it), so the
   // built page is kept as it is when it is already right, and focus and screen
   // readers are left alone.
@@ -53,8 +63,13 @@ export function startHome({ lang, content }) {
   };
   const show = (node, visible) => node && (node.hidden = !visible);
   // The invitation's line ("Please join us…") until the party is over; then
-  // the thanks (the family can change the sentence; this is the default).
-  const invitationLine = nodes.line?.innerHTML ?? "";
+  // the thanks: the family's sentence when they write one, or this default.
+  const invitationLine = nodes.line?.innerHTML ?? "",
+    thanks = hero.dataset.thanks ? esc(hero.dataset.thanks) : tr("Thank you for celebrating with us.", "Gracias por celebrar con nosotros."),
+    parking = hero.dataset.parking;
+  // Whether GET /api/session has answered: until it has, a reply from this
+  // device's note may still be the signed-in household's own.
+  let sessionKnown = false;
   const day = (ms) => date(ms, lang, { weekday: true, year: false });
   const units = es
     ? [["día", "días"], ["hora", "horas"], ["minuto", "minutos"]]
@@ -127,7 +142,7 @@ export function startHome({ lang, content }) {
       over = s.phase === "after" || s.phase === "archived",
       yes = answer() !== "no";
     hero.dataset.phase = s.phase;
-    put(nodes.line, over ? tr("Thank you for celebrating with us.", "Gracias por celebrar con nosotros.") : invitationLine);
+    put(nodes.line, over ? thanks : invitationLine);
     put(nodes.actions, s.actions.map((key, i) => action(key, i === 0, c)).join(""));
     const directions = s.actions.find((key) => key.startsWith("directions:"));
     if (directions) {
@@ -159,7 +174,16 @@ export function startHome({ lang, content }) {
       if (st.today) clock = today;
       status = (st.now && st.now.part !== "between" ? nowLine(c, st.now) : "") + (st.next ? nextLine(c, st.next) : "");
     }
+    if (parking && (st.kind === "today" || st.kind === "now-next"))
+      status += `<p class="now-next"><span class="now-next-label">${tr("Parking", "Estacionamiento")}</span> ${esc(parking)}</p>`;
     put(nodes.status, status);
+    // Only a note this device keeps, once no signed-in household claims it.
+    put(
+      nodes.forget,
+      sessionKnown && replyFrom() === "device" && (st.kind === "replied" || st.replied)
+        ? `${tr("Not your family?", "¿No es su familia?")} <button type="button" class="plain-button">${tr("Forget this on this device", "Olvidar esto en este dispositivo")}</button>`
+        : "",
+    );
     put(nodes.countdown, clock);
     show(nodes.schedule, s.showSchedule);
     show(nodes.invitation, !over);
@@ -169,10 +193,20 @@ export function startHome({ lang, content }) {
     return matchMedia("(prefers-reduced-motion: reduce)").matches ? null : wake;
   }
   watch(render);
+  // Forgetting leaves the honest default: the page no longer knows who replied.
+  nodes.forget.addEventListener("click", (e) => {
+    if (!e.target.closest("button")) return;
+    forgetReply();
+    nodes.actions?.querySelector("a")?.focus();
+  });
 
   // Signed in: the server says whether this household replied (only that; a
   // background check that does not keep the session open).
-  sessionStatus().then((session) => session?.kind === "guest" && serverReply(session.household));
+  sessionStatus().then((session) => {
+    sessionKnown = true;
+    if (session?.kind === "guest") serverReply(session.household);
+    else render(state(), serverNow());
+  });
   announcements(lang);
 }
 

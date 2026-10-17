@@ -13,10 +13,14 @@ export const event = {
 // Text values are { en, es } or a plain string. Layouts follow the family-approved idea book:
 //   portrait: "/assets/…" photo beside the bio
 //   moments: [{ age: 0, text: { en, es } }] — "fifteen years in six moments", oldest first
-//   court: [{ name, role: "escort" | "dama" | "chambelan", pair: 1, line: { en, es }, photo }]
+//   court, padrinos: stay EMPTY here. They would hold people's names, and this
+//     repository is public: names come only from the runtime event settings
+//     (server/site-settings.mjs, GET /api/site; docs/publishing.md). The
+//     layouts that would show them are court: [{ name, role: "escort" | "dama"
+//     | "chambelan", pair, line, photo }] and padrinos: [{ gift: "misa" (a key
+//     of padrinoTraditions), names }]; tests/family-slots.test.mjs fails if
+//     either ever has an entry.
 //   parentsSignature: { en, es } — signed in script under the parents' letter
-//   padrinos: [{ gift: "misa" (a key of padrinoTraditions), names }] — public thank-you
-//     cards: names and tradition only, never amounts or planning status
 //   hotels: [{ name, where: { en, es }, notes: { en, es }, url }]
 //   airport: { name, notes: { en, es } } — the "Flying in" card on Travel
 //   driveMinutes: 15 — church to reception, shown on the route strip and in the
@@ -26,6 +30,9 @@ export const event = {
 //   dressCode, parking, children: { en, es } — answers on Questions and in the
 //     Schedule's "Good to know" box; parking also on both venue pages
 //   thanksNote: { en, es } — the thank-you page message, after the event
+//   thankYou: { en, es } — the home page's line after the party, in place of
+//     "Thank you for celebrating with us." / "Gracias por celebrar con
+//     nosotros." (and the link previews then); null keeps that default
 //   promises: { dressCode, hotels, parking: { by: "2026-12-01" | null } } — the
 //     day each promised item will be posted by. Every page that promises one
 //     (and the RSVP confirmation and My account) says "by <date>" until the
@@ -53,6 +60,7 @@ export const family = {
   children: null,
   highlightVideo: null,
   thanksNote: null,
+  thankYou: null,
   promises: { dressCode: { by: null }, hotels: { by: null }, parking: { by: null } },
   childAgeCutoff: null,
   traditions: [],

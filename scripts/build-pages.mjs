@@ -33,7 +33,7 @@ import {
 import { exampleFamily, previewRoutes } from "../site/preview-content.mjs";
 import { milestones, phaseAt, previewKey } from "../site/lifecycle.mjs";
 import { date as longDate, time, at, capitalize } from "../site/datetime.mjs";
-import { promised, coming } from "../site/promises.mjs";
+import { promised, coming, posted } from "../site/promises.mjs";
 import { calendar } from "../site/calendar-file.mjs";
 // Times on a page never split from their "PM" (site/datetime.mjs).
 const nb = { nbsp: true };
@@ -105,6 +105,15 @@ const wholeNumber = (value, name, most) => {
   return value;
 };
 const driveMinutes = () => wholeNumber(family.driveMinutes, "driveMinutes", 240);
+// The family's own thank-you sentence for the home page after the party
+// (family.thankYou), in both languages or not at all.
+const thankYou = (lang) => {
+  const t = family.thankYou;
+  if (t === null || t === undefined) return null;
+  if (!["en", "es"].every((l) => typeof t[l] === "string" && t[l].trim() && t[l].length <= 200))
+    throw new Error("family.thankYou must be { en, es } sentences of at most 200 characters, or null");
+  return t[lang].trim();
+};
 const childAge = () => wholeNumber(family.childAgeCutoff, "childAgeCutoff", 20);
 // What the RSVP pages and My account need from the family's content, carried
 // on the page for site/guest.js (the browser never loads content.mjs):
@@ -145,11 +154,15 @@ function contents(route, lang) {
   // phase (answered, closed, the day itself, the evening, after) and puts the
   // newest announcement under the status line. On wide screens the written
   // schedule sits right under the actions, as on phones, above Sophia's words.
+  // It carries the family's words it may need: parking for the day itself
+  // (data-parking, once family.parking exists) and the thanks for after the
+  // party (data-thanks, once family.thankYou exists).
   if (route === "") {
     const by = esc(longDate(event.deadline, lang, { year: false })),
       // The invitation in the page's language (scripts/images.mjs).
-      art = images.invitation[lang];
-    return `<section class="hero" data-home><div class="hero-copy"><p class="eyebrow"${es ? "" : ' lang="es"'}>${terms.eyebrow[lang]}</p><h1>Sophia</h1><p class="hero-line" data-hero-line>${t.tagline}</p><p class="date" data-event-date>${t.date}</p><div class="actions" data-home-actions>${link("rsvp", t.rsvp)}<a href="${href("details", lang)}">${t.all}${arrow}</a></div><p class="hero-deadline" data-reply-by>${sayTerm(terms.rsvpBy, lang, registerFor(""))} ${by}</p><div class="countdown" data-countdown hidden></div><div class="home-status" data-home-status hidden></div><div class="home-latest" data-latest-update hidden></div></div><div class="hero-schedule" data-home-schedule><h2 class="strip-heading">${routeTitle("details", lang)}</h2><div data-schedule-strip>${scheduleStrip(celebration, lang)}</div></div><blockquote class="sophia-quote" data-home-quote data-voice="sophia"><p>“${esc(celebration.quote[lang])}”</p><cite>— ${esc(celebration.name)}</cite></blockquote><p class="home-note" data-home-note><a href="${href("guestbook", lang)}">${esc(sayTerm(terms.leaveNote, lang, registerFor("")))}${arrow}</a></p><figure class="invitation" data-home-invitation>${picture(art, { alt: esc(invitationAlt(celebration, lang)), sizes: "(max-width: 760px) 290px, 365px", loading: "eager", priority: "high" })}<figcaption><a href="${art.jpeg.at(-1)[1]}" target="_blank" rel="noopener">${t.invitationCaption}${newTab(lang)}</a></figcaption></figure></section><div class="home-updates" data-announcements></div>`;
+      art = images.invitation[lang],
+      words = `${posted.parking(family) ? ` data-parking="${esc(promised("ceremony", lang, { content: family.parking }))}"` : ""}${thankYou(lang) ? ` data-thanks="${esc(thankYou(lang))}"` : ""}`;
+    return `<section class="hero" data-home${words}><div class="hero-copy"><p class="eyebrow"${es ? "" : ' lang="es"'}>${terms.eyebrow[lang]}</p><h1>Sophia</h1><p class="hero-line" data-hero-line>${t.tagline}</p><p class="date" data-event-date>${t.date}</p><div class="actions" data-home-actions>${link("rsvp", t.rsvp)}<a href="${href("details", lang)}">${t.all}${arrow}</a></div><p class="hero-deadline" data-reply-by>${sayTerm(terms.rsvpBy, lang, registerFor(""))} ${by}</p><div class="countdown" data-countdown hidden></div><div class="home-status" data-home-status hidden></div><div class="home-latest" data-latest-update hidden></div></div><div class="hero-schedule" data-home-schedule><h2 class="strip-heading">${routeTitle("details", lang)}</h2><div data-schedule-strip>${scheduleStrip(celebration, lang)}</div></div><blockquote class="sophia-quote" data-home-quote data-voice="sophia"><p>“${esc(celebration.quote[lang])}”</p><cite>— ${esc(celebration.name)}</cite></blockquote><p class="home-note" data-home-note><a href="${href("guestbook", lang)}">${esc(sayTerm(terms.leaveNote, lang, registerFor("")))}${arrow}</a></p><figure class="invitation" data-home-invitation>${picture(art, { alt: esc(invitationAlt(celebration, lang)), sizes: "(max-width: 760px) 290px, 365px", loading: "eager", priority: "high" })}<figcaption><a href="${art.jpeg.at(-1)[1]}" target="_blank" rel="noopener">${t.invitationCaption}${newTab(lang)}</a></figcaption></figure></section><div class="home-updates" data-announcements></div>`;
   }
   // The page title; pages that belong to a larger section also name it above
   // the title and list its other pages with content underneath.
@@ -587,10 +600,12 @@ const previews = {
   // The invitation's own preview: the deadline sentence to the household.
   invite: (lang) => `${eventLine(lang)} ${sayTerm(terms.rsvpBy, lang, registerFor(""))} ${longDate(event.deadline, lang)}.`,
   event: eventLine,
+  // The family's own sentence once they write one (family.thankYou).
   thanks: (lang) =>
-    lang === "es"
+    thankYou(lang) ||
+    (lang === "es"
       ? `Gracias por celebrar con nosotros el ${longDate(event.startsAt, "es")}.`
-      : `Thank you for celebrating with us on ${longDate(event.startsAt, "en")}.`,
+      : `Thank you for celebrating with us on ${longDate(event.startsAt, "en")}.`),
   share: (lang) =>
     lang === "es"
       ? "Comparte las fotos y los videos que tomaste en los XV de Sophia."
