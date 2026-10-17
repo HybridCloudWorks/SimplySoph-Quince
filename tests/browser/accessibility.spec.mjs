@@ -42,6 +42,7 @@ test("serif times, dates and counts use lining figures, in English and Spanish",
   page,
   harness,
   context,
+  setNow,
 }) => {
   const fonts = await serveFonts(context);
   const { link } = await harness.issueInvitation(households.rivera);
@@ -58,6 +59,31 @@ test("serif times, dates and counts use lining figures, in English and Spanish",
   await page.goto(harness.forBrowser(link));
   await expect(page.locator(".allocation")).toContainText("up to 2 adults/teens and 1 child");
   expect((await oldStyleFigures(page)).bad).toEqual([]);
+  // R-048 (A7): the numerals added this round, in both languages: What's next
+  // with a date, the answered date, a dated announcement, Now / Next times.
+  await page.route(/\/rsvp\/confirmed\/$/, async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({ response, body: (await response.text()).replace(/data-coming="[^"]*"/, 'data-coming="{&quot;dressCode&quot;:&quot;2026-12-01&quot;}"') });
+  });
+  await page.getByRole("button", { name: "Everyone’s coming" }).click();
+  await page.getByRole("button", { name: "Save my RSVP" }).click();
+  await expect(page).toHaveURL(/\/rsvp\/confirmed\/$/);
+  await harness.announce({ title: "Parking", text: "Use the north lot.", titleEs: "Estacionamiento", textEs: "Usen el lote norte." });
+  for (const lang of ["en", "es"]) {
+    await page.goto(harness.url(pathOf("rsvp/confirmed", lang)));
+    await expect(page.locator("[data-whats-next] p").first()).toContainText("2026");
+    expect((await oldStyleFigures(page)).bad, `${lang} What's next`).toEqual([]);
+    await page.goto(harness.url(pathOf("", lang)));
+    await expect(page.locator(".home-replied")).toContainText("15");
+    await expect(page.locator("[data-latest-update] time")).toContainText("1");
+    expect((await oldStyleFigures(page)).bad, `${lang} answered, announcement`).toEqual([]);
+  }
+  await setNow(Date.parse("2027-01-15T21:15:00-06:00"));
+  for (const lang of ["en", "es"]) {
+    await page.goto(harness.url(pathOf("", lang)));
+    await expect(page.locator(".now-next")).toContainText("7:30");
+    expect((await oldStyleFigures(page)).bad, `${lang} Now / Next`).toEqual([]);
+  }
   // With Cormorant itself loaded, the setting inherited from body draws lining
   // figures (Cormorant's own default is old-style: a different width).
   if (!fonts) return test.info().annotations.push({ type: "fonts", description: "MISXV_FONT_CACHE not set: checked computed styles only" });
@@ -586,7 +612,47 @@ test("the wordmark says it goes home, and no two calendar or map links share a n
     }
     await page.goto(harness.url(pathOf("details", lang)));
     await expect(page.getByRole("link", { name: new RegExp(`^${add} ?: ${lang === "es" ? "Cena" : "Dinner"}$`) })).toHaveCount(1);
-    await expect(page.getByRole("link", { name: new RegExp(`^${lang === "es" ? "Mapa ?: Cena" : "Map ?: Dinner"} `) })).toHaveCount(1);
+    // The Schedule's maps, "Map: Google · Apple · Waze" (R-172), each named
+    // for its app and the part of the day.
+    const part = lang === "es" ? "Cena" : "Dinner";
+    for (const app of ["Google Maps", "Apple Maps", "Waze"])
+      await expect(page.getByRole("link", { name: new RegExp(`^${app} ?: ${part} `) })).toHaveCount(1);
+  }
+});
+
+// R-172: the Schedule offers the venue pages' three map apps, compactly, as
+// 44px targets in the row's own pattern (time, name, venue, address, maps and
+// calendar), for each part of the day.
+test("each part of the day on the Schedule offers Google Maps, Apple Maps and Waze", async ({ page, harness }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  for (const [lang, label, newTab] of [
+    ["en", "Map:", "(opens in a new tab)"],
+    ["es", "Mapa:", "(se abre en otra pestaña)"],
+  ]) {
+    await page.goto(harness.url(pathOf("details", lang)));
+    const rows = page.locator(".schedule-item");
+    await expect(rows).toHaveCount(3);
+    for (const [i, address] of [
+      [0, "4100%20Blue%20Mound%20Rd"],
+      [1, "5103%20Azle%20Ave"],
+      [2, "5103%20Azle%20Ave"],
+    ]) {
+      const maps = rows.nth(i).locator(".schedule-actions > span:first-child");
+      await expect(maps).toHaveText(new RegExp(`^${label} Google↗ · Apple↗ · Waze↗$`.replace(/↗/g, ".*?")));
+      const links = maps.getByRole("link");
+      await expect(links).toHaveCount(3);
+      for (const [n, host] of [
+        [0, "https://www.google.com/maps/search/?api=1&query="],
+        [1, "https://maps.apple.com/?q="],
+        [2, "https://waze.com/ul?q="],
+      ]) {
+        const link = links.nth(n);
+        expect(await link.getAttribute("href")).toContain(host + address);
+        await expect(link).toHaveAttribute("target", "_blank");
+        await expect(link).toHaveAccessibleName(new RegExp(`${newTab.replace(/[()]/g, "\\$&")}$`));
+        expect((await link.boundingBox()).height).toBeGreaterThanOrEqual(43.9);
+      }
+    }
   }
 });
 

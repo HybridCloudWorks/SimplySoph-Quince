@@ -154,6 +154,24 @@ test.describe("on a phone", () => {
     const box = await rsvp.boundingBox();
     expect(box.y + box.height).toBeLessThan(844);
     await expect(page.getByText("Please RSVP by Sunday, November 15")).toBeVisible();
+    // R-131: where round 1 left it, top at 312 px under the 64 px header,
+    // in English and Spanish, on a 390 px and a 320 px phone.
+    for (const [width, height] of [
+      [390, 844],
+      [320, 640],
+    ])
+      for (const [path, name] of [
+        ["/", "RSVP"],
+        ["/es/", "Confirmar asistencia"],
+      ]) {
+        await page.setViewportSize({ width, height });
+        await page.goto(harness.url(path));
+        const at = `${path} at ${width}px`;
+        expect((await page.locator("body > header").boundingBox()).height, at).toBe(64);
+        const button = await page.getByRole("main").getByRole("link", { name, exact: true }).boundingBox();
+        expect(Math.round(button.y), at).toBeLessThanOrEqual(312);
+        expect(button.y + button.height, at).toBeLessThan(height);
+      }
   });
 });
 

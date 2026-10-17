@@ -126,6 +126,35 @@ test("every guest submit says what it is doing while it waits: code, sign-in, de
   }
 });
 
+// R-050: the note a household leaves from its invitation link (POST
+// /api/guestbook-note) says it is sending, like every other submit.
+for (const [lang, label, words] of [
+  ["en", "Send my note", "Sending…"],
+  ["es", "Enviar mi mensaje", "Enviando…"],
+])
+  test(`the note from an invitation link says “${words}” while it waits, and its label comes back (${lang})`, async ({ page, harness }) => {
+    const household = lang === "es" ? households.morales : households.rivera;
+    const { link } = await harness.issueInvitation(household, { locale: lang });
+    await page.goto(harness.forBrowser(link));
+    await expect(page.getByRole("heading", { name: household.name })).toBeVisible();
+    await page.goto(harness.url(lang === "es" ? "/es/guestbook/" : "/guestbook/"));
+    const form = page.locator("#message"),
+      button = form.locator("button[type=submit]");
+    await expect(form.locator("textarea")).toBeVisible();
+    await form.locator("textarea").fill(lang === "es" ? "¡Feliz cumpleaños, Sophia!" : "Happy birthday, Sophia!");
+    const request = await hold(page, "guestbook-note");
+    await button.click();
+    await expectBusy(page, { form, button, words });
+    request.release(serverError);
+    await expect(form.locator(".error")).not.toBeEmpty();
+    await expectIdle(page, { form, button, label });
+    // Sent again once the server answers: the household's one note arrives.
+    await page.unrouteAll({ behavior: "ignoreErrors" });
+    await button.click();
+    await expect(page.locator("#portal .notice.success")).toBeVisible();
+    expect(Object.values((await harness.ledger.read()).messages).filter((m) => m.via === "link")).toHaveLength(1);
+  });
+
 for (const [lang, words] of [
   ["en", "Saving…"],
   ["es", "Guardando…"],
