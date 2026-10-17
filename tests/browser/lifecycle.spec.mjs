@@ -521,6 +521,35 @@ test.describe("the RSVP page on the server's clock", () => {
     // "contact us" in the alert is the link (R-075), so it is said once.
     await expect(page.getByRole("alert").getByRole("link", { name: "contact us" })).toHaveAttribute("href", "/contact/");
     await expect(page.locator("#portal").getByRole("link", { name: /contact us/i })).toHaveCount(1);
+    // R-168: and the review becomes the closed note the deadline brings, with
+    // nothing left to press: no Save, no Change counts.
+    await expect(page.getByRole("heading", { name: "RSVPs are closed" })).toBeFocused();
+    await expect(page.getByRole("button", { name: "Save my RSVP" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Change counts" })).toHaveCount(0);
+  });
+
+  test("in Spanish, a change refused as too late shows the closed note with the saved answer, the server's words and no Save", async ({ page, harness, setNow }) => {
+    const { link } = await harness.issueInvitation(households.morales, { locale: "es" });
+    await setNow(DEADLINE - 120_000);
+    await page.goto(harness.forBrowser(link));
+    await page.getByRole("button", { name: "Vamos todos" }).click();
+    await page.getByRole("button", { name: "Guardar mi respuesta" }).click();
+    await expect(page).toHaveURL(harness.url("/es/rsvp/confirmed/"));
+    // A minute before the deadline they start changing it, and save too late.
+    await setNow(DEADLINE - 60_000);
+    await page.goto(harness.forBrowser(link + ".no"));
+    await expect(page.getByRole("heading", { name: "Revisen su respuesta" })).toBeVisible();
+    await setNow(AFTER_DEADLINE);
+    await page.getByRole("button", { name: "Guardar mi respuesta" }).click();
+    await expect(page.getByRole("heading", { name: "Las respuestas están cerradas" })).toBeFocused();
+    await expect(page.getByRole("alert")).toHaveText("La fecha límite ya pasó. Por favor, escríbannos.");
+    await expect(page.getByRole("alert").getByRole("link", { name: "escríbannos" })).toHaveAttribute("href", "/es/contact/");
+    await expect(page.locator("#portal").getByRole("link", { name: /escr[ií]bannos/i })).toHaveCount(1);
+    // The answer on file is still the "yes": the refused "no" changed nothing.
+    await expect(page.getByText("Su respuesta guardada:")).toBeVisible();
+    await expect(page.getByRole("main").getByRole("listitem").first()).toHaveText("Ceremonia: 2 adultos/jóvenes, 2 niños");
+    await expect(page.getByRole("button", { name: "Guardar mi respuesta" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Cambiar cantidades" })).toHaveCount(0);
   });
 
   test("after the party the confirmation thanks the household and offers no calendar or directions", async ({ page, harness, setNow }) => {

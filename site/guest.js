@@ -718,8 +718,9 @@ function review(inv, values, { push = true } = {}) {
       .join("");
   // The review names the household, as the form does (a quick-answer link
   // opens straight here), and says before Save when it replaces an answer.
+  // Save stays in the phone's first screen (R-129): the answer follows it.
   show(
-    `<h2>${tr(terms.reviewRsvp.en, "Revisen su respuesta")}</h2><p><strong>${esc(inv.name)}</strong></p>${summary(input.attendance, inv)}${details}${inv.response ? `<p class="notice">${tr("This replaces your saved RSVP.", "Esto reemplaza su respuesta guardada.")}</p>` : ""}<p class="resume-note" role="status"></p><p class="error" role="alert"></p><div class="row-actions"><button type="button" id="confirm" class="button burgundy">${term(terms.saveRsvp)}</button><button type="button" id="edit" class="button outline">${tr("Change counts", "Cambiar cantidades")}</button></div>`,
+    `<h2>${tr(terms.reviewRsvp.en, "Revisen su respuesta")}</h2><p><strong>${esc(inv.name)}</strong></p>${inv.response ? `<p>${tr("This replaces your saved RSVP.", "Esto reemplaza su respuesta guardada.")}</p>` : ""}<p class="resume-note" role="status"></p><p class="error" role="alert"></p><div class="row-actions"><button type="button" id="confirm" class="button burgundy">${term(terms.saveRsvp)}</button><button type="button" id="edit" class="button outline">${tr("Change counts", "Cambiar cantidades")}</button></div>${summary(input.attendance, inv)}${details}`,
   );
   if (push) {
     // The entry left behind is the form's, even when an in-page link (the
@@ -769,9 +770,12 @@ function review(inv, values, { push = true } = {}) {
       // Not busy any more before the error is written, so it is announced.
       done();
       if (["SIGN_IN_REQUIRED", "CSRF_REJECTED"].includes(err.code)) timedOut(inv, portal);
-      // Saved a moment too late: the server's answer, whose "contact us" is
-      // the way to write to us (client.js sayError).
-      else sayError(alert, err.message);
+      // Saved a moment too late: the closed note the deadline brings, with
+      // the server's answer and no Save (R-168).
+      else if (err.code === "RSVP_CLOSED") {
+        stopClosing?.();
+        show(rsvpClosed(inv, err.message));
+      } else sayError(alert, err.message);
     }
     busy = false;
   };
@@ -788,17 +792,20 @@ addEventListener("popstate", (e) => {
   } else rsvpForm(inv, values);
 });
 // "RSVPs are closed", with the household's saved answer when there is one.
-// Signed out, it leads the /rsvp/ page from the deadline on.
-function closedNote(deadline, answered = "") {
+// Signed out, it leads the /rsvp/ page from the deadline on. After a save
+// refused as too late, the server's words (`refused`, whose "contact us" is
+// the link) take the place of ours and of the button.
+function closedNote(deadline, answered = "", refused = "") {
   const until = esc(deadlineDay(deadline));
-  return `<div class="notice"><h2>${tr("RSVPs are closed", "Las respuestas están cerradas")}</h2><p>${tr(`RSVPs closed on ${until}. To RSVP or change your RSVP now, please contact us.`, `Las respuestas cerraron el ${until}. Para confirmar su asistencia o cambiar su respuesta, escríbannos.`)}</p>${answered}<p><a class="button burgundy" href="${route("contact")}">${term(terms.contactUs)}</a></p></div>`;
+  return `<div class="notice"><h2>${tr("RSVPs are closed", "Las respuestas están cerradas")}</h2>${refused ? `<p role="alert">${esc(refused)}</p>` : `<p>${tr(`RSVPs closed on ${until}. To RSVP or change your RSVP now, please contact us.`, `Las respuestas cerraron el ${until}. Para confirmar su asistencia o cambiar su respuesta, escríbannos.`)}</p>`}${answered}${refused ? "" : `<p><a class="button burgundy" href="${route("contact")}">${term(terms.contactUs)}</a></p>`}</div>`;
 }
-function rsvpClosed(inv) {
+function rsvpClosed(inv, refused) {
   return closedNote(
     inv.deadline,
     inv.response
       ? `<p>${tr("Your saved RSVP:", "Su respuesta guardada:")}</p>${summary(inv.response.attendance, inv)}`
       : "",
+    refused,
   );
 }
 // A form left open across the deadline turns into the closed note when the

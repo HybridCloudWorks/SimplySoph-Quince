@@ -146,6 +146,40 @@ test("the email’s quick-answer link opens on the review step and saves nothing
   expect(await responsesOf(harness, household)).toHaveLength(1);
 });
 
+// R-129: on a phone, a quick-answer link's review keeps Save within the first
+// ~440 px (the kept baseline), in English and Spanish, for a first answer and
+// for a "no" that replaces a saved "yes": the household's name and the
+// "replaces" line come before Save, the answer right after it.
+test.describe("on a 390×844 phone", () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+  for (const [lang, household, name, replaces] of [
+    ["en", households.rivera, "Save my RSVP", "This replaces your saved answer."],
+    ["es", households.morales, "Guardar mi respuesta", "Esto reemplaza su respuesta guardada."],
+  ])
+    test(`${lang}: Save sits within the first 440 px of a quick answer's review, with and without a saved answer`, async ({ page, harness }) => {
+      const { link } = await harness.issueInvitation(household, { locale: lang });
+      const save = page.getByRole("button", { name });
+      for (const [quick, saved] of [
+        ["yes", false],
+        ["no", true],
+      ]) {
+        await page.goto(harness.forBrowser(`${link}.${quick}`));
+        await expect(save).toBeVisible();
+        await expect(page.getByText(replaces)).toHaveCount(saved ? 1 : 0);
+        const box = await save.boundingBox();
+        expect(box.y, `${lang} .${quick}`).toBeLessThanOrEqual(440);
+        // Nothing dropped: the household above, the answer under Save.
+        await expect(page.locator("#portal")).toContainText(household.name);
+        await expect(page.getByRole("main").getByRole("listitem")).toHaveCount(3);
+        expect((await page.locator("#portal .summary-list").boundingBox()).y).toBeGreaterThan(box.y);
+        if (!saved) {
+          await save.click();
+          await expect(page).toHaveURL(/\/rsvp\/confirmed\/$/);
+        }
+      }
+    });
+});
+
 test("answers survive Back from the review, a reload and a switch to Spanish, and are cleared once saved", async ({
   page,
   harness,

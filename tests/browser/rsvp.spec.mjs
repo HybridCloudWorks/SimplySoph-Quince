@@ -257,9 +257,10 @@ test("a form opened before the deadline but saved after it is refused and nothin
     "The RSVP deadline has passed. Please contact us.",
   );
   await expect(page).toHaveURL(harness.url("/rsvp/"));
-  await expect(
-    page.getByRole("button", { name: "Save my RSVP" }),
-  ).toBeEnabled();
+  // R-168: the refused review becomes the closed note, with nothing left to
+  // press (it used to keep an active Save that could only be refused again).
+  await expect(page.getByRole("heading", { name: "RSVPs are closed" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save my RSVP" })).toHaveCount(0);
   expect(await responsesOf(harness, household)).toEqual([]);
   expect(harness.notion.patches).toEqual([]);
   expect(harness.sent).toEqual([]);
@@ -291,7 +292,9 @@ test("in Spanish, a refused save speaks to the household the way the review does
   await page.unroute("**/api/rsvp");
   await setNow(AFTER_DEADLINE);
   await save.click();
-  await expect(alert).toHaveText("La fecha límite ya pasó. Por favor, escríbannos.");
+  // The closed note (R-168) carries the refusal, in the same words.
+  await expect(page.locator("#portal [role=alert]")).toHaveText("La fecha límite ya pasó. Por favor, escríbannos.");
+  await expect(save).toHaveCount(0);
   expect(await responsesOf(harness, household)).toEqual([]);
 });
 
