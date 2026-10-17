@@ -1,14 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {spawn} from 'node:child_process';
+import {availableParallelism} from 'node:os';
+import {startServer, runToExit} from './support/server-process.mjs';
 
 // A complete production configuration with synthetic values. Each case breaks one
 // rule and expects start.mjs to refuse before it listens or calls any provider.
+// The retention date is far off, so the valid configuration stays valid
+// whatever the date (scripts/test-at.mjs runs this a year after the event).
 const valid = {
   EVENT_BUCKET:'misxv-test-only', APP_KEY:Buffer.alloc(32,1).toString('base64'),
   NOTION_TOKEN:'test-only-notion-token', NOTION_SOURCE_ID:'test-source',
   ADMIN_GOOGLE_CLIENT_ID:'test-client', ADMIN_EMAILS:'organizer@example.test',
-  SCOPED_NOTION_CONNECTION_CONFIRMED:'true', DATA_RETENTION_DATE:'2027-04-15',
+  SCOPED_NOTION_CONNECTION_CONFIRMED:'true', DATA_RETENTION_DATE:'2099-12-31',
   M365_TENANT_ID:'test-tenant', M365_CLIENT_ID:'test-mail-client', M365_CLIENT_SECRET:'test-only-secret',
   PUBLIC_ORIGIN:'https://misxv.example.test',
 };
@@ -18,20 +21,12 @@ const cleared = Object.fromEntries([
   'SCHEDULER_AUDIENCE','SCHEDULER_SERVICE_ACCOUNT','GUEST_MICROSOFT_SIGN_IN','GALLERY_ARCHIVE_PART_MB',
 ].map(k => [k, '']));
 
-async function refuse(overrides) {
-  const child = spawn(process.execPath, ['server/start.mjs'], {
-    env:{...process.env, ...cleared, ...valid, PORT:'0', HOST:'127.0.0.1', ...overrides}, stdio:['ignore','pipe','pipe'],
-  });
-  let stdout = '', stderr = '';
-  child.stdout.on('data', data => { stdout += data; });
-  child.stderr.on('data', data => { stderr += data; });
-  const code = await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => { child.kill(); reject(new Error('Misconfigured server did not exit')); }, 5000);
-    child.once('error', error => { clearTimeout(timer); reject(error); });
-    child.once('exit', code => { clearTimeout(timer); resolve(code); });
-  });
-  return {code, stdout, stderr};
-}
+// Each start loads the whole server, about a second of CPU, so they run a few
+// at a time (not all at once beside the other test files) and each waits for
+// its process to end, with its output read to the end
+// (tests/support/server-process.mjs), never for a fixed 5 seconds.
+const env = overrides => ({...process.env, ...cleared, ...valid, PORT:'0', HOST:'127.0.0.1', ...overrides});
+const refuse = overrides => runToExit(env(overrides));
 
 const cases = [
   ['an app key that is not 32 bytes', {APP_KEY:Buffer.alloc(16,1).toString('base64')}, /Missing required production configuration/],
@@ -57,19 +52,16 @@ const cases = [
 
 test('the synthetic configuration itself is complete: the server starts listening', async (t) => {
   // Control for the cases below: each refusal must come from the one rule it breaks.
-  const child = spawn(process.execPath, ['server/start.mjs'], {
-    env:{...process.env, ...cleared, ...valid, PORT:'0', HOST:'127.0.0.1'}, stdio:['ignore','pipe','pipe'],
-  });
-  t.after(() => child.kill());
-  await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('Server did not start listening')), 5000);
-    let output = '';
-    child.stdout.on('data', data => { output += data; if (/http:\/\/127\.0\.0\.1:\d+\//.test(output)) { clearTimeout(timer); resolve(); } });
-    child.once('exit', code => { clearTimeout(timer); reject(new Error(`Server exited: ${code}`)); });
-  });
+  const server = startServer(env({}));
+  t.after(() => server.stop());
+  const url = await server.listening;
+  if (!url) {
+    const {code, stderr} = await server.closed;
+    assert.fail(`Server exited (${code}) instead of listening: ${stderr}`);
+  }
 });
 
-test('production refuses to start when one setting is wrong', {concurrency:true}, async (t) => {
+test('production refuses to start when one setting is wrong', {concurrency:Math.max(2, Math.floor(availableParallelism() / 2))}, async (t) => {
   await Promise.all(cases.map(([name, overrides, message]) => t.test(name, async () => {
     const {code, stdout, stderr} = await refuse(overrides);
     assert.equal(code, 1);
