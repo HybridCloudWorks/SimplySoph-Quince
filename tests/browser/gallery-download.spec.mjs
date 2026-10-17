@@ -32,7 +32,12 @@ async function approvedPhoto(harness, id, album, shade) {
   return jpeg;
 }
 
-test("a signed-in guest downloads all approved photos as one ZIP, in English and Spanish", async ({ page, harness }) => {
+// After the celebration, when there are photos to download (before the
+// ceremony the gallery says when photos open instead: tests/browser/gallery.spec.mjs).
+const AFTER = Date.parse("2027-01-16T12:00:00-06:00");
+
+test("a signed-in guest downloads all approved photos as one ZIP, in English and Spanish", async ({ page, harness, setNow }) => {
+  await setNow(AFTER);
   const household = households.rivera;
   await harness.issueInvitation(household);
   await page.goto(harness.url("/gallery/"));
@@ -82,7 +87,8 @@ test("a signed-in guest downloads all approved photos as one ZIP, in English and
   expect(readZip(await readFile(await descarga.path())).entries).toHaveLength(3);
 });
 
-test("when the owner keeps downloading everything to administrators, guests do not see the action", async ({ page, harness }) => {
+test("when the owner keeps downloading everything to administrators, guests do not see the action", async ({ page, harness, setNow }) => {
+  await setNow(AFTER);
   const household = households.morales;
   await harness.issueInvitation(household);
   await approvedPhoto(harness, "34444444-4444-4444-8444-444444444444", "event", "#d7b779");
