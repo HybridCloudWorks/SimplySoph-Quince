@@ -45,7 +45,8 @@ test("EN: a guest at the table shares from the card without signing in, and the 
   await send.click();
   const row = page.locator(".upload-result").filter({ hasText: "IMG_2101.JPG" });
   await expect(row).toContainText("Arrived. We'll review it before it appears in the gallery.");
-  await expect(row).toContainText(/Reference: [0-9A-F]{4}-[0-9A-F]{4}\./);
+  // A random reference from the server (no 0, 1, I, L, O or U), not the photo id (P5-09).
+  await expect(row).toContainText(/Reference: [2-9A-HJKMNP-TV-Z]{4}-[2-9A-HJKMNP-TV-Z]{4}\./);
   await expect(page.locator("#upload-summary")).toContainText("1 of 1 arrived. Thank you!");
   await expect(page.locator("#upload-summary")).toContainText("email misxv@simplysoph.com with its reference");
   // Focus stays on Send once the batch is done (A7-V08).
@@ -53,7 +54,8 @@ test("EN: a guest at the table shares from the card without signing in, and the 
   // In the family's queue: pending, from the table card, with the name.
   const rows = Object.values((await harness.ledger.read()).photos);
   expect(rows.map((r) => [r.state, r.source, r.uploaderName])).toEqual([["pending", "party", "Mia"]]);
-  const ref = (await row.textContent()).match(/Reference: ([0-9A-F-]{9})/)[1];
+  const ref = (await row.textContent()).match(/Reference: ([2-9A-HJKMNP-TV-Z]{4}-[2-9A-HJKMNP-TV-Z]{4})/)[1];
+  expect(ref.replace("-", "").toLowerCase()).not.toBe(rows[0].id.replace(/-/g, "").slice(0, 8));
   expect((await harness.admin("moderation")).photos[0].ref).toBe(ref);
   // The card never opens the gallery.
   await page.goto(harness.url("/gallery/"));
@@ -112,7 +114,7 @@ test("ES: the card in Spanish, the file picker in Spanish, and a file taken back
   await page.getByRole("button", { name: "Enviar mis fotos y videos" }).click();
   await expect(page.locator("#upload-summary")).toContainText("Llegaron 2 de 2. ¡Gracias!");
   const row = page.locator(".upload-result").filter({ hasText: "IMG_3102.JPG" });
-  await expect(row).toContainText(/Referencia: [0-9A-F]{4}-[0-9A-F]{4}\./);
+  await expect(row).toContainText(/Referencia: [2-9A-HJKMNP-TV-Z]{4}-[2-9A-HJKMNP-TV-Z]{4}\./);
   // Taken back: the button goes, focus lands on what happened to the file.
   await row.getByRole("button", { name: "Quitar IMG_3102.JPG" }).click();
   await expect(row).toContainText("Lo quitaste antes de que alguien lo viera.");

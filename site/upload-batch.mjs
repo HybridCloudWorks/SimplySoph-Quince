@@ -133,8 +133,11 @@ export async function checkVideoLengths(entries, measure = videoSeconds) {
       if (entry.seconds >= uploadLimits.videoSeconds + 1) entry.problem = "video-long";
     }
 }
-// The short reference a guest can quote to ask for a file's removal, and that
-// the family sees next to it in Admin: the first 8 characters of its id.
+// The reference shown, before references were random, for a table card
+// file: the first 8 characters of its id. Every signed-in guest can see ids,
+// so it does not identify the uploader; files stored since carry a random
+// reference from the server (server/application.mjs newReference), and this
+// is only how older ones are still shown in Admin.
 export const referenceCode = (id) =>
   String(id || "")
     .replace(/[^a-f0-9]/gi, "")
@@ -251,6 +254,8 @@ async function sendFile(entry, transport, changed, { sleep, clock, retries }) {
         if (result.complete) {
           entry.reason = entry.retryAt = undefined;
           entry.state = result.state === "processing" ? "processing" : "received";
+          // A table card file's removal reference, from the server.
+          if (typeof result.ref === "string") entry.ref = result.ref;
           return entry.state;
         }
         // Progress earns fresh retries; a server that keeps answering without

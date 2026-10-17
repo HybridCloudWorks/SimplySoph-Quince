@@ -23,6 +23,10 @@ async function exchange(f, code) {
   const r = await f.request(null, "party-session", { token: code });
   return { cookie: r.setCookie.split(";")[0], csrf: r.csrf, closesAt: r.closesAt };
 }
+// What a table card cookie says (it is signed, not secret): "p.<payload>.<mac>".
+const payloadOf = (cookie) => JSON.parse(Buffer.from(cookie.slice(10).split(".")[1], "base64url").toString());
+// A reference from the server's alphabet (no 0, 1, I, L, O or U).
+const REF = /^[2-9A-HJKMNP-TV-Z]{4}-[2-9A-HJKMNP-TV-Z]{4}$/;
 
 test("dormant by default: with no card every exchange is refused, inside the window too", async () => {
   const f = await setup();
@@ -89,9 +93,11 @@ test("the exchange works only inside the party upload window, to the millisecond
 test("a session from the card ends with the window, and its renewals never go past it", async () => {
   const f = await setup({ at: WINDOW_END - 20 * 60000 });
   const phone = await exchange(f, codeOf((await createCard(f)).url));
-  const row = Object.values((await f.state()).sessions).find((s) => s.kind === "party");
+  // A signed cookie, not a ledger row (P5-03): nothing about the phone is stored.
+  assert.equal(Object.values((await f.state()).sessions).filter((s) => s.kind === "party").length, 0);
+  const row = payloadOf(phone.cookie);
   assert.ok(row.expiresAt <= WINDOW_END);
-  assert.deepEqual(Object.keys(row).sort(), ["cardVersion", "csrf", "deviceId", "expiresAt", "kind", "scope", "startedAt"]);
+  assert.deepEqual(Object.keys(row).sort(), ["cardVersion", "deviceId", "expiresAt", "issuedAt", "kind"]);
   assert.equal((await f.request(phone, "session")).kind, "party");
   f.setNow(WINDOW_END - 1);
   assert.ok(await f.request(phone, "uploads/quota"));
@@ -104,12 +110,13 @@ test("a rotated code and a closed card are refused, and their phones lose the se
   const f = await setup();
   const first = codeOf((await createCard(f)).url);
   const phone = await exchange(f, first);
-  assert.equal(await f.app.canUpload(phone.cookie), "party:" + Object.values((await f.state()).sessions).find((s) => s.kind === "party").deviceId);
+  const opened = (await f.request(phone, "uploads", f.startBody(await photo()))).id;
+  assert.equal((await f.app.canUpload(phone.cookie, "/api/uploads/" + opened)).key, "party:" + payloadOf(phone.cookie).deviceId);
   const second = codeOf((await f.request("admin", "admin/party-card", { action: "rotate" })).url);
   assert.notEqual(second, first);
   await assert.rejects(f.request(null, "party-session", { token: first }), (e) => e.code === "PARTY_CARD_INVALID");
   await assert.rejects(f.request(phone, "uploads/quota"), (e) => e.status === 401);
-  assert.equal(await f.app.canUpload(phone.cookie), null, "no upload slot for the old card");
+  assert.equal(await f.app.canUpload(phone.cookie, "/api/uploads/" + opened), null, "no upload slot for the old card");
   const again = await exchange(f, second);
   assert.ok((await f.request(again, "uploads/quota")).limit);
   await f.request("admin", "admin/party-card", { action: "close" });
@@ -153,7 +160,8 @@ test("a file from the card lands in the same review queue, labelled, with the op
   await assert.rejects(f.request(phone, "uploads", f.startBody(bytes, { name: "x".repeat(61) })), (e) => e.code === "INVALID_TEXT");
   const sentBefore = f.sent.length;
   const done = await f.upload(phone, bytes, { name: "Mia", caption: "First dance" });
-  assert.deepEqual(done, { id: done.id, received: bytes.length, complete: true, state: "review" });
+  assert.deepEqual(done, { id: done.id, received: bytes.length, complete: true, state: "review", ref: done.ref });
+  assert.match(done.ref, REF);
   const row = (await f.state()).photos[done.id];
   assert.deepEqual(
     [row.state, row.source, row.uploaderName, row.caption, row.householdId, row.accountId],
@@ -164,7 +172,7 @@ test("a file from the card lands in the same review queue, labelled, with the op
   const listed = (await f.request("admin", "admin/moderation")).photos.find((p) => p.id === done.id);
   assert.equal(listed.source, "party");
   assert.equal(listed.uploaderName, "Mia");
-  assert.match(listed.ref, /^[0-9A-F]{4}-[0-9A-F]{4}$/);
+  assert.equal(listed.ref, done.ref, "Admin sees the reference the guest was shown");
   assert.equal(listed.deviceId, undefined, "the phone's random name stays on the server");
   // Its own list, with the same reference the guest was shown.
   assert.deepEqual(await f.request(phone, "uploads/mine"), {
@@ -182,7 +190,8 @@ test("each phone has its own cap and the card a total, with the refusal saying w
   const code = codeOf((await createCard(f)).url);
   const one = await exchange(f, code),
     two = await exchange(f, code);
-  for (let i = 0; i < quota.perPartyDevice; i++) await f.request(one, "uploads", f.startBody(await photo()));
+  // Files count once they are stored (P5-01).
+  for (let i = 0; i < quota.perPartyDevice; i++) await f.upload(one, await photo());
   const refused = await f.request(one, "uploads", f.startBody(await photo())).catch((e) => e);
   assert.equal(refused.status, 429);
   assert.equal(refused.code, "PARTY_DEVICE_LIMIT");
@@ -197,12 +206,12 @@ test("each phone has its own cap and the card a total, with the refusal saying w
   assert.equal(refused.retryAfter, undefined, "no Retry-After: this count does not reset during the party");
   assert.deepEqual((await f.request(one, "uploads/quota")).remaining, 0);
   // Another phone still can, until the card's total is reached.
-  assert.ok((await f.request(two, "uploads", f.startBody(await photo()))).id);
+  assert.ok((await f.upload(two, await photo())).complete);
   const full = await f.request(two, "uploads", f.startBody(await photo())).catch((e) => e);
   assert.deepEqual([full.status, full.code, full.details.scope, full.details.limit], [429, "PARTY_CARD_FULL", "card", quota.perPartyCard]);
   // Families are not affected by the card's total.
   assert.ok((await f.request("guest", "uploads", f.startBody(await photo()))).id);
-  assert.equal((await f.state()).partyCard.begun, quota.perPartyCard);
+  assert.equal((await f.state()).partyCard.received, quota.perPartyCard);
 });
 
 test("a phone can take back its own pending file, not anyone else's, and not after the review", async () => {
@@ -224,26 +233,85 @@ test("a phone can take back its own pending file, not anyone else's, and not aft
   assert.equal((await f.request(mine, "uploads/mine")).pending, 0);
 });
 
-test("nothing that identifies the card or the guest reaches the logs; the phone's counts are forgotten a week after the window", async () => {
+test("nothing that identifies the card or the guest reaches the logs", async () => {
   const f = await setup();
   const made = await createCard(f),
     code = codeOf(made.url);
   const phone = await exchange(f, code);
   await f.upload(phone, await photo(), { name: "Mia Example" });
   await f.request(null, "party-session", { token: token() }).catch(() => {});
-  const deviceId = Object.values((await f.state()).sessions).find((s) => s.kind === "party").deviceId;
+  const deviceId = payloadOf(phone.cookie).deviceId;
   const written = JSON.stringify(f.logs) + JSON.stringify((await f.state()).audit);
   for (const secret of [code, "Mia Example", deviceId, phone.cookie.slice(10)])
     assert.ok(!written.includes(secret), "not logged: " + secret.slice(0, 6));
-  // A week after the window, the per-phone counts and the phone names go;
-  // the file and the name the guest typed stay for the family's keepsakes.
+});
+
+// P5-04: the deletion used to run only while an upload record older than a
+// day existed, so once the job had cleared those (the day after the party)
+// it never ran. Each run of either scheduled job now checks, through the
+// routes Cloud Scheduler calls.
+async function forgettingFixture() {
+  const f = await setup({ verifyScheduler: async (h) => h === "Bearer scheduler" });
+  const phone = await exchange(f, codeOf((await createCard(f)).url));
+  const sent = await f.upload(phone, await photo(), { name: "Mia Example" });
+  const job = (name) =>
+    f.app.dispatch({ path: "/api/internal/" + name, method: "POST", body: {}, headers: { authorization: "Bearer scheduler" } });
+  const kept = async () => {
+    const s = await f.state();
+    const row = s.photos[sent.id];
+    return { phones: Object.keys(s.partyDevices || {}).length, deviceId: !!row.deviceId, row };
+  };
+  return { f, sent, job, kept };
+}
+for (const name of ["media", "drain"])
+  test(`the phone counts and names go a week after the window, to the millisecond, from the ${name} job, with no upload left to clean`, async () => {
+    const { f, sent, job, kept } = await forgettingFixture();
+    // The day after the party the media job clears the upload records (what
+    // used to be the only trigger).
+    f.setNow(WINDOW_END + DAY + 60000);
+    await job("media");
+    assert.equal(Object.keys((await f.state()).uploads || {}).length, 0, "no upload record is left");
+    for (const at of [WINDOW_END + 2 * DAY, WINDOW_END + 7 * DAY - 1]) {
+      f.setNow(at);
+      await job(name);
+      assert.equal((await kept()).phones, 1, "kept until a week after: " + new Date(at).toISOString());
+      assert.equal((await kept()).deviceId, true);
+    }
+    f.setNow(WINDOW_END + 7 * DAY + 1);
+    await job(name);
+    const after = await kept();
+    assert.equal(after.phones, 0);
+    assert.equal((await f.state()).partyDevices, undefined);
+    assert.equal(after.deviceId, false);
+    // The file stays, labelled, with the name the guest typed and its reference.
+    assert.deepEqual([after.row.source, after.row.uploaderName, after.row.ref], ["party", "Mia Example", sent.ref]);
+    // Idempotent and cheap: a later run with nothing to delete writes nothing.
+    const saves = f.ledger.adapter.save;
+    let writes = 0;
+    f.ledger.adapter.save = (...a) => (writes++, saves(...a));
+    f.setNow(WINDOW_END + 365 * DAY);
+    await job(name);
+    assert.equal(writes, 0);
+  });
+
+test("at exactly a week after the window the next run deletes them", async () => {
+  const { f, job, kept } = await forgettingFixture();
+  f.setNow(WINDOW_END + DAY + 60000);
+  await job("media");
   f.setNow(WINDOW_END + 7 * DAY);
-  await f.app.processMedia();
-  const s = await f.state();
-  assert.equal(s.partyDevices, undefined);
-  const row = Object.values(s.photos).find((r) => r.source === "party");
-  assert.equal(row.deviceId, undefined);
-  assert.equal(row.uploaderName, "Mia Example");
+  assert.equal((await job("media")).phonesForgotten, true);
+  assert.deepEqual([(await kept()).phones, (await kept()).deviceId], [0, false]);
+});
+
+test("a year after the window, with no upload record and no run since, the first run deletes them", async () => {
+  const { f, job, kept } = await forgettingFixture();
+  await f.ledger.transaction((s) => {
+    s.uploads = {};
+  });
+  f.setNow(WINDOW_END + 365 * DAY);
+  const result = await job("drain");
+  assert.deepEqual(result.partyPhones, { forgotten: true });
+  assert.deepEqual([(await kept()).phones, (await kept()).deviceId], [0, false]);
 });
 
 test("Privacy and the Photo & video policy say what the table card keeps, for how long, and how to ask for removal, in both languages", async () => {

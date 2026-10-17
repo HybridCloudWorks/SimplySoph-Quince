@@ -2707,15 +2707,26 @@ test("only email sign-ins and admins may start an upload; RSVP-only link session
     body: { token: f.guestToken },
     headers: { origin },
   })).setCookie.split(";")[0];
-  assert.equal(await f.app.canUpload(linkCookie), null);
-  assert.equal(await f.app.canUpload("__session=" + token()), null);
   await f.publicPost("auth/email/request", { email: "test@example.com" });
   const s = await f.publicPost("auth/email/verify", { token: linkOf(f.sent.at(-1)) });
   const cookie = s.setCookie.split(";")[0];
-  const key = await f.app.canUpload(cookie);
+  // A slot is for a piece of the session's own upload (P5-02).
+  const { id } = await f.app.dispatch({
+    path: "/api/uploads",
+    method: "POST",
+    body: { kind: "photo", type: "image/jpeg", size: 1000, album: "event", caption: "", consent: true },
+    headers: { origin, cookie, "x-csrf-token": s.csrf },
+  });
+  const piece = "/api/uploads/" + id;
+  assert.equal(await f.app.canUpload(linkCookie, piece), null);
+  assert.equal(await f.app.canUpload("__session=" + token(), piece), null);
+  const key = (await f.app.canUpload(cookie, piece)).key;
   assert.ok(key);
   // One session, one key, however the cookie header is spelled.
-  assert.equal(await f.app.canUpload(cookie + "  ;a=1"), key);
+  assert.equal((await f.app.canUpload(cookie + "  ;a=1", piece)).key, key);
+  // Not for a made-up upload, nor for anything but an upload piece.
+  await assert.rejects(f.app.canUpload(cookie, "/api/uploads/12345678-1234-4234-8234-000000000000"), (e) => e.status === 404);
+  assert.equal(await f.app.canUpload(cookie, "/api/admin/documents/upload"), null);
 });
 
 test("a guest's sign out everywhere ends guest sign-ins only, never that person's admin session (re-audit)", async () => {
@@ -3216,7 +3227,16 @@ test("one person signed in on two devices uploads one file at a time; the daily 
   const phone = await signIn(),
     laptop = await signIn();
   assert.ok(phone !== laptop);
-  assert.equal(await f.app.canUpload(phone), await f.app.canUpload(laptop));
+  const csrfOf = async (cookie) =>
+    (await f.app.dispatch({ path: "/api/session", method: "GET", headers: { origin, cookie } })).csrf;
+  const { id } = await f.app.dispatch({
+    path: "/api/uploads",
+    method: "POST",
+    body: { kind: "photo", type: "image/jpeg", size: 1000, album: "event", caption: "", consent: true },
+    headers: { origin, cookie: phone, "x-csrf-token": await csrfOf(phone) },
+  });
+  // The upload is the person's, so either device's piece takes the same one slot.
+  assert.equal((await f.app.canUpload(phone, "/api/uploads/" + id)).key, (await f.app.canUpload(laptop, "/api/uploads/" + id)).key);
   // The family's limit (server/upload-quota.mjs), then a plain refusal.
   await f.ledger.transaction((st) => {
     for (const v of Object.values(st.sessions)) if (v.accountId) v.expiresAt = at + 86400000;
