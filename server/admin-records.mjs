@@ -29,7 +29,7 @@ export function createAdminRecords({ ledger, key, now = Date.now }) {
       const s = await ledger.read();
       return {
         rows: Object.values(s[collection] || {})
-          .map(({ content, variables, ...r }) => ({
+          .map(({ content, textContent, variables, ...r }) => ({
             ...r,
             version: r.recordVersion || 0,
           }))
@@ -95,12 +95,14 @@ export function createAdminRecords({ ledger, key, now = Date.now }) {
             if (k === "subject" && /[\r\n]/.test(value))
               throw error(422, "INVALID_SUBJECT");
             if (kind === "sms" && k === "text") smsPreview(value);
-            if (k === "text" && kind === "email")
+            if (k === "text" && kind === "email") {
               row.content = seal(
                 `<p>${escapeHtml(value).replaceAll("\n", "<br>")}</p>`,
                 key,
               );
-            else row[k] = value;
+              // The text version is replaced with it, so both say the same.
+              row.textContent = seal(value, key);
+            } else row[k] = value;
           }
         }
         if (action === "create" && (!row.title || !row.text))

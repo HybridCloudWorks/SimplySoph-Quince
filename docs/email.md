@@ -10,6 +10,23 @@ How the website sends email today. Every setting is listed in [deployment.md](de
 
 SendGrid is Twilio's email service, but it is a separate account; text messages and WhatsApp do not use it.
 
+## Text and HTML
+
+Every email built from a template (invitation, reminder, update, details, change, thank-you, RSVP receipt, sign-in link) has a plain-text version as well as its HTML, and a message an organizer writes has their words as typed. Mail programs that do not show HTML use the text, and spam filters count HTML-only mail against it (SpamAssassin's `MIME_HTML_ONLY`, for example). What each provider sends:
+
+| Provider | Sign-in link | Every other email with a text version |
+|---|---|---|
+| Microsoft 365 (Graph) | HTML only, as before, and **not** kept in Sent Items | Text and HTML in one message (text first), kept in Sent Items |
+| SendGrid standby | Text and HTML | Text and HTML |
+
+**The Sent Items rule.** Graph's JSON form of `sendMail` carries a single body (HTML or text); text and HTML travel together only in its MIME form, and Microsoft documents that a MIME send is saved to Sent Items: the `saveToSentItems` switch exists only in the JSON form ([sendMail reference](https://learn.microsoft.com/graph/api/user-sendmail), [MIME messages](https://learn.microsoft.com/graph/outlook-send-mime-message)). A sign-in link must never sit in the shared mailbox, where anyone with access could use it, so it keeps the HTML-only JSON send with `saveToSentItems` off. Every other email is kept in Sent Items anyway, so it gains its text version. `server/mail.mjs` enforces this, and `tests/mail.test.mjs` pins it.
+
+Also worth knowing:
+
+- In the MIME form the website writes the sender name: "Sophia's Quinceañera", the name SendGrid already uses. A sign-in link sent through Graph shows the mailbox's own display name from Microsoft 365.
+- A draft saved before this change (in Communications or a group of emails) has no text version kept, so it goes out HTML only.
+- Family notifications, the administrator sign-in link and the "we answered your message" notice have no text version yet; they stay HTML only.
+
 ## What is sent, and who presses Send
 
 | Message | When it is sent |
@@ -39,6 +56,17 @@ Send one reviewed email to a test address you own and check that:
 - it appears in Sent Items (sign-in links deliberately do not)
 
 This is the email item in the acceptance gate in [deployment.md](deployment.md#acceptance-gate-before-any-real-invitation).
+
+## Owner check after the next API deploy
+
+The text version reaches guests only after the API is deployed again; API deploys are manual ([deployment.md](deployment.md#deploy-the-api)). Nothing here could be tried against the real Microsoft 365 or SendGrid before then, so check it once, with an address you own:
+
+1. Send yourself one RSVP receipt or one invitation (**Admin → Invitations**), and ask for one sign-in link from a Spanish page (`/es/account/`).
+2. Open each message's source (Outlook on the web: **⋯ → View → View message source**; Gmail: **⋮ → Show original**).
+3. Receipt or invitation: `Content-Type: multipart/alternative`, a `text/plain` part before a `text/html` part, the subject reads correctly with its accents and "·" (in Spanish, for example "Su respuesta se actualizó · Los XV de Sophia"), the sender reads "Sophia's Quinceañera", and the message is in Sent Items.
+4. Sign-in link: one HTML body as before, the Spanish subject "Tu enlace para entrar · Los XV de Sophia", and the message is **not** in Sent Items.
+
+If Microsoft refuses the text-and-HTML form (a 400 answer, which means nothing was sent), the API sends the same email once more the old way, HTML only, and logs the warning `mail MIME refused; sent as HTML`. Guests still get the email. If that warning appears in the API's logs, the text version is not reaching anyone: report it. No email is sent twice: any other answer, including a timeout or a server error, is never retried.
 
 ## If something goes wrong
 
