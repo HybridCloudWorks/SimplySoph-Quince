@@ -3,6 +3,8 @@ import { registryDefaults } from "./registry-settings.mjs";
 import { error } from "./auth.mjs";
 import { visibilityOf } from "../site/notes.mjs";
 import { places } from "../site/promises.mjs";
+import { retentionReview } from "../site/policies.mjs";
+import { localDay } from "../site/lifecycle.mjs";
 // The saved settings, or the defaults until the family first saves them.
 // site.guestbook.visibility (who can read approved notes for Sophia,
 // site/notes.mjs) is kept apart in the ledger, s.guestbook, and changed only on
@@ -151,6 +153,25 @@ export function validateSettings(input) {
       es = line(input.contact?.host?.es ?? "");
     if (!en !== !es) bad();
     next.contact = { host: { en, es } };
+  }
+  // How long the site and the photos stay (R-171), the family's decision:
+  // "YYYY-MM-DD" days, each blank (null) until decided, and then nothing about
+  // it is shown. The photos stay at least until the review date the Privacy
+  // policy gives (site/policies.mjs retentionReview), never past the site, and
+  // the site stays past the celebration.
+  if (input.lifespan !== undefined) {
+    const day = (v) => {
+      if (v === null || v === undefined || v === "") return null;
+      if (typeof v !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(v)) bad();
+      if (new Date(v + "T00:00:00Z").toISOString().slice(0, 10) !== v) bad();
+      return v;
+    };
+    const siteUntil = day(input.lifespan?.siteUntil),
+      photosUntil = day(input.lifespan?.photosUntil),
+      partyOver = localDay(Date.parse(next.reception.end || next.reception.start));
+    if (photosUntil && photosUntil < retentionReview) bad();
+    if (siteUntil && (siteUntil < partyOver || (photosUntil && siteUntil < photosUntil))) bad();
+    next.lifespan = siteUntil || photosUntil ? { siteUntil, photosUntil } : null;
   }
   // `guestbook` is not taken from here (see siteSettings).
   // Who may download all approved photos and videos at once (the owner's

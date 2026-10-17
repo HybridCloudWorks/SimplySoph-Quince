@@ -261,6 +261,9 @@ function contents(route, lang) {
       `<div class="route-strip${drive ? " has-drive" : ""}"><div><b>${time(celebration.ceremony.start, lang, nb)} · ${sayTerm(terms.ceremony, lang)}</b><span><a href="${href("ceremony", lang)}">${esc(celebration.ceremony.name)}${arrow}</a><br>${esc(celebration.ceremony.address)}</span></div>${drive}<div><b>${time(celebration.dinner.start, lang, nb)} · ${sayTerm(terms.dinner, lang)}</b><span><a href="${href("reception", lang)}">${esc(celebration.reception.name)}${arrow}</a><br>${esc(celebration.reception.address)}</span></div></div>` +
       (stay.length ? `<div class="cards">${stay.join("")}</div>` : body);
   }
+  // How long the site and photos stay, once the family sets it in the event
+  // settings (site/lifespan.mjs fills it; hidden until then).
+  const lifespan = '<p class="lifespan" data-lifespan hidden></p>';
   if (route === "thank-you" && (family.thanksNote || family.highlightVideo))
     body = `<div class="thanks-note"><p class="thanks-script"${es ? "" : ' lang="es"'}>Gracias</p>${family.thanksNote ? `<p>${esc(localized(family.thanksNote))}</p>` : ""}<p class="actions">${family.highlightVideo ? `<a class="button burgundy" href="${safeLink(family.highlightVideo)}" target="_blank" rel="noopener noreferrer">${say("Watch the highlights", "Ver los mejores momentos")}${newTab(lang)}</a>` : ""}<a href="${href("share", lang)}">${sayTerm(terms.sharePhotos, lang)}${arrow}</a></p></div>`;
   // Each part of the day carries its own time, place, map and calendar file;
@@ -304,6 +307,7 @@ function contents(route, lang) {
       // (data-gallery-albums: a card per album with media, when there is more
       // than one to choose between).
       // data-gallery-pending: a signed-in guest's own files waiting for review.
+      lifespan +
       '<p class="notice gallery-pending" data-gallery-pending hidden></p><div class="gallery-state" data-gallery-state><p role="status">' +
       say("Opening the gallery…", "Abriendo la galería…") +
       '</p></div><div data-gallery-albums hidden></div><section class="gallery-section" data-photos-section hidden><h2>' +
@@ -437,6 +441,7 @@ function contents(route, lang) {
             list + `<details><summary>${q}</summary>${a.html ?? `<p>${a}</p>`}</details>`,
           '<div class="faq-list">',
         ) + `</div><p>${link("contact", t.contact)}</p>`;
+  if (route === "thank-you") body += lifespan;
   if (route === "privacy")
     body = `<article class="editorial"><h2>${say("What we collect and why", "Qué guardamos y para qué")}</h2><p>${say("Our guest list has each family’s names, contact details and the seats we saved for them. When you RSVP, we save who is coming to each part of the day, plus any contact corrections or requests you add. When you sign in, we also keep the photos and videos you upload, your notes for Sophia and the messages you send us. We use all of this only to plan the celebration and to keep in touch with you about it.", "Nuestra lista de invitados tiene los nombres y datos de contacto de cada familia y los lugares que apartamos para ella. Cuando confirmas tu asistencia, guardamos quién viene a cada parte del día y las correcciones de contacto o solicitudes que agregues. Cuando entras al sitio, también guardamos las fotos y los videos que subas, tus mensajes para Sophia y lo que nos escribas. Usamos todo esto solo para organizar la celebración y para estar en contacto contigo sobre ella.")}</p><p data-note-audience="privacy">${esc(noteSentence("privacy", "guests", lang))}</p><p>${say("Services that help us run the site: Firebase Hosting (Google) serves these pages. Google Cloud privately stores RSVPs, sign-in records, messages, photos and videos. Our guest list is kept in Notion. Our email comes from misxv@simplysoph.com through Microsoft 365; if Microsoft 365 is unavailable, our backup service, SendGrid, sends it instead. Twilio sends our text messages, and Twilio and Meta deliver our WhatsApp messages. Google Fonts provides the lettering and receives normal network information, like your IP address, when a page loads. If you choose to sign in with Google or Microsoft, they confirm your email address to us. We share information with these services only so they can do their part.", "Servicios que nos ayudan con el sitio: Firebase Hosting (de Google) publica estas páginas. Google Cloud guarda en privado las respuestas, los registros de acceso, los mensajes, las fotos y los videos. Nuestra lista de invitados está en Notion. Nuestros correos salen de misxv@simplysoph.com a través de Microsoft 365; si Microsoft 365 no está disponible, los envía nuestro servicio de respaldo, SendGrid. Twilio envía nuestros mensajes de texto, y Twilio y Meta entregan nuestros mensajes de WhatsApp. Google Fonts proporciona los tipos de letra y recibe información normal de conexión, como tu dirección IP, al cargar una página. Si decides entrar con Google o Microsoft, ellos nos confirman tu correo. Solo compartimos información con estos servicios para que hagan su parte.")}</p><p>${say("Like most websites, our servers keep short-term technical logs, such as IP address and browser type, to keep the site working and safe.", "Como la mayoría de los sitios web, nuestros servidores guardan por poco tiempo registros técnicos, como la dirección IP y el tipo de navegador, para que el sitio funcione bien y de forma segura.")}</p><h3>${say("Your choices", "Tus opciones")}</h3><p>${say("Mailing addresses, requests, messages, photos, videos and phone numbers are all optional. Please keep your invitation link within your family: anyone who has it can open and change your RSVP. To see, correct or delete your information, email us:", "Las direcciones postales, solicitudes, mensajes, fotos, videos y teléfonos son opcionales. Por favor, comparte tu enlace de invitación solo con tu familia: cualquier persona que lo tenga puede abrir y cambiar tu respuesta. Para ver, corregir o borrar tu información, escríbenos:")}</p><a href="mailto:${event.sender}">${event.sender}</a></article>`;
   if (route === "terms") body = "";
@@ -612,7 +617,7 @@ function head({ route, title, lang, admin }) {
 }
 function document({ route, title, lang = "en", admin = false }) {
   const t = copy[lang];
-  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="strict-origin-when-cross-origin">${head({ route, title, lang, admin })}<link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/pages.css">${route === "404" ? '<script type="module" src="/not-found.js"></script>' : ""}<script type="module" src="/nav.js"></script><script type="module" src="/${admin ? "admin" : "guest"}.js"></script></head><body data-route="${route}" data-register="${registerFor(route)}"><a class="skip" href="#main">${lang === "es" ? "Ir al contenido" : "Skip to content"}</a>${navigation(lang, admin ? "" : route)}<main id="main" tabindex="-1">${
+  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="strict-origin-when-cross-origin">${head({ route, title, lang, admin })}<link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/pages.css">${route === "404" ? '<script type="module" src="/not-found.js"></script>' : ""}${["gallery", "thank-you"].includes(route) && !admin ? '<script type="module" src="/lifespan.mjs"></script>' : ""}<script type="module" src="/nav.js"></script><script type="module" src="/${admin ? "admin" : "guest"}.js"></script></head><body data-route="${route}" data-register="${registerFor(route)}"><a class="skip" href="#main">${lang === "es" ? "Ir al contenido" : "Skip to content"}</a>${navigation(lang, admin ? "" : route)}<main id="main" tabindex="-1">${
     admin
       ? `<section class="section admin-shell"><aside aria-label="Administration" hidden>${adminRoutes
           .filter(
@@ -719,6 +724,7 @@ for (const file of [
   "notes.mjs",
   "gallery-download.js",
   "promises.mjs",
+  "lifespan.mjs",
 ])
   await copyFile(
     new URL("../site/" + file, import.meta.url),

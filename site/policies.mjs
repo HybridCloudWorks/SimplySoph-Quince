@@ -9,6 +9,9 @@ import { event } from "./content.mjs";
 // One retention statement, used on every page that mentions how long we keep
 // information (privacy, WhatsApp). February 1, 2027 is the family's review
 // date (DATA_RETENTION_DATE, docs/cleanup.md); no automatic deletion is scheduled.
+// A photo lifespan the family sets (site.lifespan.photosUntil,
+// server/site-settings.mjs) can never end before it (tests/lifespan.test.mjs).
+export const retentionReview = "2027-02-01";
 const retention = {
   en: "After the celebration, starting February 1, 2027, we review the information we collected for it and delete what we no longer need. You can ask us to delete your information at any time.",
   es: "Después de la celebración, a partir del 1 de febrero de 2027, revisamos la información que reunimos para ella y borramos lo que ya no necesitamos. Puedes pedirnos que borremos tu información en cualquier momento.",

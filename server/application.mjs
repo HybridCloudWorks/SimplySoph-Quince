@@ -2509,6 +2509,8 @@ export function createApplication({
           if (!site.gallery && s.site?.gallery) site.gallery = s.site.gallery;
           // Likewise Contact's named host (R-166): only a save that sends it changes it.
           if (!site.contact && s.site?.contact) site.contact = s.site.contact;
+          // And the site and photo lifespan (R-171).
+          if (site.lifespan === undefined && s.site?.lifespan) site.lifespan = s.site.lifespan;
           site.version++;
           s.site = site;
           audit(s, session.actor, "site-settings", "event", now());
