@@ -75,11 +75,17 @@ test("after a form error, fixing the field and pressing the button once is enoug
 test("switching language on My account keeps the page the sign-in was asked from", async ({
   page,
   harness,
+  setNow,
 }) => {
+  // After the celebration, when the gallery asks for a sign-in (before it,
+  // an empty gallery has no sign-in wall: tests/browser/gallery.spec.mjs).
+  await setNow(Date.parse("2027-01-16T12:00:00-06:00"));
   await harness.issueInvitation(households.morales);
   await page.goto(harness.url("/gallery/"));
   await page.getByRole("link", { name: "Sign in to see the gallery" }).click();
   await expect(page).toHaveURL(harness.url("/account/?return=gallery"));
+  // The page's script carries the return page into the switch once it runs.
+  await expect(page.getByRole("link", { name: "Español" })).toHaveAttribute("href", "/es/account/?return=gallery");
   await page.getByRole("link", { name: "Español" }).click();
   await expect(page).toHaveURL(harness.url("/es/account/?return=gallery"));
   await signIn(page, harness, households.morales.email, {

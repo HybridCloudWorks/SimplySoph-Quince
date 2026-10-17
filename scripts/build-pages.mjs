@@ -217,7 +217,8 @@ function contents(route, lang) {
       // yet, or the albums and sections that actually have something in them
       // (data-gallery-albums: a card per album with media, when there is more
       // than one to choose between).
-      '<div class="gallery-state" data-gallery-state><p role="status">' +
+      // data-gallery-pending: a signed-in guest's own files waiting for review.
+      '<p class="notice gallery-pending" data-gallery-pending hidden></p><div class="gallery-state" data-gallery-state><p role="status">' +
       say("Opening the gallery…", "Abriendo la galería…") +
       '</p></div><div data-gallery-albums hidden></div><section class="gallery-section" data-photos-section hidden><h2>' +
       say("Photographs", "Fotografías") +
@@ -226,15 +227,18 @@ function contents(route, lang) {
       '</h2><div data-videos class="media-grid"></div></section><p data-gallery-share hidden>' +
       link("share", say("Share your photos", "Comparte tus fotos")) +
       "</p>";
-  // The printed table QR opens this page in English (/share/#media-upload),
-  // so before sign-in it explains itself in both languages on one screen.
-  // #media-upload sits above that explanation, so the QR lands on it.
+  // The printed QR codes open this page in English (/share/#media-upload for
+  // signed-in sharing, /share/#party=… for the table card), so before sign-in
+  // it explains itself in both languages on one screen. #media-upload sits
+  // above that explanation, so the QR lands on it. The sign-in itself is
+  // explained once, by the form's own hint (R-088); a table card session
+  // hides these steps (site/media-upload.js).
   if (route === "share") {
     const other = es ? "en" : "es";
-    body = `<div class="share-intro"><p class="lead">${say("Share the photos and videos you took.", "Comparte las fotos y los videos que tomaste.")}</p><p>${say("Send us your favorite photos and videos straight from your phone. We review each one before it appears in the gallery for our guests.", "Envíanos tus fotos y videos favoritos directamente desde tu teléfono. Revisamos cada uno antes de que aparezca en la galería para nuestros invitados.")}</p></div><div id="media-upload" tabindex="-1"></div><section class="share-steps" data-share-steps aria-labelledby="share-steps-title"><h2 id="share-steps-title">${say("How to share", "Cómo compartir")}</h2><ol><li>${say("Sign in below with the email where you received your invitation. We email you a link; no password needed.", "Entra abajo con el correo donde recibiste tu invitación. Te enviamos un enlace; no necesitas contraseña.")}</li><li>${say("Choose photos and videos of up to 60 seconds, straight from your phone.", "Elige fotos y videos de hasta 60 segundos, directamente de tu teléfono.")}</li><li>${say("We review them, and then they appear in the gallery for our guests.", "Los revisamos y luego aparecen en la galería para nuestros invitados.")}</li></ol><p lang="${other}">${
+    body = `<div class="share-intro"><p class="lead">${say("Share your photos and videos, during the party or after it.", "Comparte tus fotos y videos, durante la fiesta o después.")}</p><p>${say("Send them straight from your phone. We review each one before it appears in the gallery for our guests.", "Envíalos directamente desde tu teléfono. Revisamos cada uno antes de que aparezca en la galería para nuestros invitados.")}</p></div><div id="media-upload" tabindex="-1"></div><section class="share-steps" data-share-steps aria-labelledby="share-steps-title"><h2 id="share-steps-title">${say("How to share", "Cómo compartir")}</h2><ol><li>${say("Sign in below.", "Entra abajo.")}</li><li>${say("Choose your photos and videos.", "Elige tus fotos y videos.")}</li><li>${say("We review them, and then they appear in the gallery for our guests.", "Los revisamos y luego aparecen en la galería para nuestros invitados.")}</li></ol><p lang="${other}">${
       es
-        ? `<strong>In English:</strong> sign in with the email where you received your invitation, then choose your photos and videos. <a href="${href("share", "en")}" hreflang="en">Open this page in English</a>`
-        : `<strong>En español:</strong> entra con el correo donde recibiste tu invitación y luego elige tus fotos y videos. <a href="${href("share", "es")}" hreflang="es">Ver esta página en español</a>`
+        ? `<strong>In English:</strong> sign in below, then choose your photos and videos. <a href="${href("share", "en")}" hreflang="en">Open this page in English</a>`
+        : `<strong>En español:</strong> entra abajo y luego elige tus fotos y videos. <a href="${href("share", "es")}" hreflang="es">Ver esta página en español</a>`
     }</p></section><div class="portal share-portal" id="portal" data-view="share"></div><div class="media-reminder" role="note"><p><strong>${say("A little reminder", "Un pequeño recordatorio")}</strong></p><p>${say("Only share photos and videos you have permission to share, including a parent’s or guardian’s permission for children. Once we approve them, they are visible to our signed-in guests.", "Comparte solo fotos y videos que tengas permiso de compartir, incluido el permiso de un padre, madre o tutor para los menores. Cuando los aprobamos, los pueden ver nuestros invitados que inician sesión.")} <a href="${href("terms", lang)}">${say("Photo & video policy", "Uso de fotos y videos")}</a></p></div>`;
   }
   if (route === "guestbook" || route === "contact")
@@ -547,6 +551,7 @@ for (const file of [
   "datetime.mjs",
   "lexicon.mjs",
   "experience.js",
+  "site-clock.js",
   "nav.js",
   "not-found.js",
   "admin-experience.js",

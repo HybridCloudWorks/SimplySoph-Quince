@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Ledger, memoryAdapter, memoryMedia } from "../server/store.mjs";
 import { createApplication } from "../server/application.mjs";
+import { uploadQuota } from "../server/upload-quota.mjs";
 import { hash, token, totp, base32, seal } from "../server/auth.mjs";
 import { createHmac } from "node:crypto";
 import { ready } from "../site/content.mjs";
@@ -2948,7 +2949,7 @@ test("one person signed in on two devices uploads one file at a time; the daily 
     laptop = await signIn();
   assert.ok(phone !== laptop);
   assert.equal(await f.app.canUpload(phone), await f.app.canUpload(laptop));
-  // 20 photos and videos a household a day, then a plain message.
+  // The family's limit (server/upload-quota.mjs), then a plain refusal.
   await f.ledger.transaction((st) => {
     for (const v of Object.values(st.sessions)) if (v.accountId) v.expiresAt = at + 86400000;
   });
@@ -2957,7 +2958,7 @@ test("one person signed in on two devices uploads one file at a time; the daily 
       .guest("uploads", { kind: "photo", type: "image/jpeg", size: 1000, album: "event", caption: "", consent: true })
       .catch((e) => e);
   let last;
-  for (let i = 0; i < 21; i++) last = await upload();
+  for (let i = 0; i <= uploadQuota.perDay; i++) last = await upload();
   assert.equal(last.code, "DAILY_UPLOAD_LIMIT");
 });
 

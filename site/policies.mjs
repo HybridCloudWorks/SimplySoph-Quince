@@ -15,9 +15,27 @@ const host = {
   en: "Simply Soph Media is the name Sophia’s family uses for her quinceañera messages. It’s us, not a company.",
   es: "Simply Soph Media es el nombre que usa la familia de Sophia para los mensajes de sus XV; somos nosotros, no una empresa.",
 };
+// The printed table card (R-021): during the celebration, anyone at the party
+// can send photos and videos from its QR code without signing in. What that
+// collects, matching server/application.mjs (files, an optional name and
+// caption, the consent time, a random per-visit code in the session cookie
+// for the per-phone count, deleted a week after the upload window; no email,
+// no IP address), the same review queue, and how to ask for removal (the
+// reference the upload page shows after each file).
+const tableCard = {
+  privacy: {
+    en: "- Photos from the table card: during the celebration, anyone at the party can send us photos and videos from the QR code on the tables without signing in. We keep the files, the name and caption only if you type them, and when you agreed to our Photo & video policy; we don’t ask for your email. To count how many each phone sends, we give your visit a random code through a cookie, never your IP address or anything about your phone, and we delete those counts a week after the celebration. Every file waits for our review, and only guests who sign in see the ones we approve. To have one removed, email us the reference shown after you sent it.",
+    es: "- Fotos desde la tarjeta de la mesa: durante la celebración, cualquier persona en la fiesta puede enviarnos fotos y videos desde el código QR de las mesas sin entrar a una cuenta. Guardamos los archivos, el nombre y la descripción solo si los escribes, y cuándo aceptaste nuestra política de uso de fotos y videos; no te pedimos tu correo. Para contar cuántos envía cada teléfono, le damos a tu visita un código al azar mediante una cookie, nunca tu dirección IP ni datos de tu teléfono, y borramos esos conteos una semana después de la celebración. Revisamos cada archivo, y solo los invitados que entran al sitio ven los que aprobamos. Para que quitemos alguno, escríbenos con la referencia que aparece después de enviarlo.",
+  },
+  terms: {
+    en: "- From the table card at the party you can share without signing in. The same rules apply, and each file shows a reference after it arrives: email it to misxv@simplysoph.com to have that file removed.",
+    es: "- Desde la tarjeta de la mesa en la fiesta puedes compartir sin entrar a una cuenta. Se aplican las mismas reglas, y cada archivo muestra una referencia cuando llega: envíala a misxv@simplysoph.com para que quitemos ese archivo.",
+  },
+};
 export const policies = {
   retention,
   host,
+  tableCard,
   privacy: {
     en: [
       "This website is for the family and friends we invited to Sophia’s quinceañera. " +
@@ -26,6 +44,7 @@ export const policies = {
       "- What we collect: your family’s names and contact details from our guest list, your RSVP, and anything you choose to send us, such as messages, photos, videos, a mailing address or a phone number for updates.",
       "- Who sees it: Sophia’s family and the few people helping us run the celebration. Photos and videos we approve are shown only to guests who sign in. The public pages never show the guest list.",
       "- What we never do: sell your information, use it for advertising, or add ads or analytics trackers to this site.",
+      tableCard.privacy.en,
       "- To see, correct or delete your information: email misxv@simplysoph.com.",
       "- How long we keep it: " + retention.en,
       "The details are below.",
@@ -37,6 +56,7 @@ export const policies = {
       "- Qué guardamos: los nombres y datos de contacto de tu familia que tenemos en nuestra lista de invitados, tu respuesta y lo que decidas enviarnos, como mensajes, fotos, videos, una dirección postal o un teléfono para recibir avisos.",
       "- Quién lo ve: la familia de Sophia y las pocas personas que nos ayudan a organizar la celebración. Las fotos y los videos que aprobamos solo los ven los invitados que entran al sitio. Las páginas públicas nunca muestran la lista de invitados.",
       "- Lo que nunca hacemos: vender tu información, usarla para publicidad ni poner en este sitio anuncios o rastreadores de visitas.",
+      tableCard.privacy.es,
       "- Para ver, corregir o borrar tu información: escríbenos a misxv@simplysoph.com.",
       "- Cuánto tiempo la guardamos: " + retention.es,
       "Abajo están los detalles.",
@@ -51,6 +71,7 @@ export const policies = {
       "- The ones we approve are shown only on this private site, to guests who sign in.",
       "- We may include them in family keepsakes of the celebration, like Sophia’s photo album or a highlight video.",
       "- We never sell them or use them in advertising.",
+      tableCard.terms.en,
       "By uploading, you give us, Sophia’s family, permission to store your photos and videos, show them to signed-in guests on this site, and use them in family keepsakes of the celebration. The photos are still yours; this permission is only for those uses.",
       "Want something removed? Email misxv@simplysoph.com and we’ll take it off the site and leave it out of any keepsakes we haven’t made yet.",
       "Please don’t post other guests’ photos publicly, for example on social media, without asking them first.",
@@ -65,6 +86,7 @@ export const policies = {
       "- Solo los invitados que entran a este sitio privado pueden ver los que aprobamos.",
       "- Podemos incluirlos en recuerdos familiares de la celebración, como el álbum de fotos de Sophia o un video con los mejores momentos.",
       "- Nunca los vendemos ni los usamos en publicidad.",
+      tableCard.terms.es,
       "Al subir fotos o videos, nos das permiso a nosotros, la familia de Sophia, para guardarlos, mostrarlos a los invitados que entran a este sitio y usarlos en recuerdos familiares de la celebración. Las fotos siguen siendo tuyas; este permiso es solo para esos usos.",
       "¿Quieres que quitemos algo? Escríbenos a misxv@simplysoph.com y lo quitaremos del sitio y de los recuerdos que todavía no hayamos hecho.",
       "Por favor, no publiques fotos de otros invitados, por ejemplo en redes sociales, sin preguntarles primero.",
