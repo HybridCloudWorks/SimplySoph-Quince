@@ -42,14 +42,17 @@ function after(at) {
 // gave (server/upload-quota.mjs); the page never states a number of its own.
 function limitSentence({ scope, limit, retryAt }) {
   const n = Number.isSafeInteger(limit) ? limit : null;
+  // A table card phone's count lasts one visit (the card's session: it ends
+  // after 30 minutes unused, and a scan after that starts a new count), so the
+  // words promise "in one visit", not a limit per phone (server/application.mjs).
   if (scope === "device")
     return tr(
       n
-        ? `This phone has shared ${n} photos and videos from the table card, as many as we can take from one phone. Thank you!`
-        : "This phone has shared as many photos and videos as we can take from one phone. Thank you!",
+        ? `You’ve shared ${n} photos and videos from the table card, as many as we can take in one visit. Thank you!`
+        : "You’ve shared as many photos and videos as we can take in one visit. Thank you!",
       n
-        ? `Este teléfono ya compartió ${n} fotos y videos desde la tarjeta de la mesa, todos los que podemos recibir de un solo teléfono. ¡Gracias!`
-        : "Este teléfono ya compartió todas las fotos y videos que podemos recibir de un solo teléfono. ¡Gracias!",
+        ? `Ya compartiste ${n} fotos y videos desde la tarjeta de la mesa, todos los que podemos recibir en una visita. ¡Gracias!`
+        : "Ya compartiste todas las fotos y videos que podemos recibir en una visita. ¡Gracias!",
     );
   if (scope === "card")
     return tr(
@@ -410,7 +413,7 @@ export function mediaUpload(portal, albums, { party = false } = {}) {
         : q.remaining < uploadLimits.files
           ? q.scope === "family"
             ? tr(`You can share ${q.remaining} more now.`, `Puedes compartir ${q.remaining} más por ahora.`)
-            : tr(`This phone can share ${q.remaining} more.`, `Este teléfono puede compartir ${q.remaining} más.`)
+            : tr(`You can share ${q.remaining} more on this visit.`, `Puedes compartir ${q.remaining} más en esta visita.`)
           : "";
     room.hidden = !room.textContent;
   }

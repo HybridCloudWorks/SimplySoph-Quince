@@ -365,13 +365,44 @@ test("a family uploading during the party is unaffected by the card, and its upl
 // still seen by us in Admin: "before we published it", never "before anyone
 // saw it".
 test("the table card's words promise only what the code does: a count per visit, and a withdrawn file never published", async () => {
+  // What the code does: scanning again during a visit keeps the phone's count;
+  // once the visit's session has ended (30 minutes unused), a scan starts a
+  // new one. So the count is per visit, not per phone.
+  const f = await setup();
+  const code = codeOf((await createCard(f)).url);
+  const visit = await exchange(f, code);
+  for (let i = 0; i < quota.perPartyDevice; i++) await f.upload(visit, await photo());
+  const again = (held) => f.request(null, "party-session", { token: code }, { headers: { cookie: held.cookie } });
+  const rescan = await again(visit);
+  assert.equal(payloadOf(rescan.setCookie.split(";")[0]).deviceId, payloadOf(visit.cookie).deviceId, "the same visit");
+  assert.equal((await f.request(visit, "uploads/quota")).remaining, 0);
+  f.advance(30 * 60000);
+  const later = await again(visit);
+  const next = { cookie: later.setCookie.split(";")[0], csrf: later.csrf };
+  assert.notEqual(payloadOf(next.cookie).deviceId, payloadOf(visit.cookie).deviceId, "a new visit");
+  assert.deepEqual(await f.request(next, "uploads/quota"), {
+    scope: "device",
+    limit: quota.perPartyDevice,
+    used: 0,
+    remaining: quota.perPartyDevice,
+    retryAt: null,
+    now: new Date(f.now()).toISOString(),
+  });
+  // What the page says about it (site/media-upload.js, and site/client.js's
+  // fallback for the same refusal), in English and in Spanish (tú, as on
+  // every /share/ page).
   const { readFile } = await import("node:fs/promises");
-  const source = (f) => readFile(new URL("../site/" + f, import.meta.url), "utf8");
+  const source = (file) => readFile(new URL("../site/" + file, import.meta.url), "utf8");
   const page = (await source("media-upload.js")) + (await source("client.js"));
   assert.doesNotMatch(page, /most one phone can send|one phone can send|máximo por teléfono|que se pueden enviar desde la tarjeta|anyone saw it|alguien lo viera/);
-  // L10N-38: "as many as we can take from one phone", not "shared the most".
-  assert.match(page, /as many photos and videos as we can take from one phone/);
-  assert.match(page, /todas las fotos y videos que podemos recibir de un solo teléfono/);
+  assert.doesNotMatch(page, /from one phone|un solo teléfono|This phone (?:has shared|can share)|Este teléfono (?:ya compartió|puede compartir)/);
+  // L10N-38: "as many as we can take", not "shared the most"; now "in one visit".
+  assert.match(page, /You’ve shared \$\{n\} photos and videos from the table card, as many as we can take in one visit\. Thank you!/);
+  assert.match(page, /Ya compartiste \$\{n\} fotos y videos desde la tarjeta de la mesa, todos los que podemos recibir en una visita\. ¡Gracias!/);
+  assert.match(page, /You’ve shared as many photos and videos as we can take in one visit\. Thank you!/);
+  assert.match(page, /Ya compartiste todas las fotos y videos que podemos recibir en una visita\. ¡Gracias!/);
+  assert.match(page, /You can share \$\{q\.remaining\} more on this visit\./);
+  assert.match(page, /Puedes compartir \$\{q\.remaining\} más en esta visita\./);
   assert.match(page, /Removed before we published it\./);
   assert.match(page, /Lo quitaste antes de que lo publicáramos\./);
 });
