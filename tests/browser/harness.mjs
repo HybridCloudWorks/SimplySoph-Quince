@@ -357,20 +357,6 @@ export async function startHarness({
       });
       return { name: "__session", value, url: origin + "/api/" };
     },
-    // Any administrator action, as the admin pages send it (POST /api/admin/<path>).
-    async admin(path, body) {
-      return app.dispatch({
-        path: "/api/admin/" + path,
-        method: "POST",
-        headers: {
-          origin: siteOrigin,
-          cookie: "__session=" + ownerToken,
-          "x-csrf-token": ownerCsrf,
-        },
-        body,
-        ip: "harness",
-      });
-    },
     notion: notionApi,
     sent,
     logs,
