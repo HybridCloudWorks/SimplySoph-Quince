@@ -476,6 +476,7 @@ test.describe("the RSVP on a phone", () => {
       });
     const widths = (locator) => locator.evaluateAll((all) => all.map((el) => Math.round(el.getBoundingClientRect().width)));
     // The form: the main button is the panel's width, like the quick answers.
+    await expect(page.getByRole("button", { name: "Review response" })).toBeVisible();
     const full = Math.round(await inner());
     expect(await widths(page.getByRole("button", { name: "Review response" }))).toEqual([full]);
     expect(await widths(portal.locator(".quick-answers .button"))).toEqual([full, full]);
