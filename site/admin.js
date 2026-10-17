@@ -39,8 +39,10 @@ const mailStates = {
 };
 const button = (name, action, id) =>
   `<button class="button burgundy compact" data-action="${action}" data-id="${esc(id)}">${name}</button>`;
-const formEnd = (label) =>
-  `<p class="error" role="alert"></p><button type="submit" class="button burgundy">${label}</button></form>`;
+// `busy`: what the button says while its request is on its way (client.js
+// markBusy); "Saving…" when left out.
+const formEnd = (label, busy = "") =>
+  `<p class="error" role="alert"></p><button type="submit" class="button burgundy"${busy ? ` data-busy="${busy}"` : ""}>${label}</button></form>`;
 const table = (head, rows) =>
   `<div class="table-wrap"><table><thead><tr>${head.map((x) => `<th scope="col">${x}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`;
 // Records carry numeric timestamps (createdAt, at); Date.parse(number) is NaN,
@@ -177,7 +179,7 @@ async function login() {
     return;
   }
   const cfg = await api("config");
-  root.innerHTML = `<form id="admin-email-login" class="card"><h2>Sign in by email</h2><p>Enter your approved email. Follow the one-time link, then enter your authenticator code.</p>${field("Email", "email", { type: "email", required: true, max: 254 })}<p id="admin-email-result" role="status"></p>${formEnd("Email my sign-in link")}${
+  root.innerHTML = `<form id="admin-email-login" class="card"><h2>Sign in by email</h2><p>Enter your approved email. Follow the one-time link, then enter your authenticator code.</p>${field("Email", "email", { type: "email", required: true, max: 254 })}<p id="admin-email-result" role="status"></p>${formEnd("Email my sign-in link", "Sending…")}${
     cfg.microsoftClientId || cfg.clientId
       ? `<section class="sso-choices"><h2>Or sign in with</h2>${ssoRow({
           microsoft: cfg.microsoftClientId && "Sign in with Microsoft",

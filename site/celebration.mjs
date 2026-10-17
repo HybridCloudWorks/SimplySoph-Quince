@@ -1,3 +1,5 @@
+import { terms } from "./lexicon.mjs";
+import { timeRange as clockRange } from "./datetime.mjs";
 export const celebration = {
   version: 1,
   name: "Sophia Isabel",
@@ -151,10 +153,21 @@ export function mapLinks(address) {
     waze: `https://waze.com/ul?q=${q}&navigate=yes`,
   };
 }
-export function maps(address, lang = "en") {
+// A link's subject for screen readers, after its visible words ("Add to
+// calendar: Dinner"), so a page with several calendar or map links gives each
+// a name of its own while the name still starts with what is shown.
+const subject = (name) => `<span class="visually-hidden">: ${escapeHtml(name)}</span>`;
+// The event each calendar file is for, as the confirmation names it.
+const calendarNames = {
+  ceremony: [terms.ceremony.en, terms.ceremony.es],
+  dinner: [terms.dinner.en, terms.dinner.es],
+  reception: [terms.receptionDance.en, terms.receptionDance.es],
+};
+export function maps(address, lang = "en", name = "") {
   const links = mapLinks(address),
-    e = escapeHtml;
-  return `<div class="venue-actions"><a class="button burgundy" target="_blank" rel="noopener noreferrer" href="${e(links.google)}">${label("Open in Google Maps", "Abrir en Google Maps", lang)}${newTab(lang)}</a><a class="button outline" target="_blank" rel="noopener noreferrer" href="${e(links.apple)}">${label("Open in Apple Maps", "Abrir en Apple Maps", lang)}${newTab(lang)}</a><a class="button outline" target="_blank" rel="noopener noreferrer" href="${e(links.waze)}">${label("Open in Waze", "Abrir en Waze", lang)}${newTab(lang)}</a><button class="plain-button" type="button" data-copy-address="${e(address)}">${label("Copy address", "Copiar dirección", lang)}</button></div>`;
+    e = escapeHtml,
+    about = name ? subject(name) : "";
+  return `<div class="venue-actions"><a class="button burgundy" target="_blank" rel="noopener noreferrer" href="${e(links.google)}">${label("Open in Google Maps", "Abrir en Google Maps", lang)}${about}${newTab(lang)}</a><a class="button outline" target="_blank" rel="noopener noreferrer" href="${e(links.apple)}">${label("Open in Apple Maps", "Abrir en Apple Maps", lang)}${about}${newTab(lang)}</a><a class="button outline" target="_blank" rel="noopener noreferrer" href="${e(links.waze)}">${label("Open in Waze", "Abrir en Waze", lang)}${about}${newTab(lang)}</a><button class="plain-button" type="button" data-copy-address="${e(address)}">${label("Copy address", "Copiar dirección", lang)}</button></div>`;
 }
 // Spanish pages download Spanish calendars. Both languages share each event's
 // UID, so whichever one a guest saved is updated in place.
@@ -163,14 +176,14 @@ export function calendarLink(kind, c = celebration, lang = "en", live = false) {
     e = escapeHtml;
   if (!item.end)
     return `<p class="hint">${label("Calendar download will be available once the end time is confirmed.", "La descarga del calendario estará disponible cuando se confirme la hora de finalización.", lang)}</p>`;
-  return `<a class="calendar-link" href="${live ? "/api/calendar/" : "/calendar/"}${lang === "es" ? "es/" : ""}${e(kind)}.ics" download>${calendarMark}${label("Add to calendar", "Agregar al calendario", lang)}</a>`;
+  return `<a class="calendar-link" href="${live ? "/api/calendar/" : "/calendar/"}${lang === "es" ? "es/" : ""}${e(kind)}.ics" download>${calendarMark}<span>${label("Add to calendar", "Agregar al calendario", lang)}${subject(label(...calendarNames[kind], lang))}</span></a>`;
 }
 // A venue page's facts. The photo beside it is built once with the page
 // (scripts/build-pages.mjs); live settings re-render only these facts.
 export function venueSection(kind, c = celebration, lang = "en", live = false) {
   const v = c[kind],
     e = escapeHtml;
-  return `<article class="venue-details"><p class="eyebrow">${e(localDate(v.start, lang))}</p><h2>${e(v.name)}</h2><address>${e(v.address)}</address>${kind === "reception" ? `<dl class="venue-schedule"><dt>${label("Dinner", "Cena", lang)}</dt><dd>${e(localTime(c.dinner.start, lang))} – ${e(localTime(c.dinner.end, lang))}</dd><dt>${label("Reception & dance", "Recepción y baile", lang)}</dt><dd>${e(timeRange(v, lang))}</dd></dl>` : `<p class="lead">${e(localTime(v.start, lang))}${v.end ? " – " + e(localTime(v.end, lang)) : ""}</p>`}${maps(v.address, lang)}<p>${e(v.notes[lang])}</p><div class="calendar-actions">${kind === "reception" ? `<div><strong>${label("Dinner", "Cena", lang)}</strong>${calendarLink("dinner", c, lang, live)}</div>` : ""}<div><strong>${label(kind === "ceremony" ? "Ceremony" : "Reception", kind === "ceremony" ? "Ceremonia" : "Recepción", lang)}</strong>${calendarLink(kind, c, lang, live)}</div></div></article>`;
+  return `<article class="venue-details"><p class="eyebrow">${e(localDate(v.start, lang))}</p><h2>${e(v.name)}</h2><address>${e(v.address)}</address>${kind === "reception" ? `<dl class="venue-schedule"><dt>${label("Dinner", "Cena", lang)}</dt><dd>${e(clockRange(c.dinner.start, c.dinner.end, lang, { nbsp: true }))}</dd><dt>${label("Reception & dance", "Recepción y baile", lang)}</dt><dd>${e(clockRange(v.start, v.end, lang, { nbsp: true }))}</dd></dl>` : `<p class="lead">${e(localTime(v.start, lang))}${v.end ? " – " + e(localTime(v.end, lang)) : ""}</p>`}${maps(v.address, lang, label(...(kind === "ceremony" ? [terms.ceremonyLong.en, terms.ceremonyLong.es] : [terms.dinnerAndReception.en, terms.dinnerAndReception.es]), lang))}<p>${e(v.notes[lang])}</p><div class="calendar-actions">${kind === "reception" ? `<div><strong>${label("Dinner", "Cena", lang)}</strong>${calendarLink("dinner", c, lang, live)}</div>` : ""}<div><strong>${label(kind === "ceremony" ? "Ceremony" : "Reception", kind === "ceremony" ? "Ceremonia" : "Recepción", lang)}</strong>${calendarLink(kind, c, lang, live)}</div></div></article>`;
 }
 // The day at a glance, from the confirmed schedule: the church, then dinner and
 // the dance at the reception venue, each linking to its venue page.
@@ -190,7 +203,7 @@ export function scheduleList(c = celebration, lang = "en", live = false) {
   ]
     .map(([kind, place, name]) => {
       const venue = c[place];
-      return `<li class="schedule-item"><p class="schedule-time">${e(timeRange(c[kind], lang))}</p><div><h2>${name}</h2><p class="schedule-venue"><a href="${pageHref(place, lang)}">${e(venue.name)}${arrow}</a></p><address>${e(venue.address)}</address><p class="schedule-actions"><a href="https://www.google.com/maps/search/?api=1&amp;query=${encodeURIComponent(venue.address)}" target="_blank" rel="noopener noreferrer">${label("Map", "Mapa", lang)}${newTab(lang)}</a>${calendarLink(kind, c, lang, live)}</p></div></li>`;
+      return `<li class="schedule-item"><p class="schedule-time">${e(clockRange(c[kind].start, c[kind].end, lang, { nbsp: true }))}</p><div><h2>${name}</h2><p class="schedule-venue"><a href="${pageHref(place, lang)}">${e(venue.name)}${arrow}</a></p><address>${e(venue.address)}</address><p class="schedule-actions"><a href="https://www.google.com/maps/search/?api=1&amp;query=${encodeURIComponent(venue.address)}" target="_blank" rel="noopener noreferrer">${label("Map", "Mapa", lang)}${subject(name)}${newTab(lang)}</a>${calendarLink(kind, c, lang, live)}</p></div></li>`;
     })
     .join("")}</ol>`;
 }

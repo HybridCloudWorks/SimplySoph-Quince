@@ -124,6 +124,27 @@ test("the header is a flat list: sections, sign in, language pill, RSVP and a me
   assert.doesNotMatch(main(await page("account/index.html")), /admin\/login/);
 });
 
+test("the wordmark is named as the way home, the Menu button can say Close, and every page has one announcement region", async () => {
+  for (const [lang, file, home, menu, close] of [
+    ["en", "index.html", "home", "Menu", "Close"],
+    ["es", "es/details/index.html", "inicio", "Menú", "Cerrar"],
+  ]) {
+    const html = await page(file),
+      nav = header(html);
+    // R-062: read as "S MIS XV, home"; the visible mark is unchanged.
+    assert.match(nav, new RegExp(`<a class="wordmark" [^>]*>S<span class="wordmark-tag">.*?MIS XV</span><span class="visually-hidden">, ${home}</span></a>`), lang);
+    // R-063: both labels are in the button; the stylesheet shows the one that
+    // matches aria-expanded, so the name follows what is shown.
+    assert.match(nav, new RegExp(`<span class="when-closed">${menu}</span><span class="when-open">${close}</span>`), lang);
+    // R-050: one polite region outside every form, for "Saving…" and replies.
+    assert.equal(html.match(/id="announce"/g).length, 1);
+    assert.match(html, /<\/footer><div id="status" role="status" aria-live="polite"><\/div><div id="announce" class="visually-hidden" role="status"><\/div><\/body>/);
+  }
+  // R-060: standalone links in the page text use the 44px target.
+  assert.match(main(await page("contact/index.html")), /<p><a class="target" href="mailto:/);
+  assert.match(main(await page("sms/index.html")), /<a class="target" href="\/sms-terms\/">SMS Terms<\/a> · <a class="target" href="\/privacy\/">/);
+});
+
 test("the home page puts the name, date and RSVP before the schedule, words and artwork", async () => {
   // Built in its RSVP-open state; site/home.mjs follows the phase. The Spanish
   // home page speaks to the household (ustedes), and the deadline sentence is

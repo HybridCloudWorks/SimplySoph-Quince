@@ -53,6 +53,21 @@ test("the administrator sign-in page offers the emailed link, Microsoft and Goog
   ).toBeHidden();
 });
 
+// R-095 (WCAG 2.2.1): the dark page-wide note that administrators read after
+// an action stays until it is closed; it used to vanish after 12 seconds.
+test("the page-wide note stays until it is closed", async ({ page, harness }) => {
+  await mockGoogleSignIn(page, {});
+  await page.goto(harness.url("/admin/login/"));
+  await expect(page.getByRole("button", { name: "Sign in with Google" })).toBeVisible();
+  await page.evaluate(async () => (await import("/client.js")).notify("Invitation saved."));
+  const note = page.locator("#status");
+  await expect(note).toContainText("Invitation saved.");
+  await page.clock.runFor(60_000);
+  await expect(note).toContainText("Invitation saved.");
+  await note.getByRole("button", { name: "Close" }).click();
+  await expect(note).toBeEmpty();
+});
+
 test("the emailed link is refused for anyone who is not an administrator", async ({
   page,
   context,

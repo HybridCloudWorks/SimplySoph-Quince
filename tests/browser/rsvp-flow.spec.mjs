@@ -374,19 +374,27 @@ test("the form checks itself: one summary in the page’s language, linked to ea
 
   const summary = page.locator(".error-summary");
   await expect(summary).toBeFocused();
-  await expect(summary).toHaveText(
-    "Choose how many for: Ceremony – Children, Dinner – Adults / teens, Dinner – Children, Reception & dance – Adults / teens, Reception & dance – Children",
-  );
+  // One link per event with a count to choose, named by the event (the round
+  // 2 review's six comma-separated labels broke mid-label on a phone).
+  await expect(summary.locator("p")).toHaveText(["Choose how many for:"]);
+  await expect(summary.getByRole("listitem")).toHaveText(["Ceremony", "Dinner", "Reception & dance"]);
   await expect(page).toHaveTitle(/^Error: /);
   const kids = eventGroup(page, "Ceremony").getByLabel("Children");
   await expect(kids).toHaveAttribute("aria-invalid", "true");
-  await expect(kids).toHaveAccessibleDescription("Choose one.");
+  // Each count's note names its event, so the notes are not all "Choose one."
+  await expect(kids).toHaveAccessibleDescription("Ceremony: choose how many children.");
+  await expect(eventGroup(page, "Dinner").getByLabel("Adults / teens")).toHaveAccessibleDescription(
+    "Dinner: choose how many adults/teens.",
+  );
   await expect(eventGroup(page, "Ceremony").getByLabel("Adults / teens")).not.toHaveAttribute(
     "aria-invalid",
     "true",
   );
-  // Each name in the summary takes focus to its field, without a # in the address.
-  await summary.getByRole("link", { name: "Dinner – Adults / teens" }).click();
+  // Each name in the summary takes focus to its event's first count to
+  // choose, without a # in the address.
+  await summary.getByRole("link", { name: "Ceremony" }).click();
+  await expect(kids).toBeFocused();
+  await summary.getByRole("link", { name: "Dinner" }).click();
   await expect(eventGroup(page, "Dinner").getByLabel("Adults / teens")).toBeFocused();
   await expect(page).toHaveURL(harness.url("/rsvp/"));
   // Choosing a count clears that field's mark.
@@ -397,8 +405,10 @@ test("the form checks itself: one summary in the page’s language, linked to ea
   // In Spanish, in Spanish.
   await page.goto(harness.url("/es/rsvp/"));
   await page.getByRole("button", { name: "Revisar respuesta" }).click();
-  await expect(page.locator(".error-summary")).toHaveText(
-    /^Elijan cuántos para: Cena – Adultos \/ jóvenes, Cena – Niños, /,
+  await expect(page.locator(".error-summary p")).toHaveText(["Elijan cuántos para:"]);
+  await expect(page.locator(".error-summary").getByRole("listitem")).toHaveText(["Cena", "Recepción y baile"]);
+  await expect(eventGroup(page, "Cena").getByLabel("Niños")).toHaveAccessibleDescription(
+    "Cena: elijan cuántos niños.",
   );
 });
 

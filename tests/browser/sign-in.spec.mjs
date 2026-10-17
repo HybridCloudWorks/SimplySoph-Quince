@@ -168,7 +168,8 @@ test("the quick answers check the contact email first, while it can still be fix
     await email.fill(typo);
     await page.getByRole("button", { name: "Everyone’s coming" }).click();
     await expect(summary).toBeFocused();
-    await expect(summary).toHaveText("Check the email address: Email");
+    await expect(summary.locator("p")).toHaveText(["Check the email address:"]);
+    await expect(summary.getByRole("listitem")).toHaveText(["Email"]);
     await expect(page.getByRole("heading", { name: "Review your response" })).toHaveCount(0);
   }
   // Only the contact details are checked: the counts come from the button.

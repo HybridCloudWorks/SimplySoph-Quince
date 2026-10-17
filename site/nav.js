@@ -20,7 +20,11 @@ document.addEventListener("click", (e) => {
   if (!isOpen()) return;
   const header = toggle().closest("header");
   // A link inside the menu navigates; anywhere outside the header closes it.
-  if (e.target.closest("#site-nav a") || !header.contains(e.target)) setOpen(false);
+  // The dimmed layer under the open menu is the header's own ::after, so a
+  // tap on it targets the header itself: it closes the menu, and the link
+  // under the layer is never followed.
+  if (e.target.closest("#site-nav a") || !header.contains(e.target) || e.target === header)
+    setOpen(false);
 });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && isOpen()) setOpen(false, { focus: true });
@@ -32,7 +36,14 @@ document.addEventListener("focusout", (e) => {
   if (e.relatedTarget && !header.contains(e.relatedTarget)) setOpen(false);
 });
 // Widening the window past the breakpoint shows the links inline; start closed.
-matchMedia("(min-width: 1081px)").addEventListener("change", () => setOpen(false));
+// The breakpoint is set once, in styles.css (in em, so it follows the text
+// size); here it is read from its effect: the stylesheet hides the button.
+addEventListener("resize", () => {
+  if (isOpen() && !toggle().offsetWidth) setOpen(false);
+});
+// iOS Safari shows :active (the pressed colours) only on pages that listen
+// for touches.
+document.addEventListener("touchstart", () => {}, { passive: true });
 // Returning with the Back button can restore a page with the menu open.
 addEventListener("pageshow", () => isOpen() && setOpen(false));
 // The pages a sign-in can bring a guest back to (server/accounts.mjs keeps

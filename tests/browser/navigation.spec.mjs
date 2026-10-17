@@ -14,7 +14,9 @@ test.describe("on a phone", () => {
     await page.goto(harness.url("/"));
     const header = page.locator("body > header");
     expect((await header.boundingBox()).height).toBeLessThanOrEqual(64);
-    const menu = page.getByRole("button", { name: "Menu" });
+    // The button's name follows its label: "Menu" while closed, "Close" while open.
+    const menu = header.getByRole("button", { name: /^(Menu|Close)$/ });
+    await expect(menu).toHaveAccessibleName("Menu");
     const links = page.getByRole("navigation", { name: "Main navigation" });
     // RSVP, the language switch and the menu are each at least 44px tall.
     for (const target of [
@@ -29,6 +31,7 @@ test.describe("on a phone", () => {
 
     await menu.click();
     await expect(menu).toHaveAttribute("aria-expanded", "true");
+    await expect(menu).toHaveAccessibleName("Close");
     await expect(links.getByRole("link")).toHaveText([
       "Schedule",
       "Travel",
@@ -45,11 +48,14 @@ test.describe("on a phone", () => {
     await expect(menu).toHaveAttribute("aria-expanded", "false");
     await expect(links).toBeHidden();
     await expect(menu).toBeFocused();
+    await expect(menu).toHaveAccessibleName("Menu");
 
-    // A tap outside the header closes it too.
+    // A tap outside the header closes it too. The page under the open menu
+    // is dimmed, and the tap lands on that layer, not on what is beneath.
+    const heading = await page.getByRole("heading", { name: "Schedule", level: 2 }).boundingBox();
     await menu.click();
     await expect(links).toBeVisible();
-    await page.getByRole("heading", { name: "Schedule", level: 2 }).click();
+    await page.touchscreen.tap(heading.x + 10, heading.y + heading.height / 2);
     await expect(menu).toHaveAttribute("aria-expanded", "false");
 
     // Following a link leads to its page with the menu closed.
@@ -64,7 +70,7 @@ test.describe("on a phone", () => {
 
   test("tabbing past the last link closes the menu", async ({ page, harness }) => {
     await page.goto(harness.url("/details/"));
-    const menu = page.getByRole("button", { name: "Menu" });
+    const menu = page.locator("body > header").getByRole("button", { name: /^(Menu|Close)$/ });
     await menu.focus();
     await page.keyboard.press("Enter");
     await expect(menu).toHaveAttribute("aria-expanded", "true");
@@ -73,6 +79,50 @@ test.describe("on a phone", () => {
     await expect(menu).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(menu).toHaveAttribute("aria-expanded", "false");
+  });
+
+  // R-063: the open menu looks open, says Close, and dims the page; a tap on
+  // the dimmed page closes it without following the link underneath, and the
+  // sheet's edge never cuts the countdown in two.
+  test("the open menu says Close, dims the page, and a tap on the dimmed page only closes it", async ({
+    page,
+    harness,
+  }) => {
+    for (const [path, closed, open] of [["/", "Menu", "Close"], ["/es/", "Menú", "Cerrar"]]) {
+      await page.goto(harness.url(path));
+      const menu = page.locator("body > header").getByRole("button", { name: new RegExp(`^(${closed}|${open})$`) });
+      const fill = () => menu.evaluate((el) => getComputedStyle(el).backgroundColor);
+      const before = await fill();
+      await menu.click();
+      await expect(menu).toHaveAccessibleName(open);
+      await expect(menu.getByText(open, { exact: true })).toBeVisible();
+      await expect(menu.getByText(closed, { exact: true })).toBeHidden();
+      expect(await fill()).not.toBe(before);
+      // Below the sheet everything is under the header's dimmed layer,
+      // including the countdown, so none of it shows half-cut by the edge.
+      const sheet = await page.locator("#site-nav").boundingBox();
+      const covered = await page.evaluate(
+        ([bottom]) =>
+          [...document.querySelectorAll("[data-countdown] p, .schedule-strip a")]
+            .map((el) => el.getBoundingClientRect())
+            .filter((r) => r.bottom > bottom)
+            .every((r) => {
+              const y = Math.max(r.top, bottom) + 2;
+              return document.elementFromPoint(r.left + 4, Math.min(y, innerHeight - 1)) === document.querySelector("body > header");
+            }),
+        [sheet.y + sheet.height],
+      );
+      expect(covered).toBe(true);
+      expect(await page.locator("#site-nav").evaluate((el) => getComputedStyle(el).borderBottomStyle)).toBe("solid");
+      // A tap on a schedule link under the dimmed layer closes the menu and
+      // stays on the page.
+      const strip = await page.locator(".schedule-strip a").first().boundingBox();
+      await page.touchscreen.tap(strip.x + 20, strip.y + strip.height / 2);
+      await expect(menu).toHaveAttribute("aria-expanded", "false");
+      await expect(menu).toHaveAccessibleName(closed);
+      await expect(page).toHaveURL(harness.url(path));
+      expect(await fill()).toBe(before);
+    }
   });
 
   test("the Spanish header fits one row at 320px without sideways scrolling", async ({

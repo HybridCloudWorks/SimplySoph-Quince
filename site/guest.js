@@ -39,6 +39,8 @@ import {
   focusOn,
   linkFragment,
   reloadOnNewLink,
+  announce,
+  markBusy,
 } from "./client.js";
 import {
   startMicrosoft,
@@ -151,7 +153,7 @@ function goBack(name) {
 // opens the RSVP; signing in with the household's email (emailed link, Microsoft
 // or Google) opens everything else. There is no registration step.
 const emailSignInHtml = () =>
-  `<h2>${tr("Sign in with your email", "Entra con tu correo")}</h2><form id="email-login">${field(tr("Email", "Correo electrónico"), "email", { type: "email", required: true, autocomplete: "email", hint: tr("Use the email where you received your invitation. We’ll email you a one-time link — no password needed.", "Usa el correo donde recibiste tu invitación. Te enviaremos un enlace de un solo uso; no necesitas contraseña.") })}<p role="alert" class="error"></p><button type="submit" class="button burgundy">${tr("Email my sign-in link", "Enviar enlace de acceso")}</button></form>`;
+  `<h2>${tr("Sign in with your email", "Entra con tu correo")}</h2><form id="email-login">${field(tr("Email", "Correo electrónico"), "email", { type: "email", required: true, autocomplete: "email", hint: tr("Use the email where you received your invitation. We’ll email you a one-time link — no password needed.", "Usa el correo donde recibiste tu invitación. Te enviaremos un enlace de un solo uso; no necesitas contraseña.") })}<p role="alert" class="error"></p><button type="submit" class="button burgundy" data-busy="${tr("Sending…", "Enviando…")}">${tr("Email my sign-in link", "Enviar enlace de acceso")}</button></form>`;
 function wireEmailSignIn() {
   submit(document.querySelector("#email-login"), async (data) => {
     await api("auth/email/request", { email: data.get("email"), return: returnPage() });
@@ -180,7 +182,7 @@ function wireEmailSignIn() {
             .querySelector("#email-login")
             ?.insertAdjacentHTML(
               "afterend",
-              `<p data-sso-link><a href="${route("account")}?return=${back}">${label}</a></p>`,
+              `<p data-sso-link><a class="target" href="${route("account")}?return=${back}">${label}</a></p>`,
             );
       })
       .catch(() => {});
@@ -234,7 +236,7 @@ function accessForm(value = "", reason = "") {
   // still opens the household's saved answer).
   const closed = portal.dataset.view.startsWith("rsvp") && !rsvpOpenNow();
   show(
-    `${reason ? `<p class="notice" role="alert">${esc(reason)}</p>` : ""}${closed ? closedNote(rsvpDeadline()) : ""}${anyDraft() ? `<p class="notice" role="status">${tr("Your answers are kept in this tab. Open your invitation email again, or paste its link below, to finish.", "Tus respuestas siguen guardadas en esta pestaña. Abre de nuevo tu correo de invitación, o pega el enlace aquí abajo, para terminar.")}</p>` : ""}<h2>${tr("Open your invitation", "Abre tu invitación")}</h2><p>${tr("The private link in your invitation opens your RSVP. You can also paste that link, or type the code from your invitation, below.", "El enlace privado de tu invitación abre tu respuesta. También puedes pegar ese enlace, o escribir el código de tu invitación, aquí abajo.")}</p><form id="access">${field(tr("Invitation link or code", "Enlace o código de invitación"), "token", { value, required: true, max: 1000, hint: tr("For example misxv.simplysoph.com/rsvp/#… from your invitation email or message.", "Por ejemplo misxv.simplysoph.com/rsvp/#… de tu correo o mensaje de invitación."), attrs: 'autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off"' })}<p class="error" role="alert"></p><button type="submit" class="button burgundy">${tr("Continue", "Continuar")}</button></form><hr>${emailSignInHtml()}`,
+    `${reason ? `<p class="notice" role="alert">${esc(reason)}</p>` : ""}${closed ? closedNote(rsvpDeadline()) : ""}${anyDraft() ? `<p class="notice" role="status">${tr("Your answers are kept in this tab. Open your invitation email again, or paste its link below, to finish.", "Tus respuestas siguen guardadas en esta pestaña. Abre de nuevo tu correo de invitación, o pega el enlace aquí abajo, para terminar.")}</p>` : ""}<h2>${tr("Open your invitation", "Abre tu invitación")}</h2><p>${tr("The private link in your invitation opens your RSVP. You can also paste that link, or type the code from your invitation, below.", "El enlace privado de tu invitación abre tu respuesta. También puedes pegar ese enlace, o escribir el código de tu invitación, aquí abajo.")}</p><form id="access">${field(tr("Invitation link or code", "Enlace o código de invitación"), "token", { value, required: true, max: 1000, hint: tr("For example misxv.simplysoph.com/rsvp/#… from your invitation email or message.", "Por ejemplo misxv.simplysoph.com/rsvp/#… de tu correo o mensaje de invitación."), attrs: 'autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off"' })}<p class="error" role="alert"></p><button type="submit" class="button burgundy" data-busy="${tr("Checking…", "Comprobando…")}">${tr("Continue", "Continuar")}</button></form><hr>${emailSignInHtml()}`,
   );
   if (!closed)
     portal.querySelector("#access")?.insertAdjacentHTML("beforebegin", replyBy(rsvpDeadline()));
@@ -429,9 +431,25 @@ async function accountPage(inv) {
       )
       .join("");
   // The last markup drawn: the browser normalizes innerHTML (quotes, entities),
-  // so comparing with it would redraw, and re-announce, the thread every minute.
-  let shown = messagesHtml(await api("messages"));
-  box.innerHTML = `<h3>${tr("Messages with us", "Mensajes con nosotros")}</h3><div id="thread" aria-live="polite">${shown}</div><p class="hint">${tr("New replies appear here while this page is open.", "Las respuestas nuevas aparecen aquí mientras esta página esté abierta.")}</p><form id="family-message"><label>${tr("Your message", "Tu mensaje")}<textarea name="text" required maxlength="2000"></textarea></label><p role="alert" class="error"></p><button type="submit" class="button burgundy">${tr("Send message", "Enviar mensaje")}</button><p class="saved-note" role="status"></p></form>`;
+  // so comparing with it would redraw the thread every minute.
+  const first = await api("messages");
+  let shown = messagesHtml(first);
+  // The thread is not a live region: redrawing it would read the whole thread
+  // again. Only replies that weren't there before are announced, one by one.
+  const replyKeys = (thread) =>
+    thread.messages.flatMap((m) => m.replies.map((r, i) => [`${m.id}#${i}`, r.text]));
+  const heard = new Set(replyKeys(first).map(([key]) => key));
+  const announceNew = (thread) => {
+    const fresh = replyKeys(thread).filter(([key]) => !heard.has(key));
+    for (const [key] of fresh) heard.add(key);
+    if (fresh.length)
+      announce(
+        fresh
+          .map(([, text]) => tr("New reply from the family: ", "Nueva respuesta de la familia: ") + text)
+          .join(" "),
+      );
+  };
+  box.innerHTML = `<h3>${tr("Messages with us", "Mensajes con nosotros")}</h3><div id="thread">${shown}</div><p class="hint">${tr("New replies appear here while this page is open.", "Las respuestas nuevas aparecen aquí mientras esta página esté abierta.")}</p><form id="family-message"><label>${tr("Your message", "Tu mensaje")}<textarea name="text" required maxlength="2000"></textarea></label><p role="alert" class="error"></p><button type="submit" class="button burgundy" data-busy="${tr("Sending…", "Enviando…")}">${tr("Send message", "Enviar mensaje")}</button><p class="saved-note" role="status"></p></form>`;
   const messageForm = document.querySelector("#family-message"),
     messageNote = messageForm.querySelector(".saved-note");
   submit(messageForm, async (f) => {
@@ -442,7 +460,9 @@ async function accountPage(inv) {
       text: f.get("text"),
     });
     // Only the thread is redrawn; the guest stays at the form.
-    document.querySelector("#thread").innerHTML = shown = messagesHtml(await api("messages"));
+    const thread = await api("messages");
+    document.querySelector("#thread").innerHTML = shown = messagesHtml(thread);
+    announceNew(thread);
     messageForm.reset();
     messageNote.textContent = tr(
       "Sent. Our reply will appear here.",
@@ -459,8 +479,10 @@ async function accountPage(inv) {
     if (document.visibilityState !== "visible") return;
     try {
       // ?poll=1: a background check does not keep the guest signed in.
-      const html = messagesHtml(await api("messages?poll=1"));
+      const now = await api("messages?poll=1"),
+        html = messagesHtml(now);
       if (html !== shown) thread.innerHTML = shown = html;
+      announceNew(now);
     } catch {
       clearInterval(threadTimer); // signed out or offline: stop quietly
     }
@@ -484,8 +506,11 @@ function eventLegend(e) {
   return `<span class="event-name">${eventNames[e]}</span> <span class="event-when">· ${esc(localTime(start, es ? "es" : "en"))} · ${esc(place)}</span>`;
 }
 function countField(event, key, max, value) {
-  const label = key === "kids" ? tr("Children", "Niños") : tr("Adults / teens", "Adultos / jóvenes");
-  return `<label>${label}<select name="${event}.${key}" id="rsvp-${event}-${key}" required data-label="${esc(`${eventNames[event]} – ${label}`)}" data-check="${esc(tr("Choose how many for:", "Elijan cuántos para:"))}"><option value="">${tr("Choose a number", "Elegir cantidad")}</option>${Array.from({ length: max + 1 }, (_, n) => `<option value="${n}"${String(n) === String(value) ? " selected" : ""}>${n}</option>`).join("")}</select></label>`;
+  const label = key === "kids" ? tr("Children", "Niños") : tr("Adults / teens", "Adultos / jóvenes"),
+    // The note under a count left empty names its event, so the notes down
+    // the form are not six identical lines.
+    note = `${eventNames[event]}: ${key === "kids" ? tr("choose how many children.", "elijan cuántos niños.") : tr("choose how many adults/teens.", "elijan cuántos adultos/jóvenes.")}`;
+  return `<label>${label}<select name="${event}.${key}" id="rsvp-${event}-${key}" required data-label="${esc(`${eventNames[event]} – ${label}`)}" data-check="${esc(tr("Choose how many for:", "Elijan cuántos para:"))}" data-error="${esc(note)}"><option value="">${tr("Choose a number", "Elegir cantidad")}</option>${Array.from({ length: max + 1 }, (_, n) => `<option value="${n}"${String(n) === String(value) ? " selected" : ""}>${n}</option>`).join("")}</select></label>`;
 }
 // Set from an email quick-answer link (#token.yes / #token.no): the page opens
 // on the review step with every count filled in. Nothing is saved until the
@@ -715,7 +740,7 @@ function rsvpForm(inv, values, { restored = false } = {}) {
     )
       .map(
         (e) =>
-          `<fieldset><legend>${eventLegend(e)}</legend><div class="field-grid">${countField(e, "adultsTeens", inv.capacity.adultsTeens, values.attendance?.[e]?.adultsTeens)}${inv.capacity.kids ? countField(e, "kids", inv.capacity.kids, values.attendance?.[e]?.kids) : ""}</div></fieldset>`,
+          `<fieldset data-check-group="${esc(eventNames[e])}"><legend>${eventLegend(e)}</legend><div class="field-grid">${countField(e, "adultsTeens", inv.capacity.adultsTeens, values.attendance?.[e]?.adultsTeens)}${inv.capacity.kids ? countField(e, "kids", inv.capacity.kids, values.attendance?.[e]?.kids) : ""}</div></fieldset>`,
       )
       .join("")}${
       inv.contactHidden
@@ -782,10 +807,11 @@ function review(inv, values, { push = true } = {}) {
   save.onclick = async () => {
     if (busy) return;
     busy = true;
-    // aria-disabled, not disabled: disabling the focused button would drop focus.
-    save.setAttribute("aria-disabled", "true");
     alert.replaceChildren();
     note.textContent = "";
+    // The same busy state as every form (client.js): "Saving…", aria-busy on
+    // the step, announced; it stays until the confirmation page opens.
+    const done = markBusy(save, portal);
     try {
       // The page's language picks the receipt's (an older API ignores it).
       const input = answerFrom(inv, values),
@@ -807,6 +833,8 @@ function review(inv, values, { push = true } = {}) {
       location.assign(route("rsvp/confirmed"));
       return;
     } catch (err) {
+      // Not busy any more before the error is written, so it is announced.
+      done();
       if (["SIGN_IN_REQUIRED", "CSRF_REJECTED"].includes(err.code)) timedOut(inv, portal);
       else alert.textContent = err.message;
       // Saved a moment too late: the server's answer, and who to write to.
@@ -817,7 +845,6 @@ function review(inv, values, { push = true } = {}) {
         );
     }
     busy = false;
-    save.removeAttribute("aria-disabled");
   };
 }
 // Only the RSVP's own entries change the step: an in-page anchor (the skip
@@ -1013,7 +1040,7 @@ async function showPortal() {
   }
   if (view === "contact") {
     show(
-      `<form id="message">${field(tr("Your name", "Tu nombre"), "name", { required: true, max: 100, autocomplete: "name" })}${field(tr("Email", "Correo electrónico"), "email", { type: "email", required: true, value: inv.contact.email, autocomplete: "email" })}<label>${tr("Topic", "Tema")}<select name="topic">${contactTopics.map((t, i) => `<option value="${esc(t)}">${esc(es ? contactTopicsEs[i] : contactTopicsEn[i])}</option>`).join("")}</select></label><label>${tr("Your message", "Tu mensaje")}<textarea name="text" maxlength="2000" required></textarea></label><p class="error" role="alert"></p><button class="button burgundy" type="submit">${tr("Send message", "Enviar mensaje")}</button></form>`,
+      `<form id="message">${field(tr("Your name", "Tu nombre"), "name", { required: true, max: 100, autocomplete: "name" })}${field(tr("Email", "Correo electrónico"), "email", { type: "email", required: true, value: inv.contact.email, autocomplete: "email" })}<label>${tr("Topic", "Tema")}<select name="topic">${contactTopics.map((t, i) => `<option value="${esc(t)}">${esc(es ? contactTopicsEs[i] : contactTopicsEn[i])}</option>`).join("")}</select></label><label>${tr("Your message", "Tu mensaje")}<textarea name="text" maxlength="2000" required></textarea></label><p class="error" role="alert"></p><button class="button burgundy" type="submit" data-busy="${tr("Sending…", "Enviando…")}">${tr("Send message", "Enviar mensaje")}</button></form>`,
     );
     submit(document.querySelector("#message"), async (data) => {
       await api("messages", {
@@ -1126,7 +1153,7 @@ if (microsoft) {
 } else if (portal && fragment && document.body.dataset.route === "account") {
   history.replaceState(null, "", location.pathname);
   show(
-    `<h2>${tr("Confirm sign-in", "Confirmar acceso")}</h2><p>${tr("Continue only if you requested this email link.", "Continúa solo si solicitaste este enlace por correo.")}</p><form id="email-verify"><p class="error" role="alert"></p><button type="submit" class="button burgundy">${tr("Continue", "Continuar")}</button></form>`,
+    `<h2>${tr("Confirm sign-in", "Confirmar acceso")}</h2><p>${tr("Continue only if you requested this email link.", "Continúa solo si solicitaste este enlace por correo.")}</p><form id="email-verify"><p class="error" role="alert"></p><button type="submit" class="button burgundy" data-busy="${tr("Signing in…", "Entrando…")}">${tr("Continue", "Continuar")}</button></form>`,
   );
   submit(document.querySelector("#email-verify"), async () => {
     const { returnTo } = await api("auth/email/verify", { token: fragment });
