@@ -191,10 +191,15 @@ test("calendar and map links carry their event's name, visually hidden", () => {
   assert.ok(calendarLink("ceremony").includes(`Add to calendar${hidden("Ceremony")}`));
   assert.ok(calendarLink("dinner", celebration, "es").includes(`Agregar al calendario${hidden("Cena")}`));
   assert.ok(calendarLink("reception").includes(hidden("Reception &amp; dance")));
-  const schedule = scheduleList(celebration, "en");
+  // The Schedule's "Map: Google · Apple · Waze" (R-172): each app's link is
+  // named for the app's maps and the part of the day.
+  const schedule = scheduleList(celebration, "en"),
+    apps = (name) => [`Google<span class="visually-hidden"> Maps</span>${hidden(name)}`, `Apple<span class="visually-hidden"> Maps</span>${hidden(name)}`, `Waze${hidden(name)}`];
   for (const name of ["Religious ceremony", "Dinner", "Reception &amp; dance"])
-    assert.ok(schedule.includes(`Map${hidden(name)}`), name);
-  assert.ok(scheduleList(celebration, "es").includes(`Mapa${hidden("Cena")}`));
+    for (const named of apps(name)) assert.ok(schedule.includes(named), named);
+  assert.equal(schedule.match(/>Map: </g).length, 3);
+  for (const named of apps("Cena")) assert.ok(scheduleList(celebration, "es").includes(named), named);
+  assert.equal(scheduleList(celebration, "es").match(/>Mapa: </g).length, 3);
   const ceremony = venueSection("ceremony", celebration, "en");
   assert.ok(ceremony.includes(`Open in Google Maps${hidden("Religious ceremony")}`));
   assert.ok(ceremony.includes(`Open in Apple Maps${hidden("Religious ceremony")}`));

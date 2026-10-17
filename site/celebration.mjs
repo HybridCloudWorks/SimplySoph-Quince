@@ -188,8 +188,9 @@ export function scheduleStrip(c = celebration, lang = "en") {
     when = (item) => `<b>${e(time(item.start, lang, nb))}</b>`;
   return `<ul class="schedule-strip"><li><a href="${pageHref("ceremony", lang)}"><span class="strip-times">${when(c.ceremony)} ${term(terms.ceremony, lang)}</span><span class="strip-venue">${e(c.ceremony.name)}</span>${arrow}</a></li><li><a href="${pageHref("reception", lang)}"><span class="strip-times">${when(c.dinner)} ${term(terms.dinner, lang)} · ${when(c.reception)} ${term(terms.receptionDance, lang)}</span><span class="strip-venue">${e(c.reception.name)}</span>${arrow}</a></li></ul>`;
 }
-// The Schedule page: each part of the day with its time, venue, address, a map
-// and its calendar file.
+// The Schedule page: each part of the day with its time, venue, address, its
+// maps ("Map: Google · Apple · Waze", as on the venue pages; each link named
+// for the part of the day too) and its calendar file.
 export function scheduleList(c = celebration, lang = "en", live = false) {
   const e = escapeHtml;
   return `<ol class="schedule-list">${[
@@ -198,8 +199,18 @@ export function scheduleList(c = celebration, lang = "en", live = false) {
     ["reception", "reception", term(terms.receptionDance, lang)],
   ]
     .map(([kind, place, name]) => {
-      const venue = c[place];
-      return `<li class="schedule-item"><p class="schedule-time">${e(timeRange(c[kind].start, c[kind].end, lang, nb))}</p><div><h2>${name}</h2><p class="schedule-venue"><a href="${pageHref(place, lang)}">${e(venue.name)}${arrow}</a></p><address>${e(venue.address)}</address><p class="schedule-actions"><a href="https://www.google.com/maps/search/?api=1&amp;query=${encodeURIComponent(venue.address)}" target="_blank" rel="noopener noreferrer">${label("Map", "Mapa", lang)}${subject(name)}${newTab(lang)}</a>${calendarActions(kind, c, lang, live)}</p></div></li>`;
+      const venue = c[place],
+        links = mapLinks(venue.address);
+      return `<li class="schedule-item"><p class="schedule-time">${e(timeRange(c[kind].start, c[kind].end, lang, nb))}</p><div><h2>${name}</h2><p class="schedule-venue"><a href="${pageHref(place, lang)}">${e(venue.name)}${arrow}</a></p><address>${e(venue.address)}</address><p class="schedule-actions"><span>${label("Map:", "Mapa:", lang)} ${[
+        ["google", "Google", " Maps"],
+        ["apple", "Apple", " Maps"],
+        ["waze", "Waze", ""],
+      ]
+        .map(
+          ([key, app, maps]) =>
+            `<a href="${e(links[key])}" target="_blank" rel="noopener noreferrer">${app}${maps && `<span class="visually-hidden">${maps}</span>`}${subject(name)}${newTab(lang)}</a>`,
+        )
+        .join(" · ")}</span>${calendarActions(kind, c, lang, live)}</p></div></li>`;
     })
     .join("")}</ol>`;
 }
