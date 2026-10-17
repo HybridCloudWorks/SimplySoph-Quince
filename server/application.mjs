@@ -201,12 +201,19 @@ export function createApplication({
     if (["invitation", "reminder"].includes(type) && !invitationsOpen())
       throw error(409, "INVITATIONS_CLOSED");
   };
+  // A typed message with {link} carries the household's private RSVP link, so
+  // it asks for an RSVP just as an invitation does, by text or by email: none
+  // is drafted or sent after the deadline either (server/sms.mjs for texts).
+  const refuseLateLink = (hasLink) => {
+    if (hasLink && !invitationsOpen()) throw error(409, "INVITATIONS_CLOSED");
+  };
   const sms = createSms({
     ledger,
     notion,
     transport: smsTransport,
     webhook: smsWebhook,
     now,
+    invitationsOpen,
     render: (d) =>
       d.link ? d.text.replaceAll(LINK_PLACEHOLDER, unseal(d.link, key)) : d.text,
   });
@@ -695,8 +702,10 @@ export function createApplication({
     } else if (!invite?.active || invite.generation !== j.generation)
       throw error(409, "MAIL_DRAFT_STALE");
     // Drafted before the deadline, sent after it: it would still say "by
-    // November 15", so it is set aside instead.
+    // November 15", so it is set aside instead. The same for a typed email
+    // with a private RSVP link ({link}: a custom draft with a generation).
     refuseLateInvitations(j.type);
+    refuseLateLink(j.type === "custom" && j.generation !== undefined);
     // An invitation or reminder drafted before the household answered (on the
     // website, or by phone into Notion) is set aside, not sent (re-audit L4).
     if (["invitation", "reminder"].includes(j.type) && attendanceOf(s, currentGuest))
@@ -3028,6 +3037,7 @@ export function createApplication({
           if (!smsCompliantText(text))
             throw error(422, "SMS_BRAND_OR_STOP_MISSING");
         }
+        refuseLateLink(text.includes(LINK_PLACEHOLDER));
         const recipients = audience(
           await notion.list(),
           body,

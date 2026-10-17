@@ -11,8 +11,12 @@ const statusWords = {
   "not-us-ca": "Not a US/Canada number",
   "no-phone": "No phone in Notion",
 };
+// No date in the starting text: a deadline typed here would go stale, and a
+// text with {link} can't be drafted after the RSVP deadline anyway (the server
+// refuses it). Never reuse the registered sample texts, which give an old
+// deadline (docs/sms-campaign-registration.md).
 const DEFAULT_TEXT =
-  "Simply Soph Media: Hello from Sophia's quinceañera! RSVP by November 15: {link} Reply STOP to opt out.";
+  "Simply Soph Media: Hello from Sophia's quinceañera! Your family's private RSVP link: {link} Reply STOP to opt out.";
 const TEST_TEXT =
   "Simply Soph Media: Test from the Mis XV website. Reply STOP to opt out.";
 const when = (ms) => (ms ? new Date(ms).toLocaleString() : "—");

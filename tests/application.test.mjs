@@ -3302,6 +3302,58 @@ test("texts to guests: draft, type the count, send in one confirmed batch from t
   assert.equal((await f.admin("sms/drafts")).batches[0].state, "done");
 });
 
+// A typed text (or email) with {link} carries the household's private RSVP
+// link: it asks for an RSVP as an invitation does, so after the deadline it is
+// refused the same way (INVITATIONS_CLOSED). Before: drafted and sent freely.
+test("after the RSVP deadline no text or typed email with a private RSVP link is drafted, confirmed or sent", async () => {
+  const sent = [];
+  const f = await fixture({
+    smsTransport: {
+      enabled: true,
+      async send(m) {
+        sent.push(m);
+        return { state: "accepted", provider: "twilio", providerId: "SM" + String(sent.length).repeat(32) };
+      },
+    },
+  });
+  f.row.phone = "+18175550100";
+  await keywordOptIn(f, f.row.phone);
+  const deadline = Date.parse("2026-11-15T23:59:00-06:00");
+  const linkText = "Simply Soph Media: Your family's private RSVP link: {link} Reply STOP to opt out.";
+  const draft = (requestId, text, channel = "sms") =>
+    f.admin("mail/batch-draft", { requestId, groups: [], ids: [household], subject: "RSVP", text, channel });
+  const id = (n) => `aaaaaaaa-aaaa-4aaa-8aaa-${String(n).padStart(12, "0")}`;
+  // Drafted before the deadline: one batch confirmed, one not, a single text, an email.
+  await draft(id(1), linkText);
+  await draft(id(2), linkText);
+  await f.admin("sms/batch/confirm", { id: id(2), count: 1 });
+  const single = await draft(id(3), linkText);
+  const email = await draft(id(4), "Your RSVP link: {link}", "email");
+  // One millisecond before the deadline a link may still be drafted...
+  f.advance(deadline - 1 - at);
+  await f.ledger.transaction((s) => {
+    for (const v of Object.values(s.sessions)) if (v.kind === "admin") v.expiresAt = deadline + 86400000;
+  });
+  assert.equal((await draft(id(5), linkText)).count, 1);
+  // ...and from the deadline itself nothing with a link is drafted or sent.
+  f.advance(1);
+  const closed = (e) => e.code === "INVITATIONS_CLOSED" && e.status === 409;
+  await assert.rejects(() => draft(id(6), linkText), closed);
+  await assert.rejects(() => draft(id(7), "Your RSVP link: {link}", "email"), closed);
+  await assert.rejects(() => f.admin("sms/batch/confirm", { id: id(1), count: 1 }), closed);
+  await assert.rejects(() => f.admin("sms/batch/send", { id: id(2) }), closed);
+  await assert.rejects(() => f.admin("sms/send", { id: single.ids[0], reviewToken: "any", confirm: true }), closed);
+  await assert.rejects(() => f.admin("mail/send", { id: email.ids[0], confirm: true }), closed);
+  assert.deepEqual(sent, []);
+  // Kept for cancelling, not set aside behind the family's back.
+  assert.ok(Object.values((await f.ledger.read()).smsDrafts).every((d) => d.state === "draft" && !d.archived));
+  // A text without a link (an update) is not about replying, and still goes.
+  const update = await draft(id(8), "Simply Soph Media: Parking details are on the website. Reply STOP to opt out.");
+  const preview = await f.admin("sms/preview", undefined, { id: update.ids[0] });
+  await f.admin("sms/send", { id: update.ids[0], reviewToken: preview.reviewToken, confirm: true });
+  assert.equal(sent.length, 1);
+});
+
 test("every email built with a text version hands it to the mailer next to the HTML (R-122)", async () => {
   const f = await fixture();
   const last = () => f.sent.at(-1);
