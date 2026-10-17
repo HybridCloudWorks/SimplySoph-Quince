@@ -141,10 +141,20 @@ export const newTab = (lang = "en") =>
   `<span class="ext" aria-hidden="true">↗</span><span class="visually-hidden"> ${label("(opens in a new tab)", "(se abre en otra pestaña)", lang)}</span>`;
 const calendarMark =
   '<svg class="icon" aria-hidden="true" viewBox="0 0 16 16" width="16" height="16"><path d="M2.5 3.5h11v10h-11zM2.5 6.5h11M5.5 1.5v3M10.5 1.5v3" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>';
+// Directions to an address in Google Maps, Apple Maps and Waze (the venue
+// pages and the home page on the day itself).
+export function mapLinks(address) {
+  const q = encodeURIComponent(address);
+  return {
+    google: `https://www.google.com/maps/search/?api=1&query=${q}`,
+    apple: `https://maps.apple.com/?q=${q}`,
+    waze: `https://waze.com/ul?q=${q}&navigate=yes`,
+  };
+}
 export function maps(address, lang = "en") {
-  const q = encodeURIComponent(address),
+  const links = mapLinks(address),
     e = escapeHtml;
-  return `<div class="venue-actions"><a class="button burgundy" target="_blank" rel="noopener noreferrer" href="https://www.google.com/maps/search/?api=1&amp;query=${q}">${label("Open in Google Maps", "Abrir en Google Maps", lang)}${newTab(lang)}</a><a class="button outline" target="_blank" rel="noopener noreferrer" href="https://maps.apple.com/?q=${q}">${label("Open in Apple Maps", "Abrir en Apple Maps", lang)}${newTab(lang)}</a><button class="plain-button" type="button" data-copy-address="${e(address)}">${label("Copy address", "Copiar dirección", lang)}</button></div>`;
+  return `<div class="venue-actions"><a class="button burgundy" target="_blank" rel="noopener noreferrer" href="${e(links.google)}">${label("Open in Google Maps", "Abrir en Google Maps", lang)}${newTab(lang)}</a><a class="button outline" target="_blank" rel="noopener noreferrer" href="${e(links.apple)}">${label("Open in Apple Maps", "Abrir en Apple Maps", lang)}${newTab(lang)}</a><a class="button outline" target="_blank" rel="noopener noreferrer" href="${e(links.waze)}">${label("Open in Waze", "Abrir en Waze", lang)}${newTab(lang)}</a><button class="plain-button" type="button" data-copy-address="${e(address)}">${label("Copy address", "Copiar dirección", lang)}</button></div>`;
 }
 // Spanish pages download Spanish calendars. Both languages share each event's
 // UID, so whichever one a guest saved is updated in place.

@@ -1,7 +1,7 @@
 import { registryDefaults } from "../server/registry-settings.mjs";
 import { smsProgram } from "../site/sms-program.mjs";
 import { policies, policyUpdated, updatedOn } from "../site/policies.mjs";
-import { terms, say as term } from "../site/lexicon.mjs";
+import { terms, say as term, say as sayTerm, registerFor } from "../site/lexicon.mjs";
 import { noteSentence } from "../site/notes.mjs";
 import {
   celebration,
@@ -33,10 +33,28 @@ import {
   sections,
 } from "../site/content.mjs";
 import { exampleFamily, previewRoutes } from "../site/preview-content.mjs";
+import { milestones, phaseAt, previewKey } from "../site/lifecycle.mjs";
+import { date as longDate, capitalize } from "../site/datetime.mjs";
+// The celebration's phase at the time of the build (--now=<ISO>, default the
+// real time). Only what a crawler reads depends on it: link previews and the
+// misxv-phase marker a release check can compare. The pages themselves are
+// built in their RSVP-open state and follow the phase in the browser
+// (site/now.mjs). Tests pin --now so the calendar never changes their output.
+const option = (name) =>
+  process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
+const buildNow = option("now") ? Date.parse(option("now")) : Date.now();
+if (!Number.isFinite(buildNow)) throw new Error("--now must be an ISO date and time");
+const phase = phaseAt(buildNow, milestones({ deadline: event.deadline, site: celebration }));
 // The public build uses the family's approved content; the admin preview swaps
 // in the idea-book examples (see the end of this file).
 let family = approvedFamily;
-const root = new URL("../dist/", import.meta.url),
+// --out=<name> builds into .cache/builds/<name>/ instead of dist/ (tests that
+// compare phases build there, so they never touch the dist/ other tests read).
+const outName = option("out");
+if (outName !== undefined && !/^[a-z0-9-]{1,40}$/.test(outName))
+  throw new Error("--out must be a short lowercase name");
+const outBase = outName ? `../.cache/builds/${outName}/` : "../";
+const root = new URL(outBase + "dist/", import.meta.url),
   esc = (s) =>
     String(s).replace(
       /[&<>"']/g,
@@ -58,17 +76,6 @@ const origin = "https://misxv.simplysoph.com";
 const favicon = "data:image/svg+xml," + encodeURIComponent(iconSvg());
 const routeTitle = (route, lang) =>
   routes.find((r) => r[0] === route)?.[lang === "es" ? 2 : 1] || "";
-// "Sunday, November 15" / "domingo 15 de noviembre", from the RSVP deadline.
-const deadline = (lang, options) => {
-  const text = new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", {
-    timeZone: event.timezone,
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    ...options,
-  }).format(new Date(event.deadline));
-  return lang === "es" ? text.replace(", ", " ") : text;
-};
 // Sections that have a page with content, and each section's own pages.
 const sectionOf = (route) => sections.find((s) => s.pages.includes(route));
 const readyPages = (section) => section.pages.filter((r) => ready(r, family));
@@ -84,8 +91,14 @@ function contents(route, lang) {
       `<a class="button burgundy" href="${href(r, lang)}">${label}</a>`;
   // Where a guest goes next from a page that has nothing more to show yet.
   const nextSteps = `<p class="actions next-steps">${link("rsvp", t.rsvp)}<a href="${href("details", lang)}">${t.all}${arrow}</a></p>`;
-  if (route === "")
-    return `<section class="hero"><div class="hero-copy"><p class="eyebrow">MIS QUINCEAÑERA</p><h1>Sophia</h1><p class="hero-line">${t.tagline}</p><p class="date" data-event-date>${t.date}</p><div class="actions">${link("rsvp", t.rsvp)}<a href="${href("details", lang)}">${t.all}${arrow}</a></div><p class="hero-deadline" data-reply-by>${say(`Please reply by ${deadline(lang)}`, `Por favor, confirma a más tardar el ${deadline(lang)}`)}</p><div class="countdown" data-countdown data-deadline="${esc(event.deadline)}" data-start="${esc(celebration.countdownAt)}" data-end="${esc(celebration.reception.end || celebration.countdownAt)}" hidden></div></div><div class="hero-schedule"><h2 class="strip-heading">${routeTitle("details", lang)}</h2><div data-schedule-strip>${scheduleStrip(celebration, lang)}</div></div><blockquote class="sophia-quote" data-home-quote><p>“${esc(celebration.quote[lang])}”</p><cite>— ${esc(celebration.name)}</cite></blockquote><figure class="invitation">${picture(images.invitation, { alt: esc(invitationAlt(celebration, lang)), sizes: "(max-width: 760px) 290px, 365px", loading: "eager", priority: "high" })}<figcaption><a href="${images.invitation.jpeg.at(-1)[1]}" target="_blank" rel="noopener">${t.invitationCaption}${newTab(lang)}</a></figcaption></figure></section><div class="home-updates" data-announcements></div>`;
+  // The home page in its RSVP-open state; site/home.mjs redraws it for the
+  // phase (answered, closed, the day itself, the evening, after) and puts the
+  // newest announcement under the status line. On wide screens the written
+  // schedule sits right under the actions, as on phones, above Sophia's words.
+  if (route === "") {
+    const by = esc(longDate(event.deadline, lang, { year: false }));
+    return `<section class="hero" data-home><div class="hero-copy"><p class="eyebrow">MIS QUINCEAÑERA</p><h1>Sophia</h1><p class="hero-line" data-hero-line>${t.tagline}</p><p class="date" data-event-date>${t.date}</p><div class="actions" data-home-actions>${link("rsvp", t.rsvp)}<a href="${href("details", lang)}">${t.all}${arrow}</a></div><p class="hero-deadline" data-reply-by>${say(`Please RSVP by ${by}`, `Por favor, confirmen a más tardar el ${by}`)}</p><div class="countdown" data-countdown hidden></div><div class="home-status" data-home-status hidden></div><div class="home-latest" data-latest-update hidden></div></div><div class="hero-schedule" data-home-schedule><h2 class="strip-heading">${routeTitle("details", lang)}</h2><div data-schedule-strip>${scheduleStrip(celebration, lang)}</div></div><blockquote class="sophia-quote" data-home-quote><p>“${esc(celebration.quote[lang])}”</p><cite>— ${esc(celebration.name)}</cite></blockquote><p class="home-note" data-home-note><a href="${href("guestbook", lang)}">${esc(sayTerm(terms.leaveNote, lang, registerFor("")))}${arrow}</a></p><figure class="invitation" data-home-invitation>${picture(images.invitation, { alt: esc(invitationAlt(celebration, lang)), sizes: "(max-width: 760px) 290px, 365px", loading: "eager", priority: "high" })}<figcaption><a href="${images.invitation.jpeg.at(-1)[1]}" target="_blank" rel="noopener">${t.invitationCaption}${newTab(lang)}</a></figcaption></figure></section><div class="home-updates" data-announcements></div>`;
+  }
   // The page title; pages that belong to a larger section also name it above
   // the title and list its other pages with content underneath.
   const section = sectionOf(route),
@@ -466,17 +479,50 @@ function navigation(lang, current) {
 // Fonts: the weights the stylesheets use, fetched in parallel with them.
 const fonts =
   "https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&amp;family=Great+Vibes&amp;family=Manrope:wght@400;600;700&amp;display=swap";
-// Title, description, link-preview card and icons. Every page shares the event
-// preview, so a pasted link to any page shows the invitation and the date.
+// Title, description, link-preview card and icons. What a link preview says
+// depends on the page and on the phase at build time (lifecycle previewKey):
+// before the deadline home and RSVP invite and give the deadline; after it the
+// event line; after the party a thank-you. Pages about photos and notes say
+// the same thing in every phase, since a preview, once sent, never updates.
+const eventLine = (lang) =>
+  lang === "es"
+    ? `${capitalize(longDate(event.startsAt, "es"))} en Fort Worth, Texas.`
+    : `${longDate(event.startsAt, "en")} in Fort Worth, Texas.`;
+const previews = {
+  invite: (lang) =>
+    lang === "es"
+      ? `${eventLine(lang)} Por favor, confirmen su asistencia a más tardar el ${longDate(event.deadline, "es")}.`
+      : `${eventLine(lang)} Please RSVP by ${longDate(event.deadline, "en")}.`,
+  event: eventLine,
+  thanks: (lang) =>
+    lang === "es"
+      ? `Gracias por celebrar con nosotros el ${longDate(event.startsAt, "es")}.`
+      : `Thank you for celebrating with us on ${longDate(event.startsAt, "en")}.`,
+  share: (lang) =>
+    lang === "es"
+      ? "Comparte las fotos y los videos que tomaste en los XV de Sophia."
+      : "Share the photos and videos you took at Sophia’s quinceañera.",
+  gallery: (lang) =>
+    lang === "es"
+      ? "Fotos y videos de los XV de Sophia, para nuestros invitados."
+      : "Photos and videos from Sophia’s quinceañera, for our guests.",
+  guestbook: (lang) => sayTerm(terms.leaveNote, lang, registerFor("guestbook")) + ".",
+  "thank-you": (lang) =>
+    lang === "es" ? "Un agradecimiento de Sophia y su familia." : "A thank-you from Sophia and her family.",
+};
+const dateFree = ["share", "gallery", "guestbook", "thank-you"];
 function head({ route, title, lang, admin }) {
   const t = copy[lang],
     es = lang === "es",
-    date = deadline(lang, { year: "numeric" }),
-    description = es
-      ? `Viernes 15 de enero de 2027 en Fort Worth, Texas. Confirma tu asistencia a más tardar el ${date}.`
-      : `Friday, January 15, 2027 in Fort Worth, Texas. Please RSVP by ${date}.`,
+    key = previewKey(admin ? "admin" : route, phase),
+    description = previews[key](lang),
+    ogTitle = dateFree.includes(key)
+      ? `${routeTitle(route, lang)} · ${t.site}`
+      : es
+        ? "Los XV de Sophia · 15 de enero de 2027"
+        : "Sophia’s Quinceañera · January 15, 2027",
     url = origin + (admin ? `/${route}/` : href(route === "404" ? "" : route, lang));
-  return `<title>${esc(route === "" && !admin ? t.site : `${title} · ${t.site}`)}</title><meta name="description" content="${esc(description)}"><meta name="theme-color" content="#360d16" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#070c15" media="(prefers-color-scheme: dark)"><meta property="og:type" content="website"><meta property="og:site_name" content="${esc(t.site)}"><meta property="og:title" content="${esc(es ? "Los XV de Sophia · 15 de enero de 2027" : "Sophia’s Quinceañera · January 15, 2027")}"><meta property="og:description" content="${esc(description)}"><meta property="og:url" content="${url}"><meta property="og:image" content="${origin}${images.og}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:alt" content="${esc(es ? "Invitación a los XV de Sophia en dorado y borgoña" : "Sophia’s gold and burgundy quinceañera invitation")}"><meta property="og:locale" content="${es ? "es_US" : "en_US"}"><meta property="og:locale:alternate" content="${es ? "en_US" : "es_US"}"><meta name="twitter:card" content="summary_large_image"><link rel="icon" type="image/svg+xml" href="${favicon}"><link rel="icon" type="image/png" sizes="32x32" href="${images.favicon}"><link rel="apple-touch-icon" href="${images.touchIcon}"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="${fonts}">`;
+  return `<title>${esc(route === "" && !admin ? t.site : `${title} · ${t.site}`)}</title><meta name="description" content="${esc(description)}"><meta name="misxv-phase" content="${phase}"><meta name="misxv-deadline" content="${esc(event.deadline)}"><meta name="theme-color" content="#360d16" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#070c15" media="(prefers-color-scheme: dark)"><meta property="og:type" content="website"><meta property="og:site_name" content="${esc(t.site)}"><meta property="og:title" content="${esc(ogTitle)}"><meta property="og:description" content="${esc(description)}"><meta property="og:url" content="${url}"><meta property="og:image" content="${origin}${images.og}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:alt" content="${esc(es ? "Invitación a los XV de Sophia en dorado y borgoña" : "Sophia’s gold and burgundy quinceañera invitation")}"><meta property="og:locale" content="${es ? "es_US" : "en_US"}"><meta property="og:locale:alternate" content="${es ? "en_US" : "es_US"}"><meta name="twitter:card" content="summary_large_image"><link rel="icon" type="image/svg+xml" href="${favicon}"><link rel="icon" type="image/png" sizes="32x32" href="${images.favicon}"><link rel="apple-touch-icon" href="${images.touchIcon}"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="${fonts}">`;
 }
 function document({ route, title, lang = "en", admin = false }) {
   const t = copy[lang];
@@ -498,8 +544,9 @@ function document({ route, title, lang = "en", admin = false }) {
   }</main><footer class="site-footer"><nav class="footer-nav" aria-label="${lang === "es" ? "Políticas y avisos" : "Policies and updates"}"><ul>${["privacy", "terms", "whatsapp", "sms", "contact"].map((r) => `<li><a href="${href(r, lang)}"${r === route && !admin ? ' aria-current="page"' : ""}>${esc(routeTitle(r, lang))}</a></li>`).join("")}</ul></nav><p class="copyright">© 2026 Simply Soph Media (${lang === "es" ? "la familia de Sophia" : "Sophia’s family"})</p></footer><div id="status" role="status" aria-live="polite"></div></body></html>`;
 }
 // Only remove the known generated directory inside this checkout, never a supplied path.
-const checkout = fileURLToPath(new URL("../", import.meta.url));
-if (path.resolve(fileURLToPath(root)) !== path.join(checkout, "dist"))
+const checkout = fileURLToPath(new URL("../", import.meta.url)),
+  outDir = outName ? path.join(checkout, ".cache", "builds", outName) : checkout;
+if (path.resolve(fileURLToPath(root)) !== path.join(outDir, "dist"))
   throw new Error("Invalid build output");
 await rm(root, { recursive: true, force: true });
 await mkdir(root, { recursive: true });
@@ -564,8 +611,9 @@ for (const file of [
   "lifecycle.mjs",
   "datetime.mjs",
   "lexicon.mjs",
+  "now.mjs",
+  "home.mjs",
   "experience.js",
-  "site-clock.js",
   "nav.js",
   "not-found.js",
   "admin-experience.js",
@@ -601,8 +649,8 @@ await writeFile(new URL("robots.txt", root), "User-agent: *\nDisallow: /\n");
 // examples, so the family can review wording live without guests seeing made-up
 // names. Written outside dist/ so Hosting never publishes it; the API serves it
 // to administrators at /api/admin/preview (server/application.mjs).
-const previewRoot = new URL("../dist-preview/", import.meta.url);
-if (path.resolve(fileURLToPath(previewRoot)) !== path.join(checkout, "dist-preview"))
+const previewRoot = new URL(outBase + "dist-preview/", import.meta.url);
+if (path.resolve(fileURLToPath(previewRoot)) !== path.join(outDir, "dist-preview"))
   throw new Error("Invalid preview output");
 await rm(previewRoot, { recursive: true, force: true });
 family = exampleFamily;
@@ -621,5 +669,5 @@ for (const lang of ["en", "es"]) {
 }
 family = approvedFamily;
 console.log(
-  `Built ${count} pages, English/Spanish guest routes, private admin shells and calendar, plus ${previewRoutes.length * 2} admin preview pages. Runtime features require the configured API.`,
+  `Built ${count} pages, English/Spanish guest routes, private admin shells and calendar, plus ${previewRoutes.length * 2} admin preview pages, with ${phase} link previews${outName ? ` in .cache/builds/${outName}/` : ""}. Runtime features require the configured API.`,
 );

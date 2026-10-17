@@ -58,6 +58,15 @@ const messages = {
     "Enter the phone with its country code, like +1 817 555 0123.",
     "Escribe el teléfono con su código de país, como +1 817 555 0123.",
   ],
+  // Admin only: invitations and reminders ask guests to RSVP by the deadline.
+  INVITATIONS_CLOSED: [
+    "The RSVP deadline has passed. Invitations and reminders ask guests to RSVP by it, so they can no longer be drafted or sent. Nothing was sent. To reach guests now, use an update email or a website announcement.",
+    "La fecha límite para confirmar ya pasó. Las invitaciones y los recordatorios piden confirmar antes de esa fecha, así que ya no se pueden preparar ni enviar. No se envió nada. Para avisar a los invitados, usa un correo de novedades o un anuncio en el sitio.",
+  ],
+  SPANISH_REQUIRED: [
+    "Add the Spanish title and message too. Guests read the website in English and Spanish, so a new announcement needs both. Nothing was published.",
+    "Agrega también el título y el mensaje en español. Los invitados leen el sitio en inglés y en español, así que un anuncio nuevo necesita los dos. No se publicó nada.",
+  ],
   BATCH_NOT_CONFIRMED: [
     "Confirm this batch before sending.",
     "Confirma este lote antes de enviarlo.",

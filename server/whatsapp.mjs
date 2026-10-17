@@ -43,6 +43,9 @@ export function createWhatsapp({
   now = Date.now,
   // The RSVP deadline (site/content.mjs); checked against approved templates.
   deadline = null,
+  // False once that deadline has passed (server/application.mjs). Every
+  // template is an invitation or a reminder that asks for an RSVP by it.
+  invitationsOpen = () => true,
 }) {
   if (
     !Array.isArray(templates) ||
@@ -255,6 +258,7 @@ export function createWhatsapp({
     return consent(id);
   }
   async function draft(input) {
+    if (!invitationsOpen()) throw error(409, "INVITATIONS_CLOSED");
     if (
       !/^[a-zA-Z0-9_-]{8,128}$/.test(input.requestId || "") ||
       !Array.isArray(input.ids) ||
@@ -381,6 +385,7 @@ export function createWhatsapp({
   }
   async function send(id, reviewToken, actor) {
     if (!enabled) throw error(503, "WHATSAPP_NOT_ENABLED");
+    if (!invitationsOpen()) throw error(409, "INVITATIONS_CLOSED");
     const p = await review(id);
     if (!p.sendingEnabled) throw error(503, "WHATSAPP_TEMPLATE_NOT_APPROVED");
     if (p.reviewToken !== reviewToken)

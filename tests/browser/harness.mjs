@@ -383,6 +383,21 @@ export async function startHarness({
         ip: "harness",
       });
     },
+    // POST /api/admin/updates, as Admin → Communications publishes a website
+    // announcement (English and Spanish).
+    async announce(announcement) {
+      return app.dispatch({
+        path: "/api/admin/updates",
+        method: "POST",
+        headers: {
+          origin: siteOrigin,
+          cookie: "__session=" + ownerToken,
+          "x-csrf-token": ownerCsrf,
+        },
+        body: announcement,
+        ip: "harness",
+      });
+    },
     async close() {
       server.closeAllConnections();
       await new Promise((resolve) => server.close(resolve));

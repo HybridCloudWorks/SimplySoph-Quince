@@ -88,11 +88,15 @@ test("the family's portraits open the gallery, one album at a time, in both lang
 });
 
 test("every hook the live event settings fill is on a built page", async () => {
-  // site/experience.js redraws these from the admin's settings; a hook that
-  // no page has any more is dead code.
-  const source = await readFile(new URL("../site/experience.js", import.meta.url), "utf8");
-  const hooks = [...source.matchAll(/querySelector(?:All)?\("\[(data-[a-z-]+)\]"\)/g)].map((m) => m[1]);
-  assert.ok(hooks.includes("data-countdown"));
+  // site/experience.js redraws these from the admin's settings, and
+  // site/home.mjs the home page by phase; a hook that no page has any more is
+  // dead code.
+  let source = "";
+  for (const file of ["experience.js", "home.mjs"])
+    source += await readFile(new URL("../site/" + file, import.meta.url), "utf8");
+  const hooks = [...source.matchAll(/(?:querySelector(?:All)?\(|\$\()"\[(data-[a-z-]+)\]"\)/g)].map((m) => m[1]);
+  for (const hook of ["data-countdown", "data-home", "data-reply-by", "data-home-status", "data-latest-update"])
+    assert.ok(hooks.includes(hook), hook);
   let html = "";
   for (const [, file] of await guestPages()) html += await page(file);
   for (const hook of hooks) assert.ok(new RegExp(`\\s${hook}[\\s=>]`).test(html), hook);
@@ -121,9 +125,12 @@ test("the header is a flat list: sections, sign in, language pill, RSVP and a me
 });
 
 test("the home page puts the name, date and RSVP before the schedule, words and artwork", async () => {
-  for (const [file, deadline] of [
-    ["index.html", "Please reply by Sunday, November 15"],
-    ["es/index.html", "Por favor, confirma a más tardar el domingo 15 de noviembre"],
+  // Built in its RSVP-open state; site/home.mjs follows the phase. The Spanish
+  // home page speaks to the household (ustedes), and the deadline sentence is
+  // "Please RSVP by" (site/lexicon.mjs).
+  for (const [file, deadline, note] of [
+    ["index.html", "Please RSVP by Sunday, November 15", 'href="/guestbook/">Leave Sophia a note'],
+    ["es/index.html", "Por favor, confirmen a más tardar el domingo 15 de noviembre", 'href="/es/guestbook/">Déjenle un mensaje a Sophia'],
   ]) {
     const html = main(await page(file));
     const at = (needle) => {
@@ -137,8 +144,12 @@ test("the home page puts the name, date and RSVP before the schedule, words and 
       at('class="button burgundy" href="' + (file.startsWith("es") ? "/es" : "") + '/rsvp/"'),
       at(deadline),
       at("data-countdown"),
+      // The newest announcement, under the status line (R-030).
+      at("data-latest-update"),
       at('class="schedule-strip"'),
       at("data-home-quote"),
+      // "Leave Sophia a note →" under her words (R-028).
+      at(note),
       at('class="invitation"'),
     ];
     assert.deepEqual(order, [...order].sort((a, b) => a - b), file);
@@ -212,8 +223,21 @@ test("every page has a title, link preview and icons, and stays out of search", 
     const title = html.match(/<title>([^<]+)<\/title>/)[1];
     if (route === "") assert.equal(title, site);
     else assert.ok(title.endsWith(" · " + site), `${file}: ${title}`);
-    assert.equal(og(html, "og:title"), es ? "Los XV de Sophia · 15 de enero de 2027" : "Sophia’s Quinceañera · January 15, 2027");
-    assert.match(og(html, "og:description"), es ? /15 de noviembre de 2026/ : /November 15, 2026/);
+    // The test build is pinned before the deadline (package.json --now): home
+    // and RSVP invite; pages about photos and notes never mention a date
+    // (tests/previews.test.mjs builds the other phases).
+    assert.equal(html.match(/<meta name="misxv-phase" content="([^"]+)">/)?.[1], "rsvp-open", file);
+    const dateFree = ["share", "gallery", "guestbook", "thank-you"].includes(route);
+    if (dateFree) {
+      assert.equal(og(html, "og:title"), `${html.match(/<h1>([^<]+)<\/h1>/)?.[1] || og(html, "og:title").split(" · ")[0]} · ${site}`, file);
+      assert.doesNotMatch(og(html, "og:description"), /2026|2027|RSVP|confirm/i, file);
+    } else {
+      assert.equal(og(html, "og:title"), es ? "Los XV de Sophia · 15 de enero de 2027" : "Sophia’s Quinceañera · January 15, 2027");
+      if (route === "" || route === "rsvp")
+        assert.match(og(html, "og:description"), es ? /confirmen su asistencia a más tardar el domingo 15 de noviembre de 2026/ : /Please RSVP by Sunday, November 15, 2026/);
+      else assert.doesNotMatch(og(html, "og:description"), /RSVP|confirm/i, file);
+    }
+    assert.equal(html.match(/<meta name="description" content="([^"]+)">/)[1], og(html, "og:description"));
     assert.equal(og(html, "og:locale"), es ? "es_US" : "en_US");
     assert.match(og(html, "og:image"), /^https:\/\/misxv\.simplysoph\.com\/assets\/img\/og-invitation\.[0-9a-f]{10}\.jpg$/);
     assert.match(html, /<meta name="twitter:card" content="summary_large_image">/);

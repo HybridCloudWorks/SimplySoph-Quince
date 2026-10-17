@@ -16,7 +16,7 @@ import {
   withVideoDirectory,
 } from "./video.mjs";
 import { uploadLimits, classify, referenceCode } from "../site/upload-batch.mjs";
-import { milestones, inUploadWindow } from "../site/lifecycle.mjs";
+import { milestones, inUploadWindow, rsvpOpen } from "../site/lifecycle.mjs";
 import { quotaSetting, familyLimit, recent, nextRoom, DAY } from "./upload-quota.mjs";
 import { tableCardSvg } from "./party-card.mjs";
 import { calendar, contactTopics, escapeHtml } from "../site/celebration.mjs";
@@ -184,6 +184,18 @@ export function createApplication({
     s.partyCard?.state === "open" &&
     s.partyCard.version === version &&
     !!partyWindow(s)?.open;
+  // The server's clock, sent with the public settings so browsers can correct
+  // a phone that runs fast or slow (site/now.mjs).
+  const serverTime = () => new Date(now()).toISOString();
+  // Invitations and reminders ask guests to RSVP by the deadline, so none is
+  // drafted or sent once it has passed. The lifecycle model decides (it needs
+  // only the deadline for this); the RSVP save keeps its own check
+  // (server/rsvp-validation.mjs).
+  const invitationsOpen = () => rsvpOpen(now(), { deadline: Date.parse(deadline) });
+  const refuseLateInvitations = (type) => {
+    if (["invitation", "reminder"].includes(type) && !invitationsOpen())
+      throw error(409, "INVITATIONS_CLOSED");
+  };
   const sms = createSms({
     ledger,
     notion,
@@ -203,6 +215,7 @@ export function createApplication({
     origin,
     now,
     deadline,
+    invitationsOpen,
   });
   const sendNotification = createNotifications({
     ledger,
@@ -389,6 +402,16 @@ export function createApplication({
     return { name, text, display: displayFor(body.consent, body.audience) };
   }
   const hiddenContact = () => ({ email: "", phone: "", address: null });
+  // A household's latest saved RSVP, reduced to what its own home page shows.
+  function householdReply(s, householdId) {
+    const id = s.invitations[householdId]?.latestSubmissionId,
+      r = id ? s.responses[id] : null;
+    if (!r) return { answered: false, answeredAt: null, answer: null };
+    const coming = Object.values(r.attendance || {}).some(
+      (v) => v.adultsTeens + v.kids > 0,
+    );
+    return { answered: true, answeredAt: r.submittedAt, answer: coming ? "yes" : "no" };
+  }
   // One derived status per household for the organizer dashboard; computed from
   // the ledger on read so it can never drift from the underlying records.
   const householdStatuses = [
@@ -665,6 +688,9 @@ export function createApplication({
         throw error(409, "MAIL_DRAFT_STALE");
     } else if (!invite?.active || invite.generation !== j.generation)
       throw error(409, "MAIL_DRAFT_STALE");
+    // Drafted before the deadline, sent after it: it would still say "by
+    // November 15", so it is set aside instead.
+    refuseLateInvitations(j.type);
     // An invitation or reminder drafted before the household answered (on the
     // website, or by phone into Notion) is set aside, not sent (re-audit L4).
     if (["invitation", "reminder"].includes(j.type) && attendanceOf(s, currentGuest))
@@ -817,6 +843,7 @@ export function createApplication({
     mailer,
     origin,
     now,
+    refuseLateInvitations,
     sleep: mailSleep,
   });
   const adminEmail = createAdminEmail({
@@ -1113,9 +1140,10 @@ export function createApplication({
           smsKeyword: smsProgram.keyword,
           smsNumber: smsProgram.phoneDisplay,
         },
+        now: serverTime(),
       };
     if (path === "/api/site" && method === "GET") {
-      return { site: siteSettings(await ledger.read()) };
+      return { site: siteSettings(await ledger.read()), now: serverTime() };
     }
     // /api/calendar/ceremony.ics in English, /api/calendar/es/ceremony.ics in
     // Spanish (the /es/ pages link there); same event UID in both.
@@ -1135,17 +1163,21 @@ export function createApplication({
     if (path === "/api/public" && method === "GET") {
       const s = await ledger.read();
       return {
-        // Only what the public page shows; admin notes and audit fields stay private.
+        // Only what the public page shows; admin notes and audit fields stay
+        // private. Newest first, each with the moment it was published (an
+        // announcement published before publishedAt existed: when it was made).
         announcements: Object.values(s.announcements)
           .filter((r) => r.published && !r.archived)
-          .map(({ id, title, text, titleEs, textEs, at }) => ({
+          .map(({ id, title, text, titleEs, textEs, at, publishedAt }) => ({
             id,
             title,
             text,
             titleEs,
             textEs,
             at,
-          })),
+            publishedAt: new Date(publishedAt ?? at).toISOString(),
+          }))
+          .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt) || b.at - a.at),
         // Notes for Sophia only while the family has made them public, and only
         // those whose writers agreed to that; otherwise GET /api/guestbook.
         messages: shownNotes(s, "public"),
@@ -1626,6 +1658,12 @@ export function createApplication({
         verified: !!session?.accountId,
         scope: session?.scope ?? null,
         owner: session?.kind === "admin" && ownerSession(session),
+        // The home page's "You replied ✓": only whether this session's own
+        // household has a saved RSVP, when, and yes or no. No name, counts or
+        // id, and nothing at all without a guest session.
+        ...(session?.kind === "guest" && {
+          household: householdReply(ctx.state, session.householdId),
+        }),
       };
     const requireAuth = (kind) => {
       if (!session || (kind && session.kind !== kind))
@@ -2895,6 +2933,8 @@ export function createApplication({
           titleEs = safeText(body.titleEs || "", 140),
           textEs = safeText(body.textEs || "", 2000);
         if (!title || !text) throw error(422, "MESSAGE_REQUIRED");
+        // Guests read the home page in both languages.
+        if (!titleEs || !textEs) throw error(422, "SPANISH_REQUIRED");
         return ledger.transaction((s) => {
           s.announcements[id] = {
             id,
@@ -2904,6 +2944,7 @@ export function createApplication({
             textEs,
             published: true,
             at: now(),
+            publishedAt: now(),
           };
           audit(s, session.actor, "announcement-published", id, now());
           return { id };
@@ -3150,6 +3191,7 @@ export function createApplication({
           origin +
           (invite.locale === "es" ? "/es" : "") +
           (body.type === "thanks" ? "/thank-you/" : "/details/");
+        refuseLateInvitations(body.type);
         // Invitations and reminders carry a private link the server mints per
         // draft (sealed in the outbox), so organizers never copy or paste links.
         // It shares the household's generation: issuing a new link revokes it.
