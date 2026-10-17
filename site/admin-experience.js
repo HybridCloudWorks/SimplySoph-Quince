@@ -10,7 +10,7 @@ const previewPages = [
   ["sophia", "Meet Sophia", "Conoce a Sophia"],
   ["court", "Court of honor", "Corte de honor"],
   ["padrinos", "Padrinos", "Padrinos"],
-  ["travel", "Travel", "Viaje"],
+  ["travel", "Travel", "Hospedaje y transporte"],
   ["faq", "Questions", "Preguntas"],
   ["gallery", "Photos", "Fotos"],
   ["thank-you", "Thank you", "Gracias"],

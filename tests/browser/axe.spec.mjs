@@ -205,7 +205,7 @@ for (const lang of ["en", "es"])
     await setNow(harness.now() + 16 * 60_000);
     await page.goto(harness.forBrowser(harness.sent.at(-1).html.match(/href="(https:\/\/127\.0\.0\.1:\d+\/(?:es\/)?account\/#[A-Za-z0-9_-]{43})"/)[1]));
     await page.getByRole("button", { name: /^(Continue|Continuar)$/ }).click();
-    await expect(page.getByRole("button", { name: es ? "Envíame un enlace nuevo" : "Send me a new link" })).toBeVisible();
+    await expect(page.getByRole("button", { name: es ? "Enviar un enlace nuevo" : "Send me a new link" })).toBeVisible();
     await bothSchemes(page, "expired sign-in link", found);
     // What's next on the confirmation; then a save refused as too late.
     const { link } = await harness.issueInvitation(household, { locale: lang });

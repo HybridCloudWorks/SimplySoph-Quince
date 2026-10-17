@@ -48,8 +48,12 @@ function limitSentence({ scope, limit, retryAt }) {
   const n = Number.isSafeInteger(limit) ? limit : null;
   if (scope === "device")
     return tr(
-      `This phone has shared ${n ?? "the most"} photos and videos from the table card, the most we take from one phone at a time. Thank you!`,
-      `Este teléfono ya compartió ${n ?? "el máximo de"} fotos y videos desde la tarjeta de la mesa, el máximo que recibimos de un teléfono a la vez. ¡Gracias!`,
+      n
+        ? `This phone has shared ${n} photos and videos from the table card, as many as we can take from one phone. Thank you!`
+        : "This phone has shared as many photos and videos as we can take from one phone. Thank you!",
+      n
+        ? `Este teléfono ya compartió ${n} fotos y videos desde la tarjeta de la mesa, todos los que podemos recibir de un solo teléfono. ¡Gracias!`
+        : "Este teléfono ya compartió todas las fotos y videos que podemos recibir de un solo teléfono. ¡Gracias!",
     );
   if (scope === "card")
     return tr(
@@ -147,8 +151,8 @@ const answers = {
     ),
   TOO_MANY_REQUESTS: () =>
     tr(
-      "A lot was sent in the last hour. Wait a while, then tap Try again.",
-      "Se envió mucho en la última hora. Espera un rato y toca Reintentar.",
+      "Many files were sent in the last hour. Wait a while, then tap Try again.",
+      "Se enviaron muchos archivos en la última hora. Espera un rato y toca Reintentar.",
     ),
 };
 answers.NOT_FOUND = answers.UPLOAD_EXPIRED;
@@ -283,7 +287,7 @@ export function mediaUpload(portal, albums, { party = false } = {}) {
     if (e.state === "limited")
       return tr("Not sent: the limit is reached.", "No se envió: se alcanzó el límite.");
     if (e.state === "waiting")
-      return tr("Not sent yet: a lot was sent in the last hour.", "Aún no se envía: se envió mucho en la última hora.");
+      return tr("Not sent yet: many files were sent in the last hour.", "Aún no se envía: se enviaron muchos archivos en la última hora.");
     if (e.state === "processing")
       return (
         tr(
@@ -327,8 +331,8 @@ export function mediaUpload(portal, albums, { party = false } = {}) {
         retryable(waiting, now())
           ? tr("You can send the rest now: tap Try again.", "Ya puedes enviar los demás: toca Reintentar.")
           : waiting.retryAt
-            ? tr(`A lot was sent in the last hour. You can try again ${after(waiting.retryAt)}.`, `Se envió mucho en la última hora. Puedes intentarlo de nuevo ${after(waiting.retryAt)}.`)
-            : tr("A lot was sent in the last hour. Try again later.", "Se envió mucho en la última hora. Inténtalo más tarde.")
+            ? tr(`Many files were sent in the last hour. You can try again ${after(waiting.retryAt)}.`, `Se enviaron muchos archivos en la última hora. Puedes intentarlo de nuevo ${after(waiting.retryAt)}.`)
+            : tr("Many files were sent in the last hour. Try again later.", "Se enviaron muchos archivos en la última hora. Inténtalo más tarde.")
       }`;
     if (blocked) return `${head} ${blocked.message}`;
     if (paused)

@@ -324,7 +324,7 @@ test("Privacy and the Photo & video policy say what the table card keeps, for ho
     assert.ok(policies.privacy[lang].includes(privacy));
     assert.ok(policies.terms[lang].includes(terms));
     if (lang === "en") {
-      assert.match(privacy, /name and caption only if you type them/);
+      assert.match(privacy, /a name and caption only if you type them/);
       assert.match(privacy, /never your IP address/);
       // R-161: the counts go a week after the card's window closes (the
       // drain above), and the card is off until we turn it on.
@@ -336,8 +336,9 @@ test("Privacy and the Photo & video policy say what the table card keeps, for ho
     } else {
       assert.match(privacy, /solo si los escribes/);
       assert.match(privacy, /nunca tu dirección IP/);
-      assert.match(privacy, /una semana después de que se cierra el envío desde la tarjeta/);
-      assert.match(privacy, /apagada salvo que la activemos/);
+      // L10N-11: the subjunctive, and "desactivada" rather than a calque of "off".
+      assert.match(privacy, /una semana después de que se cierre el envío desde la tarjeta/);
+      assert.match(privacy, /desactivada salvo que la activemos/);
       assert.match(privacy, /referencia/);
     }
     // On the built pages (dist/, from the pretest build).
@@ -368,8 +369,9 @@ test("the table card's words promise only what the code does: a count per visit,
   const source = (f) => readFile(new URL("../site/" + f, import.meta.url), "utf8");
   const page = (await source("media-upload.js")) + (await source("client.js"));
   assert.doesNotMatch(page, /most one phone can send|one phone can send|máximo por teléfono|que se pueden enviar desde la tarjeta|anyone saw it|alguien lo viera/);
-  assert.match(page, /the most we take from one phone at a time/);
-  assert.match(page, /el máximo que recibimos de un teléfono a la vez/);
+  // L10N-38: "as many as we can take from one phone", not "shared the most".
+  assert.match(page, /as many photos and videos as we can take from one phone/);
+  assert.match(page, /todas las fotos y videos que podemos recibir de un solo teléfono/);
   assert.match(page, /Removed before we published it\./);
   assert.match(page, /Lo quitaste antes de que lo publicáramos\./);
 });

@@ -66,8 +66,11 @@ test("Spanish calendars share each event's identity and hold only confirmed fact
   assert.match(unfold(calendar("reception", c, "es")), /\r\nSUMMARY:XV de Sophia — Recepción y baile\r\n/);
   // The celebration and its time zone in the site's own words (R-037, the
   // calendar text): "los XV de Sophia", never "quinceañera de…" or "hora del centro".
-  assert.match(unfold(calendar("ceremony", c, "es")), /DESCRIPTION:Los XV de Sophia\. Our Lady of Guadalupe Church\\, .*Todos los horarios son de Fort Worth\\, Texas\. Detalles actualizados: /);
-  assert.match(unfold(calendar("ceremony", c)), /DESCRIPTION:Sophia’s quinceañera\. .*All times are Fort Worth\\, Texas time\. Latest details: /);
+  // L10N-20: the event is stored in UTC, so a calendar elsewhere shows its own
+  // time zone: the description no longer says every time is Fort Worth time.
+  assert.match(unfold(calendar("ceremony", c, "es")), /DESCRIPTION:Los XV de Sophia\. Our Lady of Guadalupe Church\\, .*TX 76106\. Detalles actualizados: /);
+  assert.match(unfold(calendar("ceremony", c)), /DESCRIPTION:Sophia’s quinceañera\. .*TX 76106\. Latest details: /);
+  for (const lang of ["en", "es"]) assert.doesNotMatch(unfold(calendar("ceremony", c, lang)), /Texas time|horarios son de Fort Worth/);
   // A content change bumps SEQUENCE in both languages.
   c.version = 7;
   assert.match(calendar("dinner", c, "es"), /SEQUENCE:7/);

@@ -25,8 +25,12 @@ export const siteSettings = (state) => {
 // with a date once there is one), so notes saved before still carrying it
 // lose it here rather than say it twice. Only those exact sentences go; the
 // family's next save in Admin → Website & event stores the notes without them.
+// (The reception's Spanish sentence was worded without "aquí" then.)
 const retired = Object.fromEntries(
-  ["en", "es"].map((lang) => [lang, [places.ceremony.today[lang], places.reception.today[lang]]]),
+  ["en", "es"].map((lang) => [
+    lang,
+    [places.ceremony.today[lang], places.reception.today[lang], ...(lang === "es" ? ["Compartiremos los detalles de entrada, estacionamiento y accesibilidad."] : [])],
+  ]),
 );
 const venueFacts = (notes) =>
   Object.fromEntries(

@@ -63,7 +63,8 @@ export const terms = {
   },
   sendNote: { en: "Send my note", es: "Enviar mi mensaje" },
   messagesWithUs: { en: "Messages with us", es: "Mensajes con nosotros" },
-  familyReplyLabel: { en: "Sophia’s family:", es: "La familia de Sophia:" },
+  // The hosts say "we" (L10N-41), as the announcement "We replied:" does.
+  familyReplyLabel: { en: "Our reply:", es: "Nuestra respuesta:" },
   whatsappProgram: { en: "WhatsApp updates", es: "Avisos por WhatsApp" },
   smsProgram: { en: "SMS Updates", es: "Avisos por SMS" },
   smsTerms: { en: "SMS Terms", es: "Términos de SMS" },

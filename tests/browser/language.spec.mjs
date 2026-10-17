@@ -87,9 +87,9 @@ test("a Spanish “no”, its confirmation and the closed RSVP speak to the hous
 
   await setNow(AFTER_DEADLINE);
   await page.goto(harness.url("/es/rsvp/"));
-  await expect(page.getByRole("heading", { name: "Las respuestas están cerradas" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Ya no se reciben respuestas" })).toBeVisible();
   await expect(
-    page.getByText("Las respuestas cerraron el domingo 15 de noviembre. Para confirmar su asistencia o cambiar su respuesta, escríbannos."),
+    page.getByText("El plazo para confirmar terminó el domingo 15 de noviembre. Para confirmar su asistencia o cambiar su respuesta, escríbannos."),
   ).toBeVisible();
   await speaksTo(page, "ustedes", "closed");
 });

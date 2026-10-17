@@ -1837,7 +1837,8 @@ test("the sign-in email greets the one person who asked, in their language, and 
     "works once",
     "15 minutes",
     "Didn’t ask for this? Ignore this email",
-    "Sophia’s family",
+    // One signature for one sender, as in every email (L10N-27).
+    "With love, Sophia &amp; family",
   ])
     assert.ok(en.html.includes(words), words);
   assert.ok(!/Inicia sesión|Continuar/.test(en.html), "one language only");
@@ -1850,7 +1851,7 @@ test("the sign-in email greets the one person who asked, in their language, and 
   assert.equal(es.subject, "Tu enlace de acceso · Los XV de Sophia");
   // It speaks to one person (tú), so it does not greet the household (R-034).
   assert.ok(!/Test family/.test(en.html + es.html));
-  for (const words of ["<p>Hola:</p>", "viernes 15 de enero de 2027", "una sola vez", "15 minutos", "¿No lo pediste? Ignora este correo", "la familia de Sophia"])
+  for (const words of ["<p>Hola:</p>", "viernes 15 de enero de 2027", "una sola vez", "15 minutos", "¿No lo pediste? Ignora este correo", "Con cariño, Sophia y su familia"])
     assert.ok(es.html.includes(words), words);
   assert.match(es.html, /\/es\/account\/#[A-Za-z0-9_-]{43}"/);
   assert.ok(!/Sign in|works once/.test(es.html), "one language only");
@@ -2908,7 +2909,7 @@ test("an RSVP receipt repeats the answer for the invited events and how to chang
   assert.ok(html.includes(">Dinner</td>") && html.includes(">2 adults/teens, 1 child</td>"));
   assert.ok(!html.includes("Reception"));
   assert.ok(html.includes("You can change it until Sunday, November 15, 2026"));
-  assert.ok(html.includes("open your invitation email again"));
+  assert.ok(html.includes("open your invitation link again, from the email or message we sent you"));
   // The private link is not stored, so there is no button to the bare code form.
   assert.ok(!html.includes(origin + "/rsvp/") && html.includes(origin + "/details/"));
 });

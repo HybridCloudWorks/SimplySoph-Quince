@@ -386,7 +386,8 @@ test("each “soon” promise is said once, in today's words, and the venue note
       faq: "Lo compartiremos aquí pronto.",
       travel: "Pronto compartiremos aquí sugerencias de hoteles y de cómo llegar desde el aeropuerto.",
       ceremony: "Compartiremos aquí los detalles de llegada y estacionamiento.",
-      reception: "Compartiremos los detalles de entrada, estacionamiento y accesibilidad.",
+      // L10N-34: "aquí", as the English and the ceremony say.
+      reception: "Compartiremos aquí los detalles de entrada, estacionamiento y accesibilidad.",
     },
   ))
     for (const [route, sentence] of Object.entries(words)) {
@@ -395,11 +396,12 @@ test("each “soon” promise is said once, in today's words, and the venue note
       assert.equal(html.split(sentence).length - 1, ["ceremony", "reception"].includes(route) ? 2 : 1, `${lang}${route}`);
       assert.doesNotMatch(html, /a más tardar el (?!domingo 15 de noviembre)|here by /, `${lang}${route}: no date invented`);
     }
-  // The parking promise is its own line now, not part of the venue notes.
+  // The parking promise is its own line now, not part of the venue notes,
+  // and marked as a promise, which ends with the party (L10N-10).
   const ceremony = main(await page("ceremony/index.html"));
-  assert.match(ceremony, /<p>Please silence your phone and follow the church’s guidance during the ceremony\.<\/p><p class="venue-parking">Parking and arrival details will be shared here\.<\/p>/);
-  assert.match(ceremony, /<div data-venue="ceremony" data-parking="Parking and arrival details will be shared here\.">/);
-  assert.match(main(await page("es/reception/index.html")), /<p>La cena y la recepción serán en el mismo lugar\.<\/p><p class="venue-parking">Compartiremos los detalles de entrada, estacionamiento y accesibilidad\.<\/p>/);
+  assert.match(ceremony, /<p>Please silence your phone and follow the church’s guidance during the ceremony\.<\/p><p class="venue-parking" data-promise>Parking and arrival details will be shared here\.<\/p>/);
+  assert.match(ceremony, /<div data-venue="ceremony" data-parking="Parking and arrival details will be shared here\." data-parking-promise>/);
+  assert.match(main(await page("es/reception/index.html")), /<p>La cena y la recepción serán en el mismo lugar\.<\/p><p class="venue-parking" data-promise>Compartiremos aquí los detalles de entrada, estacionamiento y accesibilidad\.<\/p>/);
 });
 
 test("the Schedule says the two places are a drive apart, without a drive time, and does not link Travel yet", async () => {
@@ -421,8 +423,8 @@ test("the Schedule says the two places are a drive apart, without a drive time, 
 
 test("Questions links the RSVP while it is open and has the closed answer ready for the deadline", async () => {
   for (const [lang, open, closed] of [
-    ["", /<p data-rsvp-while="open">By Sunday, November 15, 2026\. Open the invitation link we sent your family, or go to <a href="\/rsvp\/">RSVP<\/a>\.<\/p>/, /<p data-rsvp-while="closed" hidden>RSVPs closed on Sunday, November 15, 2026\. To RSVP or change your RSVP now, please <a href="\/contact\/">contact us<\/a>\.<\/p>/],
-    ["es/", /<p data-rsvp-while="open">A más tardar el domingo 15 de noviembre de 2026\. Abre el enlace de invitación que le enviamos a tu familia, o ve a <a href="\/es\/rsvp\/">Confirmar asistencia<\/a>\.<\/p>/, /<p data-rsvp-while="closed" hidden>Las respuestas cerraron el domingo 15 de noviembre de 2026\. Para confirmar tu asistencia o cambiar tu respuesta, <a href="\/es\/contact\/">escríbenos<\/a>\.<\/p>/],
+    ["", /<p data-rsvp-while="open">By Sunday, November 15, 2026\. Open the invitation link we sent your family, or go to <a href="\/rsvp\/">RSVP<\/a>\.<\/p>/, /<p data-rsvp-while="closed" hidden>RSVPs closed on Sunday, November 15, 2026\. To reply or change your RSVP now, please <a href="\/contact\/">contact us<\/a>\.<\/p>/],
+    ["es/", /<p data-rsvp-while="open">A más tardar el domingo 15 de noviembre de 2026\. Abre el enlace de invitación que le enviamos a tu familia, o ve a <a href="\/es\/rsvp\/">Confirmar asistencia<\/a>\.<\/p>/, /<p data-rsvp-while="closed" hidden>El plazo para confirmar terminó el domingo 15 de noviembre de 2026\. Para confirmar tu asistencia o cambiar tu respuesta, <a href="\/es\/contact\/">escríbenos<\/a>\.<\/p>/],
   ]) {
     const html = main(await page(`${lang}faq/index.html`));
     assert.match(html, open, lang);

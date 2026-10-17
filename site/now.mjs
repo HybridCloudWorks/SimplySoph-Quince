@@ -232,9 +232,14 @@ for (const [target, name] of [
 // The header's RSVP pill (every page): gone once this household has replied,
 // and for everyone after the party (lifecycle homeState.rsvpPill). A page's
 // "next steps" (404, pages that wait for content) ask the same with their
-// RSVP button, so it goes with the pill.
+// RSVP button, so it goes with the pill. What a page promised to post, and
+// what it says before the party, end with the party; what it says after it
+// begins then (scripts/build-pages.mjs, for a page built before).
 watch((s) => {
-  if (s)
-    for (const el of document.querySelectorAll('.site-header .nav-rsvp, .next-steps [href$="rsvp/"]'))
-      el.hidden = !s.rsvpPill;
+  if (!s) return;
+  for (const el of document.querySelectorAll('.site-header .nav-rsvp, .next-steps [href$="rsvp/"]'))
+    el.hidden = !s.rsvpPill;
+  const over = s.phase === "after" || s.phase === "archived";
+  for (const el of document.querySelectorAll("[data-promise], [data-before-party]")) el.hidden = over;
+  for (const el of document.querySelectorAll("[data-after-party]")) el.hidden = !over;
 });

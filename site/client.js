@@ -157,8 +157,8 @@ const messages = {
     "Tu familia alcanzó el límite de fotos y videos por ahora.",
   ],
   PARTY_DEVICE_LIMIT: [
-    "This phone has shared the most photos and videos we take from one phone at a time. Thank you!",
-    "Este teléfono ya compartió el máximo de fotos y videos que recibimos de un teléfono a la vez. ¡Gracias!",
+    "This phone has shared as many photos and videos as we can take from one phone. Thank you!",
+    "Este teléfono ya compartió todas las fotos y videos que podemos recibir de un solo teléfono. ¡Gracias!",
   ],
   PARTY_CARD_FULL: [
     "The table card has received all the photos and videos it can take. Thank you!",

@@ -9,6 +9,9 @@
 //   - content: the content itself, and the promise is gone.
 // A date whose day is over (on the build's clock, or the server's in the
 // browser) is never repeated: the place goes back to its own wording.
+// After the party a promise is not said at all: the build leaves it out by
+// its phase, and a page built before marks it data-promise, which
+// site/now.mjs hides once the server's clock says the party is over.
 // Nothing here invents a date; only the family's data gives one.
 import { date } from "./datetime.mjs";
 import { localDay } from "./lifecycle.mjs";
@@ -68,7 +71,7 @@ export const places = {
     },
     today: {
       en: "Entrance, parking and accessibility details will be shared here.",
-      es: "Compartiremos los detalles de entrada, estacionamiento y accesibilidad.",
+      es: "Compartiremos aquí los detalles de entrada, estacionamiento y accesibilidad.",
     },
   },
 };

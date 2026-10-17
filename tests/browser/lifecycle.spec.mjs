@@ -475,14 +475,14 @@ test.describe("the RSVP page on the server's clock", () => {
     await setNow(DEADLINE);
     await page.goto(harness.url("/rsvp/"));
     await expect(page.getByRole("heading", { level: 2 }).first()).toHaveText("RSVPs are closed");
-    await expect(page.getByText("RSVPs closed on Sunday, November 15. To RSVP or change your RSVP now, please contact us.")).toBeVisible();
+    await expect(page.getByText("RSVPs closed on Sunday, November 15. To reply or change your RSVP now, please contact us.")).toBeVisible();
     await expect(page.getByRole("main").getByRole("link", { name: "Contact us" })).toHaveAttribute("href", "/contact/");
     await expect(page.locator("#portal .deadline")).toHaveCount(0);
     // The link or code still opens the household's saved answer.
     await expect(page.getByRole("heading", { name: "Open your invitation" })).toBeVisible();
     await page.goto(harness.url("/es/rsvp/"));
-    await expect(page.getByRole("heading", { level: 2 }).first()).toHaveText("Las respuestas están cerradas");
-    await expect(page.getByText("Las respuestas cerraron el domingo 15 de noviembre. Para confirmar su asistencia o cambiar su respuesta, escríbannos.")).toBeVisible();
+    await expect(page.getByRole("heading", { level: 2 }).first()).toHaveText("Ya no se reciben respuestas");
+    await expect(page.getByText("El plazo para confirmar terminó el domingo 15 de noviembre. Para confirmar su asistencia o cambiar su respuesta, escríbannos.")).toBeVisible();
   });
 
   test("a form left open across the deadline turns into the closed note with the saved answer", async ({ context, harness }) => {
@@ -545,7 +545,7 @@ test.describe("the RSVP page on the server's clock", () => {
     await expect(page.getByRole("heading", { name: "Revisen su respuesta" })).toBeVisible();
     await setNow(AFTER_DEADLINE);
     await page.getByRole("button", { name: "Guardar la respuesta" }).click();
-    await expect(page.getByRole("heading", { name: "Las respuestas están cerradas" })).toBeFocused();
+    await expect(page.getByRole("heading", { name: "Ya no se reciben respuestas" })).toBeFocused();
     await expect(page.getByRole("alert")).toHaveText("La fecha límite ya pasó. Por favor, escríbannos.");
     await expect(page.getByRole("alert").getByRole("link", { name: "escríbannos" })).toHaveAttribute("href", "/es/contact/");
     await expect(page.locator("#portal").getByRole("link", { name: /escr[ií]bannos/i })).toHaveCount(1);

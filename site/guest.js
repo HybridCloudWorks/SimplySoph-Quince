@@ -297,7 +297,7 @@ function accessForm(value = "", reason = "") {
       : // Signed out, My account is "Sign in" (R-041): the email sign-in
         // first, in the first phone screen, then one line for an invitation
         // link or code, which open the RSVP, with the code box folded.
-        `${alert}${emailSignInHtml()}<div class="invitation-way" data-invitation-way><hr><p>${tr(`Have an invitation link or code? It opens <a href="${route("rsvp")}">your RSVP</a>.`, `¿Tienes un enlace o código de invitación? Abre <a href="${route("rsvp")}">tu respuesta</a>.`)}</p><details><summary>${tr("Type the code from your invitation", "Escribe el código de tu invitación")}</summary>${codeForm}</details></div>`,
+        `${alert}${emailSignInHtml()}<div class="invitation-way" data-invitation-way><hr><p>${tr(`Have an invitation link or code? It opens <a href="${route("rsvp")}">your RSVP</a>.`, `¿Tienes un enlace o código de invitación? Con él puedes abrir <a href="${route("rsvp")}">tu respuesta</a>.`)}</p><details><summary>${tr("Type the code from your invitation", "Escribe el código de tu invitación")}</summary>${codeForm}</details></div>`,
   );
   if (!closed && !replied)
     portal.querySelector("#access")?.insertAdjacentHTML("beforebegin", replyBy(rsvpDeadline()));
@@ -321,8 +321,8 @@ function signedOut(view, alert = "") {
   if (view === "contact" && !alert)
     show(
       emailSignInHtml({
-        heading: tr("Or send a message here", "O envíanos un mensaje aquí"),
-        intro: `<p>${tr("Sign in with your email first; the link we send brings you back here.", "Primero entra con tu correo; el enlace que te enviamos te trae de vuelta aquí.")}</p>`,
+        heading: tr("Or write to us from My account", "O escríbenos desde Mi cuenta"),
+        intro: `<p>${tr("Sign in with your email first; then you can write to us from My account.", "Primero entra con tu correo; después podrás escribirnos desde Mi cuenta.")}</p>`,
       }),
     );
   else
@@ -396,7 +396,7 @@ async function ssoChoices() {
     way ? "beforebegin" : "beforeend",
     `<div class="sso-choices"><h2>${tr("Or sign in with", "O entra con")}</h2>${ssoRow({
       microsoft:
-        offered.microsoft && tr("Sign in with Microsoft", "Entrar con Microsoft"),
+        offered.microsoft && tr("Sign in with Microsoft", "Continuar con Microsoft"),
       google: offered.google,
       note: tr(
         `Use the ${which} account with the email where you received your invitation. No code or password needed.`,
@@ -473,8 +473,8 @@ function countField(event, key, max, value) {
         : tr("Adults / teens", "Adultos / jóvenes") + (age ? tr(` (${age} and older)`, ` (${age} años o más)`) : ""),
     // The note under a count left empty names its event, so the notes down
     // the form are not six identical lines.
-    note = `${eventNames[event]}: ${key === "kids" ? tr("choose how many children.", "elijan cuántos niños.") : tr("choose how many adults/teens.", "elijan cuántos adultos/jóvenes.")}`;
-  return `<label>${label}<select name="${event}.${key}" id="rsvp-${event}-${key}" required data-label="${esc(`${eventNames[event]} – ${label}`)}" data-check="${esc(tr("Choose how many for:", "Elijan cuántos para:"))}" data-error="${esc(note)}"><option value="">${tr("Choose a number", "Elegir cantidad")}</option>${Array.from({ length: max + 1 }, (_, n) => `<option value="${n}"${String(n) === String(value) ? " selected" : ""}>${n}</option>`).join("")}</select></label>`;
+    note = `${eventNames[event]}: ${key === "kids" ? tr("choose how many children.", "falta elegir cuántos niños.") : tr("choose how many adults/teens.", "falta elegir cuántos adultos/jóvenes.")}`;
+  return `<label>${label}<select name="${event}.${key}" id="rsvp-${event}-${key}" required data-label="${esc(`${eventNames[event]} – ${label}`)}" data-check="${esc(tr("Choose how many for:", "Elegir cuántos para:"))}" data-error="${esc(note)}"><option value="">${tr("Choose a number", "Elegir cantidad")}</option>${Array.from({ length: max + 1 }, (_, n) => `<option value="${n}"${String(n) === String(value) ? " selected" : ""}>${n}</option>`).join("")}</select></label>`;
 }
 // Set from an email quick-answer link (#token.yes / #token.no): the page opens
 // on the review step with every count filled in. Nothing is saved until the
@@ -713,7 +713,7 @@ function rsvpForm(inv, values, { restored = false } = {}) {
   current = { inv, values };
   const contact = values.contact || inv.contact || {};
   show(
-    `<h2>${esc(inv.name)}</h2><p class="allocation">${allocation(inv.capacity)}</p>${replyBy(inv.deadline)}${restored ? `<p class="notice" role="status">${tr("We kept the answers you started.", "Guardamos las respuestas que empezaron.")}</p>` : ""}<div class="quick-answers"><button type="button" class="button burgundy" data-quick="yes">${term(terms.everyoneComing)}</button><button type="button" class="button outline" data-quick="no">${term(terms.cantMakeIt)}</button></div><p>${tr("Or choose how many will come to each part of the celebration.", "O elijan cuántos irán a cada parte de la celebración.")}</p><form id="response">${invitedEvents(
+    `<h2>${esc(inv.name)}</h2><p class="allocation">${allocation(inv.capacity)}</p>${replyBy(inv.deadline)}${restored ? `<p class="notice" role="status">${tr("We kept the answers you started.", "Recuperamos las respuestas que ya habían empezado.")}</p>` : ""}<div class="quick-answers"><button type="button" class="button burgundy" data-quick="yes">${term(terms.everyoneComing)}</button><button type="button" class="button outline" data-quick="no">${term(terms.cantMakeIt)}</button></div><p>${tr("Or choose how many will come to each part of the celebration.", "O elijan cuántos irán a cada parte de la celebración.")}</p><form id="response">${invitedEvents(
       inv,
     )
       .map(
@@ -843,9 +843,19 @@ addEventListener("popstate", (e) => {
 // Signed out, it leads the /rsvp/ page from the deadline on. After a save
 // refused as too late, the server's words (`refused`, whose "contact us" is
 // the link) take the place of ours and of the button.
+// After the party it asks for nothing: no contact sentence or button.
 function closedNote(deadline, answered = "", refused = "") {
-  const until = esc(deadlineDay(deadline));
-  return `<div class="notice"><h2>${tr("RSVPs are closed", "Las respuestas están cerradas")}</h2>${refused ? `<p role="alert">${esc(refused)}</p>` : `<p>${tr(`RSVPs closed on ${until}. To RSVP or change your RSVP now, please contact us.`, `Las respuestas cerraron el ${until}. Para confirmar su asistencia o cambiar su respuesta, escríbannos.`)}</p>`}${answered}${refused ? "" : `<p><a class="button burgundy" href="${route("contact")}">${term(terms.contactUs)}</a></p>`}</div>`;
+  const until = esc(deadlineDay(deadline)),
+    over = partyOver();
+  return `<div class="notice"><h2>${tr("RSVPs are closed", "Ya no se reciben respuestas")}</h2>${
+    refused
+      ? `<p role="alert">${esc(refused)}</p>`
+      : `<p>${
+          over
+            ? tr(`RSVPs closed on ${until}.`, `El plazo para confirmar terminó el ${until}.`)
+            : tr(`RSVPs closed on ${until}. To reply or change your RSVP now, please contact us.`, `El plazo para confirmar terminó el ${until}. Para confirmar su asistencia o cambiar su respuesta, escríbannos.`)
+        }</p>`
+  }${answered}${refused || over ? "" : `<p><a class="button burgundy" href="${route("contact")}">${term(terms.contactUs)}</a></p>`}</div>`;
 }
 function rsvpClosed(inv, refused) {
   return closedNote(
@@ -927,7 +937,7 @@ function confirmation(inv, session, next = "") {
     attending.includes("ceremony") &&
       `<a href="${route("ceremony")}">${"parkingPosted" in portal.dataset ? tr("Ceremony location & parking", "Ubicación y estacionamiento de la ceremonia") : tr("Ceremony location", "Ubicación de la ceremonia")}</a>`,
     (dinner || dance) &&
-      `<a href="${route("reception")}">${dinner && dance ? tr("Dinner & reception location", "Ubicación de la cena y recepción") : dinner ? tr("Dinner location", "Ubicación de la cena") : tr("Reception location", "Ubicación de la recepción")}</a>`,
+      `<a href="${route("reception")}">${dinner && dance ? tr("Dinner & reception location", "Ubicación de la cena y la recepción") : dinner ? tr("Dinner location", "Ubicación de la cena") : tr("Reception location", "Ubicación de la recepción")}</a>`,
   ]
     .filter(Boolean)
     .join("");
@@ -1148,12 +1158,14 @@ await experienceReady;
 // The server's clock and RSVP deadline (both requests started with the page).
 await clockReady;
 noteAudience();
-// Questions: "When do I need to RSVP?" answers for open or closed RSVPs, and
-// changes at the deadline, on the server's clock.
+// Questions: "When do I need to RSVP?" answers while RSVPs are open, once
+// they have closed, and after the party (when nothing asks for an RSVP), and
+// "Can I change my RSVP?" goes then; all on the server's clock.
 const rsvpAnswers = document.querySelectorAll("[data-rsvp-while]");
 if (rsvpAnswers.length)
   watch(() => {
-    for (const el of rsvpAnswers) el.hidden = (el.dataset.rsvpWhile === "open") !== rsvpOpenNow();
+    const now = partyOver() ? "over" : rsvpOpenNow() ? "open" : "closed";
+    for (const el of rsvpAnswers) el.hidden = !el.dataset.rsvpWhile.split(" ").includes(now);
   });
 if (document.querySelector("[data-whatsapp-signup]")) (await whatsapp()).whatsappProgramPage();
 reloadOnNewLink();
@@ -1191,7 +1203,7 @@ if (microsoft) {
       show(
         emailSignInHtml({
           heading: tr("Get a new sign-in link", "Pide un enlace nuevo"),
-          button: tr("Send me a new link", "Envíame un enlace nuevo"),
+          button: tr("Send me a new link", "Enviar un enlace nuevo"),
           intro: `<p class="notice" role="alert">${tr("This sign-in link has expired or was already used. Each link works once, within 15 minutes.", "Este enlace de acceso ya venció o ya se usó. Cada enlace funciona una sola vez, durante 15 minutos.")}</p>`,
         }),
       );

@@ -7,7 +7,7 @@ import {
   escapeHtml as esc,
 } from "./celebration.mjs";
 import { date, capitalize } from "./datetime.mjs";
-import { sample, setSite, siteSettled } from "./now.mjs";
+import { sample, setSite, siteSettled, state } from "./now.mjs";
 import { announce, redraw } from "./client.js";
 // For site/guest.js (one import, one round trip fewer on every page).
 export {
@@ -79,8 +79,12 @@ export const experienceReady = (async () => {
     if (registries && Array.isArray(c.registries)) redraw(registries, registryCards(c.registries, lang));
     redraw(document.querySelector("[data-home-quote]"), `<p>“${esc(c.quote[lang])}”</p><cite>— ${esc(c.name)}</cite>`);
     // The parking line is the family's content, built into the page.
-    for (const el of document.querySelectorAll("[data-venue]"))
-      redraw(el, venueSection(el.dataset.venue, c, lang, true, el.dataset.parking));
+    // A parking promise ends with the party.
+    const over = ["after", "archived"].includes(state()?.phase);
+    for (const el of document.querySelectorAll("[data-venue]")) {
+      const promise = "parkingPromise" in el.dataset;
+      redraw(el, venueSection(el.dataset.venue, c, lang, true, promise && over ? "" : el.dataset.parking, promise));
+    }
     for (const el of document.querySelectorAll("[data-schedule-strip]")) redraw(el, scheduleStrip(c, lang));
     for (const el of document.querySelectorAll("[data-schedule]")) redraw(el, scheduleList(c, lang, true));
     // "viernes 15 de enero de 2027" starts a line, so it takes a capital.

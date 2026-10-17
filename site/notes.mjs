@@ -57,22 +57,22 @@ export const noteWords = {
   audience: {
     guests: {
       en: "Only guests who sign in can see the notes here, and only after we read them.",
-      es: "Solo los invitados que entran al sitio pueden ver los mensajes de esta página, y solo después de que los leemos.",
+      es: "Solo los invitados que entran al sitio pueden ver los mensajes de esta página, y solo después de que los hayamos leído.",
     },
     public: {
       en: "Anyone with the site’s address can see the notes here, after we read them.",
-      es: "Cualquier persona con la dirección del sitio puede ver los mensajes de esta página, después de que los leemos.",
+      es: "Cualquier persona con la dirección del sitio puede ver los mensajes de esta página, después de que los hayamos leído.",
     },
   },
   // One sentence on the Privacy page.
   privacy: {
     guests: {
-      en: "We read every note for Sophia before it appears on “A note for Sophia”, and only guests who sign in can see the notes there. If you leave the box to show your note unchecked, only Sophia’s family and the few people helping us run the celebration read it.",
-      es: "Leemos cada mensaje para Sophia antes de que aparezca en “Un mensaje para Sophia”, y solo los invitados que entran al sitio pueden ver los mensajes ahí. Si dejas sin marcar la casilla para mostrar tu mensaje, solo la familia de Sophia y las pocas personas que nos ayudan a organizar la celebración lo leen.",
+      en: "We read every note for Sophia before it appears on “A note for Sophia”, and only guests who sign in can see the notes there. If you leave the box to show your note unchecked, only we and the few people helping us run the celebration read it.",
+      es: "Leemos cada mensaje para Sophia antes de que aparezca en “Un mensaje para Sophia”, y solo los invitados que entran al sitio pueden ver los mensajes ahí. Si dejas sin marcar la casilla para mostrar tu mensaje, solo lo leemos nosotros y las pocas personas que nos ayudan a organizar la celebración.",
     },
     public: {
-      en: "We read every note for Sophia before it appears on “A note for Sophia”, and anyone with the site’s address can see the notes there. If you leave the box to show your note unchecked, only Sophia’s family and the few people helping us run the celebration read it.",
-      es: "Leemos cada mensaje para Sophia antes de que aparezca en “Un mensaje para Sophia”, y cualquier persona con la dirección del sitio puede ver los mensajes ahí. Si dejas sin marcar la casilla para mostrar tu mensaje, solo la familia de Sophia y las pocas personas que nos ayudan a organizar la celebración lo leen.",
+      en: "We read every note for Sophia before it appears on “A note for Sophia”, and anyone with the site’s address can see the notes there. If you leave the box to show your note unchecked, only we and the few people helping us run the celebration read it.",
+      es: "Leemos cada mensaje para Sophia antes de que aparezca en “Un mensaje para Sophia”, y cualquier persona con la dirección del sitio puede ver los mensajes ahí. Si dejas sin marcar la casilla para mostrar tu mensaje, solo lo leemos nosotros y las pocas personas que nos ayudan a organizar la celebración.",
     },
   },
   // The box on the note form: unchecked by default, a real choice.
@@ -87,8 +87,8 @@ export const noteWords = {
     },
   },
   consentHint: {
-    en: "Leave it unchecked and only Sophia’s family and the few people helping us will read your note.",
-    es: "Si no la marcas, solo la familia de Sophia y las pocas personas que nos ayudan leerán tu mensaje.",
+    en: "Leave it unchecked and only we and the few people helping us will read your note.",
+    es: "Si no la marcas, solo nosotros y las pocas personas que nos ayudan leeremos tu mensaje.",
   },
 };
 // Which wording a writer agreed to, stored with each new note (never shown to

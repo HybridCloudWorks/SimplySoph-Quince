@@ -182,7 +182,7 @@ for (const [lang, newLink, send, said, proceed] of [
   [
     "es",
     "Pide un enlace nuevo",
-    "Envíame un enlace nuevo",
+    "Enviar un enlace nuevo",
     "Este enlace de acceso ya venció o ya se usó. Cada enlace funciona una sola vez, durante 15 minutos.",
     "Continuar",
   ],
@@ -229,8 +229,9 @@ for (const [lang, newLink, send, said, proceed] of [
 
 // ---- R-084, R-085, R-166: Contact ----
 const reply = {
-  en: "Write to that address and we’ll reply by email. If you sign in and write to us here, our reply appears in My account.",
-  es: "Si escribes a ese correo, te respondemos por correo. Si entras y nos escribes aquí, nuestra respuesta aparece en Mi cuenta.",
+  // L10N-04: Contact has no form; signed in, guests write from My account.
+  en: "Write to that address and we’ll reply by email. Or sign in and write to us from My account, where our replies appear.",
+  es: "Si escribes a ese correo, te respondemos por correo. También puedes entrar y escribirnos desde Mi cuenta, donde aparecen nuestras respuestas.",
 };
 for (const lang of ["en", "es"])
   test(`Contact leads with the address, says where a reply appears, and makes sending a message here a quiet second choice (${lang})`, async ({
@@ -247,7 +248,7 @@ for (const lang of ["en", "es"])
       where = main.locator(".contact-reply"),
       portal = page.locator("#portal");
     await expect(where).toHaveText(reply[lang]);
-    await expect(portal.getByRole("heading", { name: lang === "en" ? "Or send a message here" : "O envíanos un mensaje aquí" })).toBeVisible();
+    await expect(portal.getByRole("heading", { name: lang === "en" ? "Or write to us from My account" : "O escríbenos desde Mi cuenta" })).toBeVisible();
     // Address first, then where replies appear, then the sign-in.
     const top = async (locator) => (await locator.boundingBox()).y;
     expect(await top(address)).toBeLessThan(await top(where));
@@ -404,8 +405,8 @@ for (const [lang, label, copied] of [
 
 // ---- R-090: words that sounded like software ----
 for (const [lang, label, signed, caption] of [
-  ["en", "Anything we should know? Allergies, accessibility needs, or a song you’d love to hear (optional)", "Sophia’s family:", "Open the full invitation (opens in a new tab)"],
-  ["es", "¿Algo que debamos saber? Alergias, necesidades de accesibilidad o una canción que les gustaría escuchar (opcional)", "La familia de Sophia:", "Ver la invitación completa (se abre en otra pestaña)"],
+  ["en", "Anything we should know? Allergies, accessibility needs, or a song you’d love to hear (optional)", "Our reply:", "Open the full invitation (opens in a new tab)"],
+  ["es", "¿Algo que debamos saber? Alergias, necesidades de accesibilidad o una canción que les gustaría escuchar (opcional)", "Nuestra respuesta:", "Ver la invitación completa (se abre en otra pestaña)"],
 ])
   test(`the RSVP note, our replies and the invitation link say it plainly (${lang})`, async ({ page, harness }) => {
     const household = households.rivera;

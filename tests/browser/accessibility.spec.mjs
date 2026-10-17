@@ -498,7 +498,7 @@ for (const lang of ["en", "es"])
     await expect(page.locator("#family-chat")).toBeAttached();
     await page.goto(harness.forBrowser(used));
     await page.getByRole("button", { name: /^(Continue|Continuar)$/ }).click();
-    const again = page.getByRole("button", { name: es ? "Envíame un enlace nuevo" : "Send me a new link" });
+    const again = page.getByRole("button", { name: es ? "Enviar un enlace nuevo" : "Send me a new link" });
     await expect(again).toBeVisible();
     await check("used link");
     await page.getByRole("textbox", { name: /^(Email|Correo electrónico)$/ }).fill(household.email);

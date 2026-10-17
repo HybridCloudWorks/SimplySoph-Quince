@@ -20,7 +20,10 @@ function rsvpStatus(inv, page) {
   else if (!r)
     body = open
       ? `<p>${tr("We haven’t received your RSVP yet.", "Aún no recibimos tu respuesta.")}</p>${page.replyBy(inv.deadline)}<p><a class="button burgundy" href="${route("rsvp")}">${term(terms.rsvpAction)}</a></p>`
-      : `<p>${tr(`RSVPs closed on ${closedOn}. To RSVP now, please ${contactUs("contact us")}.`, `Las respuestas cerraron el ${closedOn}. Para confirmar tu asistencia ahora, ${contactUs("escríbenos")}.`)}</p>`;
+      : // After the party nothing asks for an RSVP.
+        page.partyOver()
+        ? `<p>${tr(`RSVPs closed on ${closedOn}.`, `El plazo para confirmar terminó el ${closedOn}.`)}</p>`
+        : `<p>${tr(`RSVPs closed on ${closedOn}. To RSVP now, please ${contactUs("contact us")}.`, `El plazo para confirmar terminó el ${closedOn}. Para confirmar tu asistencia ahora, ${contactUs("escríbenos")}.`)}</p>`;
   else {
     // "Ceremony: 2 adults/teens, 1 child · Dinner: …" (R-090).
     const coming = page.invitedEvents(inv).filter(
@@ -33,7 +36,9 @@ function rsvpStatus(inv, page) {
     body = `<p>${answer} — ${tr(`saved ${saved}`, `guardada el ${saved}`)}</p>${
       open
         ? `<p><a class="button outline" href="${route("rsvp")}">${term(terms.changeRsvp)}</a></p>`
-        : `<p>${tr(`The RSVP deadline has passed. To change your RSVP, please ${contactUs("contact us")}.`, `La fecha límite ya pasó. Para cambiar tu respuesta, ${contactUs("escríbenos")}.`)}</p>`
+        : page.partyOver()
+          ? ""
+          : `<p>${tr(`The RSVP deadline has passed. To change your RSVP, please ${contactUs("contact us")}.`, `La fecha límite ya pasó. Para cambiar tu respuesta, ${contactUs("escríbenos")}.`)}</p>`
     }`;
   }
   return `<section class="card rsvp-status">${title}${body}</section>`;
@@ -48,7 +53,7 @@ export async function accountPage(inv, page) {
     // what's coming after a "no", only where the photos will be.
     next = page.partyOver() ? "" : await page.whatsNext({}, !declined, { photos: declined });
   page.show(
-    `<h2>${esc(data.account.name)}</h2><p class="hint">${tr("Signed in as", "Entraste con")} ${esc(signedInAs)}</p>${rsvpStatus(inv, page)}<div class="row-actions"><a href="${route("reception")}">${tr("Directions", "Cómo llegar")}</a><button id="guest-logout" class="plain-button">${tr("Sign out", "Cerrar sesión")}</button></div><form id="profile-form"><h3>${tr("Contact details", "Datos de contacto")}</h3>${field(tr("Contact email", "Correo de contacto"), "email", { type: "email", value: profile.contact.email, autocomplete: "email", hint: tr(`We use it to reach you about the celebration. You still sign in with ${signedInAs}.`, `Lo usamos para escribirte sobre la celebración. Sigues entrando con ${signedInAs}.`) })}${field(tr("Phone", "Teléfono"), "phone", { type: "tel", inputmode: "tel", autocomplete: "tel", value: profile.contact.phone, max: 40 })}${field(tr("Mailing address", "Dirección postal"), "address", { value: profile.contact.address || "", max: 500, autocomplete: "street-address" })}<p role="alert" class="error"></p><button type="submit" class="button burgundy">${tr("Save contact details", "Guardar datos")}</button><p class="saved-note"></p></form>${next}<section id="whatsapp-preferences" class="card" hidden></section><div id="family-chat"></div><div class="account-sign-out"><p class="hint">${tr("Signed in on a computer or phone that isn’t yours?", "¿Entraste en una computadora o teléfono que no es tuyo?")}</p><button id="guest-logout-all" class="button outline">${tr("Sign out on all devices", "Cerrar sesión en todos los dispositivos")}</button></div>`,
+    `<h2>${esc(data.account.name)}</h2><p class="hint">${tr("Signed in as", "Entraste con")} ${esc(signedInAs)}</p>${rsvpStatus(inv, page)}<div class="row-actions"><a href="${route("details")}">${tr("Directions", "Cómo llegar")}</a><button id="guest-logout" class="plain-button">${tr("Sign out", "Cerrar sesión")}</button></div><form id="profile-form"><h3>${tr("Contact details", "Datos de contacto")}</h3>${field(tr("Contact email", "Correo de contacto"), "email", { type: "email", value: profile.contact.email, autocomplete: "email", hint: tr(`We use it to reach you about the celebration. You still sign in with ${signedInAs}.`, `Lo usamos para escribirte sobre la celebración. Sigues entrando con ${signedInAs}.`) })}${field(tr("Phone", "Teléfono"), "phone", { type: "tel", inputmode: "tel", autocomplete: "tel", value: profile.contact.phone, max: 40 })}${field(tr("Mailing address", "Dirección postal"), "address", { value: profile.contact.address || "", max: 500, autocomplete: "street-address" })}<p role="alert" class="error"></p><button type="submit" class="button burgundy">${tr("Save contact details", "Guardar datos")}</button><p class="saved-note"></p></form>${next}<section id="whatsapp-preferences" class="card" hidden></section><div id="family-chat"></div><div class="account-sign-out"><p class="hint">${tr("Signed in on a computer or phone that isn’t yours?", "¿Entraste en una computadora o teléfono que no es tuyo?")}</p><button id="guest-logout-all" class="button outline">${tr("Sign out on all devices", "Cerrar sesión en todos los dispositivos")}</button></div>`,
   );
   document.querySelector("#guest-logout").onclick = async () => {
     await api("logout", {});
@@ -80,7 +85,7 @@ export async function accountPage(inv, page) {
     profile.contact.phone,
   );
   const box = document.querySelector("#family-chat");
-  // Our replies say who wrote them: "Sophia’s family:" (R-090).
+  // Our replies say who wrote them: "Our reply:" (R-090).
   const messagesHtml = (thread) =>
     thread.messages
       .map(
