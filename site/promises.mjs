@@ -13,6 +13,7 @@
 import { date } from "./datetime.mjs";
 import { localDay } from "./lifecycle.mjs";
 import { escapeHtml as esc, pageHref } from "./celebration.mjs";
+import { say } from "./lexicon.mjs";
 
 // Whether the family has posted each promised thing (site/content.mjs family).
 export const posted = {
@@ -105,12 +106,16 @@ export function coming(f) {
 // "What's next" on the RSVP confirmation and on My account: what is still to
 // come and by when, then how a household hears about it, offering only the
 // channels the server reports live (GET /api/config `channels`):
-//   - SMS (US and Canadian numbers): "Text SOPHIA to …", no sign-in needed;
+//   - SMS (US and Canadian numbers): "Text SOPHIA to …", no sign-in needed,
+//     in the registered program's own terms (event texts such as schedule or
+//     venue updates, docs/sms-campaign-registration.md): no text is sent when
+//     something is posted, so the line promises none;
 //   - WhatsApp (everyone else): from an invitation-link session, a pointer to
 //     the email sign-in on My account, where the choice is; signed in, the
 //     WhatsApp card that follows this block;
 //   - the home page, where news is posted, always.
-// `register` is the page's Spanish form of address (site/lexicon.mjs).
+// `register` is the page's Spanish form of address (site/lexicon.mjs); the
+// Spanish is a string or { tu, ustedes }, as in site/client.js tr().
 const short = {
   dressCode: { en: "the dress code", es: "el código de vestimenta" },
   parking: { en: "parking details", es: "los detalles de estacionamiento" },
@@ -120,7 +125,7 @@ const list = (items, lang) =>
   items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} ${lang === "es" ? "y" : "and"} ${items.at(-1)}`;
 export function whatsNext({ coming: next = {}, channels = {}, linkSession = false, lang = "en", register = "tu", now } = {}) {
   const es = lang === "es",
-    say = (en, tu, ustedes = tu) => (es ? (register === "ustedes" ? ustedes : tu) : en);
+    tr = (en, spanish) => say({ en, es: spanish }, lang, register);
   // Kinds that share a date share a sentence; undated ones come last.
   const groups = new Map();
   for (const kind of Object.keys(short)) {
@@ -132,36 +137,38 @@ export function whatsNext({ coming: next = {}, channels = {}, linkSession = fals
     .sort(([a], [b]) => (a === "" ? 1 : b === "" ? -1 : a < b ? -1 : 1))
     .map(([by, items]) =>
       by
-        ? say(`We’ll post ${list(items, "en")} on this website by ${written(by, "en")}.`, `Publicaremos en este sitio ${list(items, "es")} a más tardar el ${written(by, "es")}.`)
-        : say(`We’ll post ${list(items, "en")} on this website soon.`, `Pronto publicaremos en este sitio ${list(items, "es")}.`),
+        ? tr(`We’ll post ${list(items, "en")} on this website by ${written(by, "en")}.`, `Publicaremos en este sitio ${list(items, "es")} a más tardar el ${written(by, "es")}.`)
+        : tr(`We’ll post ${list(items, "en")} on this website soon.`, `Pronto publicaremos en este sitio ${list(items, "es")}.`),
     )
     .map(esc);
-  const pending = lines.length > 0;
   if (channels.sms && channels.smsKeyword && channels.smsNumber) {
     const keyword = `<strong>${esc(channels.smsKeyword)}</strong>`,
       number = `<a class="nowrap" href="sms:${esc(channels.smsNumber.replace(/[^+\d]/g, ""))}?body=${encodeURIComponent(channels.smsKeyword)}">${esc(channels.smsNumber)}</a>`;
     lines.push(
-      pending
-        ? say(`Text ${keyword} to ${number} to hear when they’re posted.`, `Envía ${keyword} al ${number} para enterarte cuando estén publicados.`, `Envíen ${keyword} al ${number} para enterarse cuando estén publicados.`)
-        : say(`Text ${keyword} to ${number} to hear about any change to the schedule or the places.`, `Envía ${keyword} al ${number} para enterarte de cualquier cambio de horario o lugar.`, `Envíen ${keyword} al ${number} para enterarse de cualquier cambio de horario o lugar.`),
+      tr(`Text ${keyword} to ${number} to get our event texts, such as schedule or venue updates.`, {
+        tu: `Envía ${keyword} al ${number} para recibir nuestros mensajes del evento, como cambios de horario o lugar.`,
+        ustedes: `Envíen ${keyword} al ${number} para recibir nuestros mensajes del evento, como cambios de horario o lugar.`,
+      }),
     );
-    lines.push(say("Texts go to US and Canadian mobile numbers.", "Los mensajes de texto llegan a números móviles de Estados Unidos y Canadá."));
+    lines.push(tr("Texts go to US and Canadian mobile numbers.", "Los mensajes de texto llegan a números móviles de Estados Unidos y Canadá."));
   }
   if (channels.whatsapp)
     lines.push(
       linkSession
-        ? say(
-            `Outside the US and Canada? <a href="${pageHref("account", lang)}">Sign in with your email</a> to get WhatsApp updates.`,
-            `¿Fuera de Estados Unidos y Canadá? <a href="${pageHref("account", lang)}">Entra con tu correo</a> para recibir avisos por WhatsApp.`,
-            `¿Fuera de Estados Unidos y Canadá? <a href="${pageHref("account", lang)}">Entren con su correo</a> para recibir avisos por WhatsApp.`,
-          )
-        : say("Outside the US and Canada? You can sign up for WhatsApp updates below.", "¿Fuera de Estados Unidos y Canadá? Puedes suscribirte a los avisos por WhatsApp aquí abajo.", "¿Fuera de Estados Unidos y Canadá? Pueden suscribirse a los avisos por WhatsApp aquí abajo."),
+        ? tr(`Outside the US and Canada? <a href="${pageHref("account", lang)}">Sign in with your email</a> to get WhatsApp updates.`, {
+            tu: `¿Fuera de Estados Unidos y Canadá? <a href="${pageHref("account", lang)}">Entra con tu correo</a> para recibir avisos por WhatsApp.`,
+            ustedes: `¿Fuera de Estados Unidos y Canadá? <a href="${pageHref("account", lang)}">Entren con su correo</a> para recibir avisos por WhatsApp.`,
+          })
+        : tr("Outside the US and Canada? You can sign up for WhatsApp updates below.", {
+            tu: "¿Fuera de Estados Unidos y Canadá? Puedes suscribirte a los avisos por WhatsApp aquí abajo.",
+            ustedes: "¿Fuera de Estados Unidos y Canadá? Pueden suscribirse a los avisos por WhatsApp aquí abajo.",
+          }),
     );
   lines.push(
-    say(
+    tr(
       `News about the celebration is also posted on the <a href="${pageHref("", lang)}">home page</a>.`,
       `Las novedades de la celebración también se publican en la <a href="${pageHref("", lang)}">página de inicio</a>.`,
     ),
   );
-  return `<section class="card whats-next" data-whats-next><h3>${say("What’s next", "Lo que sigue")}</h3>${lines.map((l) => `<p>${l}</p>`).join("")}</section>`;
+  return `<section class="card whats-next" data-whats-next><h3>${tr("What’s next", "Lo que sigue")}</h3>${lines.map((l) => `<p>${l}</p>`).join("")}</section>`;
 }

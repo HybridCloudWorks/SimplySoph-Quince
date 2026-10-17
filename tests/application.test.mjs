@@ -531,6 +531,51 @@ test("a note kept from before the choice (no stored consent) counts as consented
   const { id } = await f.guest("messages", { kind: "guestbook", name: "Old page", text: "old page", consent: true });
   assert.equal((await f.ledger.read()).messages[id].display, "public");
 });
+// R-167: each new note keeps which wording its writer agreed to, so a later
+// change of the sentences is auditable; legacy notes have none, contact
+// messages carry none, and no guest ever reads it.
+test("each new note stores the version of the consent wording its writer saw, which no guest reads", async () => {
+  const { consentVersion, noteWords } = await import("../site/notes.mjs");
+  const f = await notesFixture();
+  const guests = await f.note(true, "guests"),
+    everyone = await f.note(true, "public"),
+    unticked = await f.note(false, "guests", "for the family"),
+    { id: oldPage } = await f.guest("messages", { kind: "guestbook", name: "Old page", text: "old page", consent: true }),
+    { id: contact } = await f.guest("messages", { kind: "contact", name: "Writer", text: "A question", topic: "Other" });
+  const s = await f.ledger.read();
+  // (The household's five messages an hour are spent: the link's note from another.)
+  const g = await fixture(),
+    link = (await g.linkGuest("guestbook-note", { name: "Test family", text: "From the link", consent: true, audience: "guests" })).id;
+  assert.match(consentVersion("guests"), /^guests-[0-9a-f]{8}$/);
+  assert.match(consentVersion("public"), /^public-[0-9a-f]{8}$/);
+  assert.equal(s.messages[guests].consentVersion, consentVersion("guests"));
+  assert.equal(s.messages[everyone].consentVersion, consentVersion("public"));
+  // The box left unchecked was still worded for its audience, with its hint.
+  assert.equal(s.messages[unticked].consentVersion, consentVersion("guests"));
+  assert.equal((await g.ledger.read()).messages[link].consentVersion, consentVersion("guests"));
+  assert.equal(s.messages[oldPage].consentVersion, "required-statement");
+  assert.equal(Object.hasOwn(s.messages[contact], "consentVersion"), false);
+  // A change of the wording is a new version.
+  const before = consentVersion("guests"),
+    sentence = noteWords.consent.guests.es;
+  noteWords.consent.guests.es = sentence + " ";
+  try {
+    assert.notEqual(consentVersion("guests"), before);
+  } finally {
+    noteWords.consent.guests.es = sentence;
+  }
+  assert.equal(consentVersion("guests"), before);
+  // Guests read names and notes only.
+  await f.approve(guests);
+  await f.approve(everyone);
+  await f.setVisibility("public");
+  const read = JSON.stringify([
+    await f.app.dispatch({ path: "/api/public", method: "GET" }),
+    await f.guest("guestbook"),
+  ]);
+  assert.ok(read.includes("guests note") && read.includes("public note"));
+  assert.doesNotMatch(read, /consentVersion|guests-[0-9a-f]{8}|public-[0-9a-f]{8}/);
+});
 // Before: the household budget (5 an hour) was charged before the request was
 // checked, so refused posts used it up and the real note was then refused.
 test("a refused note or message does not use the household's message budget", async () => {
@@ -1749,14 +1794,14 @@ test("the emailed sign-in link brings the guest back to the page they asked from
   assert.ok(Object.values(s.emailLinks || {}).every((l) => !l.returnTo || /^(es\/)?[a-z]+$/.test(l.returnTo)));
 });
 
-test("the sign-in email greets the household in its language and says what the link does", async () => {
+test("the sign-in email greets the one person who asked, in their language, and says what the link does", async () => {
   const f = await fixture();
   await f.publicPost("auth/email/request", { email: "test@example.com", return: "account" });
   const en = f.sent.at(-1);
   assert.equal(en.subject, "Your sign-in link · Sophia’s quinceañera");
   assert.equal(en.secret, true, "kept out of Sent Items");
   for (const words of [
-    "Hello Test family,",
+    "<p>Hello,</p>",
     "Sophia’s quinceañera",
     "Friday, January 15, 2027",
     "share photos and videos",
@@ -1773,8 +1818,10 @@ test("the sign-in email greets the household in its language and says what the l
   });
   await f.publicPost("auth/email/request", { email: "test@example.com" });
   const es = f.sent.at(-1);
-  assert.equal(es.subject, "Tu enlace para entrar · Los XV de Sophia");
-  for (const words of ["Hola, Test family:", "viernes 15 de enero de 2027", "una sola vez", "15 minutos", "¿No lo pediste? Ignora este correo", "la familia de Sophia"])
+  assert.equal(es.subject, "Tu enlace de acceso · Los XV de Sophia");
+  // It speaks to one person (tú), so it does not greet the household (R-034).
+  assert.ok(!/Test family/.test(en.html + es.html));
+  for (const words of ["<p>Hola:</p>", "viernes 15 de enero de 2027", "una sola vez", "15 minutos", "¿No lo pediste? Ignora este correo", "la familia de Sophia"])
     assert.ok(es.html.includes(words), words);
   assert.match(es.html, /\/es\/account\/#[A-Za-z0-9_-]{43}"/);
   assert.ok(!/Sign in|works once/.test(es.html), "one language only");
@@ -3408,4 +3455,37 @@ test("every email built with a text version hands it to the mailer next to the H
   const { outbox } = await f.admin("updates");
   assert.equal(outbox.length, 3);
   assert.ok(outbox.every((r) => !("textContent" in r) && !("content" in r)));
+});
+
+// R-164: the Spanish free text in the event settings and the announcements
+// lives on the server, out of reach of the repository's language tests
+// (tests/language.test.mjs). Admin says when it uses a retired word or mixes
+// tú and ustedes (server/copy-check.mjs); the family decides, so the save
+// goes through either way.
+test("saving event settings or an announcement warns about retired Spanish words and mixed forms, and still saves", async () => {
+  const f = await fixture();
+  const { site, warnings: before } = await f.admin("site");
+  assert.deepEqual(before, [], "the checked-in defaults follow the rules");
+  site.ceremony.notes.es = "Silencia tu teléfono. Confirmen su asistencia en el libro de firmas.";
+  const saved = await f.admin("site", site);
+  assert.equal(saved.site.ceremony.notes.es, site.ceremony.notes.es, "saved as written");
+  assert.deepEqual(
+    saved.warnings.map((w) => w.field),
+    ["Ceremony guest notes (Español)", "Ceremony guest notes (Español)"],
+  );
+  assert.match(saved.warnings[0].note, /libro de firmas/);
+  assert.match(saved.warnings[1].note, /^Mixes tú \(.*\) and ustedes \(.*\)/);
+  assert.deepEqual((await f.admin("site")).warnings, saved.warnings, "and shown on the page until it changes");
+  // An announcement shows on the home page, which speaks to the family.
+  const posted = await f.admin("updates", {
+    title: "Parking",
+    text: "Parking is free.",
+    titleEs: "Estacionamiento",
+    textEs: "Confirma tu asistencia antes de venir.",
+  });
+  assert.ok(posted.id, "published");
+  assert.ok(posted.warnings.some((w) => w.field === "Spanish message" && /Confirma tu asistencia/.test(w.note)));
+  assert.ok(posted.warnings.some((w) => /^Uses tú .* speaks to the family \(ustedes\)/.test(w.note)));
+  const clean = await f.admin("updates", { title: "Hi", text: "See you soon.", titleEs: "Hola", textEs: "Los esperamos pronto." });
+  assert.deepEqual(clean.warnings, []);
 });

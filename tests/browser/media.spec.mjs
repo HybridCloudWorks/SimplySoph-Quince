@@ -287,8 +287,8 @@ test("the gallery shows one clear state: sign in, nothing yet, then only albums 
   const signInLink = page.getByRole("link", { name: "Sign in to see the gallery" });
   await expect(signInLink).toHaveAttribute("href", "/account/?return=gallery");
   await expect(page.getByText("Explore this album")).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "Photographs" })).toBeHidden();
-  await expect(page.getByRole("heading", { name: "The video collection" })).toBeHidden();
+  await expect(page.getByRole("heading", { name: "Photos", exact: true, level: 2 })).toBeHidden();
+  await expect(page.getByRole("heading", { name: "Videos", exact: true, level: 2 })).toBeHidden();
 
   await signInLink.click();
   await signIn(page, harness, household.email);
@@ -320,8 +320,8 @@ test("the gallery shows one clear state: sign in, nothing yet, then only albums 
   // Choosing an album shows only its sections.
   await cards.first().click();
   await expect(cards.first()).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByRole("heading", { name: "The video collection" })).toBeHidden();
+  await expect(page.getByRole("heading", { name: "Videos", exact: true, level: 2 })).toBeHidden();
   await expect(page.locator("[data-album-label]")).toHaveText("Family moments");
   await cards.first().click();
-  await expect(page.getByRole("heading", { name: "The video collection" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Videos", exact: true, level: 2 })).toBeVisible();
 });

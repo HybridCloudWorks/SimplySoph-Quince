@@ -1,4 +1,7 @@
 import { date } from "./datetime.mjs";
+import { milestones } from "./lifecycle.mjs";
+import { celebration } from "./celebration.mjs";
+import { event } from "./content.mjs";
 // The privacy and photo & video policies, in the family's own voice ("we" is
 // Sophia's family). Each entry is one paragraph; an entry starting "- " is a
 // list item, and consecutive items form one list under the paragraph before.
@@ -6,6 +9,9 @@ import { date } from "./datetime.mjs";
 // One retention statement, used on every page that mentions how long we keep
 // information (privacy, WhatsApp). February 1, 2027 is the family's review
 // date (DATA_RETENTION_DATE, docs/cleanup.md); no automatic deletion is scheduled.
+// A photo lifespan the family sets (site.lifespan.photosUntil,
+// server/site-settings.mjs) can never end before it (tests/lifespan.test.mjs).
+export const retentionReview = "2027-02-01";
 const retention = {
   en: "After the celebration, starting February 1, 2027, we review the information we collected for it and delete what we no longer need. You can ask us to delete your information at any time.",
   es: "Después de la celebración, a partir del 1 de febrero de 2027, revisamos la información que reunimos para ella y borramos lo que ya no necesitamos. Puedes pedirnos que borremos tu información en cualquier momento.",
@@ -16,22 +22,35 @@ const host = {
   en: "Simply Soph Media is the name Sophia’s family uses for her quinceañera messages. It’s us, not a company.",
   es: "Simply Soph Media es el nombre que usa la familia de Sophia para los mensajes de sus XV; somos nosotros, no una empresa.",
 };
-// The printed table card (R-021): during the celebration, anyone at the party
-// can send photos and videos from its QR code without signing in. What that
-// collects, matching server/application.mjs (files, an optional name and
-// caption, the consent time, a random per-visit code in the session cookie
-// for the per-phone count, deleted a week after the upload window; no email,
-// no IP address), the same review queue, and how to ask for removal (the
-// reference the upload page shows after each file).
+// The printed table card (R-021, R-161), as the code runs it: off until we
+// turn it on in Admin (server/party-card.mjs); while on, anyone with its QR
+// code can send photos and videos without signing in, from the ceremony's
+// start until the end of the upload window's last day (site/lifecycle.mjs
+// uploadsFrom/uploadsUntil, Fort Worth time; the day is worked out from the
+// checked-in schedule). What that collects, matching server/application.mjs
+// (files, an optional name and caption, the consent time, a random per-visit
+// code in the session cookie for the per-phone count; no email, no IP
+// address), the counts' deletion a week after that window closes (the
+// scheduled job, forgetPartyPhonesIfDue), the same review queue, and how to
+// ask for removal (the reference the upload page shows after each file).
+const lastDay = (lang) =>
+  date(milestones({ deadline: event.deadline, site: celebration }).uploadsUntil - 1, lang, { weekday: false, year: false });
 const tableCard = {
   privacy: {
-    en: "- Photos from the table card: during the celebration, anyone at the party can send us photos and videos from the QR code on the tables without signing in. We keep the files, the name and caption only if you type them, and when you agreed to our Photo & video policy; we don’t ask for your email. To count how many each phone sends, we give your visit a random code through a cookie, never your IP address or anything about your phone, and we delete those counts a week after the celebration. Every file waits for our review, and only guests who sign in see the ones we approve. To have one removed, email us the reference shown after you sent it.",
-    es: "- Fotos desde la tarjeta de la mesa: durante la celebración, cualquier persona en la fiesta puede enviarnos fotos y videos desde el código QR de las mesas sin entrar a una cuenta. Guardamos los archivos, el nombre y la descripción solo si los escribes, y cuándo aceptaste nuestra política de uso de fotos y videos; no te pedimos tu correo. Para contar cuántos envía cada teléfono, le damos a tu visita un código al azar mediante una cookie, nunca tu dirección IP ni datos de tu teléfono, y borramos esos conteos una semana después de la celebración. Revisamos cada archivo, y solo los invitados que entran al sitio ven los que aprobamos. Para que quitemos alguno, escríbenos con la referencia que aparece después de enviarlo.",
+    en: `- Photos from the table card: the card on the tables is off unless we turn it on. While it is on, anyone with its QR code can send us photos and videos without signing in, from the start of the ceremony until the end of ${lastDay("en")} (Fort Worth time). We keep the files, the name and caption only if you type them, and when you agreed to our Photo & video policy; we don’t ask for your email. To count how many each phone sends, we give your visit a random code through a cookie, never your IP address or anything about your phone, and we delete those counts a week after sharing from the card closes. Every file waits for our review, and only guests who sign in see the ones we approve. To have one removed, email us the reference shown after you sent it.`,
+    es: `- Fotos desde la tarjeta de la mesa: la tarjeta de las mesas está apagada salvo que la activemos. Mientras está activa, cualquier persona con su código QR puede enviarnos fotos y videos sin entrar a una cuenta, desde el inicio de la ceremonia hasta el final del ${lastDay("es")} (hora de Fort Worth). Guardamos los archivos, el nombre y la descripción solo si los escribes, y cuándo aceptaste nuestra política de uso de fotos y videos; no te pedimos tu correo. Para contar cuántos envía cada teléfono, le damos a tu visita un código al azar mediante una cookie, nunca tu dirección IP ni datos de tu teléfono, y borramos esos conteos una semana después de que se cierra el envío desde la tarjeta. Revisamos cada archivo, y solo los invitados que entran al sitio ven los que aprobamos. Para que quitemos alguno, escríbenos con la referencia que aparece después de enviarlo.`,
   },
   terms: {
-    en: "- From the table card at the party you can share without signing in. The same rules apply, and each file shows a reference after it arrives: email it to misxv@simplysoph.com to have that file removed.",
-    es: "- Desde la tarjeta de la mesa en la fiesta puedes compartir sin entrar a una cuenta. Se aplican las mismas reglas, y cada archivo muestra una referencia cuando llega: envíala a misxv@simplysoph.com para que quitemos ese archivo.",
+    en: "- While the table card is on, you can share from it without signing in. The same rules apply, and each file shows a reference after it arrives: email it to misxv@simplysoph.com to have that file removed.",
+    es: "- Mientras la tarjeta de la mesa está activa, puedes compartir desde ella sin entrar a una cuenta. Se aplican las mismas reglas, y cada archivo muestra una referencia cuando llega: envíala a misxv@simplysoph.com para que quitemos ese archivo.",
   },
+};
+// What this device keeps after an RSVP (R-160, site/now.mjs "misxv-replied"):
+// "yes" or "no" and when, so the home page can say "You replied" next time;
+// no name. Read after the party it is deleted, and signing out deletes it.
+const deviceNote = {
+  en: "- On this device: after you RSVP, the site remembers whether your family replied (yes or no) and when, so the home page can say so next time. It keeps no name or other detail, and it is deleted the first time you open the site after the party, when you sign out, or when you clear this site’s data in your browser.",
+  es: "- En este dispositivo: cuando confirmas tu asistencia, el sitio recuerda si tu familia respondió (sí o no) y cuándo, para que la página de inicio lo diga la próxima vez. No guarda ningún nombre ni otro dato, y se borra la primera vez que abres el sitio después de la fiesta, cuando cierras sesión o cuando borras los datos de este sitio en tu navegador.",
 };
 export const policies = {
   retention,
@@ -46,6 +65,7 @@ export const policies = {
       "- Who sees it: Sophia’s family and the few people helping us run the celebration. Photos and videos we approve are shown only to guests who sign in. The public pages never show the guest list.",
       "- What we never do: sell your information, use it for advertising, or add ads or analytics trackers to this site.",
       tableCard.privacy.en,
+      deviceNote.en,
       "- To see, correct or delete your information: email misxv@simplysoph.com.",
       "- How long we keep it: " + retention.en,
       "The details are below.",
@@ -58,6 +78,7 @@ export const policies = {
       "- Quién lo ve: la familia de Sophia y las pocas personas que nos ayudan a organizar la celebración. Las fotos y los videos que aprobamos solo los ven los invitados que entran al sitio. Las páginas públicas nunca muestran la lista de invitados.",
       "- Lo que nunca hacemos: vender tu información, usarla para publicidad ni poner en este sitio anuncios o rastreadores de visitas.",
       tableCard.privacy.es,
+      deviceNote.es,
       "- Para ver, corregir o borrar tu información: escríbenos a misxv@simplysoph.com.",
       "- Cuánto tiempo la guardamos: " + retention.es,
       "Abajo están los detalles.",
@@ -102,12 +123,15 @@ export const policies = {
 // when a policy's words change and this entry does not, and prints the new
 // fingerprint to record here together with the date of the change.
 export const policyUpdated = {
-  // Added: who can read the notes for Sophia, and photos from the table card.
-  privacy: { on: "2026-10-17", text: "62bf44b7b8fddf9b" },
-  // Added: sharing from the table card at the party.
-  terms: { on: "2026-10-17", text: "64b952f4dfbffda5" },
-  // Added on the Spanish page: the registered replies arrive in English.
-  "sms-terms": { on: "2026-10-17", text: "71ee0dbceb705d1e" },
+  // Who can read the notes for Sophia (and who reads a note kept off the
+  // page); the table card as it works (off until we turn it on, its window,
+  // when its counts go); what this device keeps after an RSVP.
+  privacy: { on: "2026-10-17", text: "f3887206eb93ab70" },
+  // Sharing from the table card while it is on.
+  terms: { on: "2026-10-17", text: "08d58e9e4963df0f" },
+  // The Spanish page: the registered replies arrive in English, and the
+  // party is "los XV de Sophia".
+  "sms-terms": { on: "2026-10-17", text: "81df63c2eac7c1ff" },
 };
 // "Updated October 17, 2026" · "Actualizado el 17 de octubre de 2026".
 export function updatedOn(route, lang) {

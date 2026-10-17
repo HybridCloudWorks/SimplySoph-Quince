@@ -9,7 +9,8 @@ import {
   atLeast,
   pruneSessions,
 } from "./auth.mjs";
-import { renderSignInEmail, longDate } from "../emails/templates.mjs";
+import { renderSignInEmail } from "../emails/templates.mjs";
+import { date } from "../site/datetime.mjs";
 import { siteSettings } from "./site-settings.mjs";
 
 const normalizeEmail = (value) => {
@@ -65,7 +66,7 @@ export function createAccounts({
     createHmac("sha256", key)
       .update("email:" + value)
       .digest("hex");
-  async function issue({ address, householdId, generation, household, returnTo }) {
+  async function issue({ address, householdId, generation, returnTo }) {
     const raw = token(),
       id = randomUUID();
     const { locale, eventDate } = await ledger.transaction((s) => {
@@ -87,12 +88,13 @@ export function createAccounts({
       };
       // The language of the page the guest asked from, else the household's.
       const locale = returnTo ? (returnTo.startsWith("es/") ? "es" : "en") : invite?.locale || "en";
-      return { locale, eventDate: longDate(siteSettings(s).ceremony.start, locale) };
+      return { locale, eventDate: date(siteSettings(s).ceremony.start, locale) };
     });
     // Token is a fragment, never an access-log query parameter. GET/scanners do not
     // consume it: the page requires an explicit user click and a same-origin POST.
     const url = `${origin}${locale === "es" ? "/es" : ""}/account/#${raw}`;
-    const mail = renderSignInEmail({ locale, household, url, eventDate });
+    // It speaks to the one person who asked, so it names no household.
+    const mail = renderSignInEmail({ locale, url, eventDate });
     try {
       await mailer.send({
         id,

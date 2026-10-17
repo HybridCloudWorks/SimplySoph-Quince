@@ -176,7 +176,7 @@ test.describe("the same states in Spanish, speaking to the household", () => {
     ["2026-10-17T10:00:00-05:00", {
       phase: "rsvp-open",
       countdown: "Tiempo para confirmar 29 días 14 horas 59 minutos",
-      replyBy: "Por favor, confirmen a más tardar el domingo 15 de noviembre",
+      replyBy: "Por favor, confirmen su asistencia a más tardar el domingo 15 de noviembre",
       actions: ["Confirmar asistencia", "Ver el programa→"],
       href: "/es/rsvp/",
       pill: true,
@@ -294,11 +294,11 @@ test.describe("on a wrong device clock the page follows the server", () => {
     await page.clock.setFixedTime(DEADLINE + 60_000);
     await page.goto(harness.forBrowser(link));
     await expect(page.getByRole("heading", { name: "Rivera Family" })).toBeVisible();
-    await expect(page.locator("#portal .deadline")).toHaveText("Please reply by Sunday, November 15.");
+    await expect(page.locator("#portal .deadline")).toHaveText("Please RSVP by Sunday, November 15.");
     await page.getByRole("button", { name: "Everyone’s coming" }).click();
     await page.getByRole("button", { name: "Save my RSVP" }).click();
     await expect(page).toHaveURL(harness.url("/rsvp/confirmed/"));
-    await expect(page.getByText("Saved Nov 15 · you can change it until November 15")).toBeVisible();
+    await expect(page.getByText("Saved November 15 · you can change it until Sunday, November 15")).toBeVisible();
     // The home page counts the last minute on the server's clock.
     await page.goto(harness.url("/"));
     await expect(home.status(page)).toHaveText(["You replied ✓ · you can change it until Sunday, November 15"]);
@@ -406,7 +406,7 @@ test.describe("a household that replied", () => {
   });
 
   test("in Spanish, the home page speaks to the household that replied", async ({ page, harness }) => {
-    await answer(page, harness, households.morales, { button: "Vamos todos", save: "Guardar mi respuesta", locale: "es" });
+    await answer(page, harness, households.morales, { button: "Vamos todos", save: "Guardar la respuesta", locale: "es" });
     await expect(page.getByRole("link", { name: "Déjenle un mensaje a Sophia" })).toHaveAttribute("href", "/es/guestbook/");
     await openHome(page, harness, "es");
     await expectHome(page, {
@@ -466,19 +466,19 @@ test.describe("the RSVP page on the server's clock", () => {
     await setNow(DEADLINE - 1000);
     await page.goto(harness.url("/rsvp/"));
     await expect(page.getByRole("heading", { name: "Open your invitation" })).toBeVisible();
-    await expect(page.locator("#portal .deadline")).toHaveText("Please reply by Sunday, November 15.");
+    await expect(page.locator("#portal .deadline")).toHaveText("Please RSVP by Sunday, November 15.");
     await expect(page.getByRole("heading", { name: "RSVPs are closed" })).toHaveCount(0);
     await setNow(DEADLINE);
     await page.goto(harness.url("/rsvp/"));
     await expect(page.getByRole("heading", { level: 2 }).first()).toHaveText("RSVPs are closed");
-    await expect(page.getByText("RSVPs closed on November 15. To answer or change your answer now, please contact us.")).toBeVisible();
+    await expect(page.getByText("RSVPs closed on Sunday, November 15. To RSVP or change your RSVP now, please contact us.")).toBeVisible();
     await expect(page.getByRole("main").getByRole("link", { name: "Contact us" })).toHaveAttribute("href", "/contact/");
     await expect(page.locator("#portal .deadline")).toHaveCount(0);
     // The link or code still opens the household's saved answer.
     await expect(page.getByRole("heading", { name: "Open your invitation" })).toBeVisible();
     await page.goto(harness.url("/es/rsvp/"));
     await expect(page.getByRole("heading", { level: 2 }).first()).toHaveText("Las respuestas están cerradas");
-    await expect(page.getByText("Las respuestas cerraron el 15 de noviembre. Para responder o cambiar su respuesta, escríbannos.")).toBeVisible();
+    await expect(page.getByText("Las respuestas cerraron el domingo 15 de noviembre. Para confirmar su asistencia o cambiar su respuesta, escríbannos.")).toBeVisible();
   });
 
   test("a form left open across the deadline turns into the closed note with the saved answer", async ({ context, harness }) => {
@@ -505,7 +505,7 @@ test.describe("the RSVP page on the server's clock", () => {
     harness.setNow(DEADLINE + 1000);
     await page.clock.runFor(12_000);
     await expect(page.getByRole("heading", { name: "RSVPs are closed" })).toBeVisible();
-    await expect(page.getByText("Your saved answer:")).toBeVisible();
+    await expect(page.getByText("Your saved RSVP:")).toBeVisible();
     await expect(page.getByRole("main").getByRole("listitem").first()).toHaveText("Ceremony: 2 adults/teens, 1 child");
     await expect(page.getByRole("button", { name: "Save my RSVP" })).toHaveCount(0);
   });
@@ -521,6 +521,35 @@ test.describe("the RSVP page on the server's clock", () => {
     // "contact us" in the alert is the link (R-075), so it is said once.
     await expect(page.getByRole("alert").getByRole("link", { name: "contact us" })).toHaveAttribute("href", "/contact/");
     await expect(page.locator("#portal").getByRole("link", { name: /contact us/i })).toHaveCount(1);
+    // R-168: and the review becomes the closed note the deadline brings, with
+    // nothing left to press: no Save, no Change counts.
+    await expect(page.getByRole("heading", { name: "RSVPs are closed" })).toBeFocused();
+    await expect(page.getByRole("button", { name: "Save my RSVP" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Change counts" })).toHaveCount(0);
+  });
+
+  test("in Spanish, a change refused as too late shows the closed note with the saved answer, the server's words and no Save", async ({ page, harness, setNow }) => {
+    const { link } = await harness.issueInvitation(households.morales, { locale: "es" });
+    await setNow(DEADLINE - 120_000);
+    await page.goto(harness.forBrowser(link));
+    await page.getByRole("button", { name: "Vamos todos" }).click();
+    await page.getByRole("button", { name: "Guardar la respuesta" }).click();
+    await expect(page).toHaveURL(harness.url("/es/rsvp/confirmed/"));
+    // A minute before the deadline they start changing it, and save too late.
+    await setNow(DEADLINE - 60_000);
+    await page.goto(harness.forBrowser(link + ".no"));
+    await expect(page.getByRole("heading", { name: "Revisen su respuesta" })).toBeVisible();
+    await setNow(AFTER_DEADLINE);
+    await page.getByRole("button", { name: "Guardar la respuesta" }).click();
+    await expect(page.getByRole("heading", { name: "Las respuestas están cerradas" })).toBeFocused();
+    await expect(page.getByRole("alert")).toHaveText("La fecha límite ya pasó. Por favor, escríbannos.");
+    await expect(page.getByRole("alert").getByRole("link", { name: "escríbannos" })).toHaveAttribute("href", "/es/contact/");
+    await expect(page.locator("#portal").getByRole("link", { name: /escr[ií]bannos/i })).toHaveCount(1);
+    // The answer on file is still the "yes": the refused "no" changed nothing.
+    await expect(page.getByText("Su respuesta guardada:")).toBeVisible();
+    await expect(page.getByRole("main").getByRole("listitem").first()).toHaveText("Ceremonia: 2 adultos/jóvenes, 2 niños");
+    await expect(page.getByRole("button", { name: "Guardar la respuesta" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Cambiar cantidades" })).toHaveCount(0);
   });
 
   test("after the party the confirmation thanks the household and offers no calendar or directions", async ({ page, harness, setNow }) => {
@@ -644,4 +673,195 @@ test("siteClock() gives any page the milestones and the server's time", async ({
     return { ceremonyStart: m.ceremonyStart, deadline: m.deadline, now: now() };
   });
   expect(seen).toEqual({ ceremonyStart: at("2027-01-15T16:00:00-06:00"), deadline: DEADLINE, now: server });
+});
+
+// The family's words the build puts on the home page once they exist
+// (tests/family-slots.test.mjs checks the build); here the test sets them on
+// the served page, to show the page uses them.
+async function withHomeData(page, data) {
+  await page.route((url) => ["/", "/es/"].includes(url.pathname), async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({ response, body: (await response.text()).replace("data-home", `data-home ${data}`) });
+  });
+}
+
+// R-005 / DESIGN decision 13: on January 15 the home page shows parking once
+// the family adds it, under Now / Next; with no parking posted, nothing
+// changes (the walk above asserts the status lines exactly).
+test.describe("parking on the day itself, once the family posts it", () => {
+  for (const [lang, parking, label, morning, evening] of [
+    ["en", "Fixture parking.", "Parking", `Next Religious ceremony · 4:00 PM · ${church}`, `Now Reception & dance · 7:30 PM – 12:30 AM (Jan 16) · ${hall}`],
+    ["es", "Estacionamiento de ensayo.", "Estacionamiento", `Después Ceremonia religiosa · 4:00 p. m. · ${church}`, `Ahora Recepción y baile · 7:30 p. m. – 12:30 a. m. (16 de enero) · ${hall}`],
+  ])
+    test(`${lang}: under Now / Next at 3 PM and 9:15 PM, and not before the day`, async ({ page, harness, setNow }) => {
+      await withHomeData(page, `data-parking="${parking}"`);
+      await openHome(page, harness, lang);
+      await expect(home.countdown(page)).toHaveText(/\d/);
+      await expect(home.status(page)).toHaveCount(0);
+      await setNow(at("2027-01-15T15:00:00-06:00"));
+      await openHome(page, harness, lang);
+      await expect(home.status(page)).toHaveText([morning, `${label} ${parking}`]);
+      await setNow(at("2027-01-15T21:15:00-06:00"));
+      await openHome(page, harness, lang);
+      await expect(home.status(page)).toHaveText([evening, `${label} ${parking}`]);
+      await setNow(at("2027-01-16T12:00:00-06:00"));
+      await openHome(page, harness, lang);
+      await expect(home.status(page)).toHaveCount(0);
+    });
+});
+
+// R-160: a household that answered by its invitation link has no sign-out to
+// clear the device's "you replied" note, so the home page offers it.
+test.describe("a reply this device remembers can be forgotten here", () => {
+  for (const [lang, household, quick, save, replied, prompt, button, countdown] of [
+    ["en", households.rivera, "Everyone’s coming", "Save my RSVP", "You replied ✓ · you can change it until Sunday, November 15", "Not your family?", "Forget this on this device", /^Time left to RSVP/],
+    ["es", households.morales, "Vamos todos", "Guardar la respuesta", "Ya respondieron ✓ · pueden cambiar su respuesta hasta el domingo 15 de noviembre", "¿No es su familia?", "Olvidar esto en este dispositivo", /^Tiempo para confirmar/],
+  ])
+    test(`${lang}: "${prompt} ${button}" clears the note and shows the honest unknown state`, async ({ page, context, harness }) => {
+      const { link } = await harness.issueInvitation(household, { locale: lang });
+      await page.goto(harness.forBrowser(link));
+      await page.getByRole("button", { name: quick }).click();
+      await page.getByRole("button", { name: save }).click();
+      await expect(page).toHaveURL(/\/rsvp\/confirmed\/$/);
+      // While the link's session lasts the server says so: nothing to forget here.
+      await openHome(page, harness, lang);
+      await expect(home.status(page)).toHaveText([replied]);
+      await expect(page.locator(".home-forget")).toBeHidden();
+      // The session over, the device's note alone says it.
+      await context.clearCookies();
+      await openHome(page, harness, lang);
+      await expect(home.status(page)).toHaveText([replied]);
+      const forget = page.locator(".home-forget");
+      await expect(forget).toHaveText(`${prompt} ${button}`);
+      await expect(home.pill(page)).toBeHidden();
+      const control = forget.getByRole("button", { name: button });
+      expect((await control.boundingBox()).height).toBeGreaterThanOrEqual(44);
+      await control.click();
+      await expect(home.status(page)).toHaveCount(0);
+      await expect(forget).toBeHidden();
+      await expect(home.countdown(page)).toHaveText(countdown);
+      await expect(home.pill(page)).toBeVisible();
+      await expect(home.primary(page)).toBeFocused();
+      expect(await page.evaluate(() => localStorage.getItem("misxv-replied"))).toBe(null);
+      // And it stays forgotten.
+      await openHome(page, harness, lang);
+      await expect(home.countdown(page)).toHaveText(countdown);
+      await expect(forget).toBeHidden();
+    });
+});
+
+// R-006: the family's own thank-you sentence after the party (the default is
+// in the walk above), and no "RSVP" asked of anyone once the party is over:
+// the 404 and the pages waiting for content had kept their RSVP button.
+test("after the party the home page says the family's sentence when they write one, and no page's next steps ask for an RSVP", async ({ page, harness, setNow }) => {
+  for (const path of ["/travel/", "/es/travel/", "/no-such-page/"]) {
+    await page.goto(harness.url(path));
+    await expect(page.locator(".next-steps a.button"), path).toHaveText(/^(RSVP|Confirmar asistencia)$/);
+  }
+  await setNow(at("2027-01-16T00:30:00-06:00"));
+  await withHomeData(page, 'data-thanks="Fixture thanks for coming."');
+  await openHome(page, harness);
+  await expect(home.hero(page)).toHaveAttribute("data-phase", "after");
+  await expect(page.locator("[data-hero-line]")).toHaveText("Fixture thanks for coming.");
+  for (const path of ["/travel/", "/es/travel/", "/no-such-page/", "/es/no-existe/"]) {
+    await page.goto(harness.url(path));
+    // The other ways on stay.
+    await expect(page.locator(".next-steps a:not([hidden])").first()).toBeVisible();
+    await expect(page.getByRole("main").getByRole("link", { name: /^(RSVP|Confirmar asistencia)$/ }), path).toHaveCount(0);
+  }
+});
+
+// R-009: the walk again for households that replied (this device's note, as a
+// save leaves it) and in Spanish, at the review's other instants.
+const repliedNote = (answer) => ({ v: 1, answer, savedAt: "2026-10-01T18:00:00.000Z", until: "2027-01-16T06:30:00.000Z" });
+test.describe("the walk for a household that replied, in English and Spanish", () => {
+  const rows = [
+    ["en", "yes", "2026-11-15T20:00:00-06:00", { phase: "rsvp-open", status: ["You replied ✓ · you can change it until Sunday, November 15"], actions: ["See the schedule", "Change your RSVP→"], pill: false }],
+    ["en", "no", "2026-11-15T20:00:00-06:00", { phase: "rsvp-open", status: ["Thank you for letting us know · you can change your RSVP until Sunday, November 15"], actions: ["See the schedule", "Change your RSVP→"], pill: false }],
+    ["en", "yes", "2026-11-16T00:01:00-06:00", { phase: "rsvp-closed", countdown: "Until the celebration 60 days 15 hours 59 minutes", status: ["You replied ✓"], actions: ["See the schedule"], pill: false }],
+    ["en", "yes", "2027-01-15T15:00:00-06:00", { phase: "day-of", countdown: "Today is the day!", status: [`Next Religious ceremony · 4:00 PM · ${church}`], actions: ["Directions to the ceremony ↗", "See the schedule→"], pill: false }],
+    ["en", "yes", "2027-01-15T21:15:00-06:00", { phase: "live", countdown: "Today is the day!", status: [`Now Reception & dance · 7:30 PM – 12:30 AM (Jan 16) · ${hall}`], actions: ["Share your photos", "Directions to the reception ↗", "See the schedule→"], pill: false }],
+    ["en", "no", "2027-01-16T10:00:00-06:00", { phase: "after", line: "Thank you for celebrating with us.", actions: ["See the photos", "Share your photos→", "Leave Sophia a note→"], pill: false }],
+    ["es", "yes", "2026-11-15T20:00:00-06:00", { phase: "rsvp-open", status: ["Ya respondieron ✓ · pueden cambiar su respuesta hasta el domingo 15 de noviembre"], actions: ["Ver el programa", "Cambiar la respuesta→"], pill: false }],
+    ["es", "no", "2026-11-16T00:01:00-06:00", { phase: "rsvp-closed", countdown: "Falta para la celebración 60 días 15 horas 59 minutos", status: ["Gracias por avisarnos"], actions: ["Ver el programa"], pill: false }],
+    ["es", "yes", "2027-01-15T15:00:00-06:00", { phase: "day-of", countdown: "¡Hoy es el gran día!", status: [`Después Ceremonia religiosa · 4:00 p. m. · ${church}`], actions: ["Cómo llegar a la ceremonia ↗", "Ver el programa→"], pill: false }],
+    ["es", "yes", "2027-01-15T21:15:00-06:00", { phase: "live", countdown: "¡Hoy es el gran día!", status: [`Ahora Recepción y baile · 7:30 p. m. – 12:30 a. m. (16 de enero) · ${hall}`], actions: ["Compartir fotos", "Cómo llegar a la recepción ↗", "Ver el programa→"], pill: false }],
+    ["es", "yes", "2027-01-16T10:00:00-06:00", { phase: "after", line: "Gracias por celebrar con nosotros.", actions: ["Ver las fotos", "Compartir fotos→", "Déjenle un mensaje a Sophia→"], pill: false }],
+  ];
+  for (const [lang, answer, iso, want] of rows)
+    test(`${lang}, replied ${answer}: ${want.phase} (${iso})`, async ({ page, harness, setNow }) => {
+      await page.addInitScript((note) => localStorage.setItem("misxv-replied", JSON.stringify(note)), repliedNote(answer));
+      await setNow(at(iso));
+      await openHome(page, harness, lang);
+      await expectHome(page, want, lang);
+    });
+});
+test.describe("the same states in Spanish at the review's other instants", () => {
+  const es = [
+    ["2026-11-15T20:00:00-06:00", { phase: "rsvp-open", countdown: "Tiempo para confirmar 0 días 3 horas 59 minutos", replyBy: "Por favor, confirmen su asistencia a más tardar el domingo 15 de noviembre", actions: ["Confirmar asistencia", "Ver el programa→"], pill: true }],
+    [new Date(DEADLINE).toISOString(), { phase: "rsvp-closed", countdown: "Falta para la celebración 60 días 16 horas 1 minuto", actions: ["Ver el programa"], pill: true }],
+    ["2027-01-08T12:00:00-06:00", { phase: "rsvp-closed", countdown: "Falta para la celebración 7 días 4 horas 0 minutos", actions: ["Ver el programa"], pill: true }],
+    ["2027-01-15T15:00:00-06:00", { phase: "day-of", countdown: "¡Hoy es el gran día!", status: [`Después Ceremonia religiosa · 4:00 p. m. · ${church}`], actions: ["Cómo llegar a la ceremonia ↗", "Ver el programa→"], pill: true }],
+    ["2027-01-15T18:30:00-06:00", { phase: "live", countdown: "¡Hoy es el gran día!", status: [`Ahora Cena · 6:30 p. m. – 7:30 p. m. · ${hall}`, `Después Recepción y baile · 7:30 p. m. · ${hall}`], actions: ["Compartir fotos", "Cómo llegar a la recepción ↗", "Ver el programa→"], pill: true }],
+    ["2027-01-16T00:29:00-06:00", { phase: "live", status: [`Ahora Recepción y baile · 7:30 p. m. – 12:30 a. m. (16 de enero) · ${hall}`], actions: ["Compartir fotos", "Cómo llegar a la recepción ↗", "Ver el programa→"], pill: true }],
+    ["2027-01-16T00:31:00-06:00", { phase: "after", line: "Gracias por celebrar con nosotros.", actions: ["Ver las fotos", "Compartir fotos→", "Déjenle un mensaje a Sophia→"], pill: false }],
+    ["2027-02-15T12:00:00-06:00", { phase: "after", line: "Gracias por celebrar con nosotros.", actions: ["Ver las fotos", "Compartir fotos→", "Déjenle un mensaje a Sophia→"], pill: false }],
+    ["2028-01-15T12:00:00-06:00", { phase: "after", line: "Gracias por celebrar con nosotros.", actions: ["Ver las fotos", "Compartir fotos→", "Déjenle un mensaje a Sophia→"], pill: false }],
+  ];
+  for (const [iso, want] of es)
+    test(`${want.phase} (${iso})`, async ({ page, harness, setNow }) => {
+      await setNow(at(iso));
+      await openHome(page, harness, "es");
+      await expectHome(page, want, "es");
+    });
+});
+
+// R-171: how long the site and the photos stay, once the family sets it in
+// the event settings: on the gallery and the thank-you page, in each page's
+// Spanish; nothing at all until then.
+test("the gallery and the thank-you page say how long the site and photos stay only once the family sets it", async ({ page, harness, setNow }) => {
+  await setNow(at("2027-01-16T12:00:00-06:00"));
+  for (const path of ["/gallery/", "/thank-you/", "/es/gallery/"]) {
+    await page.goto(harness.url(path));
+    await expect(page.locator("[data-gallery-state] h2, main h1").first()).toBeVisible();
+    await expect(page.locator("[data-lifespan]"), path).toBeHidden();
+    await expect(page.getByText(/stays up through|Download your photos by|seguirá disponible|a más tardar/), path).toHaveCount(0);
+  }
+  const { site } = await harness.admin("site");
+  await harness.admin("site", { ...site, lifespan: { siteUntil: "2027-06-30", photosUntil: "2027-03-31" } });
+  for (const [path, text] of [
+    ["/gallery/", "The site stays up through Wednesday, June 30, 2027. Download your photos by Wednesday, March 31, 2027."],
+    ["/thank-you/", "The site stays up through Wednesday, June 30, 2027. Download your photos by Wednesday, March 31, 2027."],
+    ["/es/gallery/", "El sitio seguirá disponible hasta el miércoles 30 de junio de 2027. Descarga tus fotos a más tardar el miércoles 31 de marzo de 2027."],
+    ["/es/thank-you/", "El sitio seguirá disponible hasta el miércoles 30 de junio de 2027. Descarguen sus fotos a más tardar el miércoles 31 de marzo de 2027."],
+  ]) {
+    await page.goto(harness.url(path));
+    await expect(page.locator("[data-lifespan]"), path).toHaveText(text);
+  }
+  // Only the photos date set: only that line.
+  await harness.admin("site", { ...(await harness.admin("site")).site, lifespan: { siteUntil: "", photosUntil: "2027-02-01" } });
+  await page.goto(harness.url("/gallery/"));
+  await expect(page.locator("[data-lifespan]")).toHaveText("Download your photos by Monday, February 1, 2027.");
+  // A photos date before the Privacy policy's review date is refused.
+  await expect(harness.admin("site", { ...(await harness.admin("site")).site, lifespan: { siteUntil: "", photosUntil: "2027-01-31" } })).rejects.toMatchObject({ code: "INVALID_SITE_SETTINGS" });
+});
+
+// R-009: the end of the upload window, the home page and the table card at
+// the same instants (January 17, 11:59 PM and January 18, 12:01 AM).
+test("the table card works until the end of January 17 and closes at midnight, while the home page stays thankful", async ({ page, harness, setNow }) => {
+  await setNow(at("2027-01-15T21:15:00-06:00"));
+  const made = await harness.admin("party-card", { action: "create" }),
+    card = harness.forBrowser(made.url);
+  for (const [iso, open] of [
+    ["2027-01-17T23:59:00-06:00", true],
+    ["2027-01-18T00:01:00-06:00", false],
+  ]) {
+    await setNow(at(iso));
+    await openHome(page, harness);
+    await expectHome(page, { phase: "after", line: "Thank you for celebrating with us.", actions: ["See the photos", "Share your photos→", "Leave Sophia a note→"], pill: false });
+    await page.context().clearCookies();
+    await page.goto(card);
+    if (open) await expect(page.getByRole("heading", { name: "Add your photos & videos" })).toBeVisible();
+    else await expect(page.locator("[role=alert].notice")).toHaveText("Sharing from the table card has closed. Guests on our list can still share here.");
+  }
 });

@@ -1,5 +1,10 @@
 // Pure rendering only. No network, credentials, scheduling, or live dispatch.
+// Shared words come from site/lexicon.mjs (household emails speak to the
+// family: ustedes; the sign-in email and the reply notice to one person: tú),
+// and every date and time from site/datetime.mjs.
 import { event } from "../site/content.mjs";
+import { terms, say } from "../site/lexicon.mjs";
+import { date, time, at, capitalize } from "../site/datetime.mjs";
 // Invitations read like a letter (real date, places and Sophia's own words)
 // instead of a lone "view your invitation" button, which is the shape of
 // common invitation-phishing mail and lands in spam.
@@ -50,10 +55,9 @@ const copy = {
     ],
     greeting: (name) => `Hello ${name},`,
     date: "Event date",
-    deadline: "RSVP by",
-    replyBy: (d) => `Please let us know by ${d}.`,
-    quick: ["Or answer now", "We'll be there", "We can't make it"],
-    events: { ceremony: "Ceremony", dinner: "Dinner", dance: "Reception & dance" },
+    replyBy: (d) => `${terms.rsvpBy.en} ${d}.`,
+    quick: ["Or answer in one tap", terms.everyoneComing.en, terms.cantMakeIt.en],
+    events: { ceremony: terms.ceremony.en, dinner: terms.dinner.en, dance: terms.receptionDance.en },
     adults: (n) => `${n} ${n === 1 ? "adult/teen" : "adults/teens"}`,
     kids: (n) => `${n} ${n === 1 ? "child" : "children"}`,
     absent: "not attending",
@@ -61,8 +65,7 @@ const copy = {
     declined: "You let us know no one in your family can attend. We’ll miss you, and we send you our love.",
     changeUntil: (d) =>
       `You can change it until ${d}: open your invitation email again and tap its RSVP button.`,
-    private: "This RSVP link is just for your family, so please don’t forward this email.",
-    keepPrivate: "Your invitation link is just for your family. Please don’t share it.",
+    private: "This invitation link is just for your family, so please don’t forward this email.",
     help: `Add ${event.sender} to your contacts so our emails reach your inbox. Questions? Just reply — we read every message.`,
     sign: "With love, Sophia & family",
     preview: "SAMPLE PREVIEW — NOT SENT",
@@ -73,7 +76,7 @@ const copy = {
       "Los XV de Sophia",
       "",
       "Sophia cumple quince años y le encantaría celebrarlos con ustedes.",
-      "Confirmar asistencia",
+      terms.rsvpAction.es,
     ],
     receipt: [
       "Recibimos su respuesta · Los XV de Sophia",
@@ -91,7 +94,7 @@ const copy = {
       "Un pequeño recordatorio · Los XV de Sophia",
       "¿Nos acompañarán?",
       "Todavía no recibimos su respuesta y nos encantaría saber si podrán venir.",
-      "Confirmar asistencia",
+      terms.rsvpAction.es,
     ],
     details: [
       "Antes de celebrar · Los XV de Sophia",
@@ -113,18 +116,18 @@ const copy = {
     ],
     greeting: (name) => `Hola, ${name}:`,
     date: "Fecha del evento",
-    deadline: "Confirmen a más tardar el",
-    replyBy: (d) => `Por favor, confirmen su asistencia a más tardar el ${d}.`,
-    quick: ["O respondan ahora", "Ahí estaremos", "No podremos ir"],
-    events: { ceremony: "Ceremonia", dinner: "Cena", dance: "Recepción y baile" },
+    replyBy: (d) => `${say(terms.rsvpBy, "es", "ustedes")} ${d}.`,
+    quick: ["O respondan con un toque", terms.everyoneComing.es, terms.cantMakeIt.es],
+    events: { ceremony: terms.ceremony.es, dinner: terms.dinner.es, dance: terms.receptionDance.es },
     adults: (n) => `${n} ${n === 1 ? "adulto/joven" : "adultos/jóvenes"}`,
     kids: (n) => `${n} ${n === 1 ? "niño" : "niños"}`,
     absent: "no asistirán",
-    declined: "Nos avisaron que nadie de su familia podrá asistir. Los vamos a extrañar; gracias por su cariño.",
+    // The receipt's title already thanks them ("Gracias por responder."), so
+    // this line doesn't again.
+    declined: "Nos avisaron que nadie de su familia podrá asistir. Los vamos a extrañar y les mandamos todo nuestro cariño.",
     changeUntil: (d) =>
-      `Pueden cambiarla hasta el ${d}: abran de nuevo su correo de invitación y toquen el botón para responder.`,
-    private: "Este enlace es solo para su familia; por favor, no reenvíen este correo.",
-    keepPrivate: "El enlace de su invitación es solo para su familia. Por favor, no lo compartan.",
+      `Pueden cambiarla hasta el ${d}: abran de nuevo su correo de invitación y toquen el botón “${terms.rsvpAction.es}”.`,
+    private: "Este enlace de invitación es solo para su familia; por favor, no reenvíen este correo.",
     help: `Agreguen ${event.sender} a sus contactos para que nuestros correos lleguen a su bandeja de entrada. ¿Preguntas? Respondan a este correo; leemos todos los mensajes.`,
     sign: "Con cariño, Sophia y su familia",
     preview: "VISTA PREVIA — NO ENVIADO",
@@ -147,62 +150,30 @@ const escape = (value) =>
         c
       ],
   );
-const TZ = "America/Chicago";
-// Clock times are built by hand: Intl inserts U+202F before AM/PM, which the
-// mail server's Windows-1252 conversion cannot carry.
-function clock(iso, locale) {
-  const p = Object.fromEntries(
-    new Intl.DateTimeFormat("en-US", {
-      timeZone: TZ,
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    })
-      .formatToParts(new Date(iso))
-      .map((x) => [x.type, x.value]),
-  );
-  const pm = /p/i.test(p.dayPeriod);
-  return `${p.hour}:${p.minute} ${locale === "es" ? (pm ? "p. m." : "a. m.") : pm ? "PM" : "AM"}`;
-}
-export function longDate(iso, locale = "en") {
-  return new Intl.DateTimeFormat(locale === "es" ? "es-US" : "en-US", {
-    timeZone: TZ,
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  })
-    .format(new Date(iso))
-    .replace(/\s+/g, " ")
-    .replace(locale === "es" ? /^(\p{L}+),/u : /$^/, "$1");
-}
-// Only the events this household is invited to, from the admin's site settings.
+// Only the events this household is invited to, from the admin's site
+// settings, named as the website names them. Times are plain text (ordinary
+// spaces), which the mail server's Windows-1252 conversion can carry.
 export function emailSchedule(site, invited, locale = "en") {
   if (!site || !invited) return [];
   const es = locale === "es",
+    t = (entry) => say(entry, locale),
     rows = [],
     place = (v) => `${v.name}, ${v.address}`;
   if (invited.ceremony)
     rows.push({
-      time: clock(site.ceremony.start, locale),
-      text: `${es ? "Ceremonia religiosa" : "Ceremony"} · ${place(site.ceremony)}`,
+      time: time(site.ceremony.start, locale),
+      text: `${t(terms.ceremonyLong)} · ${place(site.ceremony)}`,
     });
   if (invited.dinner || invited.dance) {
-    const at = clock(site.reception.start, locale),
+    const then = at(site.reception.start, locale),
       label =
         invited.dinner && invited.dance
           ? es
-            ? `Cena y, a las ${at}, la recepción`
-            : `Dinner, then the reception at ${at}`
-          : invited.dinner
-            ? es
-              ? "Cena"
-              : "Dinner"
-            : es
-              ? "Recepción"
-              : "Reception";
+            ? `Cena y, ${then}, la recepción y el baile`
+            : `Dinner, then the reception and dance ${then}`
+          : t(invited.dinner ? terms.dinner : terms.receptionDance);
     rows.push({
-      time: clock(invited.dinner ? site.dinner.start : site.reception.start, locale),
+      time: time(invited.dinner ? site.dinner.start : site.reception.start, locale),
       text: `${label} · ${place(site.reception)}`,
     });
   }
@@ -217,11 +188,12 @@ const button = (href, label) =>
 // The sign-in link, in the guest's language. It says who it is from, which
 // celebration, what the link opens and how long it lasts, instead of a lone
 // link (the shape of phishing mail).
+// It speaks to the one person who asked (tú), so it greets them without the
+// household's name ("Hola:"), which would speak to the family (R-034).
 const signInCopy = {
   en: {
     subject: "Your sign-in link · Sophia’s quinceañera",
-    // Punctuated like the other emails' greetings (copy.*.greeting above).
-    greeting: (name) => (name ? `Hello ${name},` : "Hello,"),
+    greeting: "Hello,",
     intro: (date) =>
       `You asked to sign in to the website for Sophia’s quinceañera${date ? ` (${date})` : ""}. Once you’re in, you can share photos and videos, leave Sophia a note, send us a message and update your contact details.`,
     cta: "Sign in to the website",
@@ -230,8 +202,8 @@ const signInCopy = {
     sign: "With love, Sophia’s family",
   },
   es: {
-    subject: "Tu enlace para entrar · Los XV de Sophia",
-    greeting: (name) => (name ? `Hola, ${name}:` : "Hola:"),
+    subject: `Tu ${terms.signInLink.es} · Los XV de Sophia`,
+    greeting: "Hola:",
     intro: (date) =>
       `Pediste entrar al sitio de los XV de Sophia${date ? ` (${date})` : ""}. Ya adentro, puedes compartir fotos y videos, dejarle un mensaje a Sophia, enviarnos mensajes y actualizar tus datos de contacto.`,
     cta: "Entrar al sitio",
@@ -240,13 +212,13 @@ const signInCopy = {
     sign: "Con cariño, la familia de Sophia",
   },
 };
-export function renderSignInEmail({ locale = "en", household = "", url, eventDate = "" }) {
+export function renderSignInEmail({ locale = "en", url, eventDate = "" }) {
   const c = signInCopy[locale];
   if (!c) throw new Error("Unsupported locale");
   const target = new URL(url);
   if (target.protocol !== "https:" || target.username || target.password)
     throw new Error("An HTTPS URL without embedded credentials is required");
-  const greeting = c.greeting(household),
+  const greeting = c.greeting,
     intro = c.intro(eventDate);
   const html = layout(
     locale,
@@ -306,7 +278,11 @@ export function renderEmail({
     rows = ["invitation", "reminder", "details"].includes(type) ? schedule : [],
     quote = type === "invitation" ? note : "",
     reply = rsvp && rsvpDeadline ? c.replyBy(rsvpDeadline) : "",
-    preheader = rsvp && eventDate ? `${eventDate}. ${reply}`.trim() : "";
+    // The date as a line of its own (the schedule's heading, the preview
+    // text) starts with a capital; after "·" or "Fecha del evento:" it is
+    // written as passed, in lowercase.
+    dateLine = eventDate ? capitalize(eventDate) : "",
+    preheader = rsvp && eventDate ? `${dateLine}. ${reply}`.trim() : "";
   // A receipt repeats the answer for the events on the invitation, and says
   // until when and how to change it (the private link is not kept, so the
   // invitation email is the way back).
@@ -335,13 +311,9 @@ export function renderEmail({
     /^#[A-Za-z0-9_-]{43}$/.test(target.hash)
       ? { yes: target.href + ".yes", no: target.href + ".no" }
       : null;
-  // A receipt carries no link (it was the household's own answer), so it has
-  // no link to keep private.
-  const privacyNote = target.hash
-    ? c.private
-    : ["receipt", "update"].includes(type)
-      ? ""
-      : c.keepPrivate;
+  // Only an email that carries the household's private link (an invitation
+  // or a reminder) asks them to keep it; the others hold no link to keep.
+  const privacyNote = target.hash ? c.private : "";
   const lines = [
     preview ? c.preview : "",
     c.greeting(household),
@@ -353,7 +325,7 @@ export function renderEmail({
     change,
     quote ? `“${quote}” Sophia` : "",
     rows.length
-      ? [eventDate, ...rows.map((r) => `${r.time} · ${r.text}`)]
+      ? [dateLine, ...rows.map((r) => `${r.time} · ${r.text}`)]
           .filter(Boolean)
           .join("\n")
       : eventDate
@@ -372,7 +344,50 @@ export function renderEmail({
     locale,
     subject,
     preheader,
-    `${preview ? `<p style="font-size:13px;color:#651625">${c.preview}</p>` : ""}<p>${escape(c.greeting(household))}</p>${title ? `<h1 style="font:30px/1.2 Georgia,serif;color:#651625">${escape(title)}</h1>` : ""}<p>${escape(lead)}</p>${updateText ? `<p>${escape(updateText)}</p>` : ""}${said.length ? `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin:0 0 16px">${said.map((a) => `<tr><td style="padding:8px 12px 8px 0;border-top:1px solid #ecdfc8;font-weight:bold;color:#651625;white-space:nowrap;vertical-align:top">${escape(a.event)}</td><td style="padding:8px 0;border-top:1px solid #ecdfc8;vertical-align:top">${escape(a.count)}</td></tr>`).join("")}</table>` : ""}${change ? `<p>${escape(change)}</p>` : ""}${quote ? `<p style="margin:0 0 16px;border-left:3px solid #e9c77b;padding:4px 0 4px 14px;font:italic 18px/1.5 Georgia,serif;color:#4a2a2e">“${escape(quote)}” <span style="font-style:normal;color:#651625">Sophia</span></p>` : ""}${rows.length ? `${eventDate ? `<p style="margin:0 0 6px"><strong>${escape(eventDate)}</strong></p>` : ""}<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin:0 0 16px">${rows.map((r) => `<tr><td style="padding:8px 12px 8px 0;border-top:1px solid #ecdfc8;font-weight:bold;color:#651625;white-space:nowrap;vertical-align:top">${escape(r.time)}</td><td style="padding:8px 0;border-top:1px solid #ecdfc8;vertical-align:top">${escape(r.text)}</td></tr>`).join("")}</table>` : eventDate ? `<p><strong>${c.date}:</strong> ${escape(eventDate)}</p>` : ""}${reply ? `<p>${c.replyBy(`<strong>${escape(rsvpDeadline)}</strong>`)}</p>` : ""}${button(target.href, cta)}${quick ? `<p style="margin:0 0 24px">${escape(c.quick[0])}: <a href="${escape(quick.yes)}" style="color:#651625;font-weight:bold">${escape(c.quick[1])}</a> · <a href="${escape(quick.no)}" style="color:#651625;font-weight:bold">${escape(c.quick[2])}</a></p>` : ""}${privacyNote ? `<p style="font-size:14px">${escape(privacyNote)}</p>` : ""}<p>${escape(c.help)}</p><p style="font-family:Georgia,serif">${escape(c.sign)}</p>`,
+    `${preview ? `<p style="font-size:13px;color:#651625">${c.preview}</p>` : ""}<p>${escape(c.greeting(household))}</p>${title ? `<h1 style="font:30px/1.2 Georgia,serif;color:#651625">${escape(title)}</h1>` : ""}<p>${escape(lead)}</p>${updateText ? `<p>${escape(updateText)}</p>` : ""}${said.length ? `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin:0 0 16px">${said.map((a) => `<tr><td style="padding:8px 12px 8px 0;border-top:1px solid #ecdfc8;font-weight:bold;color:#651625;white-space:nowrap;vertical-align:top">${escape(a.event)}</td><td style="padding:8px 0;border-top:1px solid #ecdfc8;vertical-align:top">${escape(a.count)}</td></tr>`).join("")}</table>` : ""}${change ? `<p>${escape(change)}</p>` : ""}${quote ? `<p style="margin:0 0 16px;border-left:3px solid #e9c77b;padding:4px 0 4px 14px;font:italic 18px/1.5 Georgia,serif;color:#4a2a2e">“${escape(quote)}” <span style="font-style:normal;color:#651625">Sophia</span></p>` : ""}${rows.length ? `${dateLine ? `<p style="margin:0 0 6px"><strong>${escape(dateLine)}</strong></p>` : ""}<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin:0 0 16px">${rows.map((r) => `<tr><td style="padding:8px 12px 8px 0;border-top:1px solid #ecdfc8;font-weight:bold;color:#651625;white-space:nowrap;vertical-align:top">${escape(r.time)}</td><td style="padding:8px 0;border-top:1px solid #ecdfc8;vertical-align:top">${escape(r.text)}</td></tr>`).join("")}</table>` : eventDate ? `<p><strong>${c.date}:</strong> ${escape(eventDate)}</p>` : ""}${reply ? `<p>${c.replyBy(`<strong>${escape(rsvpDeadline)}</strong>`)}</p>` : ""}${button(target.href, cta)}${quick ? `<p style="margin:0 0 24px">${escape(c.quick[0])}: <a href="${escape(quick.yes)}" style="color:#651625;font-weight:bold">${escape(c.quick[1])}</a> · <a href="${escape(quick.no)}" style="color:#651625;font-weight:bold">${escape(c.quick[2])}</a></p>` : ""}${privacyNote ? `<p style="font-size:14px">${escape(privacyNote)}</p>` : ""}<p>${escape(c.help)}</p><p style="font-family:Georgia,serif">${escape(c.sign)}</p>`,
   );
   return { subject, html, text: lines.join("\n\n") };
+}
+// A household email as the server sends it (server/application.mjs): the
+// event's date and the RSVP deadline from the event settings, written by
+// site/datetime.mjs (lowercase in Spanish; renderEmail capitalizes the date
+// where it starts a line), the household's events and Sophia's first
+// sentence. `household` is the guest-list name.
+export function householdEmail({ site, deadline, invited = null, locale = "en", preview = false, ...rest }) {
+  return renderEmail({
+    ...rest,
+    locale,
+    preview,
+    invited,
+    eventDate: date(site.ceremony.start, locale),
+    rsvpDeadline: date(deadline, locale),
+    schedule: emailSchedule(site, invited, locale),
+    note: firstSentence(site.quote?.[locale]),
+    dateConfirmed: true,
+  });
+}
+// "We answered your message": a reply to a guest's message waits in My
+// account. It speaks to the one person who wrote (tú), in the household's
+// language, and in both when that is not known.
+const replyCopy = {
+  en: {
+    subject: "We answered your message",
+    line: "We answered your message on Sophia’s quinceañera website.",
+    cta: "Sign in to read our reply",
+  },
+  es: {
+    subject: "Te respondimos",
+    line: "Te respondimos en el sitio de los XV de Sophia.",
+    cta: "Entra para leer nuestra respuesta",
+  },
+};
+export function renderReplyNotice({ locale, origin }) {
+  const langs = locale === "en" || locale === "es" ? [locale] : ["en", "es"],
+    href = `${origin}${locale === "es" ? "/es" : ""}/account/`,
+    pick = (key) => langs.map((l) => replyCopy[l][key]).join(" / "),
+    // Named as the other emails' subjects name it.
+    subject = `${pick("subject")} · ${langs[0] === "es" ? terms.siteName.es : terms.eventProse.en}`,
+    lines = langs.map((l) => replyCopy[l].line);
+  const html = layout(langs[0], subject, lines[0], `${lines.map((l) => `<p>${escape(l)}</p>`).join("")}${button(href, pick("cta"))}`);
+  return { subject, html, text: [...lines, `${pick("cta")}: ${href}`].join("\n\n") };
 }

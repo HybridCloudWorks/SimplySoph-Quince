@@ -64,7 +64,10 @@ test("Spanish calendars share each event's identity and hold only confirmed fact
   assert.match(unfold(calendar("ceremony", c, "es")), /\r\nSUMMARY:XV de Sophia — Ceremonia religiosa\r\n/);
   assert.match(unfold(calendar("dinner", c, "es")), /\r\nSUMMARY:XV de Sophia — Cena\r\n/);
   assert.match(unfold(calendar("reception", c, "es")), /\r\nSUMMARY:XV de Sophia — Recepción y baile\r\n/);
-  assert.match(unfold(calendar("ceremony", c, "es")), /DESCRIPTION:Quinceañera de Sophia Isabel/);
+  // The celebration and its time zone in the site's own words (R-037, the
+  // calendar text): "los XV de Sophia", never "quinceañera de…" or "hora del centro".
+  assert.match(unfold(calendar("ceremony", c, "es")), /DESCRIPTION:Los XV de Sophia\. Our Lady of Guadalupe Church\\, .*Todos los horarios son de Fort Worth\\, Texas\. Detalles actualizados: /);
+  assert.match(unfold(calendar("ceremony", c)), /DESCRIPTION:Sophia’s quinceañera\. .*All times are Fort Worth\\, Texas time\. Latest details: /);
   // A content change bumps SEQUENCE in both languages.
   c.version = 7;
   assert.match(calendar("dinner", c, "es"), /SEQUENCE:7/);
@@ -88,7 +91,7 @@ test("calendar and map links say what they do in the page's language", () => {
   );
   assert.match(
     registryCards([{ name: "Store", description: { en: "Wishes", es: "Deseos" }, url: "https://example.com/" }]),
-    /target="_blank"[^>]*>See the registry<span class="ext" aria-hidden="true">↗/,
+    /target="_blank"[^>]*>See the gift registry<span class="ext" aria-hidden="true">↗/,
   );
 });
 test("the schedule strip, Schedule rows and invitation text come from the event data", () => {
@@ -97,15 +100,17 @@ test("the schedule strip, Schedule rows and invitation text come from the event 
   c.dinner.start = "2027-01-15T18:00:00-06:00";
   const strip = scheduleStrip(c, "es");
   assert.match(strip, /<a href="\/es\/ceremony\/">[\s\S]*Example Chapel/);
-  assert.match(strip, /<a href="\/es\/reception\/">[\s\S]*6:00 p\.m\.[\s\S]*The AMZ Event Center/);
+  // One time format (site/datetime.mjs): "6:00 p. m.", unbreakable on a page.
+  assert.match(strip, /<a href="\/es\/reception\/">[\s\S]*6:00 p\. m\.[\s\S]*The AMZ Event Center/);
   assert.equal(scheduleList(c, "en").match(/<li class="schedule-item">/g).length, 3);
   assert.match(scheduleList(c, "en"), /Example Chapel[\s\S]*4100 Blue Mound Rd/);
-  assert.match(invitationAlt(c, "en"), /Example Chapel; dinner 6:00 PM to 7:30 PM; reception and dance from 7:30 PM/);
-  assert.match(invitationAlt(c, "es"), /el viernes 15 de enero de 2027 a las 4:00 p\.m\. en Example Chapel/);
+  assert.match(invitationAlt(c, "en"), /Example Chapel; dinner from 6:00 PM to 7:30 PM; reception and dance from 7:30 PM/);
+  assert.match(invitationAlt(c, "es"), /el viernes 15 de enero de 2027 a las 4:00 p\. m\. en Example Chapel; cena de 6:00 p\. m\. a 7:30 p\. m\.; recepción y baile desde las 7:30 p\. m\./);
 });
 test("calendar injection is escaped and maps use the full encoded address", () => {
   const c = structuredClone(celebration);
   c.name = "Sophia\nBEGIN:VEVENT";
+  c.reception.name = "Hall\nBEGIN:VEVENT";
   assert.equal(
     (calendar("dinner", c).match(/^BEGIN:VEVENT$/gm) || []).length,
     1,
@@ -186,10 +191,15 @@ test("calendar and map links carry their event's name, visually hidden", () => {
   assert.ok(calendarLink("ceremony").includes(`Add to calendar${hidden("Ceremony")}`));
   assert.ok(calendarLink("dinner", celebration, "es").includes(`Agregar al calendario${hidden("Cena")}`));
   assert.ok(calendarLink("reception").includes(hidden("Reception &amp; dance")));
-  const schedule = scheduleList(celebration, "en");
+  // The Schedule's "Map: Google · Apple · Waze" (R-172): each app's link is
+  // named for the app's maps and the part of the day.
+  const schedule = scheduleList(celebration, "en"),
+    apps = (name) => [`Google<span class="visually-hidden"> Maps</span>${hidden(name)}`, `Apple<span class="visually-hidden"> Maps</span>${hidden(name)}`, `Waze${hidden(name)}`];
   for (const name of ["Religious ceremony", "Dinner", "Reception &amp; dance"])
-    assert.ok(schedule.includes(`Map${hidden(name)}`), name);
-  assert.ok(scheduleList(celebration, "es").includes(`Mapa${hidden("Cena")}`));
+    for (const named of apps(name)) assert.ok(schedule.includes(named), named);
+  assert.equal(schedule.match(/>Map: </g).length, 3);
+  for (const named of apps("Cena")) assert.ok(scheduleList(celebration, "es").includes(named), named);
+  assert.equal(scheduleList(celebration, "es").match(/>Mapa: </g).length, 3);
   const ceremony = venueSection("ceremony", celebration, "en");
   assert.ok(ceremony.includes(`Open in Google Maps${hidden("Religious ceremony")}`));
   assert.ok(ceremony.includes(`Open in Apple Maps${hidden("Religious ceremony")}`));

@@ -5,7 +5,6 @@ import { terms, say as term, say as sayTerm, registerFor } from "../site/lexicon
 import { noteSentence } from "../site/notes.mjs";
 import {
   celebration,
-  timeRange,
   venueSection,
   registryCards,
   pageHref,
@@ -33,9 +32,11 @@ import {
 } from "../site/content.mjs";
 import { exampleFamily, previewRoutes } from "../site/preview-content.mjs";
 import { milestones, phaseAt, previewKey } from "../site/lifecycle.mjs";
-import { date as longDate, capitalize } from "../site/datetime.mjs";
-import { promised, coming } from "../site/promises.mjs";
+import { date as longDate, time, at, capitalize } from "../site/datetime.mjs";
+import { promised, coming, posted } from "../site/promises.mjs";
 import { calendar } from "../site/calendar-file.mjs";
+// Times on a page never split from their "PM" (site/datetime.mjs).
+const nb = { nbsp: true };
 // The celebration's phase at the time of the build (--now=<ISO>, default the
 // real time). Only what a crawler reads depends on it: link previews and the
 // misxv-phase marker a release check can compare. The pages themselves are
@@ -104,6 +105,15 @@ const wholeNumber = (value, name, most) => {
   return value;
 };
 const driveMinutes = () => wholeNumber(family.driveMinutes, "driveMinutes", 240);
+// The family's own thank-you sentence for the home page after the party
+// (family.thankYou), in both languages or not at all.
+const thankYou = (lang) => {
+  const t = family.thankYou;
+  if (t === null || t === undefined) return null;
+  if (!["en", "es"].every((l) => typeof t[l] === "string" && t[l].trim() && t[l].length <= 200))
+    throw new Error("family.thankYou must be { en, es } sentences of at most 200 characters, or null");
+  return t[lang].trim();
+};
 const childAge = () => wholeNumber(family.childAgeCutoff, "childAgeCutoff", 20);
 // What the RSVP pages and My account need from the family's content, carried
 // on the page for site/guest.js (the browser never loads content.mjs):
@@ -144,11 +154,15 @@ function contents(route, lang) {
   // phase (answered, closed, the day itself, the evening, after) and puts the
   // newest announcement under the status line. On wide screens the written
   // schedule sits right under the actions, as on phones, above Sophia's words.
+  // It carries the family's words it may need: parking for the day itself
+  // (data-parking, once family.parking exists) and the thanks for after the
+  // party (data-thanks, once family.thankYou exists).
   if (route === "") {
     const by = esc(longDate(event.deadline, lang, { year: false })),
       // The invitation in the page's language (scripts/images.mjs).
-      art = images.invitation[lang];
-    return `<section class="hero" data-home><div class="hero-copy"><p class="eyebrow">MIS QUINCEAÑERA</p><h1>Sophia</h1><p class="hero-line" data-hero-line>${t.tagline}</p><p class="date" data-event-date>${t.date}</p><div class="actions" data-home-actions>${link("rsvp", t.rsvp)}<a href="${href("details", lang)}">${t.all}${arrow}</a></div><p class="hero-deadline" data-reply-by>${say(`Please RSVP by ${by}`, `Por favor, confirmen a más tardar el ${by}`)}</p><div class="countdown" data-countdown hidden></div><div class="home-status" data-home-status hidden></div><div class="home-latest" data-latest-update hidden></div></div><div class="hero-schedule" data-home-schedule><h2 class="strip-heading">${routeTitle("details", lang)}</h2><div data-schedule-strip>${scheduleStrip(celebration, lang)}</div></div><blockquote class="sophia-quote" data-home-quote><p>“${esc(celebration.quote[lang])}”</p><cite>— ${esc(celebration.name)}</cite></blockquote><p class="home-note" data-home-note><a href="${href("guestbook", lang)}">${esc(sayTerm(terms.leaveNote, lang, registerFor("")))}${arrow}</a></p><figure class="invitation" data-home-invitation>${picture(art, { alt: esc(invitationAlt(celebration, lang)), sizes: "(max-width: 760px) 290px, 365px", loading: "eager", priority: "high" })}<figcaption><a href="${art.jpeg.at(-1)[1]}" target="_blank" rel="noopener">${t.invitationCaption}${newTab(lang)}</a></figcaption></figure></section><div class="home-updates" data-announcements></div>`;
+      art = images.invitation[lang],
+      words = `${posted.parking(family) ? ` data-parking="${esc(promised("ceremony", lang, { content: family.parking }))}"` : ""}${thankYou(lang) ? ` data-thanks="${esc(thankYou(lang))}"` : ""}`;
+    return `<section class="hero" data-home${words}><div class="hero-copy"><p class="eyebrow"${es ? "" : ' lang="es"'}>${terms.eyebrow[lang]}</p><h1>Sophia</h1><p class="hero-line" data-hero-line>${t.tagline}</p><p class="date" data-event-date>${t.date}</p><div class="actions" data-home-actions>${link("rsvp", t.rsvp)}<a href="${href("details", lang)}">${t.all}${arrow}</a></div><p class="hero-deadline" data-reply-by>${sayTerm(terms.rsvpBy, lang, registerFor(""))} ${by}</p><div class="countdown" data-countdown hidden></div><div class="home-status" data-home-status hidden></div><div class="home-latest" data-latest-update hidden></div></div><div class="hero-schedule" data-home-schedule><h2 class="strip-heading">${routeTitle("details", lang)}</h2><div data-schedule-strip>${scheduleStrip(celebration, lang)}</div></div><blockquote class="sophia-quote" data-home-quote data-voice="sophia"><p>“${esc(celebration.quote[lang])}”</p><cite>— ${esc(celebration.name)}</cite></blockquote><p class="home-note" data-home-note><a href="${href("guestbook", lang)}">${esc(sayTerm(terms.leaveNote, lang, registerFor("")))}${arrow}</a></p><figure class="invitation" data-home-invitation>${picture(art, { alt: esc(invitationAlt(celebration, lang)), sizes: "(max-width: 760px) 290px, 365px", loading: "eager", priority: "high" })}<figcaption><a href="${art.jpeg.at(-1)[1]}" target="_blank" rel="noopener">${t.invitationCaption}${newTab(lang)}</a></figcaption></figure></section><div class="home-updates" data-announcements></div>`;
   }
   // The page title; pages that belong to a larger section also name it above
   // the title and list its other pages with content underneath.
@@ -257,11 +271,14 @@ function contents(route, lang) {
         `<article class="card airport-card"><p class="person-role">${say("Flying in", "Si llegas en avión")}</p><h2>${esc(family.airport.name)}</h2><p>${esc(localized(family.airport.notes))}</p></article>`,
       );
     body =
-      `<div class="route-strip${drive ? " has-drive" : ""}"><div><b>${timeRange({ start: celebration.ceremony.start }, lang)} · ${say("Ceremony", "Ceremonia")}</b><span><a href="${href("ceremony", lang)}">${esc(celebration.ceremony.name)}${arrow}</a><br>${esc(celebration.ceremony.address)}</span></div>${drive}<div><b>${timeRange({ start: celebration.dinner.start }, lang)} · ${say("Dinner", "Cena")}</b><span><a href="${href("reception", lang)}">${esc(celebration.reception.name)}${arrow}</a><br>${esc(celebration.reception.address)}</span></div></div>` +
+      `<div class="route-strip${drive ? " has-drive" : ""}"><div><b>${time(celebration.ceremony.start, lang, nb)} · ${sayTerm(terms.ceremony, lang)}</b><span><a href="${href("ceremony", lang)}">${esc(celebration.ceremony.name)}${arrow}</a><br>${esc(celebration.ceremony.address)}</span></div>${drive}<div><b>${time(celebration.dinner.start, lang, nb)} · ${sayTerm(terms.dinner, lang)}</b><span><a href="${href("reception", lang)}">${esc(celebration.reception.name)}${arrow}</a><br>${esc(celebration.reception.address)}</span></div></div>` +
       (stay.length ? `<div class="cards">${stay.join("")}</div>` : body);
   }
+  // How long the site and photos stay, once the family sets it in the event
+  // settings (site/lifespan.mjs fills it; hidden until then).
+  const lifespan = '<p class="lifespan" data-lifespan hidden></p>';
   if (route === "thank-you" && (family.thanksNote || family.highlightVideo))
-    body = `<div class="thanks-note"><p class="thanks-script">Gracias</p>${family.thanksNote ? `<p>${esc(localized(family.thanksNote))}</p>` : ""}<p class="actions">${family.highlightVideo ? `<a class="button burgundy" href="${safeLink(family.highlightVideo)}" target="_blank" rel="noopener noreferrer">${say("Watch the highlights", "Ver los mejores momentos")}${newTab(lang)}</a>` : ""}<a href="${href("share", lang)}">${say("Share your photos", "Comparte tus fotos")}${arrow}</a></p></div>`;
+    body = `<div class="thanks-note"><p class="thanks-script"${es ? "" : ' lang="es"'}>Gracias</p>${family.thanksNote ? `<p>${esc(localized(family.thanksNote))}</p>` : ""}<p class="actions">${family.highlightVideo ? `<a class="button burgundy" href="${safeLink(family.highlightVideo)}" target="_blank" rel="noopener noreferrer">${say("Watch the highlights", "Ver los mejores momentos")}${newTab(lang)}</a>` : ""}<a href="${href("share", lang)}">${sayTerm(terms.sharePhotos, lang)}${arrow}</a></p></div>`;
   // Each part of the day carries its own time, place, map and calendar file;
   // practical notes follow in a small box: the dress code (or the promise to
   // post it), the drive between the two places, and parking and children once
@@ -303,14 +320,15 @@ function contents(route, lang) {
       // (data-gallery-albums: a card per album with media, when there is more
       // than one to choose between).
       // data-gallery-pending: a signed-in guest's own files waiting for review.
+      lifespan +
       '<p class="notice gallery-pending" data-gallery-pending hidden></p><div class="gallery-state" data-gallery-state><p role="status">' +
       say("Opening the gallery…", "Abriendo la galería…") +
       '</p></div><div data-gallery-albums hidden></div><section class="gallery-section" data-photos-section hidden><h2>' +
-      say("Photographs", "Fotografías") +
+      sayTerm(terms.photos, lang) +
       '</h2><p data-album-label></p><div data-gallery class="media-grid"></div></section><section class="gallery-section" data-videos-section hidden><h2>' +
-      say("The video collection", "La colección de videos") +
+      "Videos" +
       '</h2><div data-videos class="media-grid"></div></section><p data-gallery-share hidden>' +
-      link("share", say("Share your photos", "Comparte tus fotos")) +
+      link("share", sayTerm(terms.sharePhotos, lang)) +
       "</p>";
   // The printed QR codes open this page in English (/share/#media-upload for
   // signed-in sharing, /share/#party=… for the table card), so before sign-in
@@ -352,8 +370,8 @@ function contents(route, lang) {
               `By ${t.deadline}. Open the invitation link we sent your family, or go to <a href="${href("rsvp", lang)}">RSVP</a>.`,
               `A más tardar el ${t.deadline}. Abre el enlace de invitación que le enviamos a tu familia, o ve a <a href="${href("rsvp", lang)}">${terms.rsvpAction.es}</a>.`,
             )}</p><p data-rsvp-while="closed"${phase === "rsvp-open" ? " hidden" : ""}>${say(
-              `RSVPs closed on ${t.deadline}. To answer or change your answer now, please <a href="${href("contact", lang)}">contact us</a>.`,
-              `Las respuestas cerraron el ${t.deadline}. Para responder o cambiar tu respuesta, <a href="${href("contact", lang)}">escríbenos</a>.`,
+              `RSVPs closed on ${t.deadline}. To RSVP or change your RSVP now, please <a href="${href("contact", lang)}">contact us</a>.`,
+              `Las respuestas cerraron el ${t.deadline}. Para confirmar tu asistencia o cambiar tu respuesta, <a href="${href("contact", lang)}">escríbenos</a>.`,
             )}</p>`,
           },
         ],
@@ -389,8 +407,8 @@ function contents(route, lang) {
           ),
           esc(
             say(
-              `The ceremony ends around ${timeRange({ start: celebration.ceremony.end }, lang)} and dinner starts at ${timeRange({ start: celebration.dinner.start }, lang)} at ${celebration.reception.name}.`,
-              `La ceremonia termina alrededor de las ${timeRange({ start: celebration.ceremony.end }, lang)} y la cena empieza a las ${timeRange({ start: celebration.dinner.start }, lang)} en ${celebration.reception.name}.`,
+              `The ceremony ends around ${time(celebration.ceremony.end, lang, nb)} and dinner starts ${at(celebration.dinner.start, lang, nb)} at ${celebration.reception.name}.`,
+              `La ceremonia termina alrededor de ${at(celebration.ceremony.end, lang, nb)} y la cena empieza ${at(celebration.dinner.start, lang, nb)} en ${celebration.reception.name}.`,
             ),
           ),
         ],
@@ -400,12 +418,12 @@ function contents(route, lang) {
             "¿Puedo tomar fotos durante la ceremonia?",
           ),
           say(
-            `Please keep phones put away during the ceremony. You can share your reception photos on <a href="${href("share", lang)}">Share your photos</a>.`,
-            `Por favor, guarda tu teléfono durante la ceremonia. Puedes compartir tus fotos de la recepción en <a href="${href("share", lang)}">Comparte tus fotos</a>.`,
+            `Please keep phones put away during the ceremony. You can share your reception photos on <a href="${href("share", lang)}">${terms.sharePhotos.en}</a>.`,
+            `Por favor, guarda tu teléfono durante la ceremonia. Puedes compartir tus fotos de la recepción en <a href="${href("share", lang)}">${terms.sharePhotos.es}</a>.`,
           ),
         ],
         [
-          say("Can I change my response?", "¿Puedo cambiar mi respuesta?"),
+          say("Can I change my RSVP?", "¿Puedo cambiar mi respuesta?"),
           say(
             "Yes, until the RSVP deadline. Open your invitation link again, or sign in with your email, and change your answer. We go by the last answer you save.",
             "Sí, hasta la fecha límite. Abre otra vez tu enlace de invitación, o entra con tu correo, y cambia tu respuesta. Tomamos en cuenta la última respuesta que guardes.",
@@ -425,8 +443,8 @@ function contents(route, lang) {
         [
           say("Can I share photos?", "¿Puedo compartir fotos?"),
           say(
-            `Yes. Sign in and use <a href="${href("share", lang)}">Share your photos</a>. We look at every photo and video first, and only guests who sign in can see the ones we approve. See our <a href="${href("terms", lang)}">Photo &amp; video policy</a>.`,
-            `Sí. Entra al sitio y usa <a href="${href("share", lang)}">Comparte tus fotos</a>. Revisamos cada foto y video primero, y solo los invitados que entran al sitio pueden ver los que aprobamos. Consulta <a href="${href("terms", lang)}">Uso de fotos y videos</a>.`,
+            `Yes. Sign in and use <a href="${href("share", lang)}">${terms.sharePhotos.en}</a>. We look at every photo and video first, and only guests who sign in can see the ones we approve. See our <a href="${href("terms", lang)}">Photo &amp; video policy</a>.`,
+            `Sí. Entra al sitio y usa <a href="${href("share", lang)}">${terms.sharePhotos.es}</a>. Revisamos cada foto y video primero, y solo los invitados que entran al sitio pueden ver los que aprobamos. Consulta <a href="${href("terms", lang)}">Uso de fotos y videos</a>.`,
           ),
         ],
       ]
@@ -436,6 +454,7 @@ function contents(route, lang) {
             list + `<details><summary>${q}</summary>${a.html ?? `<p>${a}</p>`}</details>`,
           '<div class="faq-list">',
         ) + `</div><p>${link("contact", t.contact)}</p>`;
+  if (route === "thank-you") body += lifespan;
   if (route === "privacy")
     body = `<article class="editorial"><h2>${say("What we collect and why", "Qué guardamos y para qué")}</h2><p>${say("Our guest list has each family’s names, contact details and the seats we saved for them. When you RSVP, we save who is coming to each part of the day, plus any contact corrections or requests you add. When you sign in, we also keep the photos and videos you upload, your notes for Sophia and the messages you send us. We use all of this only to plan the celebration and to keep in touch with you about it.", "Nuestra lista de invitados tiene los nombres y datos de contacto de cada familia y los lugares que apartamos para ella. Cuando confirmas tu asistencia, guardamos quién viene a cada parte del día y las correcciones de contacto o solicitudes que agregues. Cuando entras al sitio, también guardamos las fotos y los videos que subas, tus mensajes para Sophia y lo que nos escribas. Usamos todo esto solo para organizar la celebración y para estar en contacto contigo sobre ella.")}</p><p data-note-audience="privacy">${esc(noteSentence("privacy", "guests", lang))}</p><p>${say("Services that help us run the site: Firebase Hosting (Google) serves these pages. Google Cloud privately stores RSVPs, sign-in records, messages, photos and videos. Our guest list is kept in Notion. Our email comes from misxv@simplysoph.com through Microsoft 365; if Microsoft 365 is unavailable, our backup service, SendGrid, sends it instead. Twilio sends our text messages, and Twilio and Meta deliver our WhatsApp messages. Google Fonts provides the lettering and receives normal network information, like your IP address, when a page loads. If you choose to sign in with Google or Microsoft, they confirm your email address to us. We share information with these services only so they can do their part.", "Servicios que nos ayudan con el sitio: Firebase Hosting (de Google) publica estas páginas. Google Cloud guarda en privado las respuestas, los registros de acceso, los mensajes, las fotos y los videos. Nuestra lista de invitados está en Notion. Nuestros correos salen de misxv@simplysoph.com a través de Microsoft 365; si Microsoft 365 no está disponible, los envía nuestro servicio de respaldo, SendGrid. Twilio envía nuestros mensajes de texto, y Twilio y Meta entregan nuestros mensajes de WhatsApp. Google Fonts proporciona los tipos de letra y recibe información normal de conexión, como tu dirección IP, al cargar una página. Si decides entrar con Google o Microsoft, ellos nos confirman tu correo. Solo compartimos información con estos servicios para que hagan su parte.")}</p><p>${say("Like most websites, our servers keep short-term technical logs, such as IP address and browser type, to keep the site working and safe.", "Como la mayoría de los sitios web, nuestros servidores guardan por poco tiempo registros técnicos, como la dirección IP y el tipo de navegador, para que el sitio funcione bien y de forma segura.")}</p><h3>${say("Your choices", "Tus opciones")}</h3><p>${say("Mailing addresses, requests, messages, photos, videos and phone numbers are all optional. Please keep your invitation link within your family: anyone who has it can open and change your RSVP. To see, correct or delete your information, email us:", "Las direcciones postales, solicitudes, mensajes, fotos, videos y teléfonos son opcionales. Por favor, comparte tu enlace de invitación solo con tu familia: cualquier persona que lo tenga puede abrir y cambiar tu respuesta. Para ver, corregir o borrar tu información, escríbenos:")}</p><a href="mailto:${event.sender}">${event.sender}</a></article>`;
   if (route === "terms") body = "";
@@ -455,14 +474,14 @@ function contents(route, lang) {
   const smsLinks = `<p><a class="target" href="${href("sms-terms", lang)}">${routeTitle("sms-terms", lang)}</a> · <a class="target" href="${href("privacy", lang)}">${say("Privacy Policy", "Política de privacidad")}</a></p>`;
   if (route === "sms")
     body = `<article class="editorial sms-page"><h2>${smsProgram.name} — ${say("Sophia’s Event Texts", "Mensajes del evento de Sophia")}</h2>
-    <p>${say("Optional text messages about Sophia’s January 15, 2027 quinceañera, operated by Simply Soph Media.", "Mensajes opcionales sobre la quinceañera de Sophia del 15 de enero de 2027, operados por Simply Soph Media.")}</p>
+    <p>${say("Optional text messages about Sophia’s January 15, 2027 quinceañera, operated by Simply Soph Media.", "Mensajes opcionales sobre los XV de Sophia del 15 de enero de 2027, operados por Simply Soph Media.")}</p>
     <h3>${say("How To Subscribe", "Cómo suscribirte")}</h3><p class="sms-cta">${smsCta}</p>
     <p>${say("Texting the keyword from your own phone is the only way to join, and joining is optional. No number is ever added from a list or a form. START or UNSTOP also re-subscribes you. US and Canadian mobile numbers only.", "Enviar la palabra clave desde tu propio teléfono es la única forma de unirte, y es opcional. Nunca agregamos números desde una lista o un formulario. START o UNSTOP también reactivan la suscripción. Solo números móviles de EE. UU. y Canadá.")}</p>
     ${smsReplies}${smsLinks}</article>`;
   if (route === "sms-terms")
     body = `<article class="editorial sms-page"><h2>${smsProgram.name} — ${routeTitle("sms-terms", lang)}</h2>
     <ol>
-    <li>${say(`<strong>Program.</strong> ${smsProgram.name} event texts about Sophia’s quinceañera (January 15, 2027): invitation links, RSVP reminders and schedule or venue updates. No unrelated promotions.`, `<strong>Programa.</strong> Mensajes de ${smsProgram.name} sobre la quinceañera de Sophia (15 de enero de 2027): enlaces de invitación, recordatorios y cambios de horario o lugar. Sin promociones ajenas.`)}</li>
+    <li>${say(`<strong>Program.</strong> ${smsProgram.name} event texts about Sophia’s quinceañera (January 15, 2027): invitation links, RSVP reminders and schedule or venue updates. No unrelated promotions.`, `<strong>Programa.</strong> Mensajes de ${smsProgram.name} sobre los XV de Sophia (15 de enero de 2027): enlaces de invitación, recordatorios y cambios de horario o lugar. Sin promociones ajenas.`)}</li>
     <li>${say(`<strong>Opt-in.</strong> Text ${smsProgram.keyword} to <span class="nowrap">${smsProgram.phoneDisplay}</span>. By texting the keyword you agree to receive recurring automated texts from ${smsProgram.name} at that number. Consent is not a condition of purchase, RSVP or attendance.`, `<strong>Suscripción.</strong> Envía ${smsProgram.keyword} al <span class="nowrap">${smsProgram.phoneDisplay}</span>. Al enviar la palabra clave aceptas recibir mensajes automatizados recurrentes de ${smsProgram.name} en ese número. El consentimiento no es condición de compra, confirmación ni asistencia.`)}</li>
     <li>${say("<strong>Frequency and cost.</strong> Message frequency varies, typically a few messages per month before the event. Message and data rates may apply.", "<strong>Frecuencia y costo.</strong> La frecuencia varía, normalmente pocos mensajes al mes antes del evento. Pueden aplicarse tarifas de mensajes y datos.")}</li>
     <li>${say("<strong>Cancel.</strong> Reply <strong>STOP</strong> at any time. You will receive one confirmation and no further program messages unless you text the keyword again.", "<strong>Cancelar.</strong> Responde <strong>STOP</strong> en cualquier momento. Recibirás una confirmación y ningún otro mensaje del programa, salvo que vuelvas a enviar la palabra clave.")}</li>
@@ -563,7 +582,7 @@ function navigation(lang, current) {
   // the 404 switches to the other language's home.
   const other = es ? "en" : "es",
     switchTo = href(current === "404" ? "" : current, other);
-  return `<header class="site-header"><div class="header-bar"><a class="wordmark" href="${href("", lang)}">S<span class="wordmark-tag"><span aria-hidden="true"> · </span>MIS XV</span><span class="visually-hidden">, ${es ? "inicio" : "home"}</span></a><nav class="site-nav" id="site-nav" aria-label="${es ? "Navegación principal" : "Main navigation"}"><ul>${links}<li class="nav-signin"><a href="${href("account", lang)}"${mark("account")}>${t.signIn}</a></li></ul></nav><div class="header-actions"><a class="lang-switch" href="${switchTo}" lang="${other}" hreflang="${other}"><span class="lang-short" aria-hidden="true">${t.languageShort}</span><span class="lang-full">${t.language}</span></a><a class="nav-rsvp" href="${href("rsvp", lang)}"${current.startsWith("rsvp") ? ' aria-current="page"' : ""}>RSVP</a><button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav"><svg class="icon when-closed" aria-hidden="true" viewBox="0 0 20 20" width="20" height="20"><path d="M3 5.5h14M3 10h14M3 14.5h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><svg class="icon when-open" aria-hidden="true" viewBox="0 0 20 20" width="20" height="20"><path d="M5 5l10 10M15 5L5 15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="menu-label"><span class="when-closed">${t.menu}</span><span class="when-open">${es ? "Cerrar" : "Close"}</span></span></button></div></div></header>`;
+  return `<header class="site-header"><div class="header-bar"><a class="wordmark" href="${href("", lang)}">S<span class="wordmark-tag"><span aria-hidden="true"> · </span>MIS XV</span><span class="visually-hidden">, ${es ? "inicio" : "home"}</span></a><nav class="site-nav" id="site-nav" aria-label="${es ? "Navegación principal" : "Main navigation"}"><ul>${links}<li class="nav-signin"><a href="${href("account", lang)}"${mark("account")}>${t.signIn}</a></li></ul></nav><div class="header-actions"><a class="lang-switch" href="${switchTo}" lang="${other}" hreflang="${other}"><span class="lang-short" aria-hidden="true">${t.languageShort}</span><span class="lang-full">${t.language}</span></a><a class="nav-rsvp" href="${href("rsvp", lang)}"${current.startsWith("rsvp") ? ' aria-current="page"' : ""}>${terms.rsvpPill[lang]}${terms.rsvpPillHidden[lang] ? `<span class="visually-hidden">${terms.rsvpPillHidden[lang]}</span>` : ""}</a><button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav"><svg class="icon when-closed" aria-hidden="true" viewBox="0 0 20 20" width="20" height="20"><path d="M3 5.5h14M3 10h14M3 14.5h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><svg class="icon when-open" aria-hidden="true" viewBox="0 0 20 20" width="20" height="20"><path d="M5 5l10 10M15 5L5 15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="menu-label"><span class="when-closed">${t.menu}</span><span class="when-open">${es ? "Cerrar" : "Close"}</span></span></button></div></div></header>`;
 }
 // Fonts: the weights the stylesheets use, fetched in parallel with them.
 const fonts =
@@ -578,15 +597,15 @@ const eventLine = (lang) =>
     ? `${capitalize(longDate(event.startsAt, "es"))} en Fort Worth, Texas.`
     : `${longDate(event.startsAt, "en")} in Fort Worth, Texas.`;
 const previews = {
-  invite: (lang) =>
-    lang === "es"
-      ? `${eventLine(lang)} Por favor, confirmen su asistencia a más tardar el ${longDate(event.deadline, "es")}.`
-      : `${eventLine(lang)} Please RSVP by ${longDate(event.deadline, "en")}.`,
+  // The invitation's own preview: the deadline sentence to the household.
+  invite: (lang) => `${eventLine(lang)} ${sayTerm(terms.rsvpBy, lang, registerFor(""))} ${longDate(event.deadline, lang)}.`,
   event: eventLine,
+  // The family's own sentence once they write one (family.thankYou).
   thanks: (lang) =>
-    lang === "es"
+    thankYou(lang) ||
+    (lang === "es"
       ? `Gracias por celebrar con nosotros el ${longDate(event.startsAt, "es")}.`
-      : `Thank you for celebrating with us on ${longDate(event.startsAt, "en")}.`,
+      : `Thank you for celebrating with us on ${longDate(event.startsAt, "en")}.`),
   share: (lang) =>
     lang === "es"
       ? "Comparte las fotos y los videos que tomaste en los XV de Sophia."
@@ -607,15 +626,13 @@ function head({ route, title, lang, admin }) {
     description = previews[key](lang),
     ogTitle = dateFree.includes(key)
       ? `${routeTitle(route, lang)} · ${t.site}`
-      : es
-        ? "Los XV de Sophia · 15 de enero de 2027"
-        : "Sophia’s Quinceañera · January 15, 2027",
+      : `${t.site} · ${longDate(event.startsAt, lang, { weekday: false })}`,
     url = origin + (admin ? `/${route}/` : href(route === "404" ? "" : route, lang));
   return `<title>${esc(route === "" && !admin ? t.site : `${title} · ${t.site}`)}</title><meta name="description" content="${esc(description)}"><meta name="misxv-phase" content="${phase}"><meta name="misxv-deadline" content="${esc(event.deadline)}"><meta name="theme-color" content="#360d16" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#070c15" media="(prefers-color-scheme: dark)"><meta property="og:type" content="website"><meta property="og:site_name" content="${esc(t.site)}"><meta property="og:title" content="${esc(ogTitle)}"><meta property="og:description" content="${esc(description)}"><meta property="og:url" content="${url}"><meta property="og:image" content="${origin}${images.og[es ? "es" : "en"]}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:alt" content="${esc(es ? "Invitación a los XV de Sophia en dorado y borgoña" : "Sophia’s gold and burgundy quinceañera invitation")}"><meta property="og:locale" content="${es ? "es_US" : "en_US"}"><meta property="og:locale:alternate" content="${es ? "en_US" : "es_US"}"><meta name="twitter:card" content="summary_large_image"><link rel="icon" type="image/svg+xml" href="${favicon}"><link rel="icon" type="image/png" sizes="32x32" href="${images.favicon}"><link rel="apple-touch-icon" href="${images.touchIcon}"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="${fonts}">`;
 }
 function document({ route, title, lang = "en", admin = false }) {
   const t = copy[lang];
-  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="strict-origin-when-cross-origin">${head({ route, title, lang, admin })}<link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/pages.css">${route === "404" ? '<script type="module" src="/not-found.js"></script>' : ""}<script type="module" src="/nav.js"></script><script type="module" src="/${admin ? "admin" : "guest"}.js"></script></head><body data-route="${route}"><a class="skip" href="#main">${lang === "es" ? "Ir al contenido" : "Skip to content"}</a>${navigation(lang, admin ? "" : route)}<main id="main" tabindex="-1">${
+  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="strict-origin-when-cross-origin">${head({ route, title, lang, admin })}<link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/pages.css">${route === "404" ? '<script type="module" src="/not-found.js"></script>' : ""}${["gallery", "thank-you"].includes(route) && !admin ? '<script type="module" src="/lifespan.mjs"></script>' : ""}<script type="module" src="/nav.js"></script><script type="module" src="/${admin ? "admin" : "guest"}.js"></script></head><body data-route="${route}" data-register="${registerFor(route)}"><a class="skip" href="#main">${lang === "es" ? "Ir al contenido" : "Skip to content"}</a>${navigation(lang, admin ? "" : route)}<main id="main" tabindex="-1">${
     admin
       ? `<section class="section admin-shell"><aside aria-label="Administration" hidden>${adminRoutes
           .filter(
@@ -715,12 +732,14 @@ for (const file of [
   "admin-pulse.js",
   "sso.js",
   "admin-history.js",
+  "admin-messages.js",
   "admin-whatsapp.js",
   "guest-whatsapp.js",
   "guest-account.js",
   "notes.mjs",
   "gallery-download.js",
   "promises.mjs",
+  "lifespan.mjs",
 ])
   await copyFile(
     new URL("../site/" + file, import.meta.url),

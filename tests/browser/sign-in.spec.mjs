@@ -4,6 +4,7 @@
 // in place.
 import { test, expect, mockGoogleSignIn } from "./fixtures.mjs";
 import { households } from "./harness.mjs";
+import { tableCard, jpeg } from "./media-helpers.mjs";
 
 const accountLink = /href="(https:\/\/127\.0\.0\.1:\d+\/(?:es\/)?account\/#[A-Za-z0-9_-]{43})"/;
 
@@ -32,8 +33,8 @@ test("the emailed sign-in link is in the guest’s language and brings them back
   await expect(page.getByRole("heading", { name: "Revisa tu correo" })).toBeFocused();
 
   const mail = harness.sent.at(-1);
-  expect(mail.subject).toBe("Tu enlace para entrar · Los XV de Sophia");
-  expect(mail.html).toContain("Hola, Familia Morales:");
+  expect(mail.subject).toBe("Tu enlace de acceso · Los XV de Sophia");
+  expect(mail.html).toContain("Hola:");
   expect(mail.html).toContain("viernes 15 de enero de 2027");
   expect(mail.html).toContain("¿No lo pediste? Ignora este correo");
   // One name for the note (R-038): never the party's physical "libro de firmas".
@@ -74,6 +75,100 @@ test("after a form error, fixing the field and pressing the button once is enoug
   await next.click();
   await expect(page.getByText("That invitation could not be opened. Check the link or contact us.")).toBeVisible();
 });
+
+// R-001: the same on a phone (tapped) and a large screen, and on the forms
+// added this round: the note a household leaves from its invitation link, the
+// table card's upload and "Send me a new link". Enter still submits.
+for (const [screen, view] of [
+  ["a 390×844 touch screen", { viewport: { width: 390, height: 844 }, hasTouch: true }],
+  ["a 1440×900 screen", { viewport: { width: 1440, height: 900 } }],
+])
+  test.describe(`on ${screen}`, () => {
+    test.use(view);
+    test("after a form error, fixing it and pressing once sends: sign-in, code, the link's note, a new link and the table card", async ({
+      page,
+      harness,
+      browser,
+    }) => {
+      test.setTimeout(60_000);
+      const press = (control) => (view.hasTouch ? control.tap() : control.click());
+      const household = households.rivera;
+      // The emailed sign-in.
+      await page.goto(harness.url("/account/"));
+      let email = page.getByRole("textbox", { name: "Email" }).first(),
+        send = page.getByRole("button", { name: "Email my sign-in link" });
+      await press(send);
+      await expect(email).toHaveAttribute("aria-invalid", "true");
+      await email.fill(household.email);
+      let before = harness.sent.length;
+      await press(send);
+      await expect(page.getByRole("heading", { name: "Check your email" })).toBeFocused();
+      await expect.poll(() => harness.sent.length).toBe(before + 1);
+      const first = harness.sent.at(-1).html.match(accountLink)[1];
+      // Enter submits too.
+      await page.goto(harness.url("/contact/"));
+      await page.getByRole("textbox", { name: "Email" }).fill(household.email);
+      before = harness.sent.length;
+      await page.getByRole("textbox", { name: "Email" }).press("Enter");
+      await expect(page.getByRole("heading", { name: "Check your email" })).toBeFocused();
+      await expect.poll(() => harness.sent.length).toBe(before + 1);
+      // The invitation code.
+      await page.goto(harness.url("/rsvp/"));
+      const code = page.getByRole("textbox", { name: "Invitation link or code" }),
+        next = page.getByRole("button", { name: "Continue", exact: true });
+      await press(next);
+      await expect(code).toHaveAttribute("aria-invalid", "true");
+      await code.fill("AAAA-BBBB-CCCC-DDDD");
+      await press(next);
+      await expect(page.getByText("That invitation could not be opened. Check the link or contact us.")).toBeVisible();
+      // The note from the invitation link (POST /api/guestbook-note).
+      const { link } = await harness.issueInvitation(household);
+      await page.goto(harness.forBrowser(link));
+      await expect(page.getByRole("heading", { name: household.name })).toBeVisible();
+      await page.goto(harness.url("/guestbook/"));
+      const note = page.getByLabel("Your note"),
+        sendNote = page.getByRole("button", { name: "Send my note" });
+      await expect(page.getByLabel("Your name, as you’d like it to appear")).toHaveValue(household.name);
+      await press(sendNote);
+      await expect(note).toHaveAttribute("aria-invalid", "true");
+      await note.fill("Happy birthday, Sophia!");
+      await press(sendNote);
+      await expect(page.getByRole("status").filter({ hasText: "Thank you!" })).toBeVisible();
+      expect(Object.values((await harness.ledger.read()).messages).filter((m) => m.via === "link")).toHaveLength(1);
+      // "Send me a new link", from a sign-in link used twice.
+      for (let i = 0; i < 2; i++) {
+        await page.goto(harness.forBrowser(first));
+        await press(page.getByRole("button", { name: "Continue", exact: true }));
+        if (!i) await expect(page.locator("#family-chat")).toBeAttached();
+      }
+      const again = page.getByRole("button", { name: "Send me a new link" });
+      await expect(again).toBeVisible();
+      await press(again);
+      email = page.getByRole("textbox", { name: "Email" }).first();
+      await expect(email).toHaveAttribute("aria-invalid", "true");
+      await email.fill(household.email);
+      before = harness.sent.length;
+      await press(again);
+      await expect(page.getByRole("heading", { name: "Check your email" })).toBeFocused();
+      await expect.poll(() => harness.sent.length).toBe(before + 1);
+      // The table card's upload on party night, from a phone not signed in.
+      harness.setNow(Date.parse("2027-01-15T21:15:00-06:00"));
+      const card = await tableCard(harness);
+      const phone = await browser.newContext({ ...view, timezoneId: "America/Chicago" });
+      await phone.route((url) => url.hostname !== "127.0.0.1", (route) => route.abort("blockedbyclient"));
+      const guest = await phone.newPage();
+      await guest.clock.setFixedTime(harness.now());
+      await guest.goto(card.url);
+      await guest.getByLabel("Choose photos & videos").setInputFiles([{ name: "IMG_5101.JPG", mimeType: "image/jpeg", buffer: await jpeg() }]);
+      const upload = guest.getByRole("button", { name: "Send my photos & videos" });
+      await (view.hasTouch ? upload.tap() : upload.click());
+      await expect(guest.locator(".error-summary li")).toHaveText(["Permission from the people pictured"]);
+      await guest.getByLabel(/I have permission from the people pictured/).check();
+      await (view.hasTouch ? upload.tap() : upload.click());
+      await expect(guest.locator("#upload-summary")).toContainText("1 of 1 arrived. Thank you!");
+      await phone.close();
+    });
+  });
 
 test("switching language on My account keeps the page the sign-in was asked from", async ({
   page,
@@ -170,12 +265,12 @@ test("the quick answers check the contact email first, while it can still be fix
     await expect(summary).toBeFocused();
     await expect(summary.locator("p")).toHaveText(["Check the email address:"]);
     await expect(summary.getByRole("listitem")).toHaveText(["Email"]);
-    await expect(page.getByRole("heading", { name: "Review your response" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Review your RSVP" })).toHaveCount(0);
   }
   // Only the contact details are checked: the counts come from the button.
   await email.fill("rivera@family.example");
   await page.getByRole("button", { name: "Everyone’s coming" }).click();
-  await expect(page.getByRole("heading", { name: "Review your response" })).toBeFocused();
+  await expect(page.getByRole("heading", { name: "Review your RSVP" })).toBeFocused();
   await page.getByRole("button", { name: "Save my RSVP" }).click();
   await expect(page).toHaveURL(harness.url("/rsvp/confirmed/"));
 });
@@ -217,8 +312,8 @@ test("My account puts the household’s RSVP first, labels contact fields for au
   await signIn(page, harness, household.email);
   await expect(page).toHaveURL(harness.url("/account/"));
   const status = page.locator(".rsvp-status");
-  await expect(status).toContainText("You haven’t replied yet.");
-  await expect(status.getByRole("link", { name: "RSVP now" })).toHaveAttribute("href", "/rsvp/");
+  await expect(status).toContainText("We haven’t received your RSVP yet.");
+  await expect(status.getByRole("link", { name: "RSVP", exact: true })).toHaveAttribute("href", "/rsvp/");
 
   const email = page.getByRole("textbox", { name: "Contact email" });
   await expect(email).toHaveAttribute("autocomplete", "email");
@@ -257,14 +352,14 @@ test("My account puts the household’s RSVP first, labels contact fields for au
   await expect(saved).toBeFocused();
 
   // After an RSVP, the account shows the answer and a way to change it.
-  await page.getByRole("link", { name: "RSVP now" }).click();
+  await page.locator(".rsvp-status").getByRole("link", { name: "RSVP", exact: true }).click();
   await page.getByRole("button", { name: "Everyone’s coming" }).click();
   await page.getByRole("button", { name: "Save my RSVP" }).click();
   await expect(page).toHaveURL(harness.url("/rsvp/confirmed/"));
   await page.goto(harness.url("/account/"));
   // Each event and its count, with a colon (R-090).
   await expect(status).toContainText(
-    "Ceremony: 2 adults/teens, 1 child · Dinner: 2 adults/teens, 1 child — saved Oct 1",
+    "Ceremony: 2 adults/teens, 1 child · Dinner: 2 adults/teens, 1 child — saved October 1",
   );
   await expect(status.getByRole("link", { name: "Change your RSVP" })).toHaveAttribute(
     "href",

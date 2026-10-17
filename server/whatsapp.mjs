@@ -7,6 +7,7 @@ import {
   validWhatsappWebhook,
 } from "./whatsapp-transport.mjs";
 import { recipientName } from "./audience.mjs";
+import { date } from "../site/datetime.mjs";
 // The version of the consent wording guests agree to (site/guest-whatsapp.js);
 // a new date whenever that wording changes. 2026-10-17: the Spanish text names
 // the program "avisos por WhatsApp" and the Spanish keywords BAJA and AYUDA.
@@ -24,14 +25,28 @@ const xml = (text = "") => ({
   contentType: "text/xml; charset=utf-8",
 });
 // The RSVP deadline as a template must show it, in the template's language:
-// "November 15, 2026" or "15 de noviembre de 2026".
-export const deadlineText = (deadline, language) =>
-  new Intl.DateTimeFormat(language === "es" ? "es-MX" : "en-US", {
-    timeZone: "America/Chicago",
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  }).format(new Date(deadline));
+// "November 15, 2026" or "15 de noviembre de 2026" (site/datetime.mjs).
+export const deadlineText = (deadline, language) => date(deadline, language, { weekday: false });
+// The automatic replies to STOP, START and HELP, in English and Spanish. The
+// Spanish ones speak to the one person who owns the phone (tú).
+export const whatsappReplies = (origin) => ({
+  en: {
+    stop: "Simply Soph Media: You have unsubscribed from WhatsApp event updates. Reply START to subscribe again.",
+    subscribed:
+      "Simply Soph Media: You are subscribed to Sophia's WhatsApp event updates. Frequency varies. Reply STOP to unsubscribe or HELP for help.",
+    notReady:
+      "Simply Soph Media: First request WhatsApp updates in your website account or ask us to record your consent, then send START again. HELP: misxv@simplysoph.com.",
+    help: `Simply Soph Media event support: misxv@simplysoph.com. Reply STOP to unsubscribe. To RSVP, use the private link in your invitation: ${origin}/rsvp/`,
+  },
+  es: {
+    stop: "Simply Soph Media: Ya no recibirás avisos por WhatsApp de los XV de Sophia. Responde ALTA o START para volver a suscribirte.",
+    subscribed:
+      "Simply Soph Media: Tu suscripción a los avisos por WhatsApp de los XV de Sophia está activa. La frecuencia varía. Responde BAJA para cancelar o AYUDA para recibir ayuda.",
+    notReady:
+      "Simply Soph Media: Primero pide los avisos por WhatsApp en tu cuenta del sitio (o pídenos que registremos tu permiso) y luego vuelve a enviar ALTA o START. Ayuda: misxv@simplysoph.com.",
+    help: `Simply Soph Media, ayuda con los avisos de los XV de Sophia: misxv@simplysoph.com. Responde BAJA para cancelar. Para confirmar tu asistencia, usa el enlace privado de tu invitación: ${origin}/es/rsvp/`,
+  },
+});
 export function createWhatsapp({
   ledger,
   notion,
@@ -452,26 +467,7 @@ export function createWhatsapp({
       throw error(503, code);
     }
   }
-  // The automatic replies to STOP, START and HELP, in English and Spanish. The
-  // Spanish ones speak to the one person who owns the phone (tú).
-  const replies = {
-    en: {
-      stop: "Simply Soph Media: You have unsubscribed from WhatsApp event updates. Reply START to subscribe again.",
-      subscribed:
-        "Simply Soph Media: You are subscribed to Sophia's WhatsApp event updates. Frequency varies. Reply STOP to unsubscribe or HELP for help.",
-      notReady:
-        "Simply Soph Media: First request WhatsApp updates in your website account or ask us to record your consent, then send START again. HELP: misxv@simplysoph.com.",
-      help: `Simply Soph Media event support: misxv@simplysoph.com. Reply STOP to unsubscribe. To RSVP, use the private link in your invitation: ${origin}/rsvp/`,
-    },
-    es: {
-      stop: "Simply Soph Media: Ya no recibirás avisos por WhatsApp de los XV de Sophia. Responde ALTA o START para volver a suscribirte.",
-      subscribed:
-        "Simply Soph Media: Tu suscripción a los avisos por WhatsApp de los XV de Sophia está activa. La frecuencia varía. Responde BAJA para cancelar o AYUDA para recibir ayuda.",
-      notReady:
-        "Simply Soph Media: Primero pide los avisos por WhatsApp en tu cuenta del sitio (o pídenos que registremos tu permiso) y luego vuelve a enviar ALTA o START. Ayuda: misxv@simplysoph.com.",
-      help: `Simply Soph Media, ayuda con los avisos de los XV de Sophia: misxv@simplysoph.com. Responde BAJA para cancelar. Para confirmar tu asistencia, usa el enlace privado de tu invitación: ${origin}/es/rsvp/`,
-    },
-  };
+  const replies = whatsappReplies(origin);
   // A Spanish keyword gets a Spanish reply. An English one gets the language
   // this phone chose: its sign-up on the website, else the guest list; English
   // when the phone is unknown (or the guest list cannot be read).

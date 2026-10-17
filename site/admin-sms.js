@@ -1,4 +1,5 @@
 import { api, esc, submit, notify } from "./client.js";
+import { date, stamp } from "./datetime.mjs";
 
 // Text messages, all from this one page: who can be texted and why not, a test
 // to the organizer's own phone, and batches with one typed-count confirmation.
@@ -27,7 +28,7 @@ function lateLink(e) {
 }
 const TEST_TEXT =
   "Simply Soph Media: Test from the Mis XV website. Reply STOP to opt out.";
-const when = (ms) => (ms ? new Date(ms).toLocaleString() : "—");
+const when = (ms) => (ms ? stamp(ms) : "—");
 
 export async function smsComposer(root) {
   root.innerHTML = '<p role="status">Loading…</p>';
@@ -128,7 +129,7 @@ export async function smsComposer(root) {
       requestId: id,
       groups: f.getAll("group"),
       ids: f.getAll("recipient"),
-      subject: "Text · " + new Date().toLocaleDateString(),
+      subject: "Text · " + date(Date.now(), "en", { weekday: false }),
       text: f.get("text"),
       channel: "sms",
     }).catch(lateLink);

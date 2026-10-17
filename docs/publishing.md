@@ -67,13 +67,30 @@ Several pages promise something the family has not supplied yet: the dress code 
 | Family decision | Where it goes (`site/content.mjs` `family`) | What changes on the next publish |
 |---|---|---|
 | The day each promised item will be posted | `promises.dressCode.by`, `promises.hotels.by`, `promises.parking.by` as `"YYYY-MM-DD"` | Every place says "We'll post … here by Tuesday, December 1, 2026" / "Publicaremos aquí … a más tardar el martes 1 de diciembre de 2026"; the confirmation and My account say the same. A date that has passed goes back to the undated wording. |
-| The dress code, parking, hotels or the airport note | `dressCode`, `parking` (one text for both venues), `hotels`, `airport` | The content replaces the promise. Parking also makes the confirmation say "Ceremony location & parking". Hotels or the airport note add Travel back to the header (in its old place) and a link to it from the Schedule. |
+| The dress code, parking, hotels or the airport note | `dressCode`, `parking` (one text for both venues), `hotels`, `airport` | The content replaces the promise. Parking also makes the confirmation say "Ceremony location & parking", and the home page shows it under Now / Next on January 15. Hotels or the airport note add Travel back to the header (in its old place) and a link to it from the Schedule. Then post the dated announcement below. |
+| The home page's thank-you after the party | `thankYou` as `{ en, es }` | It replaces "Thank you for celebrating with us." / "Gracias por celebrar con nosotros." on the home page after the party, and the link previews published after it. |
 | The drive time between the church and the reception | `driveMinutes` (a whole number) | The Schedule's "Good to know" line and Travel's route strip state it; until then they say only that the two places are a drive apart. |
 | The children's age cut-off | `childAgeCutoff` (children are younger than this) | The RSVP labels read "Children (under 12)" / "Adults / teens (12 and older)" and Questions answers "Who counts as a child?". |
 | Which traditions are part of Sophia's day | `traditions`, keys of `padrinoTraditions` (for example `["corona", "zapatos"]`) | The Schedule gains "What to expect" with those traditions' approved meanings. Its title names no service; whether the service is a Mass is a separate decision. |
 | Spanish invitation art | `site/assets/invitation-es.png` | See above. |
 
-`npm run check` stops the build if one of these values is malformed (a date not written `YYYY-MM-DD`, a number that isn't a whole number in range, a tradition that isn't in `padrinoTraditions`).
+`npm run check` stops the build if one of these values is malformed (a date not written `YYYY-MM-DD`, a number that isn't a whole number in range, a tradition that isn't in `padrinoTraditions`, a thank-you in one language only).
+
+### Owner runbook: say when something new is posted
+
+Content that replaces a promise changes the page quietly, and households who read the promise (and SMS subscribers, who were told they would hear when it is posted) will not notice. Each time the family adds the dress code, hotels or parking:
+
+1. Publish the content (above) and check the page that promised it.
+2. In **Admin → Communications**, post a website announcement in English and Spanish naming what is new and where, for example "Parking details are posted" / "Ya publicamos los detalles de estacionamiento" with a line pointing to the venue pages. The home page shows it right under the status line as "Posted <date>" / "Publicado el <date>", the newest first.
+3. If SMS or WhatsApp updates are live, send the same news there.
+
+### Names stay out of this repository
+
+This repository is public, so no guest's or helper's name is ever committed to it. The court of honor and the padrinos would list names: `family.court` and `family.padrinos` in `site/content.mjs` stay empty, and `npm run check` fails if either ever gets an entry (`tests/family-slots.test.mjs`). Names belong only in the runtime event settings (`server/site-settings.mjs`, served by `GET /api/site`), like Contact's optional line naming who reads the messages (Admin → Website & event). Pages for the court and the padrinos built from those settings do not exist yet; until they do, both pages keep their waiting text.
+
+### Site and photo lifespan
+
+How long the site stays up and until when guests can download the photos is the family's decision, set in **Admin → Website & event → Site and photo lifespan** (`site.lifespan` in the event settings, blank until then). Once set, the gallery and the thank-you page say "The site stays up through …" and "Download your photos by …"; nothing about it shows before. The photos date can't be earlier than February 1, 2027, the review date in the Privacy policy and [cleanup.md](cleanup.md), or later than the site's date.
 
 ### Owner action: event settings text on the live server
 
@@ -83,6 +100,22 @@ Some guest-facing words live in the event settings on the server, not in this re
 2. **Gifts.** Under **Registries**, in the Target **Description**, add the sentence about the list's name: English "On Target’s site the list is called “Sophia’s Birthday Wish List.”", Spanish "En Target, la lista aparece como “Sophia’s Birthday Wish List” (página en inglés)." (the repository's default now reads "A few wishes for Sophia’s next chapter." followed by that sentence). Leave the **Registry HTTPS URL** as it is: the live link is the right one.
 
 Check afterwards on `/ceremony/`, `/reception/` and `/registry/` (and their `/es/` pages) that each says the parking promise once and that Gifts names the list.
+
+### Owner action: the Spanish wording held on the live server
+
+The website speaks one Spanish (`site/lexicon.mjs`): ustedes where we speak to an invited family (home, RSVP, confirmation, thank-you, the family's emails), tú to one person and on information pages, never usted, and one name per thing ("Confirmar asistencia", "mensaje" for the note, "Entrar" and "enlace de acceso", "Avisos por WhatsApp", "los XV de Sophia", times as "4:00 p. m."). `npm run check` enforces it on everything in this repository, but the event settings and the announcements are written in Admin and live only on the server, so the repository's tests cannot see them.
+
+Admin now checks them for you. **Admin → Website & event** shows "Check the Spanish wording" above the form when a Spanish text uses a retired word or mixes tú and ustedes, both when the page opens and after **Save website & calendars**; **Admin → Communications → Publish on website** shows the same box after publishing an announcement. It is a warning, never a refusal: the text is saved and shown as written, and you decide. The repository's defaults pass the check. For the texts already live:
+
+1. Open **Admin → Website & event**. If the box appears, it names each field and what it found. Fix the Spanish there and save; nothing else changes.
+   - **Guest notes (Español)** appear on the venue pages, which speak to one person (tú): "Silencia tu teléfono y sigue las indicaciones de la iglesia durante la ceremonia." and "La cena y la recepción serán en el mismo lugar." are the repository's wording.
+   - **Registries → Description (Español)** and the **album names (Español)** appear on Gifts and Photos (tú or neutral).
+   - **Contact page · who reads the messages (Español)**, if you write one, appears on Contact (tú).
+   - **Homepage message** is Sophia's own words; only retired words are flagged there, never her tú.
+2. Write each new announcement's Spanish to the family (ustedes: "Los esperamos", "confirmen"), as the home page does; the form says so too. Announcements already published cannot be edited: if one of them uses tú (for example "Confirma tu asistencia"), archive it on **Record history → Announcements** and publish it again in ustedes.
+3. Leave alone what is registered elsewhere, word for word: the Meta-approved WhatsApp templates ("Confirma tu asistencia antes del 15 de noviembre de 2026", one phone, tú; resubmitting needs a new approval, `docs/whatsapp-activation.md`) and the three SMS replies, which stay in English (`docs/sms-campaign-registration.md`). The Spanish SMS pages say the replies arrive in English.
+
+Three wording questions are the family's and are not decided here: whether the church service is a Mass ("Ceremonia religiosa" until then, one entry in `site/lexicon.mjs`), whether "mensaje" stays the Spanish name of the note, and whether the Spanish SMS page should keep its current casing (the registered campaign quotes the English page).
 
 ## Exact hosting target
 

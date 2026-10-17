@@ -158,7 +158,7 @@ test("the home page puts the name, date and RSVP before the schedule, words and 
   // "Please RSVP by" (site/lexicon.mjs).
   for (const [file, deadline, note] of [
     ["index.html", "Please RSVP by Sunday, November 15", 'href="/guestbook/">Leave Sophia a note'],
-    ["es/index.html", "Por favor, confirmen a más tardar el domingo 15 de noviembre", 'href="/es/guestbook/">Déjenle un mensaje a Sophia'],
+    ["es/index.html", "Por favor, confirmen su asistencia a más tardar el domingo 15 de noviembre", 'href="/es/guestbook/">Déjenle un mensaje a Sophia'],
   ]) {
     const html = main(await page(file));
     const at = (needle) => {
@@ -206,7 +206,10 @@ test("the Schedule gives each part of the day its place, map and own calendar fi
       assert.match(row, /class="schedule-time"/);
       assert.ok(row.includes(venue), venue);
       assert.match(row, /<address>[^<]+Fort Worth, TX/);
-      assert.match(row, /href="https:\/\/www\.google\.com\/maps\/search\/[^"]+" target="_blank"/);
+      // Its maps, as the venue pages offer them (R-172): Google, Apple and Waze.
+      const address = encodeURIComponent(venue === "Our Lady of Guadalupe Church" ? "4100 Blue Mound Rd, Fort Worth, TX 76106" : "5103 Azle Ave, Unit 200, Fort Worth, TX 76114");
+      for (const map of [`https://www.google.com/maps/search/?api=1&amp;query=${address}`, `https://maps.apple.com/?q=${address}`, `https://waze.com/ul?q=${address}&amp;navigate=yes`])
+        assert.ok(row.includes(`href="${map}" target="_blank" rel="noopener noreferrer"`), map);
       assert.ok(row.includes(`href="${cal}${kind}.ics" download`), `${file} ${kind}`);
     }
     // Dress code is a small note, never a claim about the website's colors.
@@ -348,8 +351,11 @@ test("guests hear the hosts as “we”, never “the family” as someone else"
       (f) => new URL(`../${f}`, import.meta.url),
     ),
   ];
+  // R-137: also what the family knows or does, asking it, and a reply "from
+  // the family" ("So the family knows who took them", "Ask the family for
+  // the card", "New reply from the family"): the hosts say "we".
   const thirdPerson =
-    /\bthe family (?:may|needs?|will|can|must|should|reviews?|decides?)\b|\bla familia (?:puede|debe|necesita|va a|revisa|decide|no les?)\b/i;
+    /\bthe family (?:may|needs?|will|can|must|should|reviews?|decides?|knows?|reads?|sees?|has|gets?|approves?)\b|\b(?:ask|tell|from|by) the family\b|\bla familia (?:puede|debe|necesita|va a|revisa|decide|no les?|sepa|sabe|lee|lea|vea|ve|tiene|aprueba)\b|\b(?:pide|pídele|pregunta|pregúntale|avisa|avísale) a la familia\b|\b(?:respuesta|mensaje|aviso) de la familia\b(?! de Sophia)/i;
   for (const url of sources) {
     const lines = (await readFile(url, "utf8")).split("\n");
     lines.forEach((line, i) => {
@@ -415,8 +421,8 @@ test("the Schedule says the two places are a drive apart, without a drive time, 
 
 test("Questions links the RSVP while it is open and has the closed answer ready for the deadline", async () => {
   for (const [lang, open, closed] of [
-    ["", /<p data-rsvp-while="open">By Sunday, November 15, 2026\. Open the invitation link we sent your family, or go to <a href="\/rsvp\/">RSVP<\/a>\.<\/p>/, /<p data-rsvp-while="closed" hidden>RSVPs closed on Sunday, November 15, 2026\. To answer or change your answer now, please <a href="\/contact\/">contact us<\/a>\.<\/p>/],
-    ["es/", /<p data-rsvp-while="open">A más tardar el domingo 15 de noviembre de 2026\. Abre el enlace de invitación que le enviamos a tu familia, o ve a <a href="\/es\/rsvp\/">Confirmar asistencia<\/a>\.<\/p>/, /<p data-rsvp-while="closed" hidden>Las respuestas cerraron el domingo 15 de noviembre de 2026\. Para responder o cambiar tu respuesta, <a href="\/es\/contact\/">escríbenos<\/a>\.<\/p>/],
+    ["", /<p data-rsvp-while="open">By Sunday, November 15, 2026\. Open the invitation link we sent your family, or go to <a href="\/rsvp\/">RSVP<\/a>\.<\/p>/, /<p data-rsvp-while="closed" hidden>RSVPs closed on Sunday, November 15, 2026\. To RSVP or change your RSVP now, please <a href="\/contact\/">contact us<\/a>\.<\/p>/],
+    ["es/", /<p data-rsvp-while="open">A más tardar el domingo 15 de noviembre de 2026\. Abre el enlace de invitación que le enviamos a tu familia, o ve a <a href="\/es\/rsvp\/">Confirmar asistencia<\/a>\.<\/p>/, /<p data-rsvp-while="closed" hidden>Las respuestas cerraron el domingo 15 de noviembre de 2026\. Para confirmar tu asistencia o cambiar tu respuesta, <a href="\/es\/contact\/">escríbenos<\/a>\.<\/p>/],
   ]) {
     const html = main(await page(`${lang}faq/index.html`));
     assert.match(html, open, lang);

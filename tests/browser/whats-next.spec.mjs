@@ -67,8 +67,8 @@ test("a household coming only to dinner is pointed to the dinner, in Spanish", a
   });
   await page.goto(harness.forBrowser(link));
   await chooseCounts(page, { Cena: [2, 0], "Recepción y baile": [0, 0] }, ["Adultos / jóvenes", "Niños"]);
-  await page.getByRole("button", { name: "Revisar respuesta" }).click();
-  await page.getByRole("button", { name: "Guardar mi respuesta" }).click();
+  await page.getByRole("button", { name: "Revisar la respuesta" }).click();
+  await page.getByRole("button", { name: "Guardar la respuesta" }).click();
   await expect(page).toHaveURL(harness.url("/es/rsvp/confirmed/"));
   await expect(places(page)).toHaveText(["Ubicación de la cena"]);
   await expect(next(page).locator("p").first()).toHaveText(
@@ -87,7 +87,7 @@ test.describe("while SMS and WhatsApp are live", () => {
     await page.goto(harness.forBrowser(link));
     await page.getByRole("button", { name: "Everyone’s coming" }).click();
     await page.getByRole("button", { name: "Save my RSVP" }).click();
-    await expect(next(page)).toContainText("Text SOPHIA to +1 682-786-8002 to hear when they’re posted.");
+    await expect(next(page)).toContainText("Text SOPHIA to +1 682-786-8002 to get our event texts, such as schedule or venue updates.");
     await expect(next(page)).toContainText("Texts go to US and Canadian mobile numbers.");
     await expect(next(page).getByRole("link", { name: "+1 682-786-8002" })).toHaveAttribute("href", "sms:+16827868002?body=SOPHIA");
     await expect(next(page)).toContainText("Outside the US and Canada? Sign in with your email to get WhatsApp updates.");
@@ -98,10 +98,10 @@ test.describe("while SMS and WhatsApp are live", () => {
     const spanish = await harness.issueInvitation(households.morales, { locale: "es" });
     await page.goto(harness.forBrowser(spanish.link));
     await page.getByRole("button", { name: "Vamos todos" }).click();
-    await page.getByRole("button", { name: "Guardar mi respuesta" }).click();
+    await page.getByRole("button", { name: "Guardar la respuesta" }).click();
     await expect(page).toHaveURL(harness.url("/es/rsvp/confirmed/"));
     await expect(next(page).getByRole("heading", { name: "Lo que sigue" })).toBeVisible();
-    await expect(next(page)).toContainText("Envíen SOPHIA al +1 682-786-8002 para enterarse cuando estén publicados.");
+    await expect(next(page)).toContainText("Envíen SOPHIA al +1 682-786-8002 para recibir nuestros mensajes del evento, como cambios de horario o lugar.");
     await expect(next(page).getByRole("link", { name: "Entren con su correo" })).toHaveAttribute("href", "/es/account/");
   });
 
@@ -113,14 +113,14 @@ test.describe("while SMS and WhatsApp are live", () => {
     await page.getByRole("button", { name: "Everyone’s coming" }).click();
     await page.getByRole("button", { name: "Save my RSVP" }).click();
     await expect(page).toHaveURL(harness.url("/rsvp/confirmed/"));
-    await expect(next(page)).toContainText("Text SOPHIA to +1 682-786-8002 to hear when they’re posted.");
+    await expect(next(page)).toContainText("Text SOPHIA to +1 682-786-8002 to get our event texts, such as schedule or venue updates.");
     await expect(next(page)).toContainText("Outside the US and Canada? You can sign up for WhatsApp updates below.");
     await expect(page.getByText("Optional: WhatsApp updates")).toBeVisible();
 
     await page.goto(harness.url("/account/"));
     await expect(page.getByRole("heading", { name: "Messages with us" })).toBeVisible();
     await expect(next(page).getByRole("heading", { name: "What’s next" })).toBeVisible();
-    await expect(next(page)).toContainText("Text SOPHIA to +1 682-786-8002 to hear when they’re posted.");
+    await expect(next(page)).toContainText("Text SOPHIA to +1 682-786-8002 to get our event texts, such as schedule or venue updates.");
     await expect(next(page)).toContainText("You can sign up for WhatsApp updates below.");
     // The card follows the line.
     expect(
@@ -130,7 +130,7 @@ test.describe("while SMS and WhatsApp are live", () => {
     ).toBe(true);
     // My account speaks to one person in Spanish.
     await page.goto(harness.url("/es/account/"));
-    await expect(next(page)).toContainText("Envía SOPHIA al +1 682-786-8002 para enterarte cuando estén publicados.");
+    await expect(next(page)).toContainText("Envía SOPHIA al +1 682-786-8002 para recibir nuestros mensajes del evento, como cambios de horario o lugar.");
     await expect(next(page)).toContainText("Puedes suscribirte a los avisos por WhatsApp aquí abajo.");
   });
 });
@@ -156,7 +156,7 @@ test("the review names the household, and says it replaces the saved answer only
   await expect(page.getByRole("heading", { name: "Revisen su respuesta" })).toBeVisible();
   await expect(page.locator("#portal")).toContainText("Familia Morales");
   await expect(page.getByText("Esto reemplaza su respuesta guardada.")).toHaveCount(0);
-  await page.getByRole("button", { name: "Guardar mi respuesta" }).click();
+  await page.getByRole("button", { name: "Guardar la respuesta" }).click();
   await expect(page).toHaveURL(harness.url("/es/rsvp/confirmed/"));
   // The quick "no" after a saved yes says it replaces it, before Save.
   await page.goto(harness.forBrowser(link + ".no"));
@@ -174,12 +174,12 @@ test("editing a saved answer in English says it replaces it; the first answer do
   await page.goto(harness.forBrowser(link));
   await page.getByRole("button", { name: "Everyone’s coming" }).click();
   await expect(page.locator("#portal")).toContainText("Rivera Family");
-  await expect(page.getByText("This replaces your saved answer.")).toHaveCount(0);
+  await expect(page.getByText("This replaces your saved RSVP.")).toHaveCount(0);
   await page.getByRole("button", { name: "Save my RSVP" }).click();
-  await page.getByRole("link", { name: "Edit response" }).click();
+  await page.getByRole("link", { name: "Change your RSVP" }).click();
   await chooseCounts(page, { Ceremony: [1, 0], Dinner: [1, 0], "Reception & dance": [1, 0] });
-  await page.getByRole("button", { name: "Review response" }).click();
-  await expect(page.getByText("This replaces your saved answer.")).toBeVisible();
+  await page.getByRole("button", { name: "Review your RSVP" }).click();
+  await expect(page.getByText("This replaces your saved RSVP.")).toBeVisible();
   await expect(page.locator("#portal")).toContainText("Rivera Family");
 });
 
@@ -280,7 +280,7 @@ test("filled-in family content reaches the RSVP: the children's age, parking and
   const { link } = await harness.issueInvitation(households.rivera);
   await page.goto(harness.forBrowser(link));
   await chooseCounts(page, { Ceremony: [2, 1], Dinner: [2, 1], "Reception & dance": [2, 1] }, ["Adults / teens (12 and older)", "Children (under 12)"]);
-  await page.getByRole("button", { name: "Review response" }).click();
+  await page.getByRole("button", { name: "Review your RSVP" }).click();
   await page.getByRole("button", { name: "Save my RSVP" }).click();
   await expect(page).toHaveURL(harness.url("/rsvp/confirmed/"));
   await expect(places(page)).toHaveText(["Ceremony location & parking", "Dinner & reception location"]);

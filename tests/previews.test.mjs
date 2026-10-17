@@ -88,7 +88,7 @@ test("after the party the previews thank the guests", async () => {
 test("pages about photos and notes say the same, date-free thing in every phase", async () => {
   const expected = {
     "share/index.html": ["Share your photos · Sophia’s Quinceañera", "Share the photos and videos you took at Sophia’s quinceañera."],
-    "es/share/index.html": ["Comparte tus fotos · Los XV de Sophia", "Comparte las fotos y los videos que tomaste en los XV de Sophia."],
+    "es/share/index.html": ["Compartir fotos · Los XV de Sophia", "Comparte las fotos y los videos que tomaste en los XV de Sophia."],
     "gallery/index.html": [null, "Photos and videos from Sophia’s quinceañera, for our guests."],
     "guestbook/index.html": [null, "Leave Sophia a note."],
     "es/guestbook/index.html": [null, "Déjale un mensaje a Sophia."],

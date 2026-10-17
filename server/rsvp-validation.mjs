@@ -1,3 +1,6 @@
+// "Open" means one thing everywhere: site/lifecycle.mjs (half-open, so the
+// deadline instant itself is closed), the rule the browser shows too.
+import { rsvpOpen } from "../site/lifecycle.mjs";
 export class RsvpError extends Error {
   constructor(status, code) {
     super(code);
@@ -37,7 +40,7 @@ function validateInvitation(invitation, now) {
     !Number.isFinite(Date.parse(deadline))
   )
     fail(503, "DEADLINE_NOT_CONFIGURED");
-  if (now >= Date.parse(deadline)) fail(403, "RSVP_CLOSED");
+  if (!rsvpOpen(now, { deadline: Date.parse(deadline) })) fail(403, "RSVP_CLOSED");
 }
 function validateContact(value) {
   keys(value, ["email", "phone", "address"]);

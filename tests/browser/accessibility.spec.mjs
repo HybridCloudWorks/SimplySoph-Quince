@@ -4,7 +4,7 @@
 // dark surfaces, forced colours, 44px targets, link names, the RSVP's phone
 // layout and what screen readers are told. Synthetic households only.
 import { test, expect } from "./fixtures.mjs";
-import { households } from "./harness.mjs";
+import { households, AFTER_DEADLINE } from "./harness.mjs";
 import {
   guestPages,
   pathOf,
@@ -14,6 +14,7 @@ import {
   signIn,
   contrast,
 } from "./a11y-helpers.mjs";
+import { approvedMedia, tableCard } from "./media-helpers.mjs";
 import { terms, registerFor } from "../../site/lexicon.mjs";
 
 // ---- R-048: lining figures ----
@@ -41,6 +42,7 @@ test("serif times, dates and counts use lining figures, in English and Spanish",
   page,
   harness,
   context,
+  setNow,
 }) => {
   const fonts = await serveFonts(context);
   const { link } = await harness.issueInvitation(households.rivera);
@@ -57,6 +59,31 @@ test("serif times, dates and counts use lining figures, in English and Spanish",
   await page.goto(harness.forBrowser(link));
   await expect(page.locator(".allocation")).toContainText("up to 2 adults/teens and 1 child");
   expect((await oldStyleFigures(page)).bad).toEqual([]);
+  // R-048 (A7): the numerals added this round, in both languages: What's next
+  // with a date, the answered date, a dated announcement, Now / Next times.
+  await page.route(/\/rsvp\/confirmed\/$/, async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({ response, body: (await response.text()).replace(/data-coming="[^"]*"/, 'data-coming="{&quot;dressCode&quot;:&quot;2026-12-01&quot;}"') });
+  });
+  await page.getByRole("button", { name: "Everyone’s coming" }).click();
+  await page.getByRole("button", { name: "Save my RSVP" }).click();
+  await expect(page).toHaveURL(/\/rsvp\/confirmed\/$/);
+  await harness.announce({ title: "Parking", text: "Use the north lot.", titleEs: "Estacionamiento", textEs: "Usen el lote norte." });
+  for (const lang of ["en", "es"]) {
+    await page.goto(harness.url(pathOf("rsvp/confirmed", lang)));
+    await expect(page.locator("[data-whats-next] p").first()).toContainText("2026");
+    expect((await oldStyleFigures(page)).bad, `${lang} What's next`).toEqual([]);
+    await page.goto(harness.url(pathOf("", lang)));
+    await expect(page.locator(".home-replied")).toContainText("15");
+    await expect(page.locator("[data-latest-update] time")).toContainText("1");
+    expect((await oldStyleFigures(page)).bad, `${lang} answered, announcement`).toEqual([]);
+  }
+  await setNow(Date.parse("2027-01-15T21:15:00-06:00"));
+  for (const lang of ["en", "es"]) {
+    await page.goto(harness.url(pathOf("", lang)));
+    await expect(page.locator(".now-next")).toContainText("7:30");
+    expect((await oldStyleFigures(page)).bad, `${lang} Now / Next`).toEqual([]);
+  }
   // With Cormorant itself loaded, the setting inherited from body draws lining
   // figures (Cormorant's own default is old-style: a different width).
   if (!fonts) return test.info().annotations.push({ type: "fonts", description: "MISXV_FONT_CACHE not set: checked computed styles only" });
@@ -128,8 +155,8 @@ test("the Spanish header fits its RSVP pill at 320px with 16, 20 and 24px text",
     await defaultFontSize(tab, size);
     await tab.setViewportSize({ width: 320, height: 640 });
     await tab.goto(harness.url("/es/"));
-    // The label the Spanish header uses (or will), in place of today's.
-    await tab.locator(".nav-rsvp").evaluate((pill, html) => (pill.innerHTML = html), label);
+    // The label the Spanish header uses, as the build writes it.
+    expect(await tab.locator(".nav-rsvp").innerHTML()).toBe(label);
     for (const width of [320, 360, 390]) {
       await tab.setViewportSize({ width, height: 640 });
       const m = await tab.evaluate(() => ({
@@ -399,7 +426,125 @@ test("standalone links and the Microsoft button are at least 44px tall", async (
     await expect(microsoft).toBeVisible();
     expect(await height(microsoft), "Microsoft button").toBeGreaterThanOrEqual(44);
   }
+  // R-028 / R-136: "Leave Sophia a note →" on both confirmations (it was 17px).
+  for (const [household, lang, button, name] of [
+    [households.rivera, "en", "Everyone’s coming", "Leave Sophia a note"],
+    [households.morales, "es", "No podremos asistir", "Déjenle un mensaje a Sophia"],
+  ]) {
+    const { link } = await harness.issueInvitation(household, { locale: lang });
+    for (const answer of [button, lang === "en" ? "We can’t make it" : "Vamos todos"]) {
+      await page.goto(harness.forBrowser(link));
+      await page.getByRole("button", { name: answer }).click();
+      await page.locator("#confirm").click();
+      await expect(page).toHaveURL(/\/rsvp\/confirmed\/$/);
+      expect(await height(page.getByRole("link", { name })), `${lang} ${answer}: ${name}`).toBeGreaterThanOrEqual(43.9);
+    }
+  }
 });
+
+// R-136: every link that stands on its own line (nothing but other links,
+// buttons or separators beside it) on the states added since the first wave
+// is a 44px target: the confirmations and What's next, the closed RSVP,
+// "Check your email" after "Send me a new link", the notes list, the gallery
+// with Download all photos, Contact signed in and the table card's page.
+const shortStandalone = (page) =>
+  page.locator("main").evaluate((main) => {
+    const ownText = (el) => {
+      const copy = el.cloneNode(true);
+      copy.querySelectorAll("a, button, [aria-hidden='true'], .visually-hidden").forEach((n) => n.remove());
+      return copy.textContent.replace(/[\s·|–—]/g, "");
+    };
+    return [...main.querySelectorAll("a[href]")]
+      .filter((a) => a.getClientRects().length && !ownText(a.parentElement))
+      .map((a) => `${a.textContent.replace(/\s+/g, " ").trim()}: ${Math.round(a.getBoundingClientRect().height * 10) / 10}px`)
+      .filter((line) => parseFloat(line.split(": ").at(-1)) < 43.9);
+  });
+for (const lang of ["en", "es"])
+  test(`every standalone link on the new states is a 44px target (${lang})`, async ({ page, harness, setNow, browser }) => {
+    test.setTimeout(90_000);
+    const es = lang === "es",
+      household = es ? households.morales : households.rivera,
+      at = (path) => harness.url(pathOf(path, lang)),
+      found = [];
+    const check = async (where) => {
+      for (const line of await shortStandalone(page)) found.push(`${where}: ${line}`);
+    };
+    await page.setViewportSize({ width: 390, height: 844 });
+    const { link } = await harness.issueInvitation(household, { locale: lang });
+    // Both confirmations, with What's next.
+    for (const answer of es ? ["Vamos todos", "No podremos asistir"] : ["Everyone’s coming", "We can’t make it"]) {
+      await page.goto(harness.forBrowser(link));
+      await page.getByRole("button", { name: answer }).click();
+      await page.locator("#confirm").click();
+      await expect(page).toHaveURL(/\/rsvp\/confirmed\/$/);
+      await page.goto(at("rsvp/confirmed"));
+      await expect(page.locator("#portal .note-link")).toBeVisible();
+      await check(`confirmation (${answer})`);
+    }
+    await page.goto(harness.forBrowser(link));
+    await page.locator("[data-quick=yes]").click();
+    await page.locator("#confirm").click();
+    await expect(page.locator("[data-whats-next]")).toBeVisible();
+    await check("confirmation with What's next");
+    // "Send me a new link", then "Check your email" with its way back.
+    await page.goto(at("account"));
+    await page.getByRole("textbox", { name: /^(Email|Correo electrónico)$/ }).fill(household.email);
+    const before = harness.sent.length;
+    await page.getByRole("button", { name: /^(Email my sign-in link|Enviar enlace de acceso)$/ }).click();
+    await expect.poll(() => harness.sent.length).toBe(before + 1);
+    const used = harness.sent.at(-1).html.match(/href="(https:\/\/127\.0\.0\.1:\d+\/(?:es\/)?account\/#[A-Za-z0-9_-]{43})"/)[1];
+    await page.goto(harness.forBrowser(used));
+    await page.getByRole("button", { name: /^(Continue|Continuar)$/ }).click();
+    await expect(page.locator("#family-chat")).toBeAttached();
+    await page.goto(harness.forBrowser(used));
+    await page.getByRole("button", { name: /^(Continue|Continuar)$/ }).click();
+    const again = page.getByRole("button", { name: es ? "Envíame un enlace nuevo" : "Send me a new link" });
+    await expect(again).toBeVisible();
+    await check("used link");
+    await page.getByRole("textbox", { name: /^(Email|Correo electrónico)$/ }).fill(household.email);
+    await again.click();
+    await expect(page.locator(".nothing-yet")).toBeVisible();
+    await check("check your email");
+    // Still signed in from that link's first use: the notes list, Contact and
+    // the gallery with Download all.
+    await harness.ledger.transaction((s) => {
+      s.messages["note-44"] = { id: "note-44", email: "", topic: "", householdId: household.id, accountId: null, name: "Tía Lupe", text: "Feliz cumpleaños.", kind: "guestbook", display: "guests", state: "approved", at: harness.now() - 1000 };
+    });
+    await page.goto(at("guestbook"));
+    await expect(page.locator("[data-notes] article")).toHaveCount(1);
+    await check("notes list");
+    await page.goto(at("contact"));
+    await expect(page.locator("#portal .button")).toBeVisible();
+    await check("contact, signed in");
+    await approvedMedia(harness, [
+      { id: "44444444-4444-4444-8444-000000000001", album: "event" },
+      { id: "44444444-4444-4444-8444-000000000002", album: "family" },
+      { id: "44444444-4444-4444-8444-000000000003", kind: "video", album: "event" },
+    ]);
+    await page.goto(at("gallery"));
+    await expect(page.locator(".download-all a").first()).toBeVisible();
+    await check("gallery with photos");
+    // After the deadline the confirmation points to Contact.
+    await setNow(AFTER_DEADLINE);
+    await page.goto(harness.forBrowser(link));
+    await expect(page.getByRole("heading", { level: 2 }).first()).toBeVisible();
+    await page.goto(at("rsvp/confirmed"));
+    await expect(page.locator("#portal .saved-note")).toBeVisible();
+    await check("confirmation after the deadline");
+    // The table card's page, at its limit, from a phone that is not signed in.
+    await setNow(Date.parse("2027-01-15T21:15:00-06:00"));
+    const card = await tableCard(harness);
+    await harness.ledger.transaction((s) => (s.partyCard.received = 1_000_000));
+    const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, timezoneId: "America/Chicago" });
+    await phone.route((url) => url.hostname !== "127.0.0.1", (route) => route.abort("blockedbyclient"));
+    const guest = await phone.newPage();
+    await guest.clock.setFixedTime(harness.now());
+    await guest.goto(card.url.replace("/share/", es ? "/es/share/" : "/share/"));
+    await expect(guest.locator("#upload-room")).toBeVisible();
+    for (const line of await shortStandalone(guest)) found.push(`table card: ${line}`);
+    await phone.close();
+    expect(found).toEqual([]);
+  });
 
 // ---- R-059 (and R-060 for WhatsApp's links): signed-in forms ----
 // WhatsApp's choices appear only while the server reports WhatsApp live (R-031).
@@ -467,7 +612,47 @@ test("the wordmark says it goes home, and no two calendar or map links share a n
     }
     await page.goto(harness.url(pathOf("details", lang)));
     await expect(page.getByRole("link", { name: new RegExp(`^${add} ?: ${lang === "es" ? "Cena" : "Dinner"}$`) })).toHaveCount(1);
-    await expect(page.getByRole("link", { name: new RegExp(`^${lang === "es" ? "Mapa ?: Cena" : "Map ?: Dinner"} `) })).toHaveCount(1);
+    // The Schedule's maps, "Map: Google · Apple · Waze" (R-172), each named
+    // for its app and the part of the day.
+    const part = lang === "es" ? "Cena" : "Dinner";
+    for (const app of ["Google Maps", "Apple Maps", "Waze"])
+      await expect(page.getByRole("link", { name: new RegExp(`^${app} ?: ${part} `) })).toHaveCount(1);
+  }
+});
+
+// R-172: the Schedule offers the venue pages' three map apps, compactly, as
+// 44px targets in the row's own pattern (time, name, venue, address, maps and
+// calendar), for each part of the day.
+test("each part of the day on the Schedule offers Google Maps, Apple Maps and Waze", async ({ page, harness }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  for (const [lang, label, newTab] of [
+    ["en", "Map:", "(opens in a new tab)"],
+    ["es", "Mapa:", "(se abre en otra pestaña)"],
+  ]) {
+    await page.goto(harness.url(pathOf("details", lang)));
+    const rows = page.locator(".schedule-item");
+    await expect(rows).toHaveCount(3);
+    for (const [i, address] of [
+      [0, "4100%20Blue%20Mound%20Rd"],
+      [1, "5103%20Azle%20Ave"],
+      [2, "5103%20Azle%20Ave"],
+    ]) {
+      const maps = rows.nth(i).locator(".schedule-actions > span:first-child");
+      await expect(maps).toHaveText(new RegExp(`^${label} Google↗ · Apple↗ · Waze↗$`.replace(/↗/g, ".*?")));
+      const links = maps.getByRole("link");
+      await expect(links).toHaveCount(3);
+      for (const [n, host] of [
+        [0, "https://www.google.com/maps/search/?api=1&query="],
+        [1, "https://maps.apple.com/?q="],
+        [2, "https://waze.com/ul?q="],
+      ]) {
+        const link = links.nth(n);
+        expect(await link.getAttribute("href")).toContain(host + address);
+        await expect(link).toHaveAttribute("target", "_blank");
+        await expect(link).toHaveAccessibleName(new RegExp(`${newTab.replace(/[()]/g, "\\$&")}$`));
+        expect((await link.boundingBox()).height).toBeGreaterThanOrEqual(43.9);
+      }
+    }
   }
 });
 
@@ -488,9 +673,9 @@ test.describe("the RSVP on a phone", () => {
       });
     const widths = (locator) => locator.evaluateAll((all) => all.map((el) => Math.round(el.getBoundingClientRect().width)));
     // The form: the main button is the panel's width, like the quick answers.
-    await expect(page.getByRole("button", { name: "Review response" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Review your RSVP" })).toBeVisible();
     const full = Math.round(await inner());
-    expect(await widths(page.getByRole("button", { name: "Review response" }))).toEqual([full]);
+    expect(await widths(page.getByRole("button", { name: "Review your RSVP" }))).toEqual([full]);
     expect(await widths(portal.locator(".quick-answers .button"))).toEqual([full, full]);
     // The legend sits inside its box: no gap in the fieldset's top border.
     for (const fieldset of await portal.locator("fieldset").all()) {
@@ -499,7 +684,7 @@ test.describe("the RSVP on a phone", () => {
     }
     // The error summary: a list, one link per event, none broken across
     // lines; the notes under the six counts are six different sentences.
-    await page.getByRole("button", { name: "Review response" }).click();
+    await page.getByRole("button", { name: "Review your RSVP" }).click();
     const summary = portal.locator(".error-summary");
     await expect(summary).toBeFocused();
     await expect(summary.getByRole("listitem")).toHaveText(["Ceremony", "Dinner", "Reception & dance"]);
@@ -530,7 +715,7 @@ test.describe("the RSVP on a phone", () => {
       expect(Math.abs((await textLeft(place)) - start)).toBeLessThan(0.5);
       expect(await height(place)).toBeGreaterThanOrEqual(43.9);
     }
-    expect(await widths(page.getByRole("link", { name: "Edit response" }))).toEqual([Math.round(await inner())]);
+    expect(await widths(page.getByRole("link", { name: "Change your RSVP" }))).toEqual([Math.round(await inner())]);
     expect(sharedNames(await linkNames(page))).toEqual([]);
     for (const name of ["Ceremony", "Dinner", "Reception & dance"])
       await expect(page.getByRole("link", { name: new RegExp(`^Add to calendar ?: ${name}$`) })).toHaveCount(1);
@@ -578,7 +763,7 @@ test("My account's thread announces only replies that are new, not a redraw", as
   await page.clock.runFor(60_000);
   await checked;
   await page.clock.runFor(1_000);
-  await expect(announced).toHaveText("New reply from the family: And there is a ramp at the side door.");
+  await expect(announced).toHaveText("We replied: And there is a ramp at the side door.");
   await expect(thread).toContainText("And there is a ramp at the side door.");
 });
 

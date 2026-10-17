@@ -17,7 +17,8 @@
 //   - Whether this household replied: the server's answer on a signed-in visit
 //     (site/home.mjs asks), otherwise this device's note (replyMarker), which
 //     holds no identity and goes once the party is over or on sign-out.
-//   - The header's RSVP pill, which stops asking once there is nothing to ask.
+//   - The header's RSVP pill, which stops asking once there is nothing to ask,
+//     and the RSVP button of a page's "next steps" with it.
 import {
   milestones,
   homeState,
@@ -35,7 +36,10 @@ let deadline = document.querySelector('meta[name="misxv-deadline"]')?.content ||
   offset = 0,
   uncertainty = Infinity,
   // "yes" or "no" (replied), false (signed in, not replied), null (not known).
-  reply = null;
+  reply = null,
+  // Who said so: "device" (this device's note, or a save made here) or
+  // "server" (GET /api/session for a live session).
+  told = null;
 function rebuild() {
   try {
     m = milestones({ deadline, site });
@@ -58,6 +62,7 @@ export function rsvpOpenNow(iso = deadline) {
 }
 export const answered = () => (reply === "yes" || reply === "no" ? true : reply === false ? false : null);
 export const answer = () => (reply === "yes" || reply === "no" ? reply : null);
+export const replyFrom = () => answer() && told;
 export function state(now = clock()) {
   return m && homeState(now, m, { answered: answered() });
 }
@@ -156,10 +161,12 @@ function fromDevice() {
   return marker?.answer ?? null;
 }
 reply = fromDevice();
+told = "device";
 // After a successful save (site/guest.js): "yes" when anyone is coming.
 export function rememberReply(value, savedAt) {
   keep(value, savedAt);
   reply = value;
+  told = "device";
   run();
 }
 // Sign-out leaves nothing for the next person on this device.
@@ -182,6 +189,7 @@ export const sessionStatus = () =>
 export function serverReply(household) {
   if (!household) return;
   const raw = stored();
+  told = "server";
   if (!household.answered) {
     drop();
     reply = false;
@@ -222,8 +230,11 @@ for (const [target, name] of [
   target.addEventListener(name, () => document.visibilityState !== "hidden" && run());
 
 // The header's RSVP pill (every page): gone once this household has replied,
-// and for everyone after the party (lifecycle homeState.rsvpPill).
+// and for everyone after the party (lifecycle homeState.rsvpPill). A page's
+// "next steps" (404, pages that wait for content) ask the same with their
+// RSVP button, so it goes with the pill.
 watch((s) => {
-  const pill = document.querySelector(".site-header .nav-rsvp");
-  if (pill && s) pill.hidden = !s.rsvpPill;
+  if (s)
+    for (const el of document.querySelectorAll('.site-header .nav-rsvp, .next-steps [href$="rsvp/"]'))
+      el.hidden = !s.rsvpPill;
 });

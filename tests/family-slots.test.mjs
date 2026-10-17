@@ -26,10 +26,10 @@ await sharp({ create: { width: 1024, height: 1434, channels: 3, background: "#f4
   .png()
   .toFile(new URL("invitation-es.png", assets).pathname);
 
-async function build(name, fixture) {
+async function build(name, fixture, now = "2026-10-01T18:00:00Z") {
   await run(
     process.execPath,
-    ["scripts/build-pages.mjs", "--now=2026-10-01T18:00:00Z", `--out=${name}`, `--fixture=tests/fixtures/${fixture}.mjs`],
+    ["scripts/build-pages.mjs", `--now=${now}`, `--out=${name}`, `--fixture=tests/fixtures/${fixture}.mjs`],
     { cwd: repo.pathname },
   );
   const dist = new URL(`.cache/builds/${name}/dist/`, repo);
@@ -37,7 +37,9 @@ async function build(name, fixture) {
 }
 // One after another: the builds share the encoded-image cache.
 const dated = await build("family-dated", "family-dated"),
-  filled = await build("family-filled", "family-filled");
+  filled = await build("family-filled", "family-filled"),
+  // The day after the party, with the family's own thank-you sentence.
+  thanked = await build("family-thanks", "family-thanks", "2027-01-16T18:00:00Z");
 const main = (html) => html.match(/<main[\s\S]*?<\/main>/)[0];
 const header = (html) => html.match(/<header[\s\S]*?<\/header>/)[0];
 const portal = (html) => html.match(/<div class="portal" id="portal"[^>]*>/)[0];
@@ -153,6 +155,49 @@ test("the Spanish invitation art, once it exists, is the Spanish pages' artwork 
   assert.equal(await og(filled, "es/index.html"), await og(filled, "index.html"));
 });
 
+// R-005 / DESIGN decision 13: on January 15 the home page shows parking once
+// the family adds it (the same content and helper as the venue pages,
+// site/promises.mjs); the page carries it for site/home.mjs.
+test("parking reaches the home page for the day itself once it exists, and nothing before", async () => {
+  const hero = (html) => html.match(/<section class="hero" data-home[^>]*>/)[0];
+  assert.match(hero(await filled("index.html")), / data-parking="Fixture parking\."/);
+  assert.match(hero(await filled("es/index.html")), / data-parking="Estacionamiento de ensayo\."/);
+  // A date to post it by is not parking.
+  for (const file of ["index.html", "es/index.html"]) assert.doesNotMatch(hero(await dated(file)), /data-parking/, file);
+});
+
+// R-006: the family's own sentence after the party, on the home page and in
+// the link previews built then; without one, the reviewer's default.
+test("the family's thank-you sentence is the home page's line and preview after the party", async () => {
+  const hero = (html) => html.match(/<section class="hero" data-home[^>]*>/)[0],
+    meta = (html, key) => html.match(new RegExp(`<meta (?:name|property)="${key}" content="([^"]*)">`))[1];
+  for (const [lang, sentence] of [
+    ["", "Fixture thanks for coming."],
+    ["es/", "Gracias de ensayo por venir."],
+  ]) {
+    const home = await thanked(`${lang}index.html`);
+    assert.ok(hero(home).includes(` data-thanks="${sentence}"`), lang);
+    assert.equal(meta(home, "misxv-phase"), "after");
+    assert.equal(meta(home, "description"), sentence, lang);
+    assert.equal(meta(home, "og:description"), sentence, lang);
+    assert.equal(meta(await thanked(`${lang}rsvp/index.html`), "description"), sentence, lang);
+    assert.doesNotMatch(hero(await filled(`${lang}index.html`)), /data-thanks/, lang);
+  }
+});
+
+// R-166 / R-155: court and padrinos would hold people's names, and this
+// repository is public. They stay empty here; names belong in the runtime
+// event settings (server/site-settings.mjs, GET /api/site), never in a commit.
+test("no court or padrino names are committed to the public content", async () => {
+  const { family } = await import("../site/content.mjs");
+  for (const slot of ["court", "padrinos"])
+    assert.deepEqual(
+      family[slot],
+      [],
+      `site/content.mjs family.${slot} must stay empty: names never go in this public repository. Keep them in the runtime event settings (server/site-settings.mjs, GET /api/site; docs/publishing.md, "Names stay out of this repository").`,
+    );
+});
+
 test("a value that is not a sensible number or date stops the build instead of reaching a page", async () => {
   const bad = new URL(".cache/fixture-bad.mjs", repo);
   const { writeFile } = await import("node:fs/promises");
@@ -161,6 +206,7 @@ test("a value that is not a sensible number or date stops the build instead of r
     ["driveMinutes", 0, /driveMinutes must be a whole number/],
     ["promises", { dressCode: { by: "soon" } }, /promises\.dressCode\.by must be YYYY-MM-DD/],
     ["traditions", ["fireworks"], /Unknown tradition/],
+    ["thankYou", { en: "Thanks!" }, /family\.thankYou must be \{ en, es \}/],
   ]) {
     await writeFile(bad, `export const family = ${JSON.stringify({ [field]: value })};\n`);
     await assert.rejects(

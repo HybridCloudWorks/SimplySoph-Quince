@@ -64,5 +64,5 @@ Resend rules: skip households that responded or opted out; at least 72 h between
 - Replace the six count dropdowns with steppers.
 - Mark the decorative "↗" in links with `aria-hidden`.
 - Add a QR code to paper invitations instead of the 16-character typed code.
-- Spanish: use the informal form consistently. Replace "Estás invitado" with "Te invitamos" (gender-neutral).
+- Spanish: use the informal form consistently. Replace "Estás invitado" with "Te invitamos" (gender-neutral). Decided in round 2 (R-034, R-165), since Mexican Spanish's informal plural is "ustedes": the hosts speak to an invited family as ustedes (home, RSVP and its confirmation, thank-you, the family's emails and those pages' link previews); to one person as tú (My account, the sign-in and reply emails, information and policy pages, the WhatsApp card and replies); shared chrome (header, buttons, page titles, form checks) is neutral; never usted; Sophia's own words keep their tú. Errors that can appear on both kinds of page have both forms. Free text in the event settings and announcements follows the same rule (Admin warns, the family decides). The rule and its scope live in `site/lexicon.mjs` (`registers`, `say()`), and `tests/language.test.mjs` with `tests/browser/language.spec.mjs` enforce it.
 - Admin screens are English-only. Consider Spanish for delegates (P2).

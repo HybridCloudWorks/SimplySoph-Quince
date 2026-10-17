@@ -1,4 +1,5 @@
 import { api, esc, field, submit, notify } from "./client.js";
+import { stamp } from "./datetime.mjs";
 // [where the back link goes, the page heading]
 const names = {
   notifications: ["notifications", "Notification history"],
@@ -82,7 +83,7 @@ export async function communicationHistory(root) {
       filtered
         .map(
           (row) =>
-            `<tr><td>${instant(row) ? esc(new Date(instant(row)).toLocaleString()) : "—"}</td><td>${esc(label(row))}${row.subject ? `<small>${esc(row.subject)}</small>` : ""}</td><td><p class="history-snippet">${esc(row.text || row.notes || row.templateKey || "")}</p></td><td>${esc(status(row))}</td><td><div class="table-actions"><button type="button" class="plain-button" data-edit="${esc(row.id)}">${row.state && row.state !== "draft" ? "View / notes" : "View / edit"}</button><button type="button" class="plain-button" data-archive="${esc(row.id)}">${row.archived ? "Restore" : "Archive"}</button>${["email", "sms", "whatsapp"].includes(kind) && !row.archived ? `<a href="/admin/updates/?tab=${kind}&review=${encodeURIComponent(row.id)}">Review message</a>` : ""}</div></td></tr>`,
+            `<tr><td>${instant(row) ? esc(stamp(instant(row))) : "—"}</td><td>${esc(label(row))}${row.subject ? `<small>${esc(row.subject)}</small>` : ""}</td><td><p class="history-snippet">${esc(row.text || row.notes || row.templateKey || "")}</p></td><td>${esc(status(row))}</td><td><div class="table-actions"><button type="button" class="plain-button" data-edit="${esc(row.id)}">${row.state && row.state !== "draft" ? "View / notes" : "View / edit"}</button><button type="button" class="plain-button" data-archive="${esc(row.id)}">${row.archived ? "Restore" : "Archive"}</button>${["email", "sms", "whatsapp"].includes(kind) && !row.archived ? `<a href="/admin/updates/?tab=${kind}&review=${encodeURIComponent(row.id)}">Review message</a>` : ""}</div></td></tr>`,
         )
         .join("") || '<tr><td colspan="5">No matching records.</td></tr>';
     for (const button of root.querySelectorAll("[data-edit]"))

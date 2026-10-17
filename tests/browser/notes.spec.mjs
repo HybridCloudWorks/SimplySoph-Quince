@@ -68,7 +68,7 @@ test("the note page puts the notes first under their heading; signed out it says
   });
   await expect(box).not.toBeChecked();
   await expect(box).toHaveAccessibleDescription(
-    "Leave it unchecked and only Sophia and her family will read your note.",
+    "Leave it unchecked and only Sophia’s family and the few people helping us will read your note.",
   );
   await page.getByLabel("Your name, as you’d like it to appear").fill("The Riveras");
   await page.getByLabel("Your note").fill("Happy fifteenth!");
@@ -82,7 +82,7 @@ test("the note page puts the notes first under their heading; signed out it says
   // Privacy says the same thing, from the same switch.
   await page.goto(harness.url("/privacy/"));
   await expect(page.locator("[data-note-audience]")).toHaveText(
-    "We read every note for Sophia before it appears on “A note for Sophia”, and only guests who sign in can see the notes there. If you leave the box to show your note unchecked, only Sophia and her family read it.",
+    "We read every note for Sophia before it appears on “A note for Sophia”, and only guests who sign in can see the notes there. If you leave the box to show your note unchecked, only Sophia’s family and the few people helping us run the celebration read it.",
   );
 });
 
@@ -101,7 +101,7 @@ test.describe("when the family makes the notes public", () => {
 
     await page.goto(harness.url("/es/privacy/"));
     await expect(page.locator("[data-note-audience]")).toHaveText(
-      "Leemos cada mensaje para Sophia antes de que aparezca en “Un mensaje para Sophia”, y cualquier persona con la dirección del sitio puede ver los mensajes ahí. Si dejas sin marcar la casilla para mostrar tu mensaje, solo Sophia y su familia lo leen.",
+      "Leemos cada mensaje para Sophia antes de que aparezca en “Un mensaje para Sophia”, y cualquier persona con la dirección del sitio puede ver los mensajes ahí. Si dejas sin marcar la casilla para mostrar tu mensaje, solo la familia de Sophia y las pocas personas que nos ayudan a organizar la celebración lo leen.",
     );
 
     // The box, for a household in by its invitation link, in Spanish.
@@ -143,7 +143,11 @@ test("a Spanish household in by its invitation link leaves Sophia one note witho
     })
     .check();
   await page.getByRole("button", { name: "Enviar mi mensaje" }).click();
-  await expect(page.getByText("¡Gracias! Tu mensaje aparecerá aquí cuando lo hayamos leído.")).toBeVisible();
+  // R-024: notes are for guests signed in by email (the default), so a
+  // household in by its link is not told it will see its note here.
+  await expect(page.locator("#portal [role=status]")).toHaveText(
+    "¡Gracias! Cuando lo hayamos leído, tu mensaje aparecerá aquí para los invitados que entran al sitio.",
+  );
   const [note] = Object.values((await harness.ledger.read()).messages);
   expect(note).toMatchObject({
     via: "link",
