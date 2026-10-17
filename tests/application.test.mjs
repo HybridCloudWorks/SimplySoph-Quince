@@ -3032,3 +3032,39 @@ test("texts to guests: draft, type the count, send in one confirmed batch from t
   assert.ok(!sent[0].text.includes("{link}"));
   assert.equal((await f.admin("sms/drafts")).batches[0].state, "done");
 });
+
+test("every email built with a text version hands it to the mailer next to the HTML (R-122)", async () => {
+  const f = await fixture();
+  const last = () => f.sent.at(-1);
+  // An invitation an organizer drafts and sends: the same private link in both.
+  const { id } = await f.admin("mail/draft", { id: household, type: "invitation" });
+  await f.admin("mail/send", { id, confirm: true });
+  const invitation = last().html.match(/\/rsvp\/#([A-Za-z0-9_-]{43})"/)[1];
+  assert.ok(last().text.includes(`RSVP for your family: ${origin}/rsvp/#${invitation}\n`));
+  // A message the organizer writes: their words as typed, with the minted link.
+  const drafted = await f.admin("mail/batch-draft", {
+    requestId: "text-version-campaign-001",
+    groups: [],
+    ids: [household],
+    subject: "Event update",
+    text: "Hello <friends>\nRSVP: {link}",
+  });
+  await f.admin("mail/send", { id: drafted.ids[0], confirm: true });
+  const custom = last().html.match(/\/rsvp\/#([A-Za-z0-9_-]{43})"/)[1];
+  assert.equal(last().text, `Hello <friends>\nRSVP: ${origin}/rsvp/#${custom}`);
+  // An RSVP receipt.
+  await f.guest("rsvp", f.input(), { "idempotency-key": "26262626-2626-4626-8626-262626262626" });
+  assert.equal(last().subject, "We received your RSVP · Sophia’s quinceañera");
+  assert.ok(last().text.includes("Ceremony: 1 adult/teen\nDinner: 2 adults/teens, 1 child"));
+  assert.ok(last().text.includes(`See the schedule and directions: ${origin}/details/`));
+  assert.ok(!last().text.includes("<"), "plain text, not HTML");
+  // A sign-in link: still secret (Graph keeps it out of Sent Items); the text
+  // version is there for the SendGrid standby.
+  await f.publicPost("auth/email/request", { email: "test@example.com", return: "account" });
+  assert.equal(last().secret, true);
+  assert.ok(last().text.includes(`Sign in to the website: ${origin}/account/#${linkOf(last())}`));
+  // The sealed text version never leaves the server in admin listings.
+  const { outbox } = await f.admin("updates");
+  assert.equal(outbox.length, 3);
+  assert.ok(outbox.every((r) => !("textContent" in r) && !("content" in r)));
+});

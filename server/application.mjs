@@ -612,6 +612,8 @@ export function createApplication({
       const result = await mailer.send({
         ...job,
         html: unseal(job.content, key),
+        // Drafts saved before the text version was kept send HTML only.
+        text: job.textContent ? unseal(job.textContent, key) : "",
       });
       return { state: "accepted", code: null, provider: result?.provider || null };
     } catch (e) {
@@ -697,6 +699,7 @@ export function createApplication({
       to: recipient,
       subject: rendered.subject,
       content: seal(rendered.html, key),
+      textContent: seal(rendered.text, key),
       state: "draft",
       createdAt: now(),
       responseId,
@@ -2526,7 +2529,7 @@ export function createApplication({
       if (path === "/api/admin/updates" && method === "GET")
         return {
           announcements: Object.values(ctx.state.announcements),
-          outbox: Object.values(ctx.state.outbox).map(({ content, ...r }) => r),
+          outbox: Object.values(ctx.state.outbox).map(({ content, textContent, ...r }) => r),
           mailConfigured: mailer.configured,
         };
       if (path === "/api/admin/updates" && method === "POST") {
@@ -2684,6 +2687,8 @@ export function createApplication({
                     )}</p>`,
                   key,
                 ),
+                // The same words as plain text: what the organizer typed.
+                textContent: seal(url ? text.replaceAll(LINK_PLACEHOLDER, url) : text, key),
                 state: "draft",
                 createdAt: now(),
                 groups: body.groups,

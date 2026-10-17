@@ -88,3 +88,25 @@ test("fallback is opt-in and provider errors never expose keys", async () => {
   await assert.rejects(() => mail.send(message));
   assert.equal(calls, 1);
 });
+test("SendGrid sends the text version first, then the HTML, and never an empty text part (R-122)", async () => {
+  const payloads = [];
+  const mailer = sendgridMailer({
+    apiKey: "fixture",
+    sender: "sender@example.com",
+    fetchImpl: async (url, init) => {
+      payloads.push(JSON.parse(init.body));
+      return new Response(null, { status: 202 });
+    },
+  });
+  const text = "Sign In: https://example.com/#private\n\n¿Preguntas? Respondan a este correo.";
+  await mailer.send({ ...message, text });
+  // SendGrid requires text/plain before text/html.
+  assert.deepEqual(payloads[0].content, [
+    { type: "text/plain", value: text },
+    { type: "text/html", value: message.html },
+  ]);
+  for (const empty of ["", "  \n", undefined]) await mailer.send({ ...message, text: empty });
+  assert.equal(payloads.length, 4);
+  for (const payload of payloads.slice(1))
+    assert.deepEqual(payload.content, [{ type: "text/html", value: message.html }]);
+});

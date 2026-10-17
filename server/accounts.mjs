@@ -100,6 +100,7 @@ export function createAccounts({
         subject: mail.subject,
         secret: true,
         html: mail.html,
+        text: mail.text,
       });
     } catch {
       // Retain a possibly delivered link until expiry. Do not retry an ambiguous send.

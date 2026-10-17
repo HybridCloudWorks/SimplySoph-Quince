@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Ledger, memoryAdapter } from "../server/store.mjs";
 import { createAdminRecords } from "../server/admin-records.mjs";
-import { unseal } from "../server/auth.mjs";
+import { seal, unseal } from "../server/auth.mjs";
 import { createNotifications } from "../server/notifications.mjs";
 const key = Buffer.alloc(32, 1);
 const owner = { actor: "owner" };
@@ -90,6 +90,33 @@ test("manual notices can be created and revised without sending, and draft email
   assert.equal(s.outbox.draft.to, "guest@example.com");
   assert.match(unseal(s.outbox.draft.content, key), /&lt;script&gt;/);
   assert.equal(s.outbox.draft.text, undefined);
+});
+
+test("editing a draft email's words replaces its text version too, and neither version is listed (R-122)", async () => {
+  const ledger = new Ledger(memoryAdapter());
+  const records = createAdminRecords({ ledger, key });
+  await ledger.transaction((s) => {
+    s.outbox.draft = {
+      id: "draft",
+      state: "draft",
+      to: "guest@example.com",
+      content: seal("<p>Template words</p>", key),
+      textContent: seal("Template words", key),
+    };
+  });
+  await records(
+    {
+      method: "POST",
+      body: { kind: "email", action: "update", id: "draft", version: 0, values: { text: "New <words>\nline two" } },
+    },
+    owner,
+  );
+  const row = (await ledger.read()).outbox.draft;
+  assert.match(unseal(row.content, key), /New &lt;words&gt;<br>line two/);
+  assert.equal(unseal(row.textContent, key), "New <words>\nline two");
+  const { rows } = await records({ method: "GET", query: { kind: "email" } }, owner);
+  assert.equal(rows[0].content, undefined);
+  assert.equal(rows[0].textContent, undefined);
 });
 
 test("record IDs cannot address inherited object properties", async () => {
