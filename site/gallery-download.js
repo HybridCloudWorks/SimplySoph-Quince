@@ -112,15 +112,21 @@ async function check(e, section) {
     return;
   }
   e.preventDefault();
+  // A second press while the first is being checked would start the same
+  // download twice (and the server allows one at a time).
+  if (section.dataset.checking) return;
   const alert = section.querySelector("[role=alert]");
   alert.textContent = "";
   let list;
+  section.dataset.checking = "1";
   try {
     list = await api("gallery/archive");
   } catch (error) {
     alert.textContent = reasons[error.code]?.() || error.message;
     if (error.code === "DOWNLOAD_RESTRICTED") section.querySelector(".download-parts")?.remove();
     return;
+  } finally {
+    delete section.dataset.checking;
   }
   const part = list.parts.find((p) => p.part === Number(link.dataset.part));
   const problem =
