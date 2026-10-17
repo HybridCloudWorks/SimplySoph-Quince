@@ -23,6 +23,7 @@ import {
   googleButton,
 } from "./sso.js";
 import { contactTopics, contactTopicsEn } from "./celebration.mjs";
+import { date, time } from "./datetime.mjs";
 const root = document.querySelector("#admin-app"),
   view = root.dataset.view;
 // Contact messages store the topic value the server checks; show the label
@@ -481,16 +482,63 @@ function mediaPreview(r) {
     ? `<video controls playsinline preload="${r.poster ? "none" : "metadata"}"${r.poster ? ` poster="/api/photo/${esc(r.id)}?poster=1"` : ""} src="/api/photo/${esc(r.id)}"></video>`
     : `<img src="/api/photo/${esc(r.id)}" alt="Pending photo">`;
 }
+// The printed table card (R-021): off until the family creates it. Its code
+// is shown once, when it is made (the server keeps only a fingerprint), so the
+// picture stays on this page until it is reloaded.
+let madeCard = null;
+const cardTime = (iso) => `${date(iso, "en", { year: false })} at ${time(iso, "en", { nbsp: true })}`;
+const cardUrl = (svg) => "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+async function partyCard(box) {
+  const st = await api("admin/party-card");
+  const counts = `<p>${st.files} ${st.files === 1 ? "file" : "files"} from ${st.phones} ${st.phones === 1 ? "phone" : "phones"} so far. Each phone can send up to ${st.perPhone}, and the card up to ${st.perCard} in all.</p>`;
+  const windowLine = st.opensAt
+    ? `<p>It works from ${esc(cardTime(st.opensAt))} through ${esc(date(Date.parse(st.closesAt) - 1, "en", { year: false }))} (Fort Worth time); before and after, the page offers the usual email sign-in.</p>`
+    : "<p>The event times in Website settings can’t form a timeline, so the card can’t work until they are fixed.</p>";
+  const picture =
+    madeCard && st.state === "open"
+      ? `<div class="party-card-preview"><img src="${cardUrl(madeCard.card)}" alt="The table card: a QR code with “Share your photos” and “Compartir fotos”"><p><a class="button burgundy" download="table-card.svg" href="${cardUrl(madeCard.card)}">Download the card to print</a></p><p class="hint">Save or print it now: for safety we keep only a fingerprint of its code, so this picture can’t be shown again. If it’s lost, make a new code (cards printed before stop working).</p></div>`
+      : "";
+  box.innerHTML =
+    st.state === "open"
+      ? `<p><strong>The table card is on.</strong> Anyone with it can send photos and videos without signing in. They wait here for your review, like every upload, and only signed-in guests see the ones you approve.</p>${windowLine}${counts}${picture}<div class="row-actions"><button type="button" class="button outline compact" data-party-action="rotate">Make a new code</button><button type="button" class="button outline compact" data-party-action="close">Turn off the table card</button></div>`
+      : `<p><strong>The table card is off${st.state === "closed" && st.closedAt ? ` (since ${esc(cardTime(st.closedAt))})` : ""}.</strong> Turn it on to print a QR card for the tables: during the party anyone at the celebration, even guests who aren’t on our list, can send photos and videos from it without signing in. They wait here for your review, and only signed-in guests see the ones you approve.</p>${windowLine}${st.state === "closed" ? counts : ""}<div class="row-actions"><button type="button" class="button burgundy compact" data-party-action="create">${st.state === "closed" ? "Turn it on with a new code" : "Create the table card"}</button></div>`;
+  box.onclick = (e) => {
+    const action = e.target.closest("[data-party-action]")?.dataset.partyAction;
+    if (!action) return;
+    if (action === "rotate" && !confirm("Make a new code? Cards printed with the current code stop working at once.")) return;
+    if (action === "close" && !confirm("Turn off the table card? Phones using it can’t send anything more.")) return;
+    run(async () => {
+      const result = await api("admin/party-card", { action });
+      madeCard = result.card ? { card: result.card } : null;
+      await partyCard(box);
+      notify(
+        action === "close"
+          ? "The table card is off."
+          : "The table card is on. Download the card below and print it.",
+      );
+    });
+  };
+}
 async function moderation() {
   const d = await api("admin/moderation"),
     photos = view === "admin/photos",
     rows = photos ? d.photos : d.messages;
-  root.innerHTML = `<p>${photos ? "Photos and videos are visible only to signed-in guests after approval. Rejected items remain hidden." : "Contact messages always remain private. Guestbook messages require approval before publication."}</p><div class="cards">${rows.map((r) => `<article class="card">${photos ? `${mediaPreview(r)}<p>${esc(r.caption)}</p>` : `<h3>${esc(r.name)}</h3><p>${esc(topicLabel(r.topic))}</p><p>${esc(r.email || "")}</p><p>${esc(r.text)}</p><span class="badge">${esc(r.kind)}</span>`}<p>Status: ${esc(r.state)}</p>${photos ? `<label>Album<select data-media-album="${esc(r.id)}">${(d.albums || []).map((a) => `<option value="${esc(a.id)}"${a.id === (r.album || "event") ? " selected" : ""}>${esc(a.en)}</option>`).join("")}</select></label>` : ""}<div class="row-actions">${r.kind !== "contact" && !["processing", "failed"].includes(r.state) ? button("Approve", "approve", r.id) : ""}${button("Remove from display", "reject", r.id)}</div></article>`).join("") || "<p>No submissions yet.</p>"}</div>`;
-  if (photos)
+  // A file from the table card says so, with the name typed (if any) and the
+  // reference the guest was shown, so a removal request can be matched.
+  const source = (r) =>
+    r.source === "party"
+      ? `<p><span class="badge">From the table card</span>${r.uploaderName ? ` Name given: ${esc(r.uploaderName)}.` : ""} Reference ${esc(r.ref)}.</p>`
+      : "";
+  root.innerHTML = `<p>${photos ? "Photos and videos are visible only to signed-in guests after approval. Rejected items remain hidden." : "Contact messages always remain private. Guestbook messages require approval before publication."}</p><div class="cards">${rows.map((r) => `<article class="card">${photos ? `${mediaPreview(r)}${source(r)}<p>${esc(r.caption)}</p>` : `<h3>${esc(r.name)}</h3><p>${esc(topicLabel(r.topic))}</p><p>${esc(r.email || "")}</p><p>${esc(r.text)}</p><span class="badge">${esc(r.kind)}</span>`}<p>Status: ${esc(r.state)}</p>${photos ? `<label>Album<select data-media-album="${esc(r.id)}">${(d.albums || []).map((a) => `<option value="${esc(a.id)}"${a.id === (r.album || "event") ? " selected" : ""}>${esc(a.en)}</option>`).join("")}</select></label>` : ""}<div class="row-actions">${r.kind !== "contact" && !["processing", "failed"].includes(r.state) ? button("Approve", "approve", r.id) : ""}${button("Remove from display", "reject", r.id)}</div></article>`).join("") || "<p>No submissions yet.</p>"}</div>`;
+  if (photos) {
     root.insertAdjacentHTML(
       "afterbegin",
-      `<details class="card table-qr"><summary>Media uploads</summary><div class="table-qr-content"><img src="/assets/photo-upload-qr.svg" width="160" height="160" alt="QR code to the photo upload page"><div><p>Scan to open the photo upload page directly. Guests sign in with the email the family has for their household before choosing files.</p><a class="button burgundy" href="/assets/photo-upload-qr.svg" download>Download printable QR</a></div></div></details>`,
+      `<section class="card" aria-labelledby="party-card-title"><h2 id="party-card-title">Table card</h2><div data-party-card><p role="status">Loading…</p></div></section><details class="card table-qr"><summary>QR code for signed-in sharing</summary><div class="table-qr-content"><img src="/assets/photo-upload-qr.svg" width="160" height="160" alt="QR code to the photo upload page"><div><p>Scan to open the photo upload page directly. Guests sign in with the email the family has for their household before choosing files.</p><a class="button burgundy" href="/assets/photo-upload-qr.svg" download>Download printable QR</a></div></div></details>`,
     );
+    await partyCard(root.querySelector("[data-party-card]")).catch((e) => {
+      root.querySelector("[data-party-card]").innerHTML = `<p class="notice">${esc(e.message)}</p>`;
+    });
+  }
   if (!photos) {
     const cards = root.querySelectorAll(".cards > .card");
     rows.forEach((r, i) => {

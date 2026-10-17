@@ -7,6 +7,8 @@ import { randomBytes } from "node:crypto";
 import sharp from "sharp";
 import { test, expect } from "./fixtures.mjs";
 import { households } from "./harness.mjs";
+import { uploadQuota } from "../../server/upload-quota.mjs";
+import { signIn as signInAs } from "./media-helpers.mjs";
 
 const accountLink = /href="(https:\/\/127\.0\.0\.1:\d+\/(?:es\/)?account\/#[A-Za-z0-9_-]{43})"/;
 async function signIn(page, harness, email) {
@@ -52,17 +54,35 @@ test("the table QR opens a two-language explanation, and after sign-in a guest s
   await expect(page.getByRole("button", { name: "Email my sign-in link" })).toBeVisible();
   // No complementary landmark nested in main (axe: landmark-complementary-is-top-level).
   await expect(page.locator("main aside, main [role=complementary]")).toHaveCount(0);
+  // Round 2 review (R-088): the sign-in is explained once, by the form, not
+  // again in the steps and in a note above the form.
+  const english = await page.locator("main").evaluate((m) => {
+    const copy = m.cloneNode(true);
+    copy.querySelectorAll("[lang=es], [hidden]").forEach((el) => el.remove());
+    return copy.textContent;
+  });
+  expect(english.match(/where you received your invitation/g)).toHaveLength(1);
+  expect(english.match(/no password/gi)).toHaveLength(1);
+  await expect(page.getByText("Sign in with your email to continue.")).toHaveCount(0);
+  // Sharing during the party is covered too, not only afterwards.
+  await expect(page.locator(".share-intro .lead")).toHaveText("Share your photos and videos, during the party or after it.");
 
   await signIn(page, harness, household.email);
   // The QR's page again, now with the upload form and without the steps.
   await expect(page).toHaveURL(harness.url("/share/"));
   await expect(page.getByRole("heading", { name: "Add your photos & videos" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "How to share" })).toBeHidden();
+  // Round 2 review (R-089) replaced the wall of limits with one line; sizes
+  // and how many may be shared appear only in a file's own note.
   await expect(page.locator("#upload-help")).toHaveText(
-    "Choose photos and short videos straight from your phone, up to 10 at a time. Videos can be up to 60 seconds long. Each photo can be up to 40 MB and each video up to 300 MB. Your household can share up to 20 files a day.",
+    "Choose up to 10 photos or videos (60 seconds or less) from your phone.",
   );
+  await expect(page.locator("#photo")).not.toContainText(/MB|a day|household/);
   const chooser = page.getByLabel("Choose photos & videos");
   await expect(chooser).toHaveAttribute("accept", /video\/quicktime/);
+  // The chooser speaks the page's language: a button and a count line.
+  await expect(page.locator("label.file-button")).toHaveText("Choose photos & videos");
+  await expect(page.locator("#upload-chosen")).toHaveText("No files chosen yet");
 
   // The first piece of a file is lost on the way: the page tries again by itself.
   let dropped = false;
@@ -80,6 +100,7 @@ test("the table QR opens a two-language explanation, and after sign-in a guest s
     { name: "IMG_0103.MOV", mimeType: "video/quicktime", buffer: phoneVideo(75) },
     { name: "IMG_0104.HEIC", mimeType: "image/heic", buffer: Buffer.from("not really a photo") },
   ]);
+  await expect(page.locator("#upload-chosen")).toHaveText("4 files chosen");
   const row = (name) => page.locator(".upload-result").filter({ hasText: name });
   await expect(row("IMG_0103.MOV")).toContainText(
     "This video is 1:15 long. Videos can be up to 60 seconds: trim it in your Photos or Gallery app and choose it again.",
@@ -168,10 +189,91 @@ test("the upload form lists what is missing and keeps focus on Send while sendin
   await expect(chooser).toBeEnabled();
 });
 
+// Round 2 review, section 4 (R-025, R-026): at the limit the summary said
+// "paused, check your connection and tap Try again", and "Try again" could
+// not succeed for hours. Now it says the limit the API gave and when more
+// fit, and offers no Try again. The numbers come from the API's one setting.
+for (const lang of ["en", "es"])
+  test(`${lang.toUpperCase()}: at the limit the page names it and says when more fit, with no Try again and no "check your connection"`, async ({
+    page,
+    harness,
+  }) => {
+    const es = lang === "es",
+      household = households.rivera,
+      limit = uploadQuota.perDay;
+    await harness.issueInvitation(household);
+    // The family's last upload places all began an hour ago (12:00 PM,
+    // Thursday, October 1, Fort Worth time), so the next fits 24 hours later.
+    const began = harness.now() - 3600000;
+    await harness.ledger.transaction((s) => (s.uploadsBegun = { [household.id]: Array(limit).fill(began) }));
+    await page.goto(harness.url(es ? "/es/share/" : "/share/"));
+    await signInAs(page, harness, household.email, { es });
+    await expect(page).toHaveURL(harness.url(es ? "/es/share/" : "/share/"));
+    const sentence = es
+      ? `Tu familia ya compartió ${limit} fotos y videos en las últimas 24 horas, el máximo que podemos recibir a la vez. Puedes agregar más después de las 12:00 p. m. del viernes 2 de octubre.`
+      : `Your family has shared ${limit} photos and videos in the last 24 hours, the most we can take at once. You can add more after 12:00 PM on Friday, October 2.`;
+    // Said before choosing anything.
+    await expect(page.locator("#upload-room")).toHaveText(sentence);
+    const photo = await sharp({ create: { width: 40, height: 30, channels: 3, background: "#d7b779" } }).jpeg().toBuffer();
+    await page.getByLabel(es ? "Elige fotos y videos" : "Choose photos & videos").setInputFiles([
+      { name: "IMG_0301.JPG", mimeType: "image/jpeg", buffer: photo },
+      { name: "IMG_0302.JPG", mimeType: "image/jpeg", buffer: photo },
+    ]);
+    await page.getByLabel(es ? /Tengo permiso/ : /I have permission/).check();
+    const send = page.getByRole("button", { name: es ? "Enviar mis fotos y videos" : "Send my photos & videos" });
+    await send.click();
+    const summary = page.locator("#upload-summary");
+    await expect(summary).toHaveText(`${es ? "Llegaron 0 de 2." : "0 of 2 arrived."} ${sentence}`);
+    await expect(page.locator(".upload-result")).toHaveCount(2);
+    for (const row of await page.locator(".upload-result").all())
+      await expect(row).toContainText(es ? "No se envió: se alcanzó el límite." : "Not sent: the limit is reached.");
+    await expect(page.getByRole("button", { name: es ? "Reintentar" : "Try again" })).toHaveCount(0);
+    await expect(page.locator("#photo")).not.toContainText(es ? /revisa tu conexión|mañana/ : /check your connection|tomorrow/);
+    // Focus stays on Send after a batch that could not finish (A7-V08), and
+    // pressing it again repeats the reason instead of "nothing can be sent".
+    await expect(send).toBeFocused();
+    await page.getByLabel(es ? "Elige fotos y videos" : "Choose photos & videos").setInputFiles([
+      { name: "IMG_0303.JPG", mimeType: "image/jpeg", buffer: photo },
+    ]);
+    await send.click();
+    await expect(summary).toHaveText(`${es ? "Llegaron 0 de 1." : "0 of 1 arrived."} ${sentence}`);
+    expect(Object.keys((await harness.ledger.read()).uploads || {})).toEqual([]);
+  });
+
+test("a lost connection still pauses with the connection message and Try again, which resumes", async ({ page, harness }) => {
+  const household = households.morales;
+  await harness.issueInvitation(household);
+  await page.goto(harness.url("/share/"));
+  await signIn(page, harness, household.email);
+  // The page's quick retries wait 1, 3, 8 and 15 seconds before it pauses.
+  test.setTimeout(75_000);
+  let online = false;
+  await page.route(/\/api\/uploads\/[a-f0-9-]{36}\?offset=\d+$/, (route) =>
+    online ? route.continue() : route.abort("internetdisconnected"),
+  );
+  const photo = await sharp({ create: { width: 40, height: 30, channels: 3, background: "#651625" } }).jpeg().toBuffer();
+  await page.getByLabel("Choose photos & videos").setInputFiles([{ name: "IMG_0401.JPG", mimeType: "image/jpeg", buffer: photo }]);
+  await page.getByLabel(/I have permission/).check();
+  await page.getByRole("button", { name: "Send my photos & videos" }).click();
+  const summary = page.locator("#upload-summary");
+  await expect(summary).toHaveText("0 of 1 arrived. Sending paused; check your connection and tap Try again.", {
+    timeout: 45_000,
+  });
+  const again = page.getByRole("button", { name: "Try again" });
+  await expect(again).toBeVisible();
+  online = true;
+  await again.click();
+  await expect(summary).toContainText("1 of 1 arrived. Thank you!");
+});
+
 test("the gallery shows one clear state: sign in, nothing yet, then only albums and sections that have something", async ({
   page,
   harness,
+  setNow,
 }) => {
+  // After the celebration (before it, an empty gallery says when it opens:
+  // tests/browser/gallery.spec.mjs).
+  await setNow(Date.parse("2027-01-16T12:00:00-06:00"));
   const household = households.morales;
   await harness.issueInvitation(household);
   await page.goto(harness.url("/gallery/"));

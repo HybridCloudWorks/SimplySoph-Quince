@@ -215,6 +215,7 @@ export async function sendUploadBatch(
             reason: "quota",
             retryAt: entry.retryAt,
             limit: entry.limit,
+            scope: entry.scope,
             message: entry.message,
           });
     changed();
@@ -271,6 +272,11 @@ async function sendFile(entry, transport, changed, { sleep, clock, retries }) {
       entry.reason = reason;
       entry.retryAt = Number.isFinite(at) ? at : null;
       if (Number.isSafeInteger(err.details?.limit)) entry.limit = err.details.limit;
+      if (typeof err.details?.scope === "string") entry.scope = err.details.scope;
+      // The server's clock when it answered, so the page can time Try again
+      // even on a phone whose clock is off.
+      const said = Date.parse(err.details?.now);
+      if (Number.isFinite(said)) entry.serverNow = said;
       const final = { validation: "rejected", quota: "limited", rate: "waiting", auth: "blocked" }[reason];
       if (final) {
         entry.state = final;

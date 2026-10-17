@@ -308,9 +308,44 @@ const messages = {
     "Please wait before trying again.",
     "Espera antes de intentarlo de nuevo.",
   ],
+  // The upload page words limits itself, with the number and the time the
+  // API sends (site/media-upload.js); these are the plain fallbacks.
   DAILY_UPLOAD_LIMIT: [
-    "Your household has shared 20 photos and videos today, the daily limit. You can share more tomorrow.",
-    "Tu hogar ya compartió 20 fotos y videos hoy, el límite diario. Puedes compartir más mañana.",
+    "Your family has reached the limit for photos and videos for now.",
+    "Tu familia alcanzó el límite de fotos y videos por ahora.",
+  ],
+  PARTY_DEVICE_LIMIT: [
+    "This phone has shared the most photos and videos one phone can send from the table card. Thank you!",
+    "Este teléfono ya compartió el máximo de fotos y videos que se pueden enviar desde la tarjeta de la mesa. ¡Gracias!",
+  ],
+  PARTY_CARD_FULL: [
+    "The table card has received all the photos and videos it can take. Thank you!",
+    "La tarjeta de la mesa ya recibió todas las fotos y videos que puede recibir. ¡Gracias!",
+  ],
+  PARTY_CARD_INVALID: [
+    "This table card isn’t working. Ask the family for the current card.",
+    "Esta tarjeta de la mesa no funciona. Pide a la familia la tarjeta vigente.",
+  ],
+  PARTY_NOT_OPEN: [
+    "Sharing from the table card hasn’t opened yet.",
+    "Todavía no se puede compartir desde la tarjeta de la mesa.",
+  ],
+  PARTY_CLOSED: [
+    "Sharing from the table card has closed.",
+    "Ya no se puede compartir desde la tarjeta de la mesa.",
+  ],
+  // Admin only.
+  PARTY_CARD_OPEN: [
+    "The table card is already on. Use “Make a new code” to replace it.",
+    "La tarjeta de la mesa ya está activa.",
+  ],
+  PARTY_CARD_NOT_OPEN: [
+    "The table card is off. Turn it on first.",
+    "La tarjeta de la mesa está apagada.",
+  ],
+  MEDIA_BUSY: [
+    "This video is being prepared right now. Try again in a few minutes.",
+    "Este video se está preparando en este momento. Inténtalo de nuevo en unos minutos.",
   ],
   API_NOT_CONFIGURED: [
     "Online submissions are not open yet. Please contact us.",
@@ -391,7 +426,9 @@ export async function api(path, body, options = {}) {
                 "No pudimos completar la solicitud. Inténtalo de nuevo o escríbenos.",
               ),
       ),
-      { code: data?.error, status: res.status },
+      // `details`: the facts behind a refusal (a limit, how many were used,
+      // when more fit), for pages that say more than the code's sentence.
+      { code: data?.error, status: res.status, details: data },
     );
   }
   if (data.csrf) setCsrf(data.csrf);

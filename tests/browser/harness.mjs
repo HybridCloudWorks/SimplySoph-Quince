@@ -262,7 +262,8 @@ export async function startHarness({ now = BEFORE_DEADLINE } = {}) {
       actor: "owner:" + OWNER_EMAIL,
       email: OWNER_EMAIL,
       csrf: ownerCsrf,
-      expiresAt: clock + 3_600_000 * 24 * 90,
+      // Long enough for clock walks to the party (January 2027) and after.
+      expiresAt: clock + 3_600_000 * 24 * 500,
     };
   });
   return {
@@ -279,6 +280,23 @@ export async function startHarness({ now = BEFORE_DEADLINE } = {}) {
     media,
     // One run of the scheduled media job (Cloud Scheduler in production).
     processMedia: () => app.processMedia(),
+    // Any family admin request, as the owner (for example
+    // admin("party-card", { action: "create" }) for the table card).
+    async admin(p, body) {
+      return app.dispatch({
+        path: "/api/admin/" + p,
+        method: body ? "POST" : "GET",
+        headers: {
+          origin: siteOrigin,
+          cookie: "__session=" + ownerToken,
+          "x-csrf-token": ownerCsrf,
+        },
+        body: body || {},
+        ip: "harness",
+      });
+    },
+    // The owner's session as a browser cookie, for a test of the admin pages.
+    ownerCookie: () => ({ name: "__session", value: ownerToken, domain: "127.0.0.1", path: "/api" }),
     // The family's review on Admin → Photos & videos.
     async moderate(id, state) {
       return app.dispatch({
