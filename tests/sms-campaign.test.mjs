@@ -75,3 +75,17 @@ test("sample messages and description name the brand; samples carry opt-out lang
     assert.match(s, /\bSTOP\b/);
   }
 });
+
+// The composer's starting text once said "RSVP by November 15", which would go
+// stale, and the registered samples above say Oct 31 (R-156): the starting
+// text gives no date at all, and is a compliant text with the private link.
+test("the admin's starting text message has no date and is never a registered sample", async () => {
+  const { smsCompliantText } = await import("../server/sms.mjs");
+  const source = await readFile(new URL("../site/admin-sms.js", import.meta.url), "utf8");
+  const text = source.match(/const DEFAULT_TEXT =\s*"([^"]+)"/)[1];
+  assert.doesNotMatch(text, /January|February|March|April|May|June|July|August|September|October|November|December|\bOct\b|\bNov\b|\b\d{1,2}\/\d{1,2}\b/);
+  assert.ok(smsCompliantText(text), text);
+  assert.ok(text.includes("{link}"));
+  for (const label of ["Sample message #1", "Sample message #2", "Sample message #3", "Sample message #4"])
+    assert.notEqual(text, field(label));
+});

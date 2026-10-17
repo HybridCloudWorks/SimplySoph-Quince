@@ -103,3 +103,19 @@ test("pages about photos and notes say the same, date-free thing in every phase"
       assert.doesNotMatch(meta.title, /2027|2026/, `${name} ${file}`);
     }
 });
+
+// R-087: Questions' "When do I need to RSVP?" is built for the phase too, so a
+// page read without scripts after the deadline says RSVPs are closed (in the
+// browser site/guest.js swaps the two answers at the deadline).
+test("after the deadline Questions says RSVPs are closed instead of linking the RSVP", async () => {
+  const faq = (name, file) =>
+    readFile(new URL(`../.cache/builds/previews-${name}/dist/${file}`, import.meta.url), "utf8");
+  for (const file of ["faq/index.html", "es/faq/index.html"]) {
+    const before = await faq("before-deadline", file),
+      after = await faq("after-deadline", file);
+    assert.match(before, /<p data-rsvp-while="open">[^<]*<a href="(\/es)?\/rsvp\/">/, file);
+    assert.match(before, /<p data-rsvp-while="closed" hidden>/, file);
+    assert.match(after, /<p data-rsvp-while="open" hidden>/, file);
+    assert.match(after, /<p data-rsvp-while="closed">(RSVPs closed on|Las respuestas cerraron el)/, file);
+  }
+});

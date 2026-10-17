@@ -58,6 +58,45 @@ for (const lang of ["en", "es"])
     expect(found).toEqual([]);
   });
 
+// The sign-in and Contact states (round 2, wave 2): signed-out My account with
+// the code box open, "Check your email", a used link's offer of a new one,
+// and Contact signed in.
+for (const lang of ["en", "es"])
+  test(`sign-in, recovery and Contact states pass axe (${lang})`, async ({ page, harness }) => {
+    test.setTimeout(120_000);
+    const household = households.rivera;
+    await harness.issueInvitation(household);
+    const found = [];
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(harness.url(pathOf("account", lang)));
+    await drawn(page);
+    await page.locator("[data-invitation-way] summary").click();
+    await bothSchemes(page, "account, code open", found);
+    for (const route of ["rsvp", "contact"]) {
+      await page.goto(harness.url(pathOf(route, lang)));
+      await page.getByRole("textbox", { name: /^(Email|Correo electrónico)$/ }).fill("not.on.the.list@example.com");
+      await page.getByRole("button", { name: /^(Email my sign-in link|Enviar enlace de acceso)$/ }).click();
+      await expect(page.locator(".nothing-yet")).toBeVisible();
+      await bothSchemes(page, `${route}, check your email`, found);
+    }
+    // A link opened twice: the second time offers a new one.
+    await page.goto(harness.url(pathOf("account", lang)));
+    await signIn(page, harness, household.email);
+    await expect(page.locator("#family-chat form")).toBeVisible();
+    const used = harness.sent.at(-1).html.match(/href="(https:\/\/127\.0\.0\.1:\d+\/(?:es\/)?account\/#[A-Za-z0-9_-]{43})"/)[1];
+    await page.goto(harness.url(pathOf("contact", lang)));
+    await expect(page.locator("#portal .button")).toBeVisible();
+    await bothSchemes(page, "contact, signed in", found);
+    await page.goto(harness.url(pathOf("account", lang)));
+    await page.locator("#guest-logout").click();
+    await expect(page.locator("#email-login")).toBeVisible();
+    await page.goto(harness.forBrowser(used));
+    await page.getByRole("button", { name: /^(Continue|Continuar)$/ }).click();
+    await expect(page.locator("#portal [role=alert]").first()).not.toBeEmpty();
+    await bothSchemes(page, "used link", found);
+    expect(found).toEqual([]);
+  });
+
 for (const lang of ["en", "es"])
   test(`the RSVP's steps, My account, the open menu and a busy save pass axe (${lang})`, async ({ page, harness }) => {
     test.setTimeout(120_000);

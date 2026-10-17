@@ -13,7 +13,7 @@
 //                Sophia; no RSVP, countdown, past schedule or invitation art
 //   archived     the photos only
 // The newest announcement, dated, sits under the status; older ones below.
-import { watch, lifecycle, answer, serverReply } from "./now.mjs";
+import { watch, lifecycle, answer, serverReply, sessionStatus } from "./now.mjs";
 import { date, dayMonth, time, timeRange } from "./datetime.mjs";
 import { terms, say, registerFor } from "./lexicon.mjs";
 import { mapLinks, newTab, arrow, pageHref, escapeHtml as esc } from "./celebration.mjs";
@@ -172,10 +172,7 @@ export function startHome({ lang, content }) {
 
   // Signed in: the server says whether this household replied (only that; a
   // background check that does not keep the session open).
-  fetch("/api/session?poll=1", { credentials: "same-origin", cache: "no-store" })
-    .then((res) => (res.ok ? res.json() : null))
-    .then((session) => session?.kind === "guest" && serverReply(session.household))
-    .catch(() => {});
+  sessionStatus().then((session) => session?.kind === "guest" && serverReply(session.household));
   announcements(lang, tr);
 }
 

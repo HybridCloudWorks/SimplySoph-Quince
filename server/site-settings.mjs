@@ -2,6 +2,7 @@ import { celebration } from "../site/celebration.mjs";
 import { registryDefaults } from "./registry-settings.mjs";
 import { error } from "./auth.mjs";
 import { visibilityOf } from "../site/notes.mjs";
+import { places } from "../site/promises.mjs";
 // The saved settings, or the defaults until the family first saves them.
 // site.guestbook.visibility (who can read approved notes for Sophia,
 // site/notes.mjs) is kept apart in the ledger, s.guestbook, and changed only on
@@ -13,8 +14,31 @@ export const siteSettings = (state) => {
     state.site || { ...celebration, registries: registryDefaults },
   );
   site.guestbook = { visibility: visibilityOf(state) };
+  for (const kind of ["ceremony", "reception"])
+    if (site[kind]?.notes) site[kind].notes = venueFacts(site[kind].notes);
   return site;
 };
+// The venue notes once ended with a promise to post parking details. The
+// pages now say that promise from the family's content (site/promises.mjs,
+// with a date once there is one), so notes saved before still carrying it
+// lose it here rather than say it twice. Only those exact sentences go; the
+// family's next save in Admin → Website & event stores the notes without them.
+const retired = Object.fromEntries(
+  ["en", "es"].map((lang) => [lang, [places.ceremony.today[lang], places.reception.today[lang]]]),
+);
+const venueFacts = (notes) =>
+  Object.fromEntries(
+    Object.entries(notes).map(([lang, text]) => [
+      lang,
+      (retired[lang] || []).reduce(
+        (t, sentence) =>
+          typeof t === "string" && t.includes(sentence)
+            ? t.replace(sentence, "").replace(/ {2,}/g, " ").trim()
+            : t,
+        text,
+      ),
+    ]),
+  );
 export function validateSettings(input) {
   const bad = () => {
     throw error(422, "INVALID_SITE_SETTINGS");
@@ -114,6 +138,20 @@ export function validateSettings(input) {
   });
   if (new Set(next.registries.map((r) => r.id)).size !== next.registries.length)
     bad();
+  // Contact's named host (R-166): a line the family may write, in both
+  // languages, such as who reads the messages. Names live only here, in the
+  // saved settings, never in the public repository; empty (the default) leaves
+  // the Contact page exactly as built. Both languages or neither.
+  if (input.contact !== undefined) {
+    const line = (v) => {
+      if (typeof v !== "string" || v.length > 300 || /[\x00-\x1f\x7f]/.test(v)) bad();
+      return v.trim();
+    };
+    const en = line(input.contact?.host?.en ?? ""),
+      es = line(input.contact?.host?.es ?? "");
+    if (!en !== !es) bad();
+    next.contact = { host: { en, es } };
+  }
   // `guestbook` is not taken from here (see siteSettings).
   // Who may download all approved photos and videos at once (the owner's
   // choice, docs/cleanup.md). Settings saved before it existed mean "guests".

@@ -40,7 +40,7 @@ test("an English guest answers for each event from the invitation link and sees 
     "Reception & dance": [0, 0],
   });
   await page
-    .getByLabel("Dietary/accessibility needs or song request (optional)")
+    .getByLabel("Anything we should know? Allergies, accessibility needs, or a song you’d love to hear (optional)")
     .fill("One vegetarian meal, please.");
   await page.getByRole("button", { name: "Review response" }).click();
 

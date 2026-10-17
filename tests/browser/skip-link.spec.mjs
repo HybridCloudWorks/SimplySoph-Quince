@@ -33,7 +33,7 @@ test("the skip link keeps an RSVP in progress instead of reloading it", async ({
     .getByRole("group", { name: /^Ceremony · / });
   await ceremony.getByLabel("Adults / teens").selectOption("2");
   await page
-    .getByLabel("Dietary/accessibility needs or song request (optional)")
+    .getByLabel("Anything we should know? Allergies, accessibility needs, or a song you’d love to hear (optional)")
     .fill("A song for Sophia");
   await markDocument(page);
   await useSkipLink(page);
@@ -44,7 +44,7 @@ test("the skip link keeps an RSVP in progress instead of reloading it", async ({
   ).toBeVisible();
   await expect(ceremony.getByLabel("Adults / teens")).toHaveValue("2");
   await expect(
-    page.getByLabel("Dietary/accessibility needs or song request (optional)"),
+    page.getByLabel("Anything we should know? Allergies, accessibility needs, or a song you’d love to hear (optional)"),
   ).toHaveValue("A song for Sophia");
   await expect(page.getByText("This invitation link isn't working.")).toHaveCount(0);
 });
@@ -134,8 +134,9 @@ test("the Spanish skip link on /es/rsvp/ keeps the page as it is", async ({
   harness,
 }) => {
   await page.goto(harness.url("/es/rsvp/"));
+  // The RSVP speaks to the household (ustedes).
   await expect(
-    page.getByRole("heading", { name: "Abre tu invitación" }),
+    page.getByRole("heading", { name: "Abran su invitación" }),
   ).toBeVisible();
   await markDocument(page);
   await useSkipLink(page, "Ir al contenido");

@@ -51,6 +51,8 @@ export const terms = {
   // The gallery's action for saving every approved photo and video at once.
   downloadAll: { en: "Download all photos", es: "Descargar todas las fotos" },
   family: { en: "family", es: "familia" },
+  // What a saved calendar event is part of: "<this> — Religious ceremony".
+  calendarTitle: { en: "Sophia’s quinceañera", es: "XV de Sophia" },
   ceremonyLong: { en: "Religious ceremony", es: "Ceremonia religiosa" },
   ceremony: { en: "Ceremony", es: "Ceremonia" },
   dinner: { en: "Dinner", es: "Cena" },
@@ -60,6 +62,13 @@ export const terms = {
   gifts: { en: "Gifts", es: "Mesa de regalos" },
   invitationLink: { en: "invitation link", es: "enlace de invitación" },
   invitationCode: { en: "invitation code", es: "código de invitación" },
+  // The code field's hint. A code (server/auth.mjs invitationCode) is 16
+  // characters of A–Z and 2–7, shown in groups of four; the example is made
+  // up and stops after two groups, so it can never be a real code.
+  invitationCodeHint: {
+    en: "For example misxv.simplysoph.com/rsvp/#… from your invitation email or message, or a code of 16 letters and numbers, like ABCD-EFGH-…",
+    es: "Por ejemplo, misxv.simplysoph.com/rsvp/#… del correo o mensaje de invitación, o un código de 16 letras y números, como ABCD-EFGH-…",
+  },
   everyoneComing: { en: "Everyone’s coming", es: "Vamos todos" },
   cantMakeIt: { en: "We can’t make it", es: "No podremos asistir" },
   contactUs: { en: "Contact us", es: { tu: "Escríbenos", ustedes: "Escríbannos" } },

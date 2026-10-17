@@ -69,8 +69,10 @@ export function createGalleryArchive({
   // Stored objects are never replaced (written with ifGenerationMatch: 0), so
   // a size read once stays true for as long as the object exists.
   const sizes = new Map(),
-    // People with a part streaming from this instance right now.
-    streaming = new Set();
+    // People with a part streaming from this instance right now, and people
+    // whose part is being counted (just before it streams).
+    streaming = new Set(),
+    starting = new Set();
   async function sizeOf(id, kind) {
     const key = kind + ":" + id;
     if (sizes.has(key)) return sizes.get(key);
@@ -180,10 +182,14 @@ export function createGalleryArchive({
       x = p.parts[n - 1];
     if (!x) throw error(404, "NOT_FOUND");
     if (version !== undefined && version !== x.version) throw error(409, "ARCHIVE_CHANGED");
-    // One part at a time per person: taken before the ledger write, so two
-    // requests at once cannot both pass.
-    if (streaming.has(who)) throw error(429, "ARCHIVE_BUSY");
-    streaming.add(who);
+    // One part at a time per person. The slot is held until the response
+    // ends, so it is taken only after every ledger write has been saved (the
+    // session's renewal, by the caller, then this hour's count): a write that
+    // fails leaves nothing held (P5-05). While the count is being written,
+    // `starting` keeps a second request from passing too; it is given back
+    // in `finally`, whatever the write does.
+    if (streaming.has(who) || starting.has(who)) throw error(429, "ARCHIVE_BUSY");
+    starting.add(who);
     try {
       await ledger.transaction((s) => {
         const key = ledgerKey(who),
@@ -195,10 +201,14 @@ export function createGalleryArchive({
           if (!list.some((t) => t > now() - HOUR)) delete s.archiveParts[k];
         s.archiveParts[key] = [...times, now()];
       });
-    } catch (e) {
-      streaming.delete(who);
-      throw e;
+    } finally {
+      starting.delete(who);
     }
+    // Nothing that can fail runs between taking the slot and returning the
+    // stream, and the slot is given back in one place: the stream's close,
+    // which comes when the response finishes, fails or is cut off (the HTTP
+    // layer destroys the stream when the response closes).
+    streaming.add(who);
     const stream = zipStream(
       x.items.map((item) => ({
         ...item,

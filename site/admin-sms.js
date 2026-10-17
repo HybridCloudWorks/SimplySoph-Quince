@@ -11,8 +11,20 @@ const statusWords = {
   "not-us-ca": "Not a US/Canada number",
   "no-phone": "No phone in Notion",
 };
+// No date in the starting text: a deadline typed here would go stale, and a
+// text with {link} can't be drafted after the RSVP deadline anyway (the server
+// refuses it). Never reuse the registered sample texts, which give an old
+// deadline (docs/sms-campaign-registration.md).
 const DEFAULT_TEXT =
-  "Simply Soph Media: Hello from Sophia's quinceañera! RSVP by November 15: {link} Reply STOP to opt out.";
+  "Simply Soph Media: Hello from Sophia's quinceañera! Your family's private RSVP link: {link} Reply STOP to opt out.";
+// From the RSVP deadline the server refuses texts with {link} (they ask for
+// an RSVP) with INVITATIONS_CLOSED; said here in this page's terms.
+function lateLink(e) {
+  if (e.code === "INVITATIONS_CLOSED")
+    e.message =
+      "The RSVP deadline has passed, so texts with a private RSVP link ({link}) can no longer be drafted or sent. Nothing was sent. Take {link} out to send an update instead, or cancel this batch.";
+  throw e;
+}
 const TEST_TEXT =
   "Simply Soph Media: Test from the Mis XV website. Reply STOP to opt out.";
 const when = (ms) => (ms ? new Date(ms).toLocaleString() : "—");
@@ -119,7 +131,7 @@ export async function smsComposer(root) {
       subject: "Text · " + new Date().toLocaleDateString(),
       text: f.get("text"),
       channel: "sms",
-    });
+    }).catch(lateLink);
     requestId = crypto.randomUUID();
     const skipped = r.skipped?.length
       ? ` ${r.skipped.length} skipped without an active private link: ${r.skipped.join("; ")}.`
@@ -144,7 +156,7 @@ export async function smsComposer(root) {
         }`;
         if (preview.sendingEnabled)
           submit(pane.querySelector("form"), async () => {
-            await api("admin/sms/send", { id: preview.id, reviewToken: preview.reviewToken, confirm: true });
+            await api("admin/sms/send", { id: preview.id, reviewToken: preview.reviewToken, confirm: true }).catch(lateLink);
             notify("Text accepted by Twilio. Delivery confirmation is pending.");
             await reload();
           });
@@ -180,7 +192,7 @@ async function openBatch(panel, id, reload) {
   const form = panel.querySelector("#sms-batch-confirm");
   if (form)
     submit(form, async (f) => {
-      await api("admin/sms/batch/confirm", { id, count: Number(f.get("count")) });
+      await api("admin/sms/batch/confirm", { id, count: Number(f.get("count")) }).catch(lateLink);
       await sendLoop(panel, id, reload);
     });
   const cont = panel.querySelector("[data-batch-send]");
@@ -218,7 +230,7 @@ async function sendLoop(panel, id, reload) {
   try {
     for (;;) {
       progress.textContent = `Sending… ${totals.accepted} accepted so far. Keep this tab open.`;
-      const r = await api("admin/sms/batch/send", { id });
+      const r = await api("admin/sms/batch/send", { id }).catch(lateLink);
       for (const k of Object.keys(totals)) totals[k] += r[k];
       if (r.done || stopped) break;
     }

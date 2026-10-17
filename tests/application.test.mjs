@@ -796,7 +796,9 @@ test("site settings require admin, prevent stale saves, and publish registry edi
   assert.match(ics.binary.toString(), /DTEND:20270115T230000Z/);
   // The Spanish pages' calendar: Spanish words, the same event and version.
   const es = (await f.app.dispatch({ path: "/api/calendar/es/ceremony.ics" })).binary.toString();
-  assert.match(es, /SUMMARY:Sophia Isabel — Ceremonia religiosa/);
+  // R-091: the title says what the event is part of, in the page's language.
+  assert.match(es, /SUMMARY:XV de Sophia — Ceremonia religiosa\r\n/);
+  assert.match(ics.binary.toString(), /SUMMARY:Sophia’s quinceañera — Religious ceremony\r\n/);
   assert.match(es, /UID:misxv-ceremony@simplysoph.com/);
   assert.match(es, new RegExp(`SEQUENCE:${site.version + 1}`));
   assert.match(es, /DTEND:20270115T230000Z/);
@@ -2705,15 +2707,26 @@ test("only email sign-ins and admins may start an upload; RSVP-only link session
     body: { token: f.guestToken },
     headers: { origin },
   })).setCookie.split(";")[0];
-  assert.equal(await f.app.canUpload(linkCookie), null);
-  assert.equal(await f.app.canUpload("__session=" + token()), null);
   await f.publicPost("auth/email/request", { email: "test@example.com" });
   const s = await f.publicPost("auth/email/verify", { token: linkOf(f.sent.at(-1)) });
   const cookie = s.setCookie.split(";")[0];
-  const key = await f.app.canUpload(cookie);
+  // A slot is for a piece of the session's own upload (P5-02).
+  const { id } = await f.app.dispatch({
+    path: "/api/uploads",
+    method: "POST",
+    body: { kind: "photo", type: "image/jpeg", size: 1000, album: "event", caption: "", consent: true },
+    headers: { origin, cookie, "x-csrf-token": s.csrf },
+  });
+  const piece = "/api/uploads/" + id;
+  assert.equal(await f.app.canUpload(linkCookie, piece), null);
+  assert.equal(await f.app.canUpload("__session=" + token(), piece), null);
+  const key = (await f.app.canUpload(cookie, piece)).key;
   assert.ok(key);
   // One session, one key, however the cookie header is spelled.
-  assert.equal(await f.app.canUpload(cookie + "  ;a=1"), key);
+  assert.equal((await f.app.canUpload(cookie + "  ;a=1", piece)).key, key);
+  // Not for a made-up upload, nor for anything but an upload piece.
+  await assert.rejects(f.app.canUpload(cookie, "/api/uploads/12345678-1234-4234-8234-000000000000"), (e) => e.status === 404);
+  assert.equal(await f.app.canUpload(cookie, "/api/admin/documents/upload"), null);
 });
 
 test("a guest's sign out everywhere ends guest sign-ins only, never that person's admin session (re-audit)", async () => {
@@ -3214,7 +3227,16 @@ test("one person signed in on two devices uploads one file at a time; the daily 
   const phone = await signIn(),
     laptop = await signIn();
   assert.ok(phone !== laptop);
-  assert.equal(await f.app.canUpload(phone), await f.app.canUpload(laptop));
+  const csrfOf = async (cookie) =>
+    (await f.app.dispatch({ path: "/api/session", method: "GET", headers: { origin, cookie } })).csrf;
+  const { id } = await f.app.dispatch({
+    path: "/api/uploads",
+    method: "POST",
+    body: { kind: "photo", type: "image/jpeg", size: 1000, album: "event", caption: "", consent: true },
+    headers: { origin, cookie: phone, "x-csrf-token": await csrfOf(phone) },
+  });
+  // The upload is the person's, so either device's piece takes the same one slot.
+  assert.equal((await f.app.canUpload(phone, "/api/uploads/" + id)).key, (await f.app.canUpload(laptop, "/api/uploads/" + id)).key);
   // The family's limit (server/upload-quota.mjs), then a plain refusal.
   await f.ledger.transaction((st) => {
     for (const v of Object.values(st.sessions)) if (v.accountId) v.expiresAt = at + 86400000;
@@ -3298,6 +3320,58 @@ test("texts to guests: draft, type the count, send in one confirmed batch from t
   assert.equal(sent.length, 1);
   assert.ok(!sent[0].text.includes("{link}"));
   assert.equal((await f.admin("sms/drafts")).batches[0].state, "done");
+});
+
+// A typed text (or email) with {link} carries the household's private RSVP
+// link: it asks for an RSVP as an invitation does, so after the deadline it is
+// refused the same way (INVITATIONS_CLOSED). Before: drafted and sent freely.
+test("after the RSVP deadline no text or typed email with a private RSVP link is drafted, confirmed or sent", async () => {
+  const sent = [];
+  const f = await fixture({
+    smsTransport: {
+      enabled: true,
+      async send(m) {
+        sent.push(m);
+        return { state: "accepted", provider: "twilio", providerId: "SM" + String(sent.length).repeat(32) };
+      },
+    },
+  });
+  f.row.phone = "+18175550100";
+  await keywordOptIn(f, f.row.phone);
+  const deadline = Date.parse("2026-11-15T23:59:00-06:00");
+  const linkText = "Simply Soph Media: Your family's private RSVP link: {link} Reply STOP to opt out.";
+  const draft = (requestId, text, channel = "sms") =>
+    f.admin("mail/batch-draft", { requestId, groups: [], ids: [household], subject: "RSVP", text, channel });
+  const id = (n) => `aaaaaaaa-aaaa-4aaa-8aaa-${String(n).padStart(12, "0")}`;
+  // Drafted before the deadline: one batch confirmed, one not, a single text, an email.
+  await draft(id(1), linkText);
+  await draft(id(2), linkText);
+  await f.admin("sms/batch/confirm", { id: id(2), count: 1 });
+  const single = await draft(id(3), linkText);
+  const email = await draft(id(4), "Your RSVP link: {link}", "email");
+  // One millisecond before the deadline a link may still be drafted...
+  f.advance(deadline - 1 - at);
+  await f.ledger.transaction((s) => {
+    for (const v of Object.values(s.sessions)) if (v.kind === "admin") v.expiresAt = deadline + 86400000;
+  });
+  assert.equal((await draft(id(5), linkText)).count, 1);
+  // ...and from the deadline itself nothing with a link is drafted or sent.
+  f.advance(1);
+  const closed = (e) => e.code === "INVITATIONS_CLOSED" && e.status === 409;
+  await assert.rejects(() => draft(id(6), linkText), closed);
+  await assert.rejects(() => draft(id(7), "Your RSVP link: {link}", "email"), closed);
+  await assert.rejects(() => f.admin("sms/batch/confirm", { id: id(1), count: 1 }), closed);
+  await assert.rejects(() => f.admin("sms/batch/send", { id: id(2) }), closed);
+  await assert.rejects(() => f.admin("sms/send", { id: single.ids[0], reviewToken: "any", confirm: true }), closed);
+  await assert.rejects(() => f.admin("mail/send", { id: email.ids[0], confirm: true }), closed);
+  assert.deepEqual(sent, []);
+  // Kept for cancelling, not set aside behind the family's back.
+  assert.ok(Object.values((await f.ledger.read()).smsDrafts).every((d) => d.state === "draft" && !d.archived));
+  // A text without a link (an update) is not about replying, and still goes.
+  const update = await draft(id(8), "Simply Soph Media: Parking details are on the website. Reply STOP to opt out.");
+  const preview = await f.admin("sms/preview", undefined, { id: update.ids[0] });
+  await f.admin("sms/send", { id: update.ids[0], reviewToken: preview.reviewToken, confirm: true });
+  assert.equal(sent.length, 1);
 });
 
 test("every email built with a text version hands it to the mailer next to the HTML (R-122)", async () => {

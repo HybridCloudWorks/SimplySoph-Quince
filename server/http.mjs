@@ -63,19 +63,32 @@ export const permissionsPolicy =
   "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=(), browsing-topics=()";
 // One piece of a guest's photo or video upload: raw bytes, not JSON.
 const uploadPiece = /^\/api\/uploads\/[a-f0-9-]{36}$/;
-export function createHttpServer({ app = null, root, origin, log = null }) {
+export function createHttpServer({
+  app = null,
+  root,
+  origin,
+  log = null,
+  // How long an upload body may stop arriving, and when the average-speed
+  // check starts (below); tests pass shorter times.
+  idleMs = 30000,
+  slowAfterMs = 15000,
+}) {
   // Upload bodies being handled at once on this instance: pieces of a guest's
   // file (up to 8 MiB, held about twice while read) and admin documents (up
   // to 12 MB of JSON). More get a retryable UPLOAD_BUSY, so parallel uploads
-  // cannot exhaust memory (re-audit); the page tries the piece again.
-  let uploads = 0;
+  // cannot exhaust memory (re-audit); the page tries the piece again. Table
+  // card phones are free to make, so together they may hold at most 4 of the
+  // 8 and the families always have the rest (P5-02). Per instance, in memory.
+  let uploads = 0,
+    partyUploads = 0;
   const maxUploads = 8,
+    maxPartyUploads = 4,
     uploading = new Set();
   return http.createServer(async (req, res) => {
     const started = performance.now();
     let failure,
-      holdsUpload = false,
-      sessionId = null;
+      // The slot this request holds ({ key, party }), released once below.
+      held = null;
     if (log)
       res.on("finish", () => {
         if (req.logPath) apiLog(log, req, res, started, failure);
@@ -140,25 +153,41 @@ export function createHttpServer({ app = null, root, origin, log = null }) {
               code: "JSON_REQUIRED",
             });
           const upload = piece || url.pathname === "/api/admin/documents/upload";
-          // Uploads are only for signed-in visitors: without a current session
-          // the body is refused before it is read, so strangers cannot hold
-          // request slots or memory with large or slow uploads (re-audit).
+          // Uploads are only for signed-in visitors, and a piece only for the
+          // session's own open upload: anything else is refused before the
+          // body is read and before a slot is taken, so strangers and
+          // sessions sending to made-up ids cannot hold request slots or
+          // memory with large or slow uploads (re-audit, P5-02).
+          let settled = false;
           if (upload) {
-            sessionId = /(?:^|;\s*)__session=/.test(req.headers.cookie || "")
-              ? await app.canUpload(req.headers.cookie)
+            const found = /(?:^|;\s*)__session=/.test(req.headers.cookie || "")
+              ? await app.canUpload(req.headers.cookie, url.pathname)
               : null;
-            if (!sessionId)
+            const grant = typeof found === "string" ? { key: found } : found;
+            if (!grant?.key)
               throw Object.assign(new Error(), {
                 status: 401,
                 code: "SIGN_IN_REQUIRED",
               });
-            // One upload at a time per session (the page sends files one by
+            // A last piece sent again for a finished upload: answered from
+            // what is saved, without its body and without a slot.
+            settled = !!grant.settled;
+            const party = grant.party ?? grant.key.startsWith("party:");
+            // One upload at a time per person (the page sends files one by
             // one), so a single sign-in cannot hold every slot (re-audit).
-            if (uploads >= maxUploads || uploading.has(sessionId))
+            if (
+              !settled &&
+              (uploads >= maxUploads ||
+                uploading.has(grant.key) ||
+                (party && partyUploads >= maxPartyUploads))
+            )
               throw Object.assign(new Error(), { status: 503, code: "UPLOAD_BUSY" });
-            uploads++;
-            uploading.add(sessionId);
-            holdsUpload = true;
+            if (!settled) {
+              uploads++;
+              if (party) partyUploads++;
+              uploading.add(grant.key);
+              held = { key: grant.key, party };
+            }
           }
           const chunks = [];
           let size = 0;
@@ -168,14 +197,14 @@ export function createHttpServer({ app = null, root, origin, log = null }) {
           // a trickle cannot hold a slot for the full request timeout.
           const idle = Object.assign(new Error(), { status: 408, code: "REQUEST_TIMEOUT" });
           const begun = Date.now();
-          let timer = setTimeout(() => req.destroy(idle), 30000);
+          let timer = settled ? null : setTimeout(() => req.destroy(idle), idleMs);
           try {
-            for await (const chunk of req) {
+            for await (const chunk of settled ? [] : req) {
               clearTimeout(timer);
-              timer = setTimeout(() => req.destroy(idle), 30000);
+              timer = setTimeout(() => req.destroy(idle), idleMs);
               size += chunk.length;
               const elapsed = Date.now() - begun;
-              if (upload && elapsed > 15000 && size / elapsed < 16)
+              if (upload && elapsed > slowAfterMs && size / elapsed < 16)
                 throw Object.assign(new Error(), { status: 408, code: "UPLOAD_TOO_SLOW" });
               if (size > (piece ? uploadLimits.maxPiece : upload ? 12_000_000 : 120_000))
                 throw Object.assign(new Error(), {
@@ -219,6 +248,11 @@ export function createHttpServer({ app = null, root, origin, log = null }) {
           headers: req.headers,
           ip: req.socket.remoteAddress || "unknown",
         });
+        // A streamed answer (a "Download all" part) holds things until it
+        // ends: whatever happens from here (an error before it starts, the
+        // client gone, the end), the response's close destroys the stream,
+        // and the stream's close gives them back (server/gallery.mjs).
+        if (result?.stream) res.once("close", () => result.stream.destroy());
         if (result.setCookie) {
           res.setHeader("Set-Cookie", result.setCookie);
           delete result.setCookie;
@@ -315,10 +349,13 @@ export function createHttpServer({ app = null, root, origin, log = null }) {
         }),
       );
     } finally {
-      // Held until the upload has been handled, not only read.
-      if (holdsUpload) {
+      // Held until the upload has been handled, not only read, and given
+      // back here on every path: answered, refused, failed, the client gone
+      // (the body's read throws) or timed out (the request is destroyed).
+      if (held) {
         uploads--;
-        uploading.delete(sessionId);
+        if (held.party) partyUploads--;
+        uploading.delete(held.key);
       }
     }
   });

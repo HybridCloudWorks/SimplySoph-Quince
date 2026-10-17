@@ -168,6 +168,14 @@ export function forgetReply() {
   reply = null;
   run();
 }
+// GET /api/session?poll=1, once per page: who is signed in, asked without
+// keeping the session open (the home page's "You replied ✓" and the header's
+// sign-in item). Null when it can't be told.
+let sessionOnce = null;
+export const sessionStatus = () =>
+  (sessionOnce ??= fetch("/api/session?poll=1", { credentials: "same-origin", cache: "no-store" })
+    .then((res) => (res.ok ? res.json() : null))
+    .catch(() => null));
 // What GET /api/session says about the signed-in household: it overrides the
 // device. A note that disagrees is rewritten or deleted; no note is created
 // here (only a save does that).

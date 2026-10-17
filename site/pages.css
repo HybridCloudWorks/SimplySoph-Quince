@@ -213,6 +213,22 @@ body > main {
   border: 1px solid var(--line);
   margin: 24px 0;
 }
+/* Contact leads with its address; sending a message on the site is a second
+   choice under it, so it draws no panel and its heading is a step smaller
+   (R-084). */
+.portal-quiet {
+  padding: 24px 0 0;
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+.portal-quiet h2 {
+  font-size: var(--step-h3);
+}
+/* Signed out, My account's way in for an invitation link or code (R-041). */
+.invitation-way details {
+  margin-top: 8px;
+}
 /* Keep the sharing form, results and reminder to a compact column on the
    page's left edge. */
 body[data-route="share"] .page > :not(.page-heading) {
@@ -957,6 +973,18 @@ blockquote {
   gap: 8px;
   min-height: 44px;
   font-weight: 600;
+}
+/* The calendar file and Google Calendar, side by side when they fit. */
+.calendar-choices {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0 24px;
+}
+.calendar-choices > a {
+  font-weight: 600;
+}
+.whats-next {
+  margin: 24px 0;
 }
 .calendar-actions .hint {
   font-size: 0.8rem;

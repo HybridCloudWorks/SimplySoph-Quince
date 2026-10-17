@@ -58,6 +58,32 @@ The build makes every published image from the originals in `site/assets/` (`scr
 
 To replace a picture, change the file in `site/assets/` and publish; the pages pick up the new names. WhatsApp and other apps cache a link's preview, so a link shared earlier may show the old card for a while.
 
+**Spanish invitation art.** The Spanish pages use `site/assets/invitation-es.png` (the same size and shape as `invitation.png`, about 1024 px wide) for the home page's invitation, its "Open the full invitation" link and the Spanish link preview. Until that file exists they use the English `invitation.png`. A corrected English version simply replaces `invitation.png`. No artwork is made here: both files come from the family.
+
+## Family content that is on its way
+
+Several pages promise something the family has not supplied yet: the dress code (Schedule and Questions), hotel and airport suggestions (Travel) and parking (each venue page). Each promise is written once, in `site/promises.mjs`, and every page that makes it (and the "What's next" lines on the RSVP confirmation and My account) reads the family's data in `family` in `site/content.mjs`. Nothing is invented while a value is empty; each slot below shows nothing, or today's wording, until the family decides.
+
+| Family decision | Where it goes (`site/content.mjs` `family`) | What changes on the next publish |
+|---|---|---|
+| The day each promised item will be posted | `promises.dressCode.by`, `promises.hotels.by`, `promises.parking.by` as `"YYYY-MM-DD"` | Every place says "We'll post … here by Tuesday, December 1, 2026" / "Publicaremos aquí … a más tardar el martes 1 de diciembre de 2026"; the confirmation and My account say the same. A date that has passed goes back to the undated wording. |
+| The dress code, parking, hotels or the airport note | `dressCode`, `parking` (one text for both venues), `hotels`, `airport` | The content replaces the promise. Parking also makes the confirmation say "Ceremony location & parking". Hotels or the airport note add Travel back to the header (in its old place) and a link to it from the Schedule. |
+| The drive time between the church and the reception | `driveMinutes` (a whole number) | The Schedule's "Good to know" line and Travel's route strip state it; until then they say only that the two places are a drive apart. |
+| The children's age cut-off | `childAgeCutoff` (children are younger than this) | The RSVP labels read "Children (under 12)" / "Adults / teens (12 and older)" and Questions answers "Who counts as a child?". |
+| Which traditions are part of Sophia's day | `traditions`, keys of `padrinoTraditions` (for example `["corona", "zapatos"]`) | The Schedule gains "What to expect" with those traditions' approved meanings. Its title names no service; whether the service is a Mass is a separate decision. |
+| Spanish invitation art | `site/assets/invitation-es.png` | See above. |
+
+`npm run check` stops the build if one of these values is malformed (a date not written `YYYY-MM-DD`, a number that isn't a whole number in range, a tradition that isn't in `padrinoTraditions`).
+
+### Owner action: event settings text on the live server
+
+Some guest-facing words live in the event settings on the server, not in this repository, so publishing the site does not change them. The repository's defaults were changed; the live values need the owner, in **Admin → Website & event**:
+
+1. **Venue notes.** The guest notes of the ceremony and of the dinner & reception venue each ended with a promise to share parking details ("Parking and arrival details will be shared here." / "Compartiremos aquí los detalles de llegada y estacionamiento." and "Entrance, parking and accessibility details will be shared here." / "Compartiremos los detalles de entrada, estacionamiento y accesibilidad."). The pages now say that promise themselves, on its own line, from the family's content (with a date once one is set). The API already leaves those exact sentences out of what it serves, so the pages do not say them twice; open the page, check that both **Guest notes** fields (English and Spanish) hold only venue facts ("Please silence your phone…", "Dinner and the reception take place at the same venue."), and select **Save website & calendars** so the stored notes match. If the notes were edited and the promise was reworded, delete that sentence by hand.
+2. **Gifts.** Under **Registries**, in the Target **Description**, add the sentence about the list's name: English "On Target’s site the list is called “Sophia’s Birthday Wish List.”", Spanish "En Target, la lista aparece como “Sophia’s Birthday Wish List” (página en inglés)." (the repository's default now reads "A few wishes for Sophia’s next chapter." followed by that sentence). Leave the **Registry HTTPS URL** as it is: the live link is the right one.
+
+Check afterwards on `/ceremony/`, `/reception/` and `/registry/` (and their `/es/` pages) that each says the parking promise once and that Gifts names the list.
+
 ## Exact hosting target
 
 - Google account: the project owner's Google account (shown as `<project-owner-account>` below); the HybridCloudWorks account does not have access

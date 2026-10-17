@@ -81,8 +81,16 @@ export function createSms({
   // stored drafts and admin listings keep the placeholder.
   render = (draft) => draft.text,
   sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
+  // False once the RSVP deadline has passed (server/application.mjs). A text
+  // with a private RSVP link asks for an RSVP, so it no longer goes out: a
+  // batch holding one is refused before anything is sent, and kept for
+  // cancelling, as invitation emails are.
+  invitationsOpen = () => true,
 }) {
   const enabled = transport?.enabled === true;
+  const refuseLateLinks = (drafts) => {
+    if (drafts.some((d) => d.link) && !invitationsOpen()) throw error(409, "INVITATIONS_CLOSED");
+  };
   const destination = (row) =>
     smsDestination(row.phone?.replace(/[ ()-]/g, ""));
   const preview = (draft, token) => ({
@@ -130,6 +138,8 @@ export function createSms({
   }
   async function send(id, reviewToken, actor) {
     if (!enabled) throw error(503, "SMS_NOT_ENABLED");
+    const draft = (await ledger.read()).smsDrafts?.[id];
+    if (draft) refuseLateLinks([draft]);
     const p = await review(id);
     if (reviewToken !== p.reviewToken) throw error(409, "SMS_REVIEW_REQUIRED");
     const job = await ledger.transaction((s) => {
@@ -264,6 +274,7 @@ export function createSms({
     return ledger.transaction((s) => {
       const b = batchSummary(s, campaignId);
       if (b.state !== "draft") throw error(409, "BATCH_NOT_DRAFT");
+      refuseLateLinks(pending(s, campaignId));
       // The organizer types the number of texts; it must match what will send.
       if (!b.remaining || count !== b.remaining) throw error(422, "CONFIRM_COUNT_MISMATCH");
       s.smsBatches ??= {};
@@ -287,6 +298,7 @@ export function createSms({
     const work = await ledger.transaction((s) => {
       const b = s.smsBatches?.[campaignId];
       if (!["confirmed", "sending"].includes(b?.state)) throw error(409, "BATCH_NOT_CONFIRMED");
+      refuseLateLinks(pending(s, campaignId));
       if (b.lease?.until > now()) throw error(409, "BATCH_ALREADY_SENDING");
       const next = pending(s, campaignId).slice(0, SMS_BATCH_CHUNK).map((d) => d.id);
       b.state = "sending";

@@ -145,7 +145,7 @@ const messages = {
   ],
   SIGN_IN_BUSY: [
     "Several people are signing in right now. Please try again in a few seconds, or use Sign in with Microsoft or Google.",
-    "Varias personas están iniciando sesión. Inténtalo de nuevo en unos segundos, o entra con Microsoft o Google.",
+    "Varias personas están entrando al sitio en este momento. Inténtalo de nuevo en unos segundos, o entra con Microsoft o Google.",
   ],
   UPLOAD_BUSY: [
     "Several files are arriving right now. Please try again in a minute.",
@@ -198,7 +198,7 @@ const messages = {
   ],
   MFA_SETUP_NOT_ALLOWED: [
     "Your administrator access hasn't been switched on yet. Please ask Saul or Diana to turn it on, then sign in again.",
-    "Tu acceso de administrador aún no está activado. Pide a Saul o a Diana que lo activen y vuelve a iniciar sesión.",
+    "Tu acceso de administrador aún no está activado. Pide a Saul o a Diana que lo activen y vuelve a entrar.",
   ],
   ADMIN_NOT_ALLOWED: [
     "This account isn't an administrator. If you're expecting access, please contact Saul or Diana.",
@@ -242,7 +242,7 @@ const messages = {
   ],
   MFA_REQUIRED: [
     "Set up your own authenticator first by signing out and signing in again.",
-    "Primero configura tu autenticador cerrando sesión e iniciando sesión de nuevo.",
+    "Primero configura tu autenticador: cierra sesión y vuelve a entrar.",
   ],
   NOT_AN_ADMINISTRATOR: [
     "That email is not a family administrator. Grant administration first, or check the email.",
@@ -294,7 +294,7 @@ const messages = {
   ],
   SIGN_IN_REQUIRED: [
     "Please sign in again: open your invitation link to RSVP, or sign in with your email on My account.",
-    "Inicia sesión de nuevo: abre tu enlace de invitación para confirmar, o inicia sesión con tu correo en Mi cuenta.",
+    "Vuelve a entrar: abre tu enlace de invitación para confirmar, o entra con tu correo en Mi cuenta.",
   ],
   INVALID_INVITATION: [
     "That invitation could not be opened. Check the link or contact us.",
@@ -398,6 +398,27 @@ const adminMessages = {
     "This school or work Microsoft account can’t sign in here. Use your simplysoph.com Microsoft 365 account, a personal Microsoft account (Outlook, Hotmail, Live), or the emailed sign-in link.",
 };
 const onAdminPage = () => /^admin(\/|$)/.test(document.body?.dataset.route || "");
+// An error written into a guest's alert. Its words that point to us become
+// links, built as DOM so no message is ever read as HTML: "contact us",
+// "escríbenos" and "escríbannos" open Contact, and our address opens an email.
+// Admin pages keep plain text. Returns whether a link was made.
+const toUs = "contact us|escr[ií]benos|escr[ií]bannos|misxv@simplysoph\\.com";
+export const mentionsUs = (text) => new RegExp(toUs, "i").test(text);
+export function sayError(box, message) {
+  const text = String(message ?? ""),
+    parts = [];
+  let last = 0;
+  if (!onAdminPage())
+    for (const m of text.matchAll(new RegExp(toUs, "gi"))) {
+      const a = document.createElement("a");
+      a.href = m[0].includes("@") ? "mailto:" + m[0] : route("contact");
+      a.textContent = m[0];
+      parts.push(text.slice(last, m.index), a);
+      last = m.index + m[0].length;
+    }
+  box.replaceChildren(...parts, text.slice(last));
+  return parts.length > 0;
+}
 // Trouble reaching the API (an outage, a proxy's HTML error page, a dropped
 // connection) is not an answer from it: guests must never read it as
 // "submissions are closed". A form being sent keeps what was typed.
@@ -773,7 +794,7 @@ export async function submit(form, fn) {
       done();
     } catch (err) {
       done();
-      if (target?.isConnected) target.textContent = err.message;
+      if (target?.isConnected) sayError(target, err.message);
       else notify(err.message);
     } finally {
       busy = false;

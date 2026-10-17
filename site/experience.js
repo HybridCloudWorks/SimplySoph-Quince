@@ -8,6 +8,7 @@ import {
   escapeHtml as esc,
 } from "./celebration.mjs";
 import { sample, setSite, siteSettled } from "./now.mjs";
+import { announce } from "./client.js";
 // For site/guest.js (one import, one round trip fewer on every page).
 export {
   ready as clockReady,
@@ -19,6 +20,7 @@ export {
   watch,
   state as lifecycleState,
   siteClock,
+  sessionStatus,
 } from "./now.mjs";
 export { terms, say, registerFor } from "./lexicon.mjs";
 const lang = document.documentElement.lang === "es" ? "es" : "en";
@@ -34,18 +36,29 @@ if (document.querySelector("[data-home]"))
     .catch(() => {
       /* The built RSVP-open home page stays. */
     });
+// "Copy address" says what happened through the page's polite region
+// (client.js announce) and on the button for a moment; the button's own label
+// always comes back, at no narrower a width, so nothing moves.
 document.addEventListener("click", async (e) => {
   const button = e.target.closest("[data-copy-address]");
   if (!button) return;
+  const es = lang === "es",
+    label = (button.dataset.label ??= button.textContent);
+  let said, wait;
   try {
     await navigator.clipboard.writeText(button.dataset.copyAddress);
-    button.textContent = lang === "es" ? "Dirección copiada" : "Address copied";
+    [said, wait] = [es ? "Dirección copiada" : "Address copied", 2500];
   } catch {
-    button.textContent =
-      lang === "es"
-        ? "Selecciona y copia la dirección de arriba"
-        : "Select and copy the address above";
+    [said, wait] = [es ? "Selecciona y copia la dirección de arriba" : "Select and copy the address above", 8000];
   }
+  clearTimeout(button.copied);
+  button.style.minInlineSize = button.getBoundingClientRect().width + "px";
+  button.textContent = said;
+  announce(said);
+  button.copied = setTimeout(() => {
+    button.textContent = label;
+    button.style.minInlineSize = "";
+  }, wait);
 });
 export const experienceReady = (async () => {
   try {
@@ -66,8 +79,9 @@ export const experienceReady = (async () => {
     const quote = document.querySelector("[data-home-quote]");
     if (quote)
       quote.innerHTML = `<p>“${esc(c.quote[lang])}”</p><cite>— ${esc(c.name)}</cite>`;
+    // The parking line is the family's content, built into the page.
     for (const el of document.querySelectorAll("[data-venue]"))
-      el.innerHTML = venueSection(el.dataset.venue, c, lang, true);
+      el.innerHTML = venueSection(el.dataset.venue, c, lang, true, el.dataset.parking);
     for (const el of document.querySelectorAll("[data-schedule-strip]"))
       el.innerHTML = scheduleStrip(c, lang);
     for (const el of document.querySelectorAll("[data-schedule]"))
@@ -76,6 +90,11 @@ export const experienceReady = (async () => {
     const day = localDate(c.ceremony.start, lang);
     for (const el of document.querySelectorAll("[data-event-date]"))
       el.textContent = day.charAt(0).toUpperCase() + day.slice(1);
+    // Contact's named host, from the event settings (never in this public
+    // repo): nothing until the family writes it (server/site-settings.mjs).
+    const host = document.querySelector("[data-contact-host]"),
+      line = c.contact?.host?.[lang] || "";
+    if (host) [host.textContent, host.hidden] = [line, !line];
     // The phase follows the live times (the home page redraws).
     setSite(c);
   } catch {

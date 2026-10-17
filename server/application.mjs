@@ -19,12 +19,13 @@ import { uploadLimits, classify, referenceCode } from "../site/upload-batch.mjs"
 import { milestones, inUploadWindow, rsvpOpen } from "../site/lifecycle.mjs";
 import { quotaSetting, familyLimit, recent, nextRoom, DAY } from "./upload-quota.mjs";
 import { tableCardSvg } from "./party-card.mjs";
-import { calendar, contactTopics, escapeHtml } from "../site/celebration.mjs";
+import { contactTopics, escapeHtml } from "../site/celebration.mjs";
+import { calendar } from "../site/calendar-file.mjs";
 import { siteSettings, validateSettings, galleryDownload } from "./site-settings.mjs";
 import { smsProgram } from "../site/sms-program.mjs";
 import { audienceOf, displayFor, visibilities, visibilityOf } from "../site/notes.mjs";
 import { createGalleryArchive, servable, mediaKind } from "./gallery.mjs";
-import { randomUUID, randomBytes, createHmac, timingSafeEqual } from "node:crypto";
+import { randomUUID, randomBytes, randomInt, createHmac, hkdfSync, timingSafeEqual } from "node:crypto";
 import sharp from "sharp";
 import { imageGate, createGate } from "./gate.mjs";
 import {
@@ -188,6 +189,76 @@ export function createApplication({
     s.partyCard?.state === "open" &&
     s.partyCard.version === version &&
     !!partyWindow(s)?.open;
+  // A table card session is a signed cookie, not a ledger row: trading the
+  // card's code for a session writes nothing and spends no shared budget, so
+  // a script scanning the card a thousand times neither fills the ledger's
+  // queue nor locks a single guest out (P5-03). The cookie is
+  //   "p." + base64url(JSON payload) + "." + base64url(HMAC-SHA256)
+  // with the payload { kind: "party", cardVersion, deviceId (128 random
+  // bits), issuedAt, expiresAt (never past the upload window's end) }. The
+  // MAC key is derived from the app key under its own label (HKDF), so it
+  // cannot be confused with sealing, recovery codes or email keys. The CSRF
+  // token is a second MAC, under another label, of the payload's fixed
+  // fields (not expiresAt, so a renewal keeps the token the page holds); it
+  // reveals nothing about the cookie's own MAC. Verification compares in
+  // constant time, then the card's current version and state decide
+  // (partyOpen): rotating or closing the card bumps the version, which ends
+  // every session issued before. The per-phone and per-card counts stay in
+  // the ledger, written only when a file is stored.
+  const partyKey = Buffer.from(hkdfSync("sha256", key, Buffer.alloc(0), "misxv/party-session/v1", 32));
+  const partyMac = (label, text) =>
+    createHmac("sha256", partyKey).update(label + "\n" + text).digest();
+  const partyCookie = /^p\.([A-Za-z0-9_-]{16,400})\.([A-Za-z0-9_-]{43})$/;
+  const partyCsrf = (p) =>
+    partyMac("csrf", JSON.stringify([p.kind, p.cardVersion, p.deviceId, p.issuedAt])).toString("base64url");
+  function signParty(p) {
+    const body = Buffer.from(JSON.stringify(p)).toString("base64url");
+    return "p." + body + "." + partyMac("cookie", body).toString("base64url");
+  }
+  // The payload of a genuine, unexpired table card cookie, or null. Whether
+  // its card is still the current one is sessionValid's question.
+  function readParty(raw) {
+    const m = partyCookie.exec(raw || "");
+    if (!m) return null;
+    const given = Buffer.from(m[2], "base64url");
+    if (given.length !== 32 || !timingSafeEqual(given, partyMac("cookie", m[1]))) return null;
+    let p;
+    try {
+      p = JSON.parse(Buffer.from(m[1], "base64url").toString());
+    } catch {
+      return null;
+    }
+    const t = now();
+    return p?.kind === "party" &&
+      Number.isSafeInteger(p.cardVersion) &&
+      p.cardVersion > 0 &&
+      typeof p.deviceId === "string" &&
+      /^[A-Za-z0-9_-]{22}$/.test(p.deviceId) &&
+      Number.isSafeInteger(p.issuedAt) &&
+      Number.isSafeInteger(p.expiresAt) &&
+      p.issuedAt <= t + 60000 &&
+      p.expiresAt > t &&
+      p.expiresAt <= p.issuedAt + 43200000
+      ? p
+      : null;
+  }
+  // What the routes see: the same shape as any session.
+  const partySessionOf = (p) => ({
+    kind: "party",
+    scope: "upload",
+    deviceId: p.deviceId,
+    cardVersion: p.cardVersion,
+    csrf: partyCsrf(p),
+    startedAt: p.issuedAt,
+    expiresAt: p.expiresAt,
+    payload: p,
+  });
+  const sessionCookie = (header) =>
+    (header || "")
+      .split(";")
+      .map((v) => v.trim())
+      .find((v) => v.startsWith("__session="))
+      ?.slice(10);
   // The server's clock, sent with the public settings so browsers can correct
   // a phone that runs fast or slow (site/now.mjs).
   const serverTime = () => new Date(now()).toISOString();
@@ -200,12 +271,19 @@ export function createApplication({
     if (["invitation", "reminder"].includes(type) && !invitationsOpen())
       throw error(409, "INVITATIONS_CLOSED");
   };
+  // A typed message with {link} carries the household's private RSVP link, so
+  // it asks for an RSVP just as an invitation does, by text or by email: none
+  // is drafted or sent after the deadline either (server/sms.mjs for texts).
+  const refuseLateLink = (hasLink) => {
+    if (hasLink && !invitationsOpen()) throw error(409, "INVITATIONS_CLOSED");
+  };
   const sms = createSms({
     ledger,
     notion,
     transport: smsTransport,
     webhook: smsWebhook,
     now,
+    invitationsOpen,
     render: (d) =>
       d.link ? d.text.replaceAll(LINK_PLACEHOLDER, unseal(d.link, key)) : d.text,
   });
@@ -453,17 +531,17 @@ export function createApplication({
     return { status: sent ? "sent" : "issued" };
   }
   async function context(req) {
-    const raw = (req.headers?.cookie || "")
-      .split(";")
-      .map((v) => v.trim())
-      .find((v) => v.startsWith("__session="))
-      ?.slice(10);
-    const s = await ledger.read(),
-      session = raw ? s.sessions[hash(raw)] : null;
+    const raw = sessionCookie(req.headers?.cookie);
+    // A table card session is its signed cookie; a ledger row of that kind
+    // (from before sessions were signed) no longer counts.
+    const signed = raw ? readParty(raw) : null,
+      s = await ledger.read(),
+      row = signed ? partySessionOf(signed) : raw ? s.sessions[hash(raw)] : null,
+      session = row && (signed || row.kind !== "party") && sessionValid(s, row) ? row : null;
     return {
       state: s,
-      session: sessionValid(s, session) ? session : null,
-      sessionHash: raw ? hash(raw) : null,
+      session,
+      sessionHash: raw && !signed ? hash(raw) : null,
       raw,
     };
   }
@@ -694,8 +772,10 @@ export function createApplication({
     } else if (!invite?.active || invite.generation !== j.generation)
       throw error(409, "MAIL_DRAFT_STALE");
     // Drafted before the deadline, sent after it: it would still say "by
-    // November 15", so it is set aside instead.
+    // November 15", so it is set aside instead. The same for a typed email
+    // with a private RSVP link ({link}: a custom draft with a generation).
     refuseLateInvitations(j.type);
+    refuseLateLink(j.type === "custom" && j.generation !== undefined);
     // An invitation or reminder drafted before the household answered (on the
     // website, or by phone into Notion) is set aside, not sent (re-audit L4).
     if (["invitation", "reminder"].includes(j.type) && attendanceOf(s, currentGuest))
@@ -1044,6 +1124,9 @@ export function createApplication({
       planning: () => planning.retryPending({ until }),
       drift: checkDrift,
       admins: pruneAdmins,
+      // Privacy's "a week after the celebration" (P5-04), also run by the
+      // media job: whichever scheduled job is set up keeps the promise.
+      partyPhones: forgetPartyPhonesIfDue,
     };
     const result = {};
     for (const [name, step] of Object.entries(steps)) {
@@ -1076,19 +1159,35 @@ export function createApplication({
   // sessions keep their fixed 30 minutes (the admin page polls in the
   // background, which would keep an unattended tab signed in).
   const linkSessionLimit = 7200000;
+  // Saves a pending renewal once. A route that hands back something held
+  // while the response is sent (a "Download all" part) calls this before it
+  // takes that hold, so no write can fail after it (P5-05). A table card
+  // session renews by a new signed cookie: nothing is written.
+  async function saveRenewal(refresh) {
+    const r = refresh.renew;
+    if (!r || r.saved || r.cookie) return;
+    await ledger.transaction((s) => {
+      const row = s.sessions[r.sessionHash];
+      if (row) {
+        row.startedAt ??= r.startedAt;
+        row.expiresAt = Math.max(row.expiresAt, r.until);
+      }
+    });
+    r.saved = true;
+  }
   async function dispatch(req) {
     const refresh = {};
     const result = await route(req, refresh);
     const r = refresh.renew;
     if (r && result && typeof result === "object" && !result.setCookie) {
-      await ledger.transaction((s) => {
-        const row = s.sessions[r.sessionHash];
-        if (row) {
-          row.startedAt ??= r.startedAt;
-          row.expiresAt = Math.max(row.expiresAt, r.until);
-        }
-      });
-      result.setCookie = cookie(r.raw);
+      try {
+        await saveRenewal(refresh);
+      } catch (e) {
+        // Never strand a response that holds something until it is read.
+        result.stream?.destroy?.();
+        throw e;
+      }
+      result.setCookie = cookie(r.cookie ?? r.raw);
     }
     return result;
   }
@@ -1541,14 +1640,18 @@ export function createApplication({
       return { csrf, setCookie: cookie(value) };
     }
     // The page at /share/#party=<code> trades the table card's code for an
-    // upload-only session, once. The code travels in the body (the fragment
-    // is never sent or logged); only its hash is compared.
+    // upload-only session. The code travels in the body (the fragment is
+    // never sent or logged); only its hash is compared. The session is a
+    // signed cookie (partyKey above): no ledger write, no shared budget.
     if (path === "/api/party-session" && method === "POST") {
       const given =
         typeof body.token === "string" && /^[A-Za-z0-9_-]{43}$/.test(body.token) ? body.token : null;
       const s = await ledger.read(),
         card = s.partyCard;
       if (!given || !card?.tokenHash || !sameSecret(hash(given), card.tokenHash)) {
+        // Only wrong codes are counted, so junk can turn further wrong codes
+        // into 429 but can never refuse the card's real code, which never
+        // reaches this counter. Per instance, in memory (docs/deployment.md).
         await rateLimit(ledger, "party-failures", 300, 900000, now());
         throw error(401, "PARTY_CARD_INVALID");
       }
@@ -1556,27 +1659,19 @@ export function createApplication({
         times = w && { opensAt: new Date(w.opensAt).toISOString(), closesAt: new Date(w.closesAt).toISOString() };
       if (w && card.state === "open" && now() < w.opensAt) throw error(403, "PARTY_NOT_OPEN", times);
       if (!w?.open || card.state !== "open") throw error(403, "PARTY_CLOSED", times);
-      // New phones per hour on this instance; a real party is far below it.
-      await rateLimit(ledger, "party-sessions", 600, 3600000, now());
-      const value = token(),
-        csrf = token();
-      await ledger.transaction((s) => {
-        if (!s.partyCard || !sameSecret(hash(given), s.partyCard.tokenHash) || !partyOpen(s, s.partyCard.version))
-          throw error(403, "PARTY_CLOSED");
-        pruneSessions(s, now());
-        s.sessions[hash(value)] = {
-          kind: "party",
-          scope: "upload",
-          // A random name for this phone's visit, for its own counts and
-          // files; nothing about the phone or the person.
-          deviceId: randomUUID(),
-          cardVersion: s.partyCard.version,
-          csrf,
-          startedAt: now(),
-          expiresAt: Math.min(now() + 1800000, w.closesAt),
-        };
-      });
-      return { csrf, closesAt: times.closesAt, setCookie: cookie(value) };
+      // A phone that scans the card again while its session for this code
+      // is current keeps its random name, and so its own count.
+      const held = readParty(sessionCookie(headers.cookie));
+      const p = {
+        kind: "party",
+        cardVersion: card.version,
+        // A random name for this phone's visit, for its own counts and
+        // files; nothing about the phone or the person.
+        deviceId: held?.cardVersion === card.version ? held.deviceId : randomBytes(16).toString("base64url"),
+        issuedAt: now(),
+        expiresAt: Math.min(now() + 1800000, w.closesAt),
+      };
+      return { csrf: partyCsrf(p), closesAt: times.closesAt, setCookie: cookie(signParty(p)) };
     }
     const ctx = await context(req);
     // Notion decides admin access: an unticked box ends every session of that
@@ -1645,7 +1740,9 @@ export function createApplication({
           new Promise((resolve) => setTimeout(() => resolve(false), 2000).unref?.()),
         ]));
       if (renew)
-        refresh.renew = { sessionHash: ctx.sessionHash, startedAt, until, raw: ctx.raw };
+        refresh.renew = party
+          ? { cookie: signParty({ ...session.payload, expiresAt: until }) }
+          : { sessionHash: ctx.sessionHash, startedAt, until, raw: ctx.raw };
     }
     // Pieces of a photo or video upload have their own, larger budget below.
     if (session && method !== "GET" && !uploadPiece.test(path))
@@ -1733,6 +1830,10 @@ export function createApplication({
       if (path === "/api/gallery/archive") return archive.manifest(ctx.state, who);
       const n = /^\/api\/gallery\/archive\/([1-9]\d{0,4})$/.exec(path)?.[1];
       if (!n) throw error(404, "NOT_FOUND");
+      // A part holds this person's one-at-a-time slot until its response
+      // ends, so every write (this session's renewal, then the hourly count
+      // in part()) is saved before the slot is taken (P5-05).
+      await saveRenewal(refresh);
       return archive.part(ctx.state, who, Number(n), req.query?.v);
     }
     if (path === "/api/auth/email/request" && method === "POST")
@@ -1749,9 +1850,11 @@ export function createApplication({
     }
     if (path === "/api/logout" && method === "POST") {
       requireAuth();
-      await ledger.transaction((s) => {
-        delete s.sessions[ctx.sessionHash];
-      });
+      // A table card session is only its cookie: clearing it is enough.
+      if (session.kind !== "party")
+        await ledger.transaction((s) => {
+          delete s.sessions[ctx.sessionHash];
+        });
       return {
         setCookie:
           "__session=; Path=/api; Secure; HttpOnly; SameSite=Strict; Max-Age=0",
@@ -2125,6 +2228,10 @@ export function createApplication({
         );
       if (sent(await ledger.read())) throw error(409, "LINK_NOTE_ALREADY_SENT");
       await rateLimit(ledger, hash("message:" + session.householdId), 5, 3600000, now());
+      // An abuse ceiling only, in memory per instance (P5-06): it starts over
+      // on a deploy and is up to 2x with two instances, which is acceptable
+      // because no promise rests on it. The rule guests are told (one note
+      // per invitation link) is checked in the ledger above.
       await rateLimit(ledger, "link-notes", 200, 86400000, now());
       const id = randomUUID();
       await ledger.transaction((s) => {
@@ -2191,7 +2298,7 @@ export function createApplication({
     if (path === "/api/uploads/mine" && method === "GET") {
       const files = waitingIn(ctx.state, uploader()).map((r) => ({
         id: r.id,
-        ref: referenceCode(r.id),
+        ref: referenceOf(r),
         kind: r.kind || "photo",
         state: r.state === "processing" ? "processing" : "review",
       }));
@@ -2203,16 +2310,21 @@ export function createApplication({
       const who = uploader();
       const id = typeof body.id === "string" && /^[a-f0-9-]{36}$/.test(body.id) ? body.id : null;
       if (who.kind !== "party" || !id) throw error(404, "NOT_FOUND");
-      await ledger.transaction((s) => {
-        const r = s.photos[id];
-        if (!owns(who, r) || !["pending", "processing"].includes(r.state)) throw error(404, "NOT_FOUND");
-        // Being converted right now: the media job finishes first.
-        if (r.lease > now()) throw error(409, "MEDIA_BUSY");
-        delete s.photos[id];
-        delete s.notifications?.[id];
-        delete s.uploads?.[id];
-        audit(s, "table-card", "withdraw", id, now());
-      });
+      const withdrawable = (r) => owns(who, r) && ["pending", "processing"].includes(r.state);
+      // Checked on the read first, so a made-up id never queues a write.
+      if (!withdrawable(ctx.state.photos[id])) throw error(404, "NOT_FOUND");
+      await partyTurn(() =>
+        ledger.transaction((s) => {
+          const r = s.photos[id];
+          if (!withdrawable(r)) throw error(404, "NOT_FOUND");
+          // Being converted right now: the media job finishes first.
+          if (r.lease > now()) throw error(409, "MEDIA_BUSY");
+          delete s.photos[id];
+          delete s.notifications?.[id];
+          delete s.uploads?.[id];
+          audit(s, "table-card", "withdraw", id, now());
+        }),
+      );
       for (const kind of ["photo", "video", "poster", "upload"])
         await media.remove(id, kind).catch(() => {});
       return { withdrawn: true };
@@ -2239,56 +2351,77 @@ export function createApplication({
       // before storage opens a session, and again when saving.
       const room = quotaOf(ctx.state, who);
       if (room.full) throw quotaError(room);
-      const id = randomUUID(),
-        uri = await media.begin(id, type).catch(storageTrouble);
-      const dropped = await ledger.transaction((s) => {
-        s.uploads ??= {};
-        const gone = expireUploads(s);
-        const q = quotaOf(s, who);
-        if (q.full) throw quotaError(q);
-        if (who.kind === "party") {
-          if (!partyOpen(s, session.cardVersion)) throw error(403, "PARTY_CLOSED");
-          s.partyDevices ??= {};
-          s.partyDevices[who.deviceId] = [...(s.partyDevices[who.deviceId] || []), now()];
-          s.partyCard.begun = (s.partyCard.begun || 0) + 1;
-        } else {
-          s.uploadsBegun ??= {};
-          s.uploadsBegun[who.householdId] = [...recent(s.uploadsBegun[who.householdId], now()), now()];
-        }
-        // At most one batch of unfinished uploads per person or phone:
-        // opening one more gives up the oldest (its pieces then find nothing).
-        const open = Object.values(s.uploads)
-          .filter((u) => owns(who, u) && u.state === "receiving")
-          .sort((a, b) => a.createdAt - b.createdAt);
-        for (const u of open.slice(0, Math.max(0, open.length - uploadLimits.files + 1))) {
-          delete s.uploads[u.id];
-          gone.push(u);
-        }
-        s.uploads[id] = {
-          id,
-          kind,
-          type,
-          size,
-          album,
-          caption,
-          ...(who.kind === "party"
-            ? { source: "party", deviceId: who.deviceId, ...(name ? { uploaderName: name } : {}) }
-            : { householdId: who.householdId, accountId: who.accountId }),
-          // The storage session URI lets whoever holds it write this upload.
-          session: seal(uri, key),
-          state: "receiving",
-          createdAt: now(),
-          consentAt: now(),
-        };
-        return gone;
-      }).catch(async (e) => {
-        // Another upload took the last place meanwhile, or the card closed:
-        // nothing is left open in storage.
-        await media.cancel(uri).catch(() => {});
-        throw e;
-      });
-      await discardUploads(dropped);
-      return { id };
+      const open = async () => {
+        const id = randomUUID(),
+          uri = await media.begin(id, type).catch(storageTrouble);
+        const dropped = await ledger.transaction((s) => {
+          s.uploads ??= {};
+          const gone = expireUploads(s);
+          const q = quotaOf(s, who);
+          if (q.full) throw quotaError(q);
+          // A table card file counts for its phone and its card only once
+          // it is stored (finishUpload), so uploads opened and never sent
+          // cost the card nothing (P5-01).
+          if (who.kind === "party") {
+            if (!partyOpen(s, session.cardVersion)) throw error(403, "PARTY_CLOSED");
+          } else {
+            s.uploadsBegun ??= {};
+            s.uploadsBegun[who.householdId] = [...recent(s.uploadsBegun[who.householdId], now()), now()];
+          }
+          // At most one batch of unfinished uploads per person or phone:
+          // opening one more gives up the oldest (its pieces then find nothing).
+          const giveUp = (list, keep) => {
+            list.sort((a, b) => a.createdAt - b.createdAt);
+            for (const u of list.slice(0, Math.max(0, list.length - keep + 1))) {
+              delete s.uploads[u.id];
+              gone.push(u);
+            }
+          };
+          giveUp(
+            Object.values(s.uploads).filter((u) => owns(who, u) && u.state === "receiving"),
+            uploadLimits.files,
+          );
+          // And at most as many unfinished table card uploads in all as the
+          // card may bring files: phones are free to make, so this keeps the
+          // ledger bounded; a flood of them gives up the oldest unfinished
+          // ones instead of refusing anyone.
+          if (who.kind === "party")
+            giveUp(
+              Object.values(s.uploads).filter((u) => u.source === "party" && u.state === "receiving"),
+              quota.perPartyCard,
+            );
+          s.uploads[id] = {
+            id,
+            kind,
+            type,
+            size,
+            album,
+            caption,
+            ...(who.kind === "party"
+              ? {
+                  source: "party",
+                  deviceId: who.deviceId,
+                  cardVersion: session.cardVersion,
+                  ...(name ? { uploaderName: name } : {}),
+                }
+              : { householdId: who.householdId, accountId: who.accountId }),
+            // The storage session URI lets whoever holds it write this upload.
+            session: seal(uri, key),
+            state: "receiving",
+            createdAt: now(),
+            consentAt: now(),
+          };
+          return gone;
+        }).catch(async (e) => {
+          // Another upload took the last place meanwhile, or the card closed:
+          // nothing is left open in storage.
+          await media.cancel(uri).catch(() => {});
+          throw e;
+        });
+        await discardUploads(dropped);
+        return { id };
+      };
+      return who.kind === "party" ? partyTurn(open) : open();
     }
     const piece = uploadPiece.exec(path);
     if (piece && method === "POST") {
@@ -2383,6 +2516,8 @@ export function createApplication({
           // A save without the download choice (an older admin page) keeps
           // the one stored, rather than quietly widening it to guests.
           if (!site.gallery && s.site?.gallery) site.gallery = s.site.gallery;
+          // Likewise Contact's named host (R-166): only a save that sends it changes it.
+          if (!site.contact && s.site?.contact) site.contact = s.site.contact;
           site.version++;
           s.site = site;
           audit(s, session.actor, "site-settings", "event", now());
@@ -2726,7 +2861,7 @@ export function createApplication({
           // name stays on the server.
           photos: Object.values(ctx.state.photos).map(({ deviceId: _phone, ...r }) => ({
             ...r,
-            ref: referenceCode(r.id),
+            ref: referenceOf(r),
           })),
           albums: siteSettings(ctx.state).albums,
           mailConfigured: mailer.configured,
@@ -2743,6 +2878,9 @@ export function createApplication({
         const code = body.action === "close" ? null : token();
         const status = await ledger.transaction((s) => {
           const card = s.partyCard;
+          // Each code (a version of the card) counts its own files from zero
+          // (P5-01); earlier codes' files stay in the total Admin shows.
+          const earlier = (card?.receivedEarlier || 0) + (card?.received || 0);
           if (body.action === "create") {
             if (card?.state === "open") throw error(409, "PARTY_CARD_OPEN");
             s.partyCard = {
@@ -2750,14 +2888,18 @@ export function createApplication({
               tokenHash: hash(code),
               version: (card?.version || 0) + 1,
               createdAt: now(),
-              begun: 0,
+              received: 0,
+              receivedEarlier: earlier,
             };
           } else {
             if (card?.state !== "open") throw error(409, "PARTY_CARD_NOT_OPEN");
             card.version++;
+            delete card.begun;
             if (body.action === "rotate") {
               card.tokenHash = hash(code);
               card.rotatedAt = now();
+              card.receivedEarlier = earlier;
+              card.received = 0;
             } else {
               // Closed: the code is refused from now on ("closed", so a guest
               // holding the card is told so); turning the card on again makes
@@ -2766,9 +2908,11 @@ export function createApplication({
               card.closedAt = now();
             }
           }
-          // Phones on the old code or card are signed out at once.
+          // Phones on the old code or card are signed out at once: their
+          // signed cookies name the old version (partyOpen). Ledger rows from
+          // before sessions were signed are dropped.
           for (const [k, v] of Object.entries(s.sessions))
-            if (v.kind === "party" && v.cardVersion !== s.partyCard.version) delete s.sessions[k];
+            if (v.kind === "party") delete s.sessions[k];
           audit(s, session.actor, "party-card-" + body.action, "party-card", now());
           return partyCardStatus(s);
         });
@@ -3027,6 +3171,7 @@ export function createApplication({
           if (!smsCompliantText(text))
             throw error(422, "SMS_BRAND_OR_STOP_MISSING");
         }
+        refuseLateLink(text.includes(LINK_PLACEHOLDER));
         const recipients = audience(
           await notion.list(),
           body,
@@ -3292,7 +3437,8 @@ export function createApplication({
   }
   // A week after the party upload window, the table card's per-phone counts
   // and the random phone names on its files are deleted (Privacy says so);
-  // the files themselves stay, like everyone else's.
+  // the files themselves stay, like everyone else's, with their "party"
+  // label and reference.
   function forgetPartyPhones(s) {
     const w = partyWindow(s);
     if (!w || now() < w.closesAt + 7 * DAY) return;
@@ -3300,19 +3446,86 @@ export function createApplication({
     for (const r of [...Object.values(s.photos || {}), ...Object.values(s.uploads || {})])
       if (r.source === "party") delete r.deviceId;
   }
+  // Whether that week has passed and something is still left to delete.
+  function partyPhonesDue(s) {
+    const w = partyWindow(s);
+    if (!w || now() < w.closesAt + 7 * DAY) return false;
+    return (
+      !!s.partyDevices ||
+      [...Object.values(s.photos || {}), ...Object.values(s.uploads || {})].some(
+        (r) => r.source === "party" && r.deviceId,
+      )
+    );
+  }
+  // Run by both scheduled jobs (the drain every 10 minutes and the media job
+  // every 5), whatever else is waiting (P5-04): the promise must not depend
+  // on an upload record still existing. Idempotent; when nothing is due it
+  // is one ledger read and no write.
+  async function forgetPartyPhonesIfDue() {
+    if (!partyPhonesDue(await ledger.read())) return { forgotten: false };
+    const forgotten = await ledger.transaction((s) => {
+      if (!partyPhonesDue(s)) return false;
+      forgetPartyPhones(s);
+      return true;
+    });
+    return { forgotten };
+  }
+  // Writes from table card phones (opening an upload, taking a file back)
+  // take a turn: at most 4 at once on this instance. Phones are free to make,
+  // so without this a burst of them could fill the ledger's 32-place queue
+  // and a family's RSVP or sign-in would be refused BUSY (P5-03); with it,
+  // they hold at most 4 places. More at the same moment get a retryable
+  // UPLOAD_BUSY. Per instance and in memory, like the other abuse limits
+  // (docs/deployment.md).
+  let partyWrites = 0;
+  async function partyTurn(work) {
+    if (partyWrites >= 4) throw error(503, "UPLOAD_BUSY");
+    partyWrites++;
+    try {
+      return await work();
+    } finally {
+      partyWrites--;
+    }
+  }
+  // The removal reference a table card guest is shown (P5-09): random, made
+  // when the file is stored, kept on its record, and shown only to that
+  // phone and to administrators, never in the gallery. Eight characters from
+  // an alphabet without look-alikes (no 0, 1, I, L, O or U), as XXXX-XXXX.
+  // Files stored before references were random show the old one, from the id.
+  const referenceAlphabet = "23456789ABCDEFGHJKMNPQRSTVWXYZ";
+  function newReference(s) {
+    const taken = new Set(Object.values(s.photos || {}).map((r) => r.ref));
+    for (;;) {
+      let v = "";
+      for (let i = 0; i < 8; i++) v += referenceAlphabet[randomInt(referenceAlphabet.length)];
+      v = v.slice(0, 4) + "-" + v.slice(4);
+      if (!taken.has(v)) return v;
+    }
+  }
+  const referenceOf = (r) => r.ref || referenceCode(r.id);
+  // Whether a stored table card file still fits: its phone's count, and its
+  // code's (card version's) count. Null when it fits.
+  function partyFull(s, u) {
+    if (s.partyCard?.version === u.cardVersion && (s.partyCard.received || 0) >= quota.perPartyCard)
+      return "PARTY_CARD_FULL";
+    if (u.deviceId && (s.partyDevices?.[u.deviceId] || []).length >= quota.perPartyDevice)
+      return "PARTY_DEVICE_LIMIT";
+    return null;
+  }
   // The limits (server/upload-quota.mjs). For a family: when each of its
   // uploads in the last 24 hours began, kept in the ledger, so a restart,
   // scaling to zero or the second instance cannot start the count over (as
   // the in-memory counter did), and counted as each upload begins, so one
   // given up for a newer batch (its record is deleted), refused or never
   // finished still counts: each may bring up to 300 MB. For a table card
-  // phone: its own count for the window, and the card's total.
+  // phone: its own count for the window, and the total for the card's
+  // current code, both counting only files actually stored (P5-01).
   function quotaOf(s, who) {
     const t = now();
     if (who.kind === "party") {
-      const begun = s.partyCard?.begun || 0;
-      if (begun >= quota.perPartyCard)
-        return { code: "PARTY_CARD_FULL", scope: "card", limit: quota.perPartyCard, used: begun, full: true, retryAt: null };
+      const stored = s.partyCard?.received || 0;
+      if (stored >= quota.perPartyCard)
+        return { code: "PARTY_CARD_FULL", scope: "card", limit: quota.perPartyCard, used: stored, full: true, retryAt: null };
       const used = (s.partyDevices?.[who.deviceId] || []).length;
       return {
         code: "PARTY_DEVICE_LIMIT",
@@ -3367,7 +3580,10 @@ export function createApplication({
       opensAt: iso(w?.opensAt),
       closesAt: iso(w?.closesAt),
       inWindow: !!w?.open,
-      files: card?.begun || 0,
+      // Files stored from the card under every code, and under this one
+      // (which the card's total applies to).
+      files: (card?.received || 0) + (card?.receivedEarlier || 0),
+      filesThisCode: card?.received || 0,
       phones: Object.keys(s.partyDevices || {}).length,
       perPhone: quota.perPartyDevice,
       perCard: quota.perPartyCard,
@@ -3417,11 +3633,14 @@ export function createApplication({
   // Runs when the last byte is stored, and again for a repeated last piece:
   // the upload's state makes the second answer the same as the first.
   async function finishUpload(id) {
-    let upload = (await ledger.read()).uploads?.[id];
+    const before = await ledger.read();
+    let upload = before.uploads?.[id];
     if (!upload) throw error(404, "NOT_FOUND");
     if (upload.state !== "receiving") return uploadAnswer(upload);
     let problem = null;
-    if (upload.kind === "photo")
+    // A table card file past its phone's or its code's count is not
+    // converted; the transaction below decides for certain.
+    if (upload.kind === "photo" && !(upload.source === "party" && partyFull(before, upload)))
       try {
         await media
           .put(id, await convertPhoto(id), "photo")
@@ -3437,10 +3656,23 @@ export function createApplication({
     upload = await ledger.transaction((s) => {
       const u = s.uploads?.[id];
       if (!u || u.state !== "receiving") return u;
-      if (problem) {
+      // A table card file is counted now that it is stored, for its phone
+      // and for its code, and refused if either is full (P5-01): opening
+      // uploads without sending them never counts.
+      const refused = problem || (u.source === "party" ? partyFull(s, u) : null);
+      if (refused) {
         u.state = "failed";
-        u.problem = problem;
+        u.problem = refused;
         return u;
+      }
+      if (u.source === "party") {
+        if (u.deviceId) {
+          s.partyDevices ??= {};
+          s.partyDevices[u.deviceId] = [...(s.partyDevices[u.deviceId] || []), now()];
+        }
+        if (s.partyCard?.version === u.cardVersion) s.partyCard.received = (s.partyCard.received || 0) + 1;
+        else if (s.partyCard) s.partyCard.receivedEarlier = (s.partyCard.receivedEarlier || 0) + 1;
+        u.ref = newReference(s);
       }
       u.state = "received";
       const albums = siteSettings(s).albums;
@@ -3455,6 +3687,7 @@ export function createApplication({
         ...(u.source === "party"
           ? {
               source: "party",
+              ref: u.ref,
               ...(u.deviceId ? { deviceId: u.deviceId } : {}),
               ...(u.uploaderName ? { uploaderName: u.uploaderName } : {}),
             }
@@ -3474,6 +3707,9 @@ export function createApplication({
     if (!upload) throw error(404, "NOT_FOUND");
     if (upload.kind === "photo" || upload.state === "failed")
       await media.remove(id, "upload").catch(() => {});
+    // Refused for a count after the photo was converted: nothing is kept.
+    if (upload.state === "failed" && partyLimits.includes(upload.problem))
+      await media.remove(id, "photo").catch(() => {});
     // On the party night the table card could bring hundreds of photos: the
     // family sees them in Admin (the notification above) instead of one
     // email each.
@@ -3481,12 +3717,20 @@ export function createApplication({
       await sendNotification(id);
     return uploadAnswer(upload);
   }
+  const partyLimits = ["PARTY_CARD_FULL", "PARTY_DEVICE_LIMIT"];
   function uploadAnswer(upload) {
+    if (upload.state === "failed" && partyLimits.includes(upload.problem)) {
+      const card = upload.problem === "PARTY_CARD_FULL",
+        limit = card ? quota.perPartyCard : quota.perPartyDevice;
+      throw quotaError({ code: upload.problem, scope: card ? "card" : "device", limit, used: limit, retryAt: null });
+    }
     if (upload.state === "failed") throw error(422, upload.problem);
     return {
       received: upload.size,
       complete: true,
       state: upload.kind === "video" ? "processing" : "review",
+      // A table card file's removal reference, for this phone only.
+      ...(upload.ref ? { ref: upload.ref } : {}),
     };
   }
   // A photo becomes a JPEG of at most 2000 px with its rotation applied and
@@ -3547,6 +3791,9 @@ export function createApplication({
       await discardUploads(gone);
       result.abandoned = gone.length;
     }
+    // The table card's phone counts and names, a week after the window,
+    // on every run (P5-04); reported only on the run that deletes them.
+    if ((await forgetPartyPhonesIfDue()).forgotten) result.phonesForgotten = true;
     // This instance's one conversion (video.mjs), taken before anything is
     // claimed or downloaded. A run can take 8 minutes and the job fires
     // every 5, so the next run may find this one still converting: it then
@@ -3653,19 +3900,37 @@ export function createApplication({
     log({ severity: "INFO", message: "media", media: result });
     return result;
   }
-  // For the HTTP layer, before an upload body is read (http.mjs): who is
-  // uploading, if this cookie is a current email sign-in or admin session,
-  // otherwise null. Invitation-link sessions are RSVP-only and never upload,
-  // so they cannot hold upload slots (re-audit). The key is the person, not
-  // the session or the cookie's spelling, so one person signed in on several
-  // devices still uploads one file at a time. The route still checks rights.
-  // A table card session (current card, inside the window) is one phone.
-  const canUpload = async (cookieHeader) => {
-    const { session } = await context({ headers: { cookie: cookieHeader } });
+  // For the HTTP layer, before an upload body is read (http.mjs), for the
+  // path being posted to. A piece of a photo or video: only an email
+  // sign-in or a table card session (current card, inside the window) that
+  // owns that upload; a document: only an administrator. Returns null when
+  // the cookie is no such session (401), refuses an upload that does not
+  // exist or is someone else's with 404 (P5-02: a session sending to made-up
+  // ids must not hold a slot), and otherwise answers
+  //   { key, party, settled }
+  // `key` is the person (their account, or the phone), not the session or
+  // the cookie's spelling, so one person signed in on several devices still
+  // sends one piece at a time. `settled`: the upload already finished (a
+  // last piece sent again because its answer was lost), so the answer comes
+  // from what is saved, without reading the body or taking a slot.
+  // Invitation-link sessions are RSVP-only and never upload (re-audit). The
+  // route still checks everything again.
+  const canUpload = async (cookieHeader, path = "") => {
+    const { session, state } = await context({ headers: { cookie: cookieHeader } });
     if (!session) return null;
-    if (session.kind === "admin") return "admin:" + session.email;
-    if (session.kind === "party") return "party:" + session.deviceId;
-    return session.accountId ? "account:" + session.accountId : null;
+    if (path === "/api/admin/documents/upload")
+      return session.kind === "admin" ? { key: "admin:" + session.email, party: false, settled: false } : null;
+    const id = uploadPiece.exec(path)?.[1];
+    const who =
+      session.kind === "party"
+        ? { kind: "party", deviceId: session.deviceId, key: "party:" + session.deviceId }
+        : session.kind === "guest" && session.accountId
+          ? { kind: "family", accountId: session.accountId, key: "account:" + session.accountId }
+          : null;
+    if (!id || !who) return null;
+    const upload = state.uploads?.[id];
+    if (!owns(who, upload)) throw error(404, "NOT_FOUND");
+    return { key: who.key, party: who.kind === "party", settled: upload.state !== "receiving" };
   };
   return { dispatch, syncOne, canUpload, processMedia };
 }

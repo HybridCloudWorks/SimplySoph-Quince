@@ -315,6 +315,51 @@ test("one part at a time per person, and 20 parts an hour, counted in the ledger
   assert.equal(JSON.stringify(state.archiveParts).includes("@"), false);
 });
 
+// P5-05: the session's renewal used to be saved after the part had taken the
+// person's one-at-a-time slot; when that save failed, the stream was never
+// read or destroyed and the person got ARCHIVE_BUSY until a restart.
+test("if this session's renewal cannot be saved, nothing is held or counted: the next part streams", async () => {
+  const f = await fixture();
+  await f.add(1);
+  const sessionHash = hash(f.headersFor("guest").cookie.slice(10));
+  // Ten minutes left, so the next request renews the session.
+  await f.ledger.transaction((s) => {
+    s.sessions[sessionHash].expiresAt = at + 10 * 60000;
+  });
+  // Any save that renews this session fails, as when the ledger is BUSY.
+  const real = f.ledger.transaction.bind(f.ledger);
+  f.ledger.transaction = (fn) =>
+    real(async (s) => {
+      const before = s.sessions[sessionHash]?.expiresAt;
+      const out = await fn(s);
+      if (s.sessions[sessionHash]?.expiresAt !== before)
+        throw Object.assign(new Error("Please retry."), { status: 503, code: "BUSY" });
+      return out;
+    });
+  await assert.rejects(f.guest("gallery/archive/1"), { status: 503, code: "BUSY" });
+  f.ledger.transaction = real;
+  // The next request streams (it used to be ARCHIVE_BUSY until a restart).
+  const part = await f.guest("gallery/archive/1");
+  assert.ok(part.stream && part.setCookie, "streams, and renews this time");
+  await bytesOf(part);
+  await new Promise((r) => setImmediate(r));
+  assert.equal((await f.guest("gallery/archive")).limits.busy, false);
+  // Only that part is counted: the refused request charged nothing.
+  assert.equal(Object.values((await f.ledger.read()).archiveParts)[0].length, 1);
+});
+
+test("two requests for a part at the same moment: one streams, the other is ARCHIVE_BUSY and not counted", async () => {
+  const f = await fixture();
+  await f.add(1);
+  const [a, b] = await Promise.allSettled([f.guest("gallery/archive/1"), f.guest("gallery/archive/1")]);
+  const streamed = [a, b].filter((r) => r.status === "fulfilled"),
+    refused = [a, b].filter((r) => r.status === "rejected");
+  assert.equal(streamed.length, 1);
+  assert.deepEqual([refused[0].reason.status, refused[0].reason.code], [429, "ARCHIVE_BUSY"]);
+  await bytesOf(streamed[0].value);
+  assert.equal(Object.values((await f.ledger.read()).archiveParts)[0].length, 1);
+});
+
 test("the owner can keep downloading everything to administrators: guests get 403 DOWNLOAD_RESTRICTED, the gallery itself is unchanged", async () => {
   const f = await fixture();
   await f.add(1);

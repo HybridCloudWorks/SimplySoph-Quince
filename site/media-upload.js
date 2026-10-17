@@ -6,7 +6,6 @@ import {
   classify,
   progress,
   retryable,
-  referenceCode,
   uploadAccept,
   uploadLimits,
 } from "./upload-batch.mjs";
@@ -246,8 +245,8 @@ export function mediaUpload(portal, albums, { party = false } = {}) {
     shown = "",
     wake = 0;
   const arrivedNote = (e) =>
-    party && e.id
-      ? " " + tr(`Reference: ${referenceCode(e.id)}.`, `Referencia: ${referenceCode(e.id)}.`)
+    party && e.ref
+      ? " " + tr(`Reference: ${e.ref}.`, `Referencia: ${e.ref}.`)
       : "";
   const status = (e) => {
     if (e.state === "invalid" || (e.state === "queued" && e.problem))
