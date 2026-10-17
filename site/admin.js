@@ -493,7 +493,7 @@ const cardUrl = (svg) => "data:image/svg+xml;charset=utf-8," + encodeURIComponen
 async function partyCard(box) {
   const st = await api("admin/party-card");
   // Files count once they have arrived; each new code starts its own count.
-  const counts = `<p>${st.files} ${st.files === 1 ? "file" : "files"} from ${st.phones} ${st.phones === 1 ? "phone" : "phones"} so far${st.files !== st.filesThisCode ? ` (${st.filesThisCode} with the current code)` : ""}. Each phone can send up to ${st.perPhone}, and each code up to ${st.perCard} in all.</p>`;
+  const counts = `<p>${st.files} ${st.files === 1 ? "file" : "files"} from ${st.phones} ${st.phones === 1 ? "visit" : "visits"} so far${st.files !== st.filesThisCode ? ` (${st.filesThisCode} with the current code)` : ""}. Each visit can send up to ${st.perPhone}, and each code up to ${st.perCard} in all. A visit is one phone using the card: it ends 15 to 30 minutes after the phone last used it, or when sharing closes, and a scan after that starts a new one.</p>`;
   const windowLine = st.opensAt
     ? `<p>It works from ${esc(cardTime(st.opensAt))} through ${esc(date(Date.parse(st.closesAt) - 1, "en", { year: false }))} (Fort Worth time); before and after, the page offers the usual email sign-in.</p>`
     : "<p>The event times in Website settings can’t form a timeline, so the card can’t work until they are fixed.</p>";
