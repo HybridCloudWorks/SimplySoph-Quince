@@ -400,6 +400,33 @@ export function focusOn(el) {
   if (!el.matches("a[href],button,input,select,textarea,[tabindex]")) el.tabIndex = -1;
   el.focus();
 }
+// Redraws a part of the page filled in without a reload (the home page's
+// phase, the live event settings) and keeps keyboard focus (P5-A11Y-02):
+// markup that is already right is left alone; a focused link or button that
+// is redrawn is focused again (the same one, else the one in its place), and
+// when none is left, the nearest heading takes focus. Returns whether it drew.
+const parse = document.createElement("template"),
+  stops = "a[href],button,input,select,textarea,[tabindex]",
+  named = (el) => (el.getAttribute("href") || "") + "|" + el.textContent.trim();
+export function redraw(node, html) {
+  if (!node) return false;
+  parse.innerHTML = html;
+  if (parse.innerHTML === node.innerHTML) return false;
+  const active = document.activeElement,
+    inside = active !== node && node.contains(active),
+    place = inside ? [...node.querySelectorAll(stops)].indexOf(active) : -1,
+    name = inside && named(active);
+  node.innerHTML = html;
+  if (!inside) return true;
+  const now = [...node.querySelectorAll(stops)];
+  focusOn(
+    now.find((el) => named(el) === name) ||
+      now[Math.min(place, now.length - 1)] ||
+      [...(node.closest("section, article") || document).querySelectorAll("h1, h2")].find((h) => !node.contains(h)) ||
+      document.querySelector("main"),
+  );
+  return true;
+}
 let fields = 0;
 // A labelled input. `hint` adds a sentence under it: the input is named by the
 // label's own words (aria-labelledby) and described by the hint, so the hint

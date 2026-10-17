@@ -8,7 +8,7 @@ import {
 } from "./celebration.mjs";
 import { date, capitalize } from "./datetime.mjs";
 import { sample, setSite, siteSettled } from "./now.mjs";
-import { announce } from "./client.js";
+import { announce, redraw } from "./client.js";
 // For site/guest.js (one import, one round trip fewer on every page).
 export {
   ready as clockReady,
@@ -74,18 +74,15 @@ export const experienceReady = (async () => {
     liveContent = true;
     const c = eventContent;
     const registries = document.querySelector("[data-public-registries]");
-    if (registries && Array.isArray(c.registries))
-      registries.innerHTML = registryCards(c.registries, lang);
-    const quote = document.querySelector("[data-home-quote]");
-    if (quote)
-      quote.innerHTML = `<p>“${esc(c.quote[lang])}”</p><cite>— ${esc(c.name)}</cite>`;
+    // Each part is redrawn only if the live settings change it, keeping the
+    // focus of a guest who tabbed in before they arrived (client.js redraw).
+    if (registries && Array.isArray(c.registries)) redraw(registries, registryCards(c.registries, lang));
+    redraw(document.querySelector("[data-home-quote]"), `<p>“${esc(c.quote[lang])}”</p><cite>— ${esc(c.name)}</cite>`);
     // The parking line is the family's content, built into the page.
     for (const el of document.querySelectorAll("[data-venue]"))
-      el.innerHTML = venueSection(el.dataset.venue, c, lang, true, el.dataset.parking);
-    for (const el of document.querySelectorAll("[data-schedule-strip]"))
-      el.innerHTML = scheduleStrip(c, lang);
-    for (const el of document.querySelectorAll("[data-schedule]"))
-      el.innerHTML = scheduleList(c, lang, true);
+      redraw(el, venueSection(el.dataset.venue, c, lang, true, el.dataset.parking));
+    for (const el of document.querySelectorAll("[data-schedule-strip]")) redraw(el, scheduleStrip(c, lang));
+    for (const el of document.querySelectorAll("[data-schedule]")) redraw(el, scheduleList(c, lang, true));
     // "viernes 15 de enero de 2027" starts a line, so it takes a capital.
     const day = capitalize(date(c.ceremony.start, lang));
     for (const el of document.querySelectorAll("[data-event-date]")) el.textContent = day;

@@ -50,7 +50,7 @@ const walk = [
   ["today, unanswered", "2026-10-17T10:00:00-05:00", {
     phase: "rsvp-open",
     countdown: "Time left to RSVP 29 days 14 hours 59 minutes",
-    replyBy: "Please RSVP by Sunday, November 15",
+    replyBy: "Please RSVP by Sunday, November 15.",
     actions: ["RSVP", "See the schedule→"],
     href: "/rsvp/",
     pill: true,
@@ -58,14 +58,14 @@ const walk = [
   ["a week before the deadline", "2026-11-08T12:00:00-06:00", {
     phase: "rsvp-open",
     countdown: "Time left to RSVP 7 days 11 hours 59 minutes",
-    replyBy: "Please RSVP by Sunday, November 15",
+    replyBy: "Please RSVP by Sunday, November 15.",
     actions: ["RSVP", "See the schedule→"],
     pill: true,
   }],
   ["one second before the deadline", new Date(DEADLINE - 1000).toISOString(), {
     phase: "rsvp-open",
     countdown: "Time left to RSVP 0 days 0 hours 1 minute",
-    replyBy: "Please RSVP by Sunday, November 15",
+    replyBy: "Please RSVP by Sunday, November 15.",
     actions: ["RSVP", "See the schedule→"],
     pill: true,
   }],
@@ -165,8 +165,12 @@ test.describe("the home page through the celebration", () => {
       if (directions) {
         // Apple Maps and Waze beside the directions, for the same place.
         const place = directions.includes("ceremony") ? "4100%20Blue%20Mound%20Rd" : "5103%20Azle%20Ave";
-        await expect(page.getByRole("link", { name: "Apple Maps (opens in a new tab)" })).toHaveAttribute("href", new RegExp("^https://maps\\.apple\\.com/\\?q=" + place));
-        await expect(page.getByRole("link", { name: "Waze (opens in a new tab)" })).toHaveAttribute("href", new RegExp("^https://waze\\.com/ul\\?q=" + place + ".*&navigate=yes$"));
+        // Each named for where it goes (P5-A11Y-08), right after the directions.
+        const to = directions.replace(/^Directions/, "directions").replace(/ ↗$/, "");
+        await expect(page.getByRole("link", { name: new RegExp(`^Apple Maps ?: ${to} \\(opens in a new tab\\)$`) })).toHaveAttribute("href", new RegExp("^https://maps\\.apple\\.com/\\?q=" + place));
+        await expect(page.getByRole("link", { name: new RegExp(`^Waze ?: ${to} \\(opens in a new tab\\)$`) })).toHaveAttribute("href", new RegExp("^https://waze\\.com/ul\\?q=" + place + ".*&navigate=yes$"));
+        const texts = await page.locator("[data-home-actions] a").allTextContents();
+        expect(texts[texts.findIndex((t) => t.startsWith(directions.replace(/ ↗$/, ""))) + 1]).toMatch(/^Apple Maps/);
       } else await expect(page.locator(".map-choices")).toBeHidden();
     });
 });
@@ -175,22 +179,22 @@ test.describe("the same states in Spanish, speaking to the household", () => {
   const es = [
     ["2026-10-17T10:00:00-05:00", {
       phase: "rsvp-open",
-      countdown: "Tiempo para confirmar 29 días 14 horas 59 minutos",
-      replyBy: "Por favor, confirmen su asistencia a más tardar el domingo 15 de noviembre",
+      countdown: "Para confirmar quedan 29 días 14 horas 59 minutos",
+      replyBy: "Por favor, confirmen su asistencia a más tardar el domingo 15 de noviembre.",
       actions: ["Confirmar asistencia", "Ver el programa→"],
       href: "/es/rsvp/",
       pill: true,
     }],
     [new Date(DEADLINE + 1000).toISOString(), {
       phase: "rsvp-closed",
-      countdown: "Falta para la celebración 60 días 16 horas 1 minuto",
+      countdown: "Para la celebración faltan 60 días 16 horas 1 minuto",
       actions: ["Ver el programa"],
       pill: true,
     }],
     ["2027-01-15T09:00:00-06:00", {
       phase: "day-of",
       countdown: "¡Hoy es el gran día!",
-      status: [`Después Ceremonia religiosa · 4:00 p. m. · ${church}`],
+      status: [`A continuación Ceremonia religiosa · 4:00 p. m. · ${church}`],
       actions: ["Cómo llegar a la ceremonia ↗", "Ver el programa→"],
       pill: true,
     }],
@@ -430,7 +434,7 @@ test.describe("a household that replied", () => {
     await expect(page.getByRole("heading", { name: "Familia Morales" })).toBeVisible();
     await page.evaluate(() => localStorage.setItem("misxv-replied", JSON.stringify({ v: 1, answer: "yes", savedAt: "x", until: "2027-01-16T06:30:00.000Z" })));
     await openHome(page, harness, "es");
-    await expect(home.countdown(page)).toHaveText(/^Tiempo para confirmar/);
+    await expect(home.countdown(page)).toHaveText(/^Para confirmar quedan/);
     await expect(home.status(page)).toHaveCount(0);
     expect(await marker(page)).toBe(null);
   });
@@ -691,7 +695,7 @@ async function withHomeData(page, data) {
 test.describe("parking on the day itself, once the family posts it", () => {
   for (const [lang, parking, label, morning, evening] of [
     ["en", "Fixture parking.", "Parking", `Next Religious ceremony · 4:00 PM · ${church}`, `Now Reception & dance · 7:30 PM – 12:30 AM (Jan 16) · ${hall}`],
-    ["es", "Estacionamiento de ensayo.", "Estacionamiento", `Después Ceremonia religiosa · 4:00 p. m. · ${church}`, `Ahora Recepción y baile · 7:30 p. m. – 12:30 a. m. (16 de enero) · ${hall}`],
+    ["es", "Estacionamiento de ensayo.", "Estacionamiento", `A continuación Ceremonia religiosa · 4:00 p. m. · ${church}`, `Ahora Recepción y baile · 7:30 p. m. – 12:30 a. m. (16 de enero) · ${hall}`],
   ])
     test(`${lang}: under Now / Next at 3 PM and 9:15 PM, and not before the day`, async ({ page, harness, setNow }) => {
       await withHomeData(page, `data-parking="${parking}"`);
@@ -714,8 +718,8 @@ test.describe("parking on the day itself, once the family posts it", () => {
 // clear the device's "you replied" note, so the home page offers it.
 test.describe("a reply this device remembers can be forgotten here", () => {
   for (const [lang, household, quick, save, replied, prompt, button, countdown] of [
-    ["en", households.rivera, "Everyone’s coming", "Save my RSVP", "You replied ✓ · you can change it until Sunday, November 15", "Not your family?", "Forget this on this device", /^Time left to RSVP/],
-    ["es", households.morales, "Vamos todos", "Guardar la respuesta", "Ya respondieron ✓ · pueden cambiar su respuesta hasta el domingo 15 de noviembre", "¿No es su familia?", "Olvidar esto en este dispositivo", /^Tiempo para confirmar/],
+    ["en", households.rivera, "Everyone’s coming", "Save my RSVP", "You replied ✓ · you can change it until Sunday, November 15", "Not your family?", "Forget this reply on this device", /^Time left to RSVP/],
+    ["es", households.morales, "Vamos todos", "Guardar la respuesta", "Ya respondieron ✓ · pueden cambiar su respuesta hasta el domingo 15 de noviembre", "¿No es su familia?", "Olvidar esta respuesta en este dispositivo", /^Para confirmar quedan/],
   ])
     test(`${lang}: "${prompt} ${button}" clears the note and shows the honest unknown state`, async ({ page, context, harness }) => {
       const { link } = await harness.issueInvitation(household, { locale: lang });
@@ -783,8 +787,8 @@ test.describe("the walk for a household that replied, in English and Spanish", (
     ["en", "yes", "2027-01-15T21:15:00-06:00", { phase: "live", countdown: "Today is the day!", status: [`Now Reception & dance · 7:30 PM – 12:30 AM (Jan 16) · ${hall}`], actions: ["Share your photos", "Directions to the reception ↗", "See the schedule→"], pill: false }],
     ["en", "no", "2027-01-16T10:00:00-06:00", { phase: "after", line: "Thank you for celebrating with us.", actions: ["See the photos", "Share your photos→", "Leave Sophia a note→"], pill: false }],
     ["es", "yes", "2026-11-15T20:00:00-06:00", { phase: "rsvp-open", status: ["Ya respondieron ✓ · pueden cambiar su respuesta hasta el domingo 15 de noviembre"], actions: ["Ver el programa", "Cambiar la respuesta→"], pill: false }],
-    ["es", "no", "2026-11-16T00:01:00-06:00", { phase: "rsvp-closed", countdown: "Falta para la celebración 60 días 15 horas 59 minutos", status: ["Gracias por avisarnos"], actions: ["Ver el programa"], pill: false }],
-    ["es", "yes", "2027-01-15T15:00:00-06:00", { phase: "day-of", countdown: "¡Hoy es el gran día!", status: [`Después Ceremonia religiosa · 4:00 p. m. · ${church}`], actions: ["Cómo llegar a la ceremonia ↗", "Ver el programa→"], pill: false }],
+    ["es", "no", "2026-11-16T00:01:00-06:00", { phase: "rsvp-closed", countdown: "Para la celebración faltan 60 días 15 horas 59 minutos", status: ["Gracias por avisarnos"], actions: ["Ver el programa"], pill: false }],
+    ["es", "yes", "2027-01-15T15:00:00-06:00", { phase: "day-of", countdown: "¡Hoy es el gran día!", status: [`A continuación Ceremonia religiosa · 4:00 p. m. · ${church}`], actions: ["Cómo llegar a la ceremonia ↗", "Ver el programa→"], pill: false }],
     ["es", "yes", "2027-01-15T21:15:00-06:00", { phase: "live", countdown: "¡Hoy es el gran día!", status: [`Ahora Recepción y baile · 7:30 p. m. – 12:30 a. m. (16 de enero) · ${hall}`], actions: ["Compartir fotos", "Cómo llegar a la recepción ↗", "Ver el programa→"], pill: false }],
     ["es", "yes", "2027-01-16T10:00:00-06:00", { phase: "after", line: "Gracias por celebrar con nosotros.", actions: ["Ver las fotos", "Compartir fotos→", "Déjenle un mensaje a Sophia→"], pill: false }],
   ];
@@ -798,11 +802,11 @@ test.describe("the walk for a household that replied, in English and Spanish", (
 });
 test.describe("the same states in Spanish at the review's other instants", () => {
   const es = [
-    ["2026-11-15T20:00:00-06:00", { phase: "rsvp-open", countdown: "Tiempo para confirmar 0 días 3 horas 59 minutos", replyBy: "Por favor, confirmen su asistencia a más tardar el domingo 15 de noviembre", actions: ["Confirmar asistencia", "Ver el programa→"], pill: true }],
-    [new Date(DEADLINE).toISOString(), { phase: "rsvp-closed", countdown: "Falta para la celebración 60 días 16 horas 1 minuto", actions: ["Ver el programa"], pill: true }],
-    ["2027-01-08T12:00:00-06:00", { phase: "rsvp-closed", countdown: "Falta para la celebración 7 días 4 horas 0 minutos", actions: ["Ver el programa"], pill: true }],
-    ["2027-01-15T15:00:00-06:00", { phase: "day-of", countdown: "¡Hoy es el gran día!", status: [`Después Ceremonia religiosa · 4:00 p. m. · ${church}`], actions: ["Cómo llegar a la ceremonia ↗", "Ver el programa→"], pill: true }],
-    ["2027-01-15T18:30:00-06:00", { phase: "live", countdown: "¡Hoy es el gran día!", status: [`Ahora Cena · 6:30 p. m. – 7:30 p. m. · ${hall}`, `Después Recepción y baile · 7:30 p. m. · ${hall}`], actions: ["Compartir fotos", "Cómo llegar a la recepción ↗", "Ver el programa→"], pill: true }],
+    ["2026-11-15T20:00:00-06:00", { phase: "rsvp-open", countdown: "Para confirmar quedan 0 días 3 horas 59 minutos", replyBy: "Por favor, confirmen su asistencia a más tardar el domingo 15 de noviembre.", actions: ["Confirmar asistencia", "Ver el programa→"], pill: true }],
+    [new Date(DEADLINE).toISOString(), { phase: "rsvp-closed", countdown: "Para la celebración faltan 60 días 16 horas 1 minuto", actions: ["Ver el programa"], pill: true }],
+    ["2027-01-08T12:00:00-06:00", { phase: "rsvp-closed", countdown: "Para la celebración faltan 7 días 4 horas 0 minutos", actions: ["Ver el programa"], pill: true }],
+    ["2027-01-15T15:00:00-06:00", { phase: "day-of", countdown: "¡Hoy es el gran día!", status: [`A continuación Ceremonia religiosa · 4:00 p. m. · ${church}`], actions: ["Cómo llegar a la ceremonia ↗", "Ver el programa→"], pill: true }],
+    ["2027-01-15T18:30:00-06:00", { phase: "live", countdown: "¡Hoy es el gran día!", status: [`Ahora Cena · 6:30 p. m. – 7:30 p. m. · ${hall}`, `A continuación Recepción y baile · 7:30 p. m. · ${hall}`], actions: ["Compartir fotos", "Cómo llegar a la recepción ↗", "Ver el programa→"], pill: true }],
     ["2027-01-16T00:29:00-06:00", { phase: "live", status: [`Ahora Recepción y baile · 7:30 p. m. – 12:30 a. m. (16 de enero) · ${hall}`], actions: ["Compartir fotos", "Cómo llegar a la recepción ↗", "Ver el programa→"], pill: true }],
     ["2027-01-16T00:31:00-06:00", { phase: "after", line: "Gracias por celebrar con nosotros.", actions: ["Ver las fotos", "Compartir fotos→", "Déjenle un mensaje a Sophia→"], pill: false }],
     ["2027-02-15T12:00:00-06:00", { phase: "after", line: "Gracias por celebrar con nosotros.", actions: ["Ver las fotos", "Compartir fotos→", "Déjenle un mensaje a Sophia→"], pill: false }],

@@ -224,7 +224,7 @@ test.describe("the home page countdown", () => {
     await expect(countdown(page)).toHaveText("Time left to RSVP 45 days 11 hours 59 minutes");
     await expect(page.getByText("Please RSVP by Sunday, November 15")).toBeVisible();
     await page.goto(harness.url("/es/"));
-    await expect(countdown(page)).toHaveText("Tiempo para confirmar 45 días 11 horas 59 minutos");
+    await expect(countdown(page)).toHaveText("Para confirmar quedan 45 días 11 horas 59 minutos");
     await expect(page.getByText("Por favor, confirmen su asistencia a más tardar el domingo 15 de noviembre")).toBeVisible();
   });
 

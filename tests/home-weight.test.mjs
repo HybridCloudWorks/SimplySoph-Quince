@@ -67,6 +67,6 @@ test("the home page stays within its byte budget", async () => {
   // The upload form and the WhatsApp choices never load with the home page.
   // Nor does My account, signed in (site/guest-account.js), nor Microsoft and
   // Google sign-in (site/sso.js, 5,900 bytes: only where their buttons are).
-  for (const file of ["media-upload.js", "upload-batch.mjs", "guest-whatsapp.js", "gallery-download.js", "guest-account.js", "sso.js"])
+  for (const file of ["media-upload.js", "upload-batch.mjs", "guest-whatsapp.js", "gallery-download.js", "guest-account.js", "sso.js", "guest-gallery.js", "session-limit.js"])
     assert.equal(how(file), "elsewhere", `${file} loads with the home page`);
 });
