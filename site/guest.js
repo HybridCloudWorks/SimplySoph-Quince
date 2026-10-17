@@ -39,7 +39,7 @@ import {
   cardEnded,
 } from "./client.js";
 import { date, dayMonth, time, at } from "./datetime.mjs";
-import { clock, answer as deviceReply } from "./now.mjs";
+import { clock, answer as deviceReply, remembersReplies } from "./now.mjs";
 // The upload form, the WhatsApp choices, the gallery and "What's next"
 // load only on the pages that show them, so every other page (the home
 // page above all) stays light (tests/home-weight.test.mjs).
@@ -1158,6 +1158,10 @@ await experienceReady;
 // The server's clock and RSVP deadline (both requests started with the page).
 await clockReady;
 noteAudience();
+// Privacy says what this device keeps after an RSVP as the family's switch
+// has it (site/now.mjs): built as "remember", the default.
+for (const el of document.querySelectorAll("[data-device-reply]"))
+  el.hidden = el.dataset.deviceReply !== (remembersReplies() ? "remember" : "off");
 // Questions: "When do I need to RSVP?" answers while RSVPs are open, once
 // they have closed, and after the party (when nothing asks for an RSVP), and
 // "Can I change my RSVP?" goes then; all on the server's clock.

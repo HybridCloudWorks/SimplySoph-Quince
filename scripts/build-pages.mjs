@@ -538,17 +538,24 @@ function contents(route, lang) {
   // Policy paragraphs; a run of "- " items becomes a real list. Privacy's
   // item on how long we keep information ends with the site and photo
   // lifespan once the family sets one (R-171): site/lifespan.mjs fills the
-  // slot with the gallery's and thank-you page's lines.
+  // slot with the gallery's and thank-you page's lines. Its item on what this
+  // device keeps after an RSVP is built both ways (R-160): as it works by
+  // default, and as it works once we turn it off; site/guest.js shows the one
+  // the family's switch says.
   if (["privacy", "terms"].includes(route)) {
+    const device = policies.deviceNote,
+      item = (p) =>
+        route === "privacy" && p === device[lang]
+          ? `<span data-device-reply="remember">${esc(p.slice(2))}</span><span data-device-reply="off" hidden>${esc(device.off[lang].slice(2))}</span>`
+          : esc(p.slice(2)) + (route === "privacy" && p === policies.retentionItem[lang] ? " <span data-lifespan hidden></span>" : "");
     const notice =
       '<article class="editorial">' +
       policies[route][lang]
         .map((p, i, all) => {
           if (!p.startsWith("- ")) return "<p>" + esc(p) + "</p>";
           const open = all[i - 1]?.startsWith("- ") ? "" : "<ul>",
-            close = all[i + 1]?.startsWith("- ") ? "" : "</ul>",
-            slot = route === "privacy" && p === policies.retentionItem[lang] ? " <span data-lifespan hidden></span>" : "";
-          return open + "<li>" + esc(p.slice(2)) + slot + "</li>" + close;
+            close = all[i + 1]?.startsWith("- ") ? "" : "</ul>";
+          return open + "<li>" + item(p) + "</li>" + close;
         })
         .join("") +
       "</article>";

@@ -7,7 +7,7 @@ import {
   escapeHtml as esc,
 } from "./celebration.mjs";
 import { date, capitalize } from "./datetime.mjs";
-import { sample, setSite, siteSettled, state } from "./now.mjs";
+import { sample, setSite, siteSettled, state, deviceRule } from "./now.mjs";
 import { announce, redraw } from "./client.js";
 // For site/guest.js (one import, one round trip fewer on every page).
 export {
@@ -69,6 +69,8 @@ export const experienceReady = (async () => {
     const { site, now } = await res.json();
     // The server's clock, for every date-aware part of the page (site/now.mjs).
     sample(before, after, now);
+    // Whether this device may remember that its household replied.
+    deviceRule(site);
     if (!site?.ceremony || !site?.albums) return;
     eventContent = { ...celebration, ...site };
     liveContent = true;

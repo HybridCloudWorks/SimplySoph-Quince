@@ -59,14 +59,23 @@ const tableCard = {
 };
 // What this device keeps after an RSVP (R-160, site/now.mjs "misxv-replied"):
 // "yes" or "no" and when, so the home page can say "You replied" next time;
-// no name. Read after the party it is deleted, and signing out deletes it.
+// no name. Read after the party it is deleted, and signing out or the home
+// page's "Forget this reply on this device" (site/home.mjs) deletes it. We can
+// turn it off (site.device.reply, server/site-settings.mjs): the page then
+// shows `off` in its place (scripts/build-pages.mjs builds both, site/guest.js
+// shows the one that applies).
 const deviceNote = {
-  en: "- On this device: after you RSVP, the site remembers whether your family replied (yes or no) and when, so the home page can say so next time. It keeps no name or other detail, and it is deleted the first time you open the site after the party, when you sign out, or when you clear this site’s data in your browser.",
-  es: "- En este dispositivo: cuando confirmas tu asistencia, el sitio recuerda si tu familia respondió (sí o no) y cuándo, para que la página de inicio lo diga la próxima vez. No guarda ningún nombre ni otro dato, y se borra la primera vez que abres el sitio después de la fiesta, cuando cierras sesión o cuando borras los datos de este sitio en tu navegador.",
+  en: "- On this device: after you RSVP, the site remembers whether your family replied (yes or no) and when, so the home page can say so next time. It keeps no name or other detail, and it is deleted the first time you open the site after the party, when you sign out, or when you clear this site’s data in your browser. If you share this phone or computer, “Forget this reply on this device” on the home page deletes it at once, and we can turn it off for everyone.",
+  es: "- En este dispositivo: cuando confirmas tu asistencia, el sitio recuerda si tu familia respondió (sí o no) y cuándo, para que la página de inicio lo diga la próxima vez. No guarda ningún nombre ni otro dato, y se borra la primera vez que abres el sitio después de la fiesta, cuando cierras sesión o cuando borras los datos de este sitio en tu navegador. Si compartes este teléfono o esta computadora, “Olvidar esta respuesta en este dispositivo”, en la página de inicio, lo borra de inmediato, y podemos desactivarlo para todos.",
+  off: {
+    en: "- On this device: we have turned this off, so the site keeps nothing on your device about whether your family replied.",
+    es: "- En este dispositivo: lo desactivamos, así que el sitio no guarda nada en tu dispositivo sobre si tu familia respondió.",
+  },
 };
 export const policies = {
   retention,
   retentionItem,
+  deviceNote,
   host,
   tableCard,
   privacy: {
@@ -140,8 +149,10 @@ export const policyUpdated = {
   // page); the table card as it works (off until we turn it on, its window,
   // when its counts go); what this device keeps after an RSVP. Then the
   // round 5 wording review (the same day): the hosts say "we", one Spanish
-  // word for marketing, the table card's sentence reordered.
-  privacy: { on: "2026-10-17", text: "20dbd31afb2d8794" },
+  // word for marketing, the table card's sentence reordered. Then, the same
+  // day again: this device's note names "Forget this reply on this device"
+  // and that we can turn it off, and says what it keeps once we have.
+  privacy: { on: "2026-10-17", text: "df6e5bbbcd19ec0a" },
   // Sharing from the table card while it is on; "for us and our guests".
   terms: { on: "2026-10-17", text: "2f61d7efc7921588" },
   // The Spanish page: the registered replies arrive in English, and the

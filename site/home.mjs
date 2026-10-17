@@ -17,7 +17,7 @@
 // from family.parking once it exists) follows Now / Next. A reply known only
 // from this device's note can be forgotten here ("Not your family?").
 // The newest announcement, dated, sits under the status; older ones below.
-import { watch, lifecycle, answer, replyFrom, forgetReply, serverReply, sessionStatus, state, clock as serverNow } from "./now.mjs";
+import { watch, lifecycle, answer, replyFrom, forgetReply, serverReply, sessionStatus, state, clock as serverNow, replyNoteKept, replySettled } from "./now.mjs";
 import { date, dayMonth, time, timeRange } from "./datetime.mjs";
 import { terms } from "./lexicon.mjs";
 import { mapLinks, newTab, arrow, pageHref, escapeHtml as esc } from "./celebration.mjs";
@@ -175,7 +175,6 @@ export function startHome({ lang, content }) {
     // per visit and only changes at the boundaries.
     return matchMedia("(prefers-reduced-motion: reduce)").matches ? null : wake;
   }
-  watch(render);
   // Forgetting leaves the honest default: the page no longer knows who replied.
   nodes.forget.addEventListener("click", (e) => {
     if (!e.target.closest("button")) return;
@@ -185,13 +184,22 @@ export function startHome({ lang, content }) {
     announce(tr("Forgotten on this device. This page no longer knows who replied.", "Se olvidó en este dispositivo. Esta página ya no sabe quién respondió."));
   });
 
-  // Signed in: the server says whether this household replied (only that; a
-  // background check that does not keep the session open).
-  sessionStatus().then((session) => {
-    sessionKnown = true;
-    if (session?.kind === "guest") serverReply(session.household);
-    else render(state(), serverNow());
-  });
+  function start() {
+    watch(render);
+    // Signed in: the server says whether this household replied (only that; a
+    // background check that does not keep the session open).
+    sessionStatus().then((session) => {
+      sessionKnown = true;
+      if (session?.kind === "guest") serverReply(session.household);
+      else render(state(), serverNow());
+    });
+  }
+  // A note on this device that the household replied is used only once the
+  // family's switch allows it (site/now.mjs): until then the built page stays,
+  // so a household that replied never sees the countdown first, and a note
+  // switched off is never shown. Without a note there is nothing to wait for.
+  if (replyNoteKept()) replySettled.then(start);
+  else start();
   announcements(lang);
 }
 

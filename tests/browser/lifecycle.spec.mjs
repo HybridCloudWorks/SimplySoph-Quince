@@ -754,6 +754,99 @@ test.describe("a reply this device remembers can be forgotten here", () => {
     });
 });
 
+// R-160: the owner's switch for that note (Admin → Website & event). Until
+// it is saved, GET /api/site has no switch and the pages keep the note as
+// before. Switched off, no page keeps, reads or shows it, one already kept
+// is deleted, and Privacy says so; back on, the device remembers again.
+test("switched off in Admin, no page keeps, shows or leaves a note that the household replied, and Privacy says so", async ({ page, context, harness }) => {
+  test.setTimeout(90_000);
+  // Whether "You replied" ever appeared on the page, even for a moment.
+  await page.addInitScript(() => {
+    window.repliedShown = false;
+    new MutationObserver(() => {
+      if (document.querySelector(".home-replied")) window.repliedShown = true;
+    }).observe(document, { childList: true, subtree: true });
+  });
+  const note = () => page.evaluate(() => localStorage.getItem("misxv-replied"));
+  async function answer(household, lang) {
+    const { link } = await harness.issueInvitation(household, { locale: lang });
+    await page.goto(harness.forBrowser(link));
+    await page.getByRole("button", { name: lang === "es" ? "Vamos todos" : "Everyone’s coming" }).click();
+    await page.getByRole("button", { name: lang === "es" ? "Guardar la respuesta" : "Save my RSVP" }).click();
+    await expect(page).toHaveURL(/\/rsvp\/confirmed\/$/);
+  }
+  async function turn(value) {
+    await context.addCookies([harness.ownerCookie()]);
+    await page.goto(harness.url("/admin/site/"));
+    const form = page.locator("#site-settings");
+    await form.getByLabel("After an RSVP, the phone or computer that saved it").selectOption(value);
+    await form.getByRole("button", { name: "Save website & calendars" }).click();
+    await expect(page.locator("#status")).toContainText("Website settings saved.");
+    expect((await harness.admin("site")).site.device).toEqual({ reply: value });
+    await context.clearCookies();
+  }
+  const privacy = {
+    en: {
+      on: /On this device: after you RSVP, the site remembers whether your family replied[^]*If you share this phone or computer, “Forget this reply on this device” on the home page deletes it at once, and we can turn it off for everyone\.$/,
+      off: "On this device: we have turned this off, so the site keeps nothing on your device about whether your family replied.",
+    },
+    es: {
+      on: /En este dispositivo: cuando confirmas tu asistencia, el sitio recuerda si tu familia respondió[^]*Si compartes este teléfono o esta computadora, “Olvidar esta respuesta en este dispositivo”, en la página de inicio, lo borra de inmediato, y podemos desactivarlo para todos\.$/,
+      off: "En este dispositivo: lo desactivamos, así que el sitio no guarda nada en tu dispositivo sobre si tu familia respondió.",
+    },
+  };
+  async function privacySays(state) {
+    for (const lang of ["en", "es"]) {
+      await page.goto(harness.url(lang === "es" ? "/es/privacy/" : "/privacy/"));
+      const on = page.locator('[data-device-reply="remember"]'),
+        off = page.locator('[data-device-reply="off"]');
+      if (state === "on") {
+        await expect(on).toBeVisible();
+        await expect(on).toHaveText(privacy[lang].on);
+        await expect(off).toBeHidden();
+      } else {
+        await expect(off).toBeVisible();
+        await expect(off).toHaveText(privacy[lang].off);
+        await expect(on).toBeHidden();
+      }
+    }
+  }
+  // Nothing saved yet: no switch in GET /api/site, and a save keeps the note.
+  expect((await (await page.request.get(harness.url("/api/site"))).json()).site.device).toBeUndefined();
+  await answer(households.rivera, "en");
+  expect(JSON.parse(await note())).toMatchObject({ v: 1, answer: "yes" });
+  await privacySays("on");
+  // Off. The note kept before is deleted at the next page and never shown,
+  // here with no session left (so only the device could have said it).
+  await turn("off");
+  await openHome(page, harness);
+  await expect(home.countdown(page)).toHaveText(/^Time left to RSVP/);
+  await expect(home.status(page)).toHaveCount(0);
+  await expect(page.locator(".home-forget")).toBeHidden();
+  await expect(home.pill(page)).toBeVisible();
+  expect(await note()).toBe(null);
+  expect(await page.evaluate(() => window.repliedShown)).toBe(false);
+  // A new save keeps nothing; once its session is gone the device knows nothing.
+  await answer(households.morales, "es");
+  expect(await note()).toBe(null);
+  await context.clearCookies();
+  await openHome(page, harness, "es");
+  await expect(home.countdown(page)).toHaveText(/^Para confirmar quedan/);
+  await expect(home.status(page)).toHaveCount(0);
+  expect(await page.evaluate(() => window.repliedShown)).toBe(false);
+  expect(await note()).toBe(null);
+  await privacySays("off");
+  // Back on: the device remembers again.
+  await turn("remember");
+  await answer(households.rivera, "en");
+  expect(JSON.parse(await note())).toMatchObject({ v: 1, answer: "yes" });
+  await context.clearCookies();
+  await openHome(page, harness);
+  await expect(home.status(page)).toHaveText(["You replied ✓ · you can change it until Sunday, November 15"]);
+  await expect(page.locator(".home-forget")).toHaveText("Not your family? Forget this reply on this device");
+  await privacySays("on");
+});
+
 // R-006: the family's own thank-you sentence after the party (the default is
 // in the walk above), and no "RSVP" asked of anyone once the party is over:
 // the 404 and the pages waiting for content had kept their RSVP button.
