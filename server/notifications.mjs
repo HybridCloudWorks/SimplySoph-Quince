@@ -1,4 +1,5 @@
 import { rateLimit, hash } from "./auth.mjs";
+import { renderFamilyNotification } from "../emails/templates.mjs";
 // Durable inbox is authoritative. A send attempt is claimed once; ambiguous delivery is never retried automatically.
 export function createNotifications({
   ledger,
@@ -30,18 +31,14 @@ export function createNotifications({
       for (const recipient of recipients) {
         let state = "accepted";
         try {
-          const subject =
-            {
-              photo: "New photo awaiting review",
-              video: "New video awaiting review",
-              contact: "New contact form submission",
-              guestbook: "New guestbook message awaiting review",
-            }[row.kind] || "New event submission";
+          // Text and HTML, naming only the kind of submission (emails/templates.mjs).
+          const mail = renderFamilyNotification({ kind: row.kind, origin });
           await mailer.send({
             id: "notification-" + id + "-" + hash(recipient).slice(0, 16),
             to: recipient,
-            subject: "SimplySoph · " + subject,
-            html: `<p>${subject}.</p><p><a href="${origin}/admin/notifications/">Sign in to review</a></p><p>Guest details remain in your private administration area.</p>`,
+            subject: mail.subject,
+            html: mail.html,
+            text: mail.text,
           });
         } catch (e) {
           state = e.code === "MAIL_DELIVERY_UNKNOWN" ? "unknown" : "failed";

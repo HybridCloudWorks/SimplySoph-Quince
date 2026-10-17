@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {renderEmail,templateKeys} from '../emails/templates.mjs';
+import {renderEmail,templateKeys,renderFamilyNotification,renderAdminSignInEmail,renderReplyNotice} from '../emails/templates.mjs';
 const base={type:'invitation',url:'https://simplysophia.example/rsvp/',preview:true};
 test('all templates have English/Spanish HTML and text',()=>{for(const locale of ['en','es'])for(const type of templateKeys){const r=renderEmail({...base,type,locale,updateText:type==='change'?'Approved sample change':''});assert.ok(r.subject&&r.text&&r.html);assert.ok(r.html.includes(`lang="${locale}"`));}});
 test('personalized fields are escaped',()=>{const r=renderEmail({...base,household:'<img src=x onerror=alert(1)>'});assert.ok(!r.html.includes('<img'));assert.ok(r.html.includes('&lt;img'));});
@@ -112,4 +112,32 @@ test('the sign-in email greets one person ("Hola:"), the household emails the fa
     assert.ok(!signIn.text.includes('Familia Morales'));
     assert.equal(greeting(renderEmail({...base,locale,household:'Familia Morales'}).html),family);
   }
+});
+// R-122: the family's notifications, the administrator's sign-in link and the
+// "we answered your message" notice each have a plain-text version that says
+// what its HTML says: every paragraph, every link as "<label>: <address>",
+// and nothing the HTML does not say.
+const decode=(s)=>s.replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&');
+function sameFacts(mail,where){
+  assert.ok(typeof mail.text==='string'&&mail.text.trim(),`${where}: a text version`);
+  assert.ok(!/<\/?[a-z]/i.test(mail.text),`${where}: plain text, not HTML`);
+  const links=[...mail.html.matchAll(/<a\b[^>]*\shref="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g)].map(m=>[decode(m[1]),decode(m[2].replace(/<[^>]+>/g,''))]);
+  assert.ok(links.length,`${where}: a link`);
+  for(const [href,label] of links)assert.ok(mail.text.includes(`${label}: ${href}`),`${where}: “${label}: ${href}”`);
+  for(const m of mail.html.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/g)){const p=decode(m[1].replace(/<[^>]+>/g,'')).trim();if(p)assert.ok(mail.text.includes(p),`${where}: “${p}” is in the text`);}
+  const said=decode(mail.html.replace(/<[^>]+>/g,' '));
+  for(const line of mail.text.split('\n\n'))assert.ok(said.includes(line.replace(/: https:\/\/\S+$/,'')),`${where}: “${line}” is in the HTML`);
+}
+test('the family’s notifications, the administrator’s sign-in link and the reply notice each have a text version with the same facts and links (R-122)',()=>{
+  const origin='https://misxv.example';
+  for(const kind of ['photo','video','contact','guestbook','something-new'])sameFacts(renderFamilyNotification({kind,origin}),`notification (${kind})`);
+  assert.equal(renderFamilyNotification({kind:'photo',origin}).text,'New photo awaiting review.\n\nSign in to review: https://misxv.example/admin/notifications/\n\nGuest details remain in your private administration area.');
+  assert.equal(renderFamilyNotification({kind:'something-new',origin}).subject,'SimplySoph · New event submission');
+  const link=origin+'/admin/login/#'+'A'.repeat(43),admin=renderAdminSignInEmail({url:link});
+  sameFacts(admin,'administrator sign-in');
+  assert.equal(admin.subject,'SimplySoph · Administrator sign-in');
+  assert.equal(admin.text,`Continue to administrator verification. Your authenticator is still required.\n\nConfirm email and continue: ${link}\n\nThis link works once and expires in 15 minutes. If you did not request it, ignore this email.`);
+  for(const url of ['http://misxv.example/admin/login/#x','https://user:pass@misxv.example/admin/login/#x'])assert.throws(()=>renderAdminSignInEmail({url}));
+  for(const locale of ['en','es',undefined])sameFacts(renderReplyNotice({locale,origin}),`reply notice (${locale||'both languages'})`);
+  assert.ok(renderReplyNotice({locale:'es',origin}).text.endsWith('Entra para leer nuestra respuesta: https://misxv.example/es/account/'));
 });

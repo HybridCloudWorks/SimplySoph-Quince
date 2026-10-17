@@ -391,3 +391,49 @@ export function renderReplyNotice({ locale, origin }) {
   const html = layout(langs[0], subject, lines[0], `${lines.map((l) => `<p>${escape(l)}</p>`).join("")}${button(href, pick("cta"))}`);
   return { subject, html, text: [...lines, `${pick("cta")}: ${href}`].join("\n\n") };
 }
+
+// The family's own emails, to administrators only and in English (Admin is
+// English): each says the same thing as text as it does as HTML (R-122).
+// A link is written into the text as "<label>: <address>", as in the guests'
+// emails.
+const familyEmail = (paragraphs) => ({
+  html: paragraphs.map((p) => `<p>${typeof p === "string" ? escape(p) : `<a href="${escape(p.href)}">${escape(p.label)}</a>`}</p>`).join(""),
+  text: paragraphs.map((p) => (typeof p === "string" ? p : `${p.label}: ${p.href}`)).join("\n\n"),
+});
+// "A new photo is waiting for review", to NOTIFICATION_EMAILS
+// (server/notifications.mjs). It names the kind of submission only: the
+// guest's words and details stay in Admin.
+const notificationKinds = {
+  photo: "New photo awaiting review",
+  video: "New video awaiting review",
+  contact: "New contact form submission",
+  guestbook: "New guestbook message awaiting review",
+};
+export function renderFamilyNotification({ kind, origin }) {
+  const what = notificationKinds[kind] || "New event submission";
+  return {
+    subject: "SimplySoph · " + what,
+    ...familyEmail([
+      `${what}.`,
+      { label: "Sign in to review", href: `${origin}/admin/notifications/` },
+      "Guest details remain in your private administration area.",
+    ]),
+  };
+}
+// The administrator's emailed sign-in link (server/admin-email.mjs). Like the
+// guests' sign-in link it is sent as a secret: Microsoft 365 sends it HTML
+// only and keeps it out of Sent Items (server/mail.mjs); the text version
+// travels with it on the SendGrid standby.
+export function renderAdminSignInEmail({ url }) {
+  const target = new URL(url);
+  if (target.protocol !== "https:" || target.username || target.password)
+    throw new Error("An HTTPS URL without embedded credentials is required");
+  return {
+    subject: "SimplySoph · Administrator sign-in",
+    ...familyEmail([
+      "Continue to administrator verification. Your authenticator is still required.",
+      { label: "Confirm email and continue", href: target.href },
+      "This link works once and expires in 15 minutes. If you did not request it, ignore this email.",
+    ]),
+  };
+}

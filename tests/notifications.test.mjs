@@ -25,6 +25,16 @@ test("organizer notifications reach each approved address once without leaking g
   );
   assert.equal(new Set(sent.map((m) => m.id)).size, 2);
   assert.ok(sent.every((m) => !m.html.includes("Private guest details")));
+  // R-122: a text version next to the HTML, the same words and link, and no
+  // more guest content than the HTML.
+  for (const m of sent) {
+    assert.equal(m.subject, "SimplySoph · New contact form submission");
+    assert.equal(
+      m.text,
+      "New contact form submission.\n\nSign in to review: https://misxv.simplysoph.com/admin/notifications/\n\nGuest details remain in your private administration area.",
+    );
+    assert.ok(m.html.includes('href="https://misxv.simplysoph.com/admin/notifications/"'));
+  }
   assert.equal((await ledger.read()).notifications.item.emailState, "accepted");
 });
 

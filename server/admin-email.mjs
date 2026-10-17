@@ -1,4 +1,5 @@
 import { token, hash, error, withinLimit, atLeast } from "./auth.mjs";
+import { renderAdminSignInEmail } from "../emails/templates.mjs";
 
 // Emailed sign-in links for administrators. Who qualifies is decided by
 // admin-access.mjs (the owner, or a ticked Notion "Administrator Eligible" row);
@@ -35,12 +36,16 @@ export function createAdminEmail({
       };
     });
     try {
+      // Text and HTML (emails/templates.mjs). A secret, like a guest's link:
+      // never kept in the shared mailbox's Sent Items (server/mail.mjs).
+      const mail = renderAdminSignInEmail({ url: `${origin}/admin/login/#${raw}` });
       await mailer.send({
         id: token(),
         to: address,
-        subject: "SimplySoph · Administrator sign-in",
+        subject: mail.subject,
         secret: true,
-        html: `<p>Continue to administrator verification. Your authenticator is still required.</p><p><a href="${origin}/admin/login/#${raw}">Confirm email and continue</a></p><p>This link works once and expires in 15 minutes. If you did not request it, ignore this email.</p>`,
+        html: mail.html,
+        text: mail.text,
       });
     } catch {
       /* Do not reveal account existence or retry an ambiguous send. */

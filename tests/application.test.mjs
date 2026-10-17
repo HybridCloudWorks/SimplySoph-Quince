@@ -3485,6 +3485,27 @@ test("every email built with a text version hands it to the mailer next to the H
   const { outbox } = await f.admin("updates");
   assert.equal(outbox.length, 3);
   assert.ok(outbox.every((r) => !("textContent" in r) && !("content" in r)));
+  // The family's own emails too. A message from a guest notifies the family...
+  const { id: asked } = await f.guest("messages", { kind: "contact", name: "Test", text: "Where do we park?" });
+  const notice = f.sent.findLast((m) => m.subject === "SimplySoph · New contact form submission");
+  assert.ok(notice.text.includes(`Sign in to review: ${origin}/admin/notifications/`));
+  assert.ok(!notice.text.includes("Where do we park"), "the guest's words stay in Admin");
+  // ...the family's answer tells the guest where to read it...
+  const shown = (await f.admin("moderation")).messages.find((m) => m.id === asked);
+  await f.admin("message-reply", { id: asked, text: "Behind the hall.", notify: true, to: shown.replyTo });
+  const answered = last();
+  assert.match(answered.subject, /^We answered your message/);
+  // (The household's language is not known here, so it is written in both.)
+  assert.ok(answered.text.endsWith(`Sign in to read our reply / Entra para leer nuestra respuesta: ${origin}/account/`), answered.text);
+  assert.ok(answered.html.includes(`href="${origin}/account/"`));
+  assert.ok(!answered.text.includes("Behind the hall"), "the reply itself stays on the site");
+  // ...and an administrator's sign-in link is a secret like a guest's, with
+  // the same link in its text version.
+  await f.publicPost("auth/admin-email/request", { email: "organizer@gmail.com" });
+  assert.equal(last().subject, "SimplySoph · Administrator sign-in");
+  assert.equal(last().secret, true);
+  const adminLink = last().html.match(/href="(https:[^"]+\/admin\/login\/#[A-Za-z0-9_-]{43})"/)[1];
+  assert.ok(last().text.includes(`Confirm email and continue: ${adminLink}\n`));
 });
 
 // R-164: the Spanish free text in the event settings and the announcements
