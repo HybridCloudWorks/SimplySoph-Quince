@@ -128,6 +128,7 @@ if (env.EVENT_BUCKET) {
         clientId: env.M365_CLIENT_ID,
         clientSecret: env.M365_CLIENT_SECRET,
         sender: "misxv@simplysoph.com",
+        log,
       }),
       sendgrid: sendgridMailer({
         apiKey: env.SENDGRID_API_KEY,

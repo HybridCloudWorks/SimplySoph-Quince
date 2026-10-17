@@ -66,7 +66,7 @@ The text version reaches guests only after the API is deployed again; API deploy
 3. Receipt or invitation: `Content-Type: multipart/alternative`, a `text/plain` part before a `text/html` part, the subject reads correctly with its accents and "·" (in Spanish, for example "Su respuesta se actualizó · Los XV de Sophia"), the sender reads "Sophia's Quinceañera", and the message is in Sent Items.
 4. Sign-in link: one HTML body as before, the Spanish subject "Tu enlace para entrar · Los XV de Sophia", and the message is **not** in Sent Items.
 
-If the receipt or invitation shows `failed` in Communications instead, Microsoft refused it before sending, so nobody received it: route traffic back to the previous revision ([deployment.md](deployment.md#release-and-rollback); the previous API ignores the stored text versions) and report it.
+If Microsoft refuses the text-and-HTML form (a 400 answer, which means nothing was sent), the API sends the same email once more the old way, HTML only, and logs the warning `mail MIME refused; sent as HTML`. Guests still get the email. If that warning appears in the API's logs, the text version is not reaching anyone: report it. No email is sent twice: any other answer, including a timeout or a server error, is never retried.
 
 ## If something goes wrong
 

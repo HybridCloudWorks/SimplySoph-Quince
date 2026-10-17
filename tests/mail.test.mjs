@@ -254,3 +254,36 @@ test("long subjects fold into encoded-words that never split a character; a 4-by
     assert.equal(m.subject, subject);
   }
 });
+
+test("if Graph refuses the MIME form (400), the email goes once more as HTML; other answers are never retried (R-122)", async () => {
+  const run = async (statuses, sent) => {
+    const posts = [], logs = [];
+    const mail = graphMailer({
+      ...configuration,
+      log: (entry) => logs.push(entry),
+      fetchImpl: async (url, init) => {
+        if (url.includes("oauth2")) return Response.json({ access_token: "fixture-access" });
+        posts.push(init.headers["Content-Type"]);
+        return new Response(null, { status: statuses[posts.length - 1] });
+      },
+    });
+    const outcome = await mail.send(sent).then((r) => r.state, (e) => e.code);
+    return { outcome, posts, logs };
+  };
+  const withText = { ...message, text: "Test" };
+  // Refused MIME: nothing was sent, so the JSON HTML send is safe and goes once.
+  const refused = await run([400, 202], withText);
+  assert.deepEqual(refused, {
+    outcome: "accepted",
+    posts: ["text/plain", "application/json"],
+    logs: [{ severity: "WARNING", message: "mail MIME refused; sent as HTML", provider: "m365", id: "test-intent" }],
+  });
+  // Refused twice: rejected, and no third attempt.
+  assert.deepEqual((await run([400, 400], withText)).posts, ["text/plain", "application/json"]);
+  assert.equal((await run([400, 400], withText)).outcome, "MAIL_REJECTED");
+  // A server error may have sent it: never resent, by either form.
+  assert.deepEqual(await run([500], withText).then(({ outcome, posts }) => ({ outcome, posts })), { outcome: "MAIL_DELIVERY_UNKNOWN", posts: ["text/plain"] });
+  // The JSON form itself is never retried on 400 (sign-in links, no text).
+  assert.deepEqual(await run([400], { ...message, secret: true, text: "Test" }).then(({ outcome, posts }) => ({ outcome, posts })), { outcome: "MAIL_REJECTED", posts: ["application/json"] });
+  assert.deepEqual((await run([400], message)).posts, ["application/json"]);
+});

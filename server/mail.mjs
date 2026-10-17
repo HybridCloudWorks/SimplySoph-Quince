@@ -151,6 +151,7 @@ export function graphMailer({
   fetchImpl = fetch,
   now = Date.now,
   random = randomBytes,
+  log = () => {},
 }) {
   const configured = !!(tenant && clientId && clientSecret && sender);
   return {
@@ -189,39 +190,52 @@ export function graphMailer({
       // use MIME, and only when there is a text version to add.
       const mime =
         !secret && hasText(text) && [to, id, sender].every(plainHeaderValue);
-      const body = mime
-        ? Buffer.from(
-            mimeMessage({ from: sender, to, subject, text, html, id, date: new Date(now()), random }),
-            "utf8",
-          ).toString("base64")
-        : JSON.stringify({
-            message: {
-              subject,
-              body: { contentType: "HTML", content: html },
-              toRecipients: [{ emailAddress: { address: to } }],
-              internetMessageHeaders: [
-                { name: "x-misxv-message-id", value: id },
-              ],
-            },
-            saveToSentItems: !secret,
-          });
-      // A timeout after send begins is ambiguous. Caller records "unknown" and never blindly resends.
-      let r;
-      try {
-        r = await fetchImpl(
-          `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(sender)}/sendMail`,
-          {
-            method: "POST",
-            signal: AbortSignal.timeout(15000),
-            headers: {
-              Authorization: `Bearer ${access.access_token}`,
-              "Content-Type": mime ? "text/plain" : "application/json",
-            },
-            body,
+      const json = () =>
+        JSON.stringify({
+          message: {
+            subject,
+            body: { contentType: "HTML", content: html },
+            toRecipients: [{ emailAddress: { address: to } }],
+            internetMessageHeaders: [{ name: "x-misxv-message-id", value: id }],
           },
-        );
-      } catch {
-        throw error(503, "MAIL_DELIVERY_UNKNOWN");
+          saveToSentItems: !secret,
+        });
+      // A timeout after send begins is ambiguous. Caller records "unknown" and never blindly resends.
+      const post = async (contentType, body) => {
+        try {
+          return await fetchImpl(
+            `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(sender)}/sendMail`,
+            {
+              method: "POST",
+              signal: AbortSignal.timeout(15000),
+              headers: {
+                Authorization: `Bearer ${access.access_token}`,
+                "Content-Type": contentType,
+              },
+              body,
+            },
+          );
+        } catch {
+          throw error(503, "MAIL_DELIVERY_UNKNOWN");
+        }
+      };
+      let r = mime
+        ? await post(
+            "text/plain",
+            Buffer.from(
+              mimeMessage({ from: sender, to, subject, text, html, id, date: new Date(now()), random }),
+              "utf8",
+            ).toString("base64"),
+          )
+        : await post("application/json", json());
+      // 400 means Graph refused the request before sending anything, so the
+      // same message can go once more as today's JSON HTML send: if Exchange
+      // ever refuses the MIME form, guests still get their email (HTML only)
+      // instead of nothing. Any other answer is final, as before.
+      if (mime && r.status === 400) {
+        await r.body?.cancel();
+        log({ severity: "WARNING", message: "mail MIME refused; sent as HTML", provider: "m365", id });
+        r = await post("application/json", json());
       }
       if (r.status !== 202)
         throw error(
