@@ -184,7 +184,7 @@ function wireEmailSignIn() {
     await api("auth/email/request", { email: data.get("email"), return: returnPage() });
     // The same answer whether or not the address is on the list.
     show(
-      `<div class="notice" role="status"><h2>${tr("Check your email", { tu: "Revisa tu correo", ustedes: "Revisen su correo" })}</h2><p>${tr("If this email is on the guest list, a sign-in link is on its way. Check your inbox and spam folder; the link expires in 15 minutes.", { tu: "Si este correo está en la lista de invitados, te enviamos un enlace de acceso. Revisa tu bandeja de entrada y el correo no deseado; el enlace vence en 15 minutos.", ustedes: "Si este correo está en la lista de invitados, les enviamos un enlace de acceso. Revisen su bandeja de entrada y el correo no deseado; el enlace vence en 15 minutos." })}</p><p class="nothing-yet">${nothingYet()}</p></div><p><a href="${esc(location.pathname + location.search)}">${tr("Back to sign-in", "Volver al acceso")}</a></p>`,
+      `<div class="notice" role="status"><h2>${tr("Check your email", { tu: "Revisa tu correo", ustedes: "Revisen su correo" })}</h2><p>${tr("If this email is on the guest list, a sign-in link is on its way. Check your inbox and spam folder; the link expires in 15 minutes.", { tu: "Si este correo está en la lista de invitados, te enviamos un enlace de acceso. Revisa tu bandeja de entrada y el correo no deseado; el enlace vence en 15 minutos.", ustedes: "Si este correo está en la lista de invitados, les enviamos un enlace de acceso. Revisen su bandeja de entrada y el correo no deseado; el enlace vence en 15 minutos." })}</p><p class="nothing-yet">${nothingYet()}</p></div><p><a class="target" href="${esc(location.pathname + location.search)}">${tr("Back to sign-in", "Volver al acceso")}</a></p>`,
     );
   });
   // Microsoft returns only to My account, so the buttons live there; other
@@ -846,9 +846,9 @@ function confirmation(inv, session, next = "") {
     ? ""
     : open
       ? `<p><a class="button outline" href="${route("rsvp")}">${term(terms.changeRsvp)}</a></p>`
-      : `<p>${tr("The RSVP deadline has passed. To change your RSVP, please contact us.", "La fecha límite ya pasó. Para cambiar su respuesta, escríbannos.")}</p><p><a href="${route("contact")}">${term(terms.contactUs)}</a></p>`;
+      : `<p>${tr("The RSVP deadline has passed. To change your RSVP, please contact us.", "La fecha límite ya pasó. Para cambiar su respuesta, escríbannos.")}</p><p><a class="target" href="${route("contact")}">${term(terms.contactUs)}</a></p>`;
   // The same link on both confirmations (and under the home page's quote).
-  const note = `<p class="note-link"><a href="${route("guestbook")}">${esc(term(terms.leaveNote))}<span class="arrow" aria-hidden="true">→</span></a></p>`;
+  const note = `<p class="note-link"><a class="target" href="${route("guestbook")}">${esc(term(terms.leaveNote))}<span class="arrow" aria-hidden="true">→</span></a></p>`;
   if (!attending.length)
     // The note page takes this household's note straight from the invitation
     // link (one per link), or from an email sign-in: no second sign-in.
@@ -882,7 +882,7 @@ function confirmation(inv, session, next = "") {
       ? ""
       : // Shown only while WhatsApp is live (site/guest-whatsapp.js removes it otherwise).
         `<details class="card" hidden><summary>${tr("Optional: WhatsApp updates", "Opcional: avisos por WhatsApp")}</summary><section id="whatsapp-preferences"></section></details>`;
-  const account = `<p><a href="${route("account")}">${session.verified ? tr("Open my account", "Abrir mi cuenta") : tr("Sign in with your email to see photos and send us messages", { tu: "Entra con tu correo para ver fotos y enviarnos mensajes", ustedes: "Entren con su correo para ver fotos y enviarnos mensajes" })}</a></p>`;
+  const account = `<p><a class="target" href="${route("account")}">${session.verified ? tr("Open my account", "Abrir mi cuenta") : tr("Sign in with your email to see photos and send us messages", { tu: "Entra con tu correo para ver fotos y enviarnos mensajes", ustedes: "Entren con su correo para ver fotos y enviarnos mensajes" })}</a></p>`;
   if (over)
     return `<div class="notice success"><h2>${tr("Thank you for celebrating with us!", "¡Gracias por celebrar con nosotros!")}</h2><p>${tr("Thank you", "Gracias")}, ${esc(inv.name)}.</p></div>${summary(r.attendance, inv)}${saved}<div class="row-actions"><a class="button burgundy" href="${route("gallery")}">${term(terms.seePhotos)}</a><a href="${route("share")}">${esc(term(terms.sharePhotos))}<span class="arrow" aria-hidden="true">→</span></a></div>${note}${account}`;
   return `<div class="notice success"><h2>${tr("We can’t wait to celebrate with you!", "¡Los esperamos con mucha ilusión!")}</h2><p>${tr("Thank you", "Gracias")}, ${esc(inv.name)}.</p></div>${summary(r.attendance, inv)}${saved}<h3>${tr("Add to your calendar", "Agregar al calendario")}</h3><div class="calendar-actions">${calendars}</div><h3>${tr("Getting there", "Cómo llegar")}</h3><div class="row-actions">${places}</div>${edit}${note}${next}${whatsapp}${account}`;
@@ -937,7 +937,7 @@ async function showPortal() {
       `<p class="notice">${tr("Your invitation hasn’t been sent yet. The RSVP opens here once we send it. You can already share photos and write to us from My account.", {
         tu: "Tu invitación aún no se ha enviado. Podrás confirmar tu asistencia aquí cuando te la enviemos. Ya puedes compartir fotos y escribirnos desde Mi cuenta.",
         ustedes: "Su invitación aún no se ha enviado. Podrán confirmar su asistencia aquí cuando se la enviemos. Ya pueden compartir fotos y escribirnos desde Mi cuenta.",
-      })}</p><a href="${route("account")}">${term(terms.myAccount)}</a>`,
+      })}</p><a class="target" href="${route("account")}">${term(terms.myAccount)}</a>`,
     );
     return;
   }
@@ -964,7 +964,7 @@ async function showPortal() {
   if (view === "rsvp/confirmed") {
     if (!inv.response) {
       show(
-        `<p>${tr("No saved RSVP was found for this invitation.", "No encontramos una respuesta guardada para esta invitación.")}</p><a href="${route("rsvp")}">${term(terms.rsvpAction)}</a>`,
+        `<p>${tr("No saved RSVP was found for this invitation.", "No encontramos una respuesta guardada para esta invitación.")}</p><a class="target" href="${route("rsvp")}">${term(terms.rsvpAction)}</a>`,
       );
       return;
     }
@@ -1315,7 +1315,7 @@ async function gallery() {
   const figure = (p) => {
     // No empty caption box under media that has none.
     const caption = p.caption ? `<figcaption>${esc(p.caption)}</figcaption>` : "",
-      download = `<a href="${esc(p.url)}?download=1" download>${tr("Download", "Descargar")}</a>`;
+      download = `<a class="target" href="${esc(p.url)}?download=1" download>${tr("Download", "Descargar")}</a>`;
     // A photo opens larger with a tap on it, or with its own button for the
     // keyboard and screen readers. Videos keep their own controls.
     return p.kind === "video"
