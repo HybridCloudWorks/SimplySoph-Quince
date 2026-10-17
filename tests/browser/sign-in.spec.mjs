@@ -36,6 +36,9 @@ test("the emailed sign-in link is in the guest’s language and brings them back
   expect(mail.html).toContain("Hola, Familia Morales:");
   expect(mail.html).toContain("viernes 15 de enero de 2027");
   expect(mail.html).toContain("¿No lo pediste? Ignora este correo");
+  // One name for the note (R-038): never the party's physical "libro de firmas".
+  expect(mail.html).toContain("dejarle un mensaje a Sophia");
+  expect(mail.html).not.toContain("libro de firmas");
   const link = mail.html.match(accountLink)[1];
   expect(link).toMatch(/\/es\/account\/#/);
 
@@ -44,7 +47,7 @@ test("the emailed sign-in link is in the guest’s language and brings them back
   await page.getByRole("button", { name: "Continuar", exact: true }).click();
   // Back on the guestbook, signed in.
   await expect(page).toHaveURL(harness.url("/es/guestbook/"));
-  await expect(page.getByLabel("Nombre para mostrar")).toBeVisible();
+  await expect(page.getByLabel("Tu nombre, como quieres que aparezca")).toBeVisible();
 });
 
 // The field's error note used to go when the field lost focus, which is the
@@ -75,11 +78,17 @@ test("after a form error, fixing the field and pressing the button once is enoug
 test("switching language on My account keeps the page the sign-in was asked from", async ({
   page,
   harness,
+  setNow,
 }) => {
+  // After the celebration, when the gallery asks for a sign-in (before it,
+  // an empty gallery has no sign-in wall: tests/browser/gallery.spec.mjs).
+  await setNow(Date.parse("2027-01-16T12:00:00-06:00"));
   await harness.issueInvitation(households.morales);
   await page.goto(harness.url("/gallery/"));
   await page.getByRole("link", { name: "Sign in to see the gallery" }).click();
   await expect(page).toHaveURL(harness.url("/account/?return=gallery"));
+  // The page's script carries the return page into the switch once it runs.
+  await expect(page.getByRole("link", { name: "Español" })).toHaveAttribute("href", "/es/account/?return=gallery");
   await page.getByRole("link", { name: "Español" }).click();
   await expect(page).toHaveURL(harness.url("/es/account/?return=gallery"));
   await signIn(page, harness, households.morales.email, {
@@ -159,7 +168,8 @@ test("the quick answers check the contact email first, while it can still be fix
     await email.fill(typo);
     await page.getByRole("button", { name: "Everyone’s coming" }).click();
     await expect(summary).toBeFocused();
-    await expect(summary).toHaveText("Check the email address: Email");
+    await expect(summary.locator("p")).toHaveText(["Check the email address:"]);
+    await expect(summary.getByRole("listitem")).toHaveText(["Email"]);
     await expect(page.getByRole("heading", { name: "Review your response" })).toHaveCount(0);
   }
   // Only the contact details are checked: the counts come from the button.
@@ -257,31 +267,47 @@ test("My account puts the household’s RSVP first, labels contact fields for au
   );
 });
 
-test("WhatsApp takes a number written with spaces and dashes, and asks for the country code when it is missing", async ({
-  page,
-  harness,
-}) => {
-  const household = households.rivera;
-  await harness.issueInvitation(household);
-  await page.goto(harness.url("/account/"));
-  await signIn(page, harness, household.email);
-  const updates = page.locator("#whatsapp-preferences");
-  const number = updates.getByRole("textbox", { name: "WhatsApp phone" });
-  await expect(number).toHaveAccessibleDescription(
-    "Include the country code: +1 for the US and Canada, +52 for Mexico. Spaces and dashes are fine.",
-  );
-  await updates.getByRole("checkbox").check();
+// WhatsApp is offered only while the server reports it live (R-031); the
+// harness switches it on here with a transport that never sends.
+test.describe("while WhatsApp is live", () => {
+  test.use({ harnessOptions: { whatsapp: true, sms: true } });
+  test("WhatsApp takes a number written with spaces and dashes, asks for the country code when it is missing, and sends a +1 number to SMS", async ({
+    page,
+    harness,
+  }) => {
+    const household = households.rivera;
+    await harness.issueInvitation(household);
+    await page.goto(harness.url("/account/"));
+    await signIn(page, harness, household.email);
+    const updates = page.locator("#whatsapp-preferences");
+    await expect(updates.getByRole("heading", { name: "WhatsApp updates" })).toBeVisible();
+    const number = updates.getByRole("textbox", { name: "WhatsApp phone" });
+    await expect(number).toHaveAccessibleDescription(
+      "Include the country code, like +52 for Mexico. Spaces and dashes are fine.",
+    );
+    // The household's US phone is not offered for WhatsApp.
+    await expect(number).toHaveValue("");
+    await expect(number).toHaveAttribute("placeholder", "+52 55 1234 5678");
+    await updates.getByRole("checkbox").check();
 
-  await number.fill("817 555 0199");
-  await updates.getByRole("button", { name: "Save and verify in WhatsApp" }).click();
-  await expect(updates.locator(".error")).toHaveText(
-    "Add the country code at the start: +1 for the US and Canada, +52 for Mexico.",
-  );
-  expect((await harness.ledger.read()).whatsappPending ?? {}).toEqual({});
+    await number.fill("55 1234 5678");
+    await updates.getByRole("button", { name: "Save and verify in WhatsApp" }).click();
+    await expect(updates.locator(".error")).toHaveText("Add the country code at the start, like +52 for Mexico.");
+    expect((await harness.ledger.read()).whatsappPending ?? {}).toEqual({});
 
-  await number.fill("+1 (817) 555-0199");
-  await updates.getByRole("button", { name: "Save and verify in WhatsApp" }).click();
-  await expect(updates.getByRole("link", { name: /Verify in WhatsApp/ })).toBeVisible();
-  expect((await harness.ledger.read()).whatsappPending[household.id].phone).toBe("+18175550199");
+    // Before: a +1 number was saved and the guest was sent to WhatsApp.
+    await number.fill("+1 (817) 555-0199");
+    await updates.getByRole("button", { name: "Save and verify in WhatsApp" }).click();
+    await expect(updates.locator(".error")).toHaveText(
+      "WhatsApp updates are for numbers outside the US and Canada. For a US or Canadian number, text SOPHIA to +1 682-786-8002 to get text messages instead.",
+    );
+    await expect(updates.getByRole("link", { name: /Verify in WhatsApp/ })).toHaveCount(0);
+    expect((await harness.ledger.read()).whatsappPending ?? {}).toEqual({});
+
+    await number.fill("+52 55 1234-5678");
+    await updates.getByRole("button", { name: "Save and verify in WhatsApp" }).click();
+    await expect(updates.getByRole("link", { name: /Verify in WhatsApp/ })).toBeVisible();
+    expect((await harness.ledger.read()).whatsappPending[household.id].phone).toBe("+525512345678");
+  });
 });
 

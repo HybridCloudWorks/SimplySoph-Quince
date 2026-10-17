@@ -58,6 +58,15 @@ const messages = {
     "Enter the phone with its country code, like +1 817 555 0123.",
     "Escribe el teléfono con su código de país, como +1 817 555 0123.",
   ],
+  // Admin only: invitations and reminders ask guests to RSVP by the deadline.
+  INVITATIONS_CLOSED: [
+    "The RSVP deadline has passed. Invitations and reminders ask guests to RSVP by it, so they can no longer be drafted or sent. Nothing was sent. To reach guests now, use an update email or a website announcement.",
+    "La fecha límite para confirmar ya pasó. Las invitaciones y los recordatorios piden confirmar antes de esa fecha, así que ya no se pueden preparar ni enviar. No se envió nada. Para avisar a los invitados, usa un correo de novedades o un anuncio en el sitio.",
+  ],
+  SPANISH_REQUIRED: [
+    "Add the Spanish title and message too. Guests read the website in English and Spanish, so a new announcement needs both. Nothing was published.",
+    "Agrega también el título y el mensaje en español. Los invitados leen el sitio en inglés y en español, así que un anuncio nuevo necesita los dos. No se publicó nada.",
+  ],
   BATCH_NOT_CONFIRMED: [
     "Confirm this batch before sending.",
     "Confirma este lote antes de enviarlo.",
@@ -170,9 +179,10 @@ const messages = {
     "This email is linked to a different Microsoft or Google account. Use the emailed sign-in link instead, or contact us.",
     "Este correo está vinculado a otra cuenta de Microsoft o Google. Usa el enlace de acceso por correo o escríbenos.",
   ],
+  // Guests read this one; administrators read their own (adminMessages below).
   SSO_TENANT_NOT_ALLOWED: [
-    "Use a personal Microsoft account (Outlook, Hotmail, Live) or a Simply Soph work account.",
-    "Usa una cuenta personal de Microsoft (Outlook, Hotmail, Live) o una cuenta de trabajo de Simply Soph.",
+    "This Microsoft account belongs to a school or workplace, so it can’t sign in here. Use the emailed sign-in link (it works with any address) or a personal Outlook or Hotmail account.",
+    "Esta cuenta de Microsoft es de una escuela o un trabajo y no puede entrar aquí. Usa el enlace de acceso por correo (funciona con cualquier dirección) o una cuenta personal de Outlook o Hotmail.",
   ],
   SSO_EMAIL_NOT_VERIFIED: [
     "That account can’t confirm this email address. Gmail addresses work with Google, and Hotmail or Outlook addresses with Microsoft. Any address works with the emailed sign-in link.",
@@ -308,9 +318,44 @@ const messages = {
     "Please wait before trying again.",
     "Espera antes de intentarlo de nuevo.",
   ],
+  // The upload page words limits itself, with the number and the time the
+  // API sends (site/media-upload.js); these are the plain fallbacks.
   DAILY_UPLOAD_LIMIT: [
-    "Your household has shared 20 photos and videos today, the daily limit. You can share more tomorrow.",
-    "Tu hogar ya compartió 20 fotos y videos hoy, el límite diario. Puedes compartir más mañana.",
+    "Your family has reached the limit for photos and videos for now.",
+    "Tu familia alcanzó el límite de fotos y videos por ahora.",
+  ],
+  PARTY_DEVICE_LIMIT: [
+    "This phone has shared the most photos and videos one phone can send from the table card. Thank you!",
+    "Este teléfono ya compartió el máximo de fotos y videos que se pueden enviar desde la tarjeta de la mesa. ¡Gracias!",
+  ],
+  PARTY_CARD_FULL: [
+    "The table card has received all the photos and videos it can take. Thank you!",
+    "La tarjeta de la mesa ya recibió todas las fotos y videos que puede recibir. ¡Gracias!",
+  ],
+  PARTY_CARD_INVALID: [
+    "This table card isn’t working. Ask the family for the current card.",
+    "Esta tarjeta de la mesa no funciona. Pide a la familia la tarjeta vigente.",
+  ],
+  PARTY_NOT_OPEN: [
+    "Sharing from the table card hasn’t opened yet.",
+    "Todavía no se puede compartir desde la tarjeta de la mesa.",
+  ],
+  PARTY_CLOSED: [
+    "Sharing from the table card has closed.",
+    "Ya no se puede compartir desde la tarjeta de la mesa.",
+  ],
+  // Admin only.
+  PARTY_CARD_OPEN: [
+    "The table card is already on. Use “Make a new code” to replace it.",
+    "La tarjeta de la mesa ya está activa.",
+  ],
+  PARTY_CARD_NOT_OPEN: [
+    "The table card is off. Turn it on first.",
+    "La tarjeta de la mesa está apagada.",
+  ],
+  MEDIA_BUSY: [
+    "This video is being prepared right now. Try again in a few minutes.",
+    "Este video se está preparando en este momento. Inténtalo de nuevo en unos minutos.",
   ],
   API_NOT_CONFIGURED: [
     "Online submissions are not open yet. Please contact us.",
@@ -321,10 +366,38 @@ const messages = {
     "El código no es válido o ya fue utilizado. Usa el siguiente código.",
   ],
   WHATSAPP_PHONE_INVALID: [
-    "WhatsApp can't use this number. Check the country code and the number, like +1 817 555 0199.",
-    "WhatsApp no puede usar este número. Revisa el código de país y el número, como +1 817 555 0199.",
+    "WhatsApp can't use this number. Check the country code and the number, like +52 55 1234 5678.",
+    "WhatsApp no puede usar este número. Revisa el código de país y el número, como +52 55 1234 5678.",
+  ],
+  // site/guest-whatsapp.js adds the SMS keyword when SMS is live.
+  WHATSAPP_US_NUMBER: [
+    "WhatsApp updates are for numbers outside the US and Canada.",
+    "Los avisos por WhatsApp son para números fuera de Estados Unidos y Canadá.",
+  ],
+  WHATSAPP_NOT_AVAILABLE: [
+    "WhatsApp updates haven’t started yet. Nothing was saved.",
+    "Los avisos por WhatsApp aún no empiezan. No se guardó nada.",
+  ],
+  // The note page speaks to one person (tú).
+  LINK_NOTE_ALREADY_SENT: [
+    "Your family already sent a note from this invitation link. To write another, sign in with your email.",
+    "Tu familia ya envió un mensaje desde este enlace de invitación. Para escribir otro, entra con tu correo.",
+  ],
+  LINK_SESSION_REQUIRED: [
+    "Open your invitation link again to send your note from it.",
+    "Abre de nuevo tu enlace de invitación para enviar tu mensaje desde él.",
+  ],
+  NOTE_IS_PRIVATE: [
+    "The writer left the box unchecked, so this note is for Sophia and the family only and can’t be shown.",
+    "Quien lo escribió no marcó la casilla, así que este mensaje es solo para Sophia y su familia y no se puede mostrar.",
   ],
 };
+// Administrators read some errors differently (admin pages are in English).
+const adminMessages = {
+  SSO_TENANT_NOT_ALLOWED:
+    "This school or work Microsoft account can’t sign in here. Use your simplysoph.com Microsoft 365 account, a personal Microsoft account (Outlook, Hotmail, Live), or the emailed sign-in link.",
+};
+const onAdminPage = () => /^admin(\/|$)/.test(document.body?.dataset.route || "");
 // Trouble reaching the API (an outage, a proxy's HTML error page, a dropped
 // connection) is not an answer from it: guests must never read it as
 // "submissions are closed". A form being sent keeps what was typed.
@@ -379,10 +452,13 @@ export async function api(path, body, options = {}) {
     });
   }
   if (!res.ok) {
-    const pair = messages[data?.error];
+    const pair = messages[data?.error],
+      forAdmin = onAdminPage() && adminMessages[data?.error];
     throw Object.assign(
       new Error(
-        pair
+        forAdmin
+          ? forAdmin
+          : pair
           ? tr(...pair)
           : res.status >= 500
             ? trouble(body !== undefined, false)
@@ -391,7 +467,9 @@ export async function api(path, body, options = {}) {
                 "No pudimos completar la solicitud. Inténtalo de nuevo o escríbenos.",
               ),
       ),
-      { code: data?.error, status: res.status },
+      // `details`: the facts behind a refusal (a limit, how many were used,
+      // when more fit), for pages that say more than the code's sentence.
+      { code: data?.error, status: res.status, details: data },
     );
   }
   if (data.csrf) setCsrf(data.csrf);
@@ -400,8 +478,8 @@ export async function api(path, body, options = {}) {
 // The page-wide note at the bottom, for news that belongs to no control: what
 // a form or button caused is shown next to it instead. An optional
 // { href, label } adds a link after the message (built as DOM, not HTML). The
-// note can be closed, and while it shows, the page keeps the focused control
-// scrolled clear of it.
+// note stays until it is closed or replaced (never on a timer: WCAG 2.2.1),
+// and while it shows, the page keeps the focused control scrolled clear of it.
 export function notify(text, link) {
   const box = document.querySelector("#status");
   if (!box) return;
@@ -431,8 +509,6 @@ export function notify(text, link) {
   const focused = document.activeElement;
   if (focused && focused !== document.body && !box.contains(focused))
     focused.scrollIntoView({ block: "nearest", behavior: "instant" });
-  clearTimeout(notify.timer);
-  notify.timer = setTimeout(clearNote, 12000);
 }
 function clearNote() {
   const box = document.querySelector("#status");
@@ -540,8 +616,11 @@ export function checkForm(form, only = () => true) {
       const note = document.createElement("span");
       note.className = "field-error";
       note.id = control.id + "-error";
+      // A control's data-error names what to fix when the generic words
+      // would repeat down a form (the RSVP's counts, one pair per event).
       note.textContent =
-        v.valueMissing && control.type !== "checkbox"
+        control.dataset.error ||
+        (v.valueMissing && control.type !== "checkbox"
           ? control.tagName === "SELECT"
             ? tr("Choose one.", "Elige una opción.")
             : control.type === "file"
@@ -551,7 +630,7 @@ export function checkForm(form, only = () => true) {
             ? tr("Tick this box to continue.", "Marca esta casilla para continuar.")
             : control.type === "email"
               ? tr("Use an address like name@example.com.", "Usa un correo como nombre@ejemplo.com.")
-              : tr("Check this field.", "Revisa este campo.");
+              : tr("Check this field.", "Revisa este campo."));
       // Inside the label, so a field grid keeps its layout; hidden from the
       // label's own text (the field's name) and read as its description.
       note.setAttribute("aria-hidden", "true");
@@ -570,40 +649,111 @@ export function checkForm(form, only = () => true) {
     if (document.title.startsWith(prefix)) document.title = document.title.slice(prefix.length);
     return true;
   }
+  // Each kind of problem is a line ("Fill in:") over a list with one link
+  // per thing to fix, so no name breaks across a comma-separated line. The
+  // controls of a group that names itself (an RSVP event's fieldset,
+  // data-check-group) get one link, by the group's name, to the first of
+  // them to fix.
   const summary = document.createElement("div");
   summary.className = "error-summary";
   summary.setAttribute("role", "alert");
   summary.tabIndex = -1;
   for (const [opening, controls] of lines) {
-    const line = document.createElement("p");
-    line.append(opening + " ");
-    controls.forEach((control, i) => {
-      const a = document.createElement("a");
+    const line = document.createElement("p"),
+      list = document.createElement("ul"),
+      named = new Set();
+    line.textContent = opening;
+    for (const control of controls) {
+      const group = control.closest("fieldset[data-check-group]");
+      if (group && named.has(group)) continue;
+      if (group) named.add(group);
+      const item = document.createElement("li"),
+        a = document.createElement("a");
       a.href = "#" + control.id;
-      a.textContent = labelOf(control);
+      a.textContent = group ? group.dataset.checkGroup : labelOf(control);
       // Focus the field without putting its id in the address bar, where a
       // reload would read it as an invitation or sign-in link.
       a.addEventListener("click", (e) => {
         e.preventDefault();
         control.focus();
       });
-      line.append(...(i ? [", ", a] : [a]));
-    });
-    summary.append(line);
+      item.append(a);
+      list.append(item);
+    }
+    summary.append(line, list);
   }
   form.prepend(summary);
   if (!document.title.startsWith(prefix)) document.title = prefix + document.title;
   summary.focus();
   return false;
 }
-// Runs fn with the form's data once the form is complete. The submit button is
-// marked busy with aria-disabled rather than disabled: disabling the focused
-// button dropped focus to the page (Chromium), so keyboard and screen-reader
-// users lost their place. A second submit while busy is ignored. An error is
-// shown in the form's own alert, next to the button. A field's error note goes
-// as soon as what is typed is valid: waiting for "change", which fires when the
-// field loses focus, removed it during the press on the button, so the button
-// moved up under the pointer and the press was lost.
+// ---- Busy state (one for every submit) ----
+// Screen-reader news that belongs to no form: one polite region (#announce,
+// built with every page) outside all forms, so a busy form never holds it
+// back. The text is set a moment after clearing, so the same words said twice
+// are read twice; a later call or silence() replaces what is still pending.
+let announcing = 0,
+  pending = "";
+export function announce(text) {
+  let box = document.getElementById("announce");
+  if (!box) {
+    box = document.createElement("div");
+    box.id = "announce";
+    box.className = "visually-hidden";
+    box.setAttribute("role", "status");
+    document.body.append(box);
+  }
+  clearTimeout(announcing);
+  box.textContent = "";
+  pending = text;
+  announcing = setTimeout(() => {
+    box.textContent = text;
+    pending = "";
+  }, 100);
+}
+// Takes back words no longer true ("Saving…" once saved), said or still to be.
+function silence(text) {
+  if (pending === text) {
+    clearTimeout(announcing);
+    pending = "";
+  }
+  const box = document.getElementById("announce");
+  if (box?.textContent === text) box.textContent = "";
+}
+// Marks a button busy while its request is on its way: aria-disabled, not
+// disabled (disabling the focused button dropped focus to the page in
+// Chromium); its words become what is happening (data-busy, else "Saving…"),
+// at no narrower a width, so nothing moves under the pointer; aria-busy on the
+// region it belongs to (its form); and the same words announced. Returns the
+// function that puts everything back. It is undone before any error is
+// written, since aria-busy on an ancestor can hold back the error's alert.
+export function markBusy(button, region = button?.form) {
+  if (!button) return () => {};
+  const words = button.dataset.busy || tr("Saving…", "Guardando…"),
+    label = [...button.childNodes],
+    width = button.style.minInlineSize;
+  button.style.minInlineSize = button.getBoundingClientRect().width + "px";
+  button.setAttribute("aria-disabled", "true");
+  button.classList.add("is-busy");
+  button.replaceChildren(words);
+  region?.setAttribute("aria-busy", "true");
+  announce(words);
+  return () => {
+    region?.removeAttribute("aria-busy");
+    silence(words);
+    button.replaceChildren(...label);
+    button.style.minInlineSize = width;
+    button.classList.remove("is-busy");
+    button.removeAttribute("aria-disabled");
+  };
+}
+// Runs fn with the form's data once the form is complete, with the submit
+// button busy (markBusy) meanwhile. A second submit while busy is ignored. An
+// error is shown in the form's own alert, next to the button, once the form is
+// no longer busy. A field's error note goes as soon as what is typed is valid:
+// waiting for "change", which fires when the field loses focus, removed it
+// during the press on the button, so the button moved up under the pointer and
+// the press was lost.
 export async function submit(form, fn) {
   form.noValidate = true;
   form.addEventListener("input", (e) => {
@@ -616,16 +766,17 @@ export async function submit(form, fn) {
     const button = form.querySelector("[type=submit]"),
       target = form.querySelector(".error[role=alert]") || form.querySelector("[role=alert]:not(.error-summary)");
     busy = true;
-    button?.setAttribute("aria-disabled", "true");
     if (target) target.textContent = "";
+    const done = markBusy(button, form);
     try {
       await fn(new FormData(form));
+      done();
     } catch (err) {
+      done();
       if (target?.isConnected) target.textContent = err.message;
       else notify(err.message);
     } finally {
       busy = false;
-      button?.removeAttribute("aria-disabled");
     }
   });
 }

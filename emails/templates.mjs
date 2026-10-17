@@ -222,7 +222,7 @@ const signInCopy = {
     // Punctuated like the other emails' greetings (copy.*.greeting above).
     greeting: (name) => (name ? `Hello ${name},` : "Hello,"),
     intro: (date) =>
-      `You asked to sign in to the website for Sophia’s quinceañera${date ? ` (${date})` : ""}. Once you’re in, you can share photos and videos, write in the guestbook, send us a message and update your contact details.`,
+      `You asked to sign in to the website for Sophia’s quinceañera${date ? ` (${date})` : ""}. Once you’re in, you can share photos and videos, leave Sophia a note, send us a message and update your contact details.`,
     cta: "Sign in to the website",
     once: "This link works once, within 15 minutes. No password needed.",
     ignore: "Didn’t ask for this? Ignore this email; nobody can sign in without the link.",
@@ -232,7 +232,7 @@ const signInCopy = {
     subject: "Tu enlace para entrar · Los XV de Sophia",
     greeting: (name) => (name ? `Hola, ${name}:` : "Hola:"),
     intro: (date) =>
-      `Pediste entrar al sitio de los XV de Sophia${date ? ` (${date})` : ""}. Ya adentro, puedes compartir fotos y videos, escribir en el libro de firmas, enviarnos mensajes y actualizar tus datos de contacto.`,
+      `Pediste entrar al sitio de los XV de Sophia${date ? ` (${date})` : ""}. Ya adentro, puedes compartir fotos y videos, dejarle un mensaje a Sophia, enviarnos mensajes y actualizar tus datos de contacto.`,
     cta: "Entrar al sitio",
     once: "Este enlace funciona una sola vez, durante 15 minutos. No necesitas contraseña.",
     ignore: "¿No lo pediste? Ignora este correo; nadie puede entrar sin el enlace.",

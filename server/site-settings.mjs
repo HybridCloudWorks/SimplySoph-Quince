@@ -1,10 +1,20 @@
 import { celebration } from "../site/celebration.mjs";
 import { registryDefaults } from "./registry-settings.mjs";
 import { error } from "./auth.mjs";
-export const siteSettings = (state) =>
-  structuredClone(
+import { visibilityOf } from "../site/notes.mjs";
+// The saved settings, or the defaults until the family first saves them.
+// site.guestbook.visibility (who can read approved notes for Sophia,
+// site/notes.mjs) is kept apart in the ledger, s.guestbook, and changed only on
+// Admin → Messages: switching it never saves the other defaults in place of
+// the code's, and a Website & event save never overwrites it. Until it is set,
+// notes are for signed-in guests.
+export const siteSettings = (state) => {
+  const site = structuredClone(
     state.site || { ...celebration, registries: registryDefaults },
   );
+  site.guestbook = { visibility: visibilityOf(state) };
+  return site;
+};
 export function validateSettings(input) {
   const bad = () => {
     throw error(422, "INVALID_SITE_SETTINGS");
@@ -104,5 +114,16 @@ export function validateSettings(input) {
   });
   if (new Set(next.registries.map((r) => r.id)).size !== next.registries.length)
     bad();
+  // `guestbook` is not taken from here (see siteSettings).
+  // Who may download all approved photos and videos at once (the owner's
+  // choice, docs/cleanup.md). Settings saved before it existed mean "guests".
+  if (input.gallery !== undefined) {
+    if (!galleryDownloadChoices.includes(input.gallery?.download)) bad();
+    next.gallery = { download: input.gallery.download };
+  }
   return next;
 }
+// "guests": every signed-in guest who can see the gallery (the default);
+// "admins": only the family's administrators.
+export const galleryDownloadChoices = ["guests", "admins"];
+export const galleryDownload = (site) => site?.gallery?.download || "guests";

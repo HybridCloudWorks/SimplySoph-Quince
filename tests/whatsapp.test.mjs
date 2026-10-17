@@ -73,7 +73,7 @@ async function fixture(options = {}) {
     templates: [template],
     now: () => clock,
     transport: {
-      enabled: true,
+      enabled: options.enabled ?? true,
       inboundTime: async () => inboundAt,
       send: async () => {
         count++;
@@ -299,6 +299,72 @@ test("WhatsApp answers only the STOP, START and HELP keywords on its own; other 
   const other = await reply("Can we bring a plus one?", "8");
   assert.ok(!other.includes("<Message>"), "a person answers other messages");
   assert.match(await reply("STOP", "9"), /<Message>.*unsubscribed/);
+});
+
+// Before: every keyword reply was English, even to BAJA, ALTA or AYUDA (R-032).
+test("Spanish keywords get Spanish replies; English keywords follow the language this phone chose", async () => {
+  const f = await fixture();
+  const reply = async (text, id) =>
+    (await f.callback(text, id)).binary.toString().match(/<Message>([\s\S]*)<\/Message>/)?.[1];
+  // The phone's saved language is English (the guest list).
+  assert.equal(
+    await reply("AYUDA", "a"),
+    "Simply Soph Media, ayuda con los avisos de los XV de Sophia: misxv@simplysoph.com. Responde BAJA para cancelar. Para confirmar tu asistencia, usa el enlace privado de tu invitación: https://example.com/es/rsvp/",
+  );
+  assert.equal(
+    await reply("HELP", "b"),
+    "Simply Soph Media event support: misxv@simplysoph.com. Reply STOP to unsubscribe. To RSVP, use the private link in your invitation: https://example.com/rsvp/",
+  );
+  assert.equal(
+    await reply("ALTA", "c"),
+    "Simply Soph Media: Tu suscripción a los avisos por WhatsApp de los XV de Sophia está activa. La frecuencia varía. Responde BAJA para cancelar o AYUDA para recibir ayuda.",
+  );
+  f.advance();
+  assert.equal(
+    await reply("baja", "d"),
+    "Simply Soph Media: Ya no recibirás avisos por WhatsApp de los XV de Sophia. Responde ALTA o START para volver a suscribirte.",
+  );
+  // After a stop, ALTA alone does not subscribe again: the not-ready reply.
+  f.advance();
+  assert.match(await reply("INICIAR", "9"), /^Simply Soph Media: Primero pide los avisos por WhatsApp/);
+  // The guest list says this phone chose Spanish: English keywords get Spanish too.
+  f.row.whatsappLanguage = "es";
+  assert.match(await reply("HELP", "e"), /^Simply Soph Media, ayuda con los avisos/);
+  assert.match(await reply("STOP", "f"), /^Simply Soph Media: Ya no recibirás avisos/);
+  // A sign-up on the website in Spanish counts before the guest list.
+  f.row.whatsappLanguage = "en";
+  await f.app.consent(f.row.id, { phone: "+442079460999", language: "es", consent: true });
+  const other = await f.callback("HELP", "1", { From: "whatsapp:+442079460999" });
+  assert.match(other.binary.toString(), /<Message>Simply Soph Media, ayuda/);
+  // Unknown phones get English, and other text still gets no reply.
+  const stranger = await f.callback("HELP", "2", { From: "whatsapp:+33142345678" });
+  assert.match(stranger.binary.toString(), /<Message>Simply Soph Media event support/);
+  assert.equal(await reply("Hola, ¿a qué hora?", "3"), undefined);
+});
+
+// Before: the website took a +1 number, and took new sign-ups while WhatsApp
+// was off, then sent the guest to WhatsApp to "send START" (R-031).
+test("WhatsApp sign-up refuses US and Canadian (+1) numbers and new sign-ups while WhatsApp is off; unsubscribing always works", async () => {
+  const f = await fixture();
+  for (const phone of ["+18175550199", "+14165550123"])
+    await assert.rejects(
+      () => f.app.consent(f.row.id, { phone, language: "en", consent: true }),
+      (e) => e.code === "WHATSAPP_US_NUMBER" && e.status === 422,
+    );
+  assert.deepEqual((await f.ledger.read()).whatsappPending ?? {}, {});
+  await f.app.consent(f.row.id, { phone: "+525512345678", language: "es", consent: true });
+  assert.equal((await f.ledger.read()).whatsappPending[f.row.id].phone, "+525512345678");
+  assert.equal((await f.ledger.read()).whatsappPending[f.row.id].version, "2026-10-17");
+
+  const off = await fixture({ enabled: false });
+  await assert.rejects(
+    () => off.app.consent(off.row.id, { phone: "+525512345678", language: "es", consent: true }),
+    (e) => e.code === "WHATSAPP_NOT_AVAILABLE" && e.status === 503,
+  );
+  assert.deepEqual((await off.ledger.read()).whatsappPending ?? {}, {});
+  // Stopping is never refused, even while off or for a number already saved.
+  await off.app.consent(off.row.id, { phone: off.row.whatsappPhone, language: "en", consent: false });
+  assert.equal((await off.ledger.read()).whatsappPreferences[hash(off.row.whatsappPhone)].type, "STOP");
 });
 
 test("WhatsApp cannot be switched on while an approved template shows another RSVP deadline (re-audit N5)", () => {

@@ -47,3 +47,41 @@ test('publisher preserves the exact API service mapping and rejects other destin
     assert.throws(() => servingConfig(firebase,targets,env.GITHUB_SHA),/Unsupported API rewrite/);
   }
 });
+
+// R-127: after a release the custom domain must serve the built bytes, and the
+// family's registry links (event settings, not the build) must be unchanged.
+test('post-release check finds stale pages and scripts, not only a stale release header', async () => {
+  const { mkdtemp, mkdir, writeFile } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { staleServedPaths, servedChecks } = await import('../scripts/deploy-hosting.mjs');
+  const dist = await mkdtemp(`${tmpdir()}/dist-`);
+  await mkdir(`${dist}/es`);
+  const built = {'index.html':'<p>new home</p>','es/index.html':'<p>nuevo</p>','client.js':'export const v = 2;','styles.css':'body{}'};
+  for (const [file, body] of Object.entries(built)) await writeFile(`${dist}/${file}`, body);
+  const byPath = Object.fromEntries(servedChecks.map(([path, file]) => [path, built[file]]));
+  const serve = served => async url => {
+    const body = served[new URL(url).pathname];
+    return body === undefined ? new Response('missing', {status:404}) : new Response(body);
+  };
+  assert.deepEqual(await staleServedPaths('https://example.org', {dist, fetchImpl: serve(byPath)}), []);
+  // An edge still holding the old script (the header alone would have passed).
+  assert.deepEqual(await staleServedPaths('https://example.org', {dist, fetchImpl: serve({...byPath, '/client.js':'export const v = 1;'})}), ['/client.js']);
+  // A missing page and a network failure both count as not yet served.
+  const { '/es/': _, ...noSpanish } = byPath;
+  assert.deepEqual(await staleServedPaths('https://example.org', {dist, fetchImpl: serve(noSpanish)}), ['/es/']);
+  assert.deepEqual(await staleServedPaths('https://example.org', {dist, fetchImpl: async () => { throw new TypeError('fetch failed'); }}), servedChecks.map(([path]) => path));
+});
+
+test('post-release check fails when the gift registry links change and reports when it cannot compare', async () => {
+  const { liveRegistries, registryCheck } = await import('../scripts/deploy-hosting.mjs');
+  const site = registries => async () => new Response(JSON.stringify({site:{registries}}), {headers:{'content-type':'application/json'}});
+  const live = [{id:'target', url:'https://www.target.com/gift-registry/example', label:'Target'}];
+  const before = await liveRegistries('https://example.org', {fetchImpl: site(live)});
+  assert.equal(registryCheck(before, await liveRegistries('https://example.org', {fetchImpl: site(structuredClone(live))})), 'Gift registry links: unchanged by the release.');
+  const reset = await liveRegistries('https://example.org', {fetchImpl: site([{id:'target', url:'', label:'Target'}])});
+  assert.throws(() => registryCheck(before, reset), /registry links changed/);
+  const down = await liveRegistries('https://example.org', {fetchImpl: async () => new Response('', {status:503})});
+  assert.equal(down, null);
+  assert.match(registryCheck(before, down), /not compared/);
+  assert.equal(await liveRegistries('https://example.org', {fetchImpl: async () => { throw new TypeError('fetch failed'); }}), null);
+});

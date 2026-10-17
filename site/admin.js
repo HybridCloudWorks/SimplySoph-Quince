@@ -23,6 +23,8 @@ import {
   googleButton,
 } from "./sso.js";
 import { contactTopics, contactTopicsEn } from "./celebration.mjs";
+import { date, time } from "./datetime.mjs";
+import { audienceOf } from "./notes.mjs";
 const root = document.querySelector("#admin-app"),
   view = root.dataset.view;
 // Contact messages store the topic value the server checks; show the label
@@ -37,8 +39,10 @@ const mailStates = {
 };
 const button = (name, action, id) =>
   `<button class="button burgundy compact" data-action="${action}" data-id="${esc(id)}">${name}</button>`;
-const formEnd = (label) =>
-  `<p class="error" role="alert"></p><button type="submit" class="button burgundy">${label}</button></form>`;
+// `busy`: what the button says while its request is on its way (client.js
+// markBusy); "Saving…" when left out.
+const formEnd = (label, busy = "") =>
+  `<p class="error" role="alert"></p><button type="submit" class="button burgundy"${busy ? ` data-busy="${busy}"` : ""}>${label}</button></form>`;
 const table = (head, rows) =>
   `<div class="table-wrap"><table><thead><tr>${head.map((x) => `<th scope="col">${x}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`;
 // Records carry numeric timestamps (createdAt, at); Date.parse(number) is NaN,
@@ -175,7 +179,7 @@ async function login() {
     return;
   }
   const cfg = await api("config");
-  root.innerHTML = `<form id="admin-email-login" class="card"><h2>Sign in by email</h2><p>Enter your approved email. Follow the one-time link, then enter your authenticator code.</p>${field("Email", "email", { type: "email", required: true, max: 254 })}<p id="admin-email-result" role="status"></p>${formEnd("Email my sign-in link")}${
+  root.innerHTML = `<form id="admin-email-login" class="card"><h2>Sign in by email</h2><p>Enter your approved email. Follow the one-time link, then enter your authenticator code.</p>${field("Email", "email", { type: "email", required: true, max: 254 })}<p id="admin-email-result" role="status"></p>${formEnd("Email my sign-in link", "Sending…")}${
     cfg.microsoftClientId || cfg.clientId
       ? `<section class="sso-choices"><h2>Or sign in with</h2>${ssoRow({
           microsoft: cfg.microsoftClientId && "Sign in with Microsoft",
@@ -481,19 +485,103 @@ function mediaPreview(r) {
     ? `<video controls playsinline preload="${r.poster ? "none" : "metadata"}"${r.poster ? ` poster="/api/photo/${esc(r.id)}?poster=1"` : ""} src="/api/photo/${esc(r.id)}"></video>`
     : `<img src="/api/photo/${esc(r.id)}" alt="Pending photo">`;
 }
+// The printed table card (R-021): off until the family creates it. Its code
+// is shown once, when it is made (the server keeps only a fingerprint), so the
+// picture stays on this page until it is reloaded.
+let madeCard = null;
+const cardTime = (iso) => `${date(iso, "en", { year: false })} at ${time(iso, "en", { nbsp: true })}`;
+const cardUrl = (svg) => "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+async function partyCard(box) {
+  const st = await api("admin/party-card");
+  const counts = `<p>${st.files} ${st.files === 1 ? "file" : "files"} from ${st.phones} ${st.phones === 1 ? "phone" : "phones"} so far. Each phone can send up to ${st.perPhone}, and the card up to ${st.perCard} in all.</p>`;
+  const windowLine = st.opensAt
+    ? `<p>It works from ${esc(cardTime(st.opensAt))} through ${esc(date(Date.parse(st.closesAt) - 1, "en", { year: false }))} (Fort Worth time); before and after, the page offers the usual email sign-in.</p>`
+    : "<p>The event times in Website settings can’t form a timeline, so the card can’t work until they are fixed.</p>";
+  const picture =
+    madeCard && st.state === "open"
+      ? `<div class="party-card-preview"><img src="${cardUrl(madeCard.card)}" alt="The table card: a QR code with “Share your photos” and “Compartir fotos”"><p><a class="button burgundy" download="table-card.svg" href="${cardUrl(madeCard.card)}">Download the card to print</a></p><p class="hint">Save or print it now: for safety we keep only a fingerprint of its code, so this picture can’t be shown again. If it’s lost, make a new code (cards printed before stop working).</p></div>`
+      : "";
+  box.innerHTML =
+    st.state === "open"
+      ? `<p><strong>The table card is on.</strong> Anyone with it can send photos and videos without signing in. They wait here for your review, like every upload, and only signed-in guests see the ones you approve.</p>${windowLine}${counts}${picture}<div class="row-actions"><button type="button" class="button outline compact" data-party-action="rotate">Make a new code</button><button type="button" class="button outline compact" data-party-action="close">Turn off the table card</button></div>`
+      : `<p><strong>The table card is off${st.state === "closed" && st.closedAt ? ` (since ${esc(cardTime(st.closedAt))})` : ""}.</strong> Turn it on to print a QR card for the tables: during the party anyone at the celebration, even guests who aren’t on our list, can send photos and videos from it without signing in. They wait here for your review, and only signed-in guests see the ones you approve.</p>${windowLine}${st.state === "closed" ? counts : ""}<div class="row-actions"><button type="button" class="button burgundy compact" data-party-action="create">${st.state === "closed" ? "Turn it on with a new code" : "Create the table card"}</button></div>`;
+  box.onclick = (e) => {
+    const action = e.target.closest("[data-party-action]")?.dataset.partyAction;
+    if (!action) return;
+    if (action === "rotate" && !confirm("Make a new code? Cards printed with the current code stop working at once.")) return;
+    if (action === "close" && !confirm("Turn off the table card? Phones using it can’t send anything more.")) return;
+    run(async () => {
+      const result = await api("admin/party-card", { action });
+      madeCard = result.card ? { card: result.card } : null;
+      await partyCard(box);
+      notify(
+        action === "close"
+          ? "The table card is off."
+          : "The table card is on. Download the card below and print it.",
+      );
+    });
+  };
+}
+// Who can read approved notes for Sophia: the one switch (site/notes.mjs) the
+// API, the note form, the note page and Privacy follow.
+function noteVisibilityForm(current = "guests") {
+  const option = (value, label, text) =>
+    `<label class="check"><input type="radio" name="visibility" value="${value}"${current === value ? " checked" : ""}> <span><strong>${label}</strong><br>${text}</span></label>`;
+  return `<form id="note-visibility" class="card"><fieldset><legend>Who can read approved notes on “A note for Sophia”</legend>${option(
+    "guests",
+    "Guests who sign in (default)",
+    "Approved notes appear only to guests signed in with their email, and to administrators. Visitors who are not signed in see no notes.",
+  )}${option(
+    "public",
+    "Anyone with the site’s address",
+    "Approved notes also appear to visitors who are not signed in, but only notes whose writers agreed to that. Notes written while this was set to signed-in guests stay with signed-in guests.",
+  )}</fieldset><p class="hint">The note form, the note page and the Privacy page tell guests what you choose here. Notes whose writers left the box unchecked are never shown, whatever you choose. Switching back to signed-in guests hides the notes from everyone else at once.</p>${formEnd("Save who can read notes")}`;
+}
+// What a note's writer agreed to, where it came from, and who can read it now.
+function noteFacts(r, visibility) {
+  const consent = {
+    family: "The writer left the box unchecked: for Sophia and the family only. It can’t be shown.",
+    guests: "The writer agreed to show it to guests who sign in.",
+    public: "The writer agreed to show it to anyone with the site’s address.",
+  }[r.display] || "Sent before the choice existed, under “We may publish this name and message after we read them.”: treated as agreeing to be shown to anyone.";
+  const audience = audienceOf(r, visibility);
+  return `<p class="hint">${esc(consent)}${r.state === "approved" ? ` Shown now to: ${audience === "public" ? "anyone with the site’s address" : audience === "guests" ? "guests who sign in" : "nobody"}.` : ""}</p>${r.via === "link" ? `<p class="hint">Sent from the household’s invitation link, without an email sign-in.</p>` : ""}`;
+}
 async function moderation() {
   const d = await api("admin/moderation"),
     photos = view === "admin/photos",
     rows = photos ? d.photos : d.messages;
-  root.innerHTML = `<p>${photos ? "Photos and videos are visible only to signed-in guests after approval. Rejected items remain hidden." : "Contact messages always remain private. Guestbook messages require approval before publication."}</p><div class="cards">${rows.map((r) => `<article class="card">${photos ? `${mediaPreview(r)}<p>${esc(r.caption)}</p>` : `<h3>${esc(r.name)}</h3><p>${esc(topicLabel(r.topic))}</p><p>${esc(r.email || "")}</p><p>${esc(r.text)}</p><span class="badge">${esc(r.kind)}</span>`}<p>Status: ${esc(r.state)}</p>${photos ? `<label>Album<select data-media-album="${esc(r.id)}">${(d.albums || []).map((a) => `<option value="${esc(a.id)}"${a.id === (r.album || "event") ? " selected" : ""}>${esc(a.en)}</option>`).join("")}</select></label>` : ""}<div class="row-actions">${r.kind !== "contact" && !["processing", "failed"].includes(r.state) ? button("Approve", "approve", r.id) : ""}${button("Remove from display", "reject", r.id)}</div></article>`).join("") || "<p>No submissions yet.</p>"}</div>`;
-  if (photos)
+  // A file from the table card says so, with the name typed (if any) and the
+  // reference the guest was shown, so a removal request can be matched.
+  const source = (r) =>
+    r.source === "party"
+      ? `<p><span class="badge">From the table card</span>${r.uploaderName ? ` Name given: ${esc(r.uploaderName)}.` : ""} Reference ${esc(r.ref)}.</p>`
+      : "";
+  root.innerHTML = `<p>${photos ? "Photos and videos are visible only to signed-in guests after approval. Rejected items remain hidden." : "Contact messages always remain private. Guestbook messages require approval before publication."}</p><div class="cards">${rows.map((r) => `<article class="card">${photos ? `${mediaPreview(r)}${source(r)}<p>${esc(r.caption)}</p>` : `<h3>${esc(r.name)}</h3><p>${esc(topicLabel(r.topic))}</p><p>${esc(r.email || "")}</p><p>${esc(r.text)}</p><span class="badge">${esc(r.kind)}</span>`}<p>Status: ${esc(r.state)}</p>${photos ? `<label>Album<select data-media-album="${esc(r.id)}">${(d.albums || []).map((a) => `<option value="${esc(a.id)}"${a.id === (r.album || "event") ? " selected" : ""}>${esc(a.en)}</option>`).join("")}</select></label>` : ""}<div class="row-actions">${r.kind !== "contact" && r.display !== "family" && !["processing", "failed"].includes(r.state) ? button("Approve", "approve", r.id) : ""}${button("Remove from display", "reject", r.id)}</div></article>`).join("") || "<p>No submissions yet.</p>"}</div>`;
+  if (photos) {
     root.insertAdjacentHTML(
       "afterbegin",
-      `<details class="card table-qr"><summary>Media uploads</summary><div class="table-qr-content"><img src="/assets/photo-upload-qr.svg" width="160" height="160" alt="QR code to the photo upload page"><div><p>Scan to open the photo upload page directly. Guests sign in with the email the family has for their household before choosing files.</p><a class="button burgundy" href="/assets/photo-upload-qr.svg" download>Download printable QR</a></div></div></details>`,
+      `<section class="card" aria-labelledby="party-card-title"><h2 id="party-card-title">Table card</h2><div data-party-card><p role="status">Loading…</p></div></section><details class="card table-qr"><summary>QR code for signed-in sharing</summary><div class="table-qr-content"><img src="/assets/photo-upload-qr.svg" width="160" height="160" alt="QR code to the photo upload page"><div><p>Scan to open the photo upload page directly. Guests sign in with the email the family has for their household before choosing files.</p><a class="button burgundy" href="/assets/photo-upload-qr.svg" download>Download printable QR</a></div></div></details>`,
     );
+    await partyCard(root.querySelector("[data-party-card]")).catch((e) => {
+      root.querySelector("[data-party-card]").innerHTML = `<p class="notice">${esc(e.message)}</p>`;
+    });
+  }
   if (!photos) {
+    root.insertAdjacentHTML("afterbegin", noteVisibilityForm(d.guestbookVisibility));
+    submit(root.querySelector("#note-visibility"), async (f) => {
+      const { visibility } = await api("admin/guestbook-visibility", { visibility: f.get("visibility") });
+      await moderation();
+      notify(
+        visibility === "public"
+          ? "Saved: approved notes whose writers agreed can now be read by anyone with the site’s address."
+          : "Saved: approved notes are now for guests who sign in.",
+      );
+    });
     const cards = root.querySelectorAll(".cards > .card");
     rows.forEach((r, i) => {
+      if (r.kind === "guestbook")
+        cards[i].querySelector(".row-actions")?.insertAdjacentHTML("beforebegin", noteFacts(r, d.guestbookVisibility));
       if (r.kind !== "contact") return;
       cards[i].insertAdjacentHTML(
         "beforeend",
@@ -587,7 +675,7 @@ async function updates() {
       .filter((a) => !a.archived)
       .sort(newestFirst)
       .slice(0, 5);
-    panel.innerHTML = `<form id="announcement" class="card"><h2>Publish a website announcement</h2>${field("English title", "title", { required: true, max: 140 })}<label>English message<textarea name="text" required maxlength="2000"></textarea></label>${field("Spanish title", "titleEs", { max: 140 })}<label>Spanish message<textarea name="textEs" maxlength="2000"></textarea></label>${formEnd("Publish on website")}<section class="recent-records"><h2>Latest five announcements</h2><a href="/admin/history/?kind=announcements">View full announcement history</a>${announcements.map((a) => `<article class="compact-record"><h3>${esc(a.title)}</h3><p>${esc(a.text)}</p><small>${a.at ? esc(new Date(a.at).toLocaleString()) : ""} · ${a.published ? "Published" : "Unpublished"}</small></article>`).join("") || "<p>No announcements yet.</p>"}</section>`;
+    panel.innerHTML = `<form id="announcement" class="card"><h2>Publish a website announcement</h2>${field("English title", "title", { required: true, max: 140 })}<label>English message<textarea name="text" required maxlength="2000"></textarea></label>${field("Spanish title", "titleEs", { required: true, max: 140 })}<label>Spanish message<textarea name="textEs" required maxlength="2000"></textarea></label><p class="hint">Guests read the website in English and Spanish, so each announcement needs both.</p>${formEnd("Publish on website")}<section class="recent-records"><h2>Latest five announcements</h2><a href="/admin/history/?kind=announcements">View full announcement history</a>${announcements.map((a) => `<article class="compact-record"><h3>${esc(a.title)}</h3><p>${esc(a.text)}</p><small>${a.at ? esc(new Date(a.at).toLocaleString()) : ""} · ${a.published ? "Published" : "Unpublished"}</small></article>`).join("") || "<p>No announcements yet.</p>"}</section>`;
     submit(panel.querySelector("#announcement"), async (f) => {
       await api("admin/updates", Object.fromEntries(f));
       notify("Announcement published. No email sent.");

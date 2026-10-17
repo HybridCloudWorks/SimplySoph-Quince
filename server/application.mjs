@@ -15,9 +15,15 @@ import {
   mediaResponse,
   withVideoDirectory,
 } from "./video.mjs";
-import { uploadLimits, classify } from "../site/upload-batch.mjs";
+import { uploadLimits, classify, referenceCode } from "../site/upload-batch.mjs";
+import { milestones, inUploadWindow, rsvpOpen } from "../site/lifecycle.mjs";
+import { quotaSetting, familyLimit, recent, nextRoom, DAY } from "./upload-quota.mjs";
+import { tableCardSvg } from "./party-card.mjs";
 import { calendar, contactTopics, escapeHtml } from "../site/celebration.mjs";
-import { siteSettings, validateSettings } from "./site-settings.mjs";
+import { siteSettings, validateSettings, galleryDownload } from "./site-settings.mjs";
+import { smsProgram } from "../site/sms-program.mjs";
+import { audienceOf, displayFor, visibilities, visibilityOf } from "../site/notes.mjs";
+import { createGalleryArchive, servable, mediaKind } from "./gallery.mjs";
 import { randomUUID, randomBytes, createHmac, timingSafeEqual } from "node:crypto";
 import sharp from "sharp";
 import { imageGate, createGate } from "./gate.mjs";
@@ -111,6 +117,11 @@ export function createApplication({
     throw error(503, "SSO_NOT_CONFIGURED");
   },
   microsoftClientId = "",
+  // GUEST_MICROSOFT_SIGN_IN (server/start.mjs): whether guests may sign in with
+  // Microsoft. On by default; off refuses the guest route only. Administrators
+  // sign in with Microsoft either way, and a guest who used Microsoft before
+  // still has the emailed link to the same address.
+  guestMicrosoft = true,
   // Async (authorizationHeader) => boolean from server/scheduler.mjs; null disables the drain.
   verifyScheduler = null,
   media,
@@ -144,9 +155,51 @@ export function createApplication({
   signInConcurrency = 16,
   // Structured log line writer (start.mjs: one JSON line on stdout).
   log = () => {},
+  // How many photos and videos may be shared (server/upload-quota.mjs);
+  // tests pass their own numbers.
+  uploadQuota = {},
+  // "Download all photos": { partBytes, partsPerHour } (server/gallery.mjs
+  // has the defaults and why).
+  galleryArchive = {},
 }) {
   if (!Buffer.isBuffer(key) || key.length !== 32)
     throw new Error("32-byte application key required");
+  const quota = quotaSetting(uploadQuota);
+  // Where the celebration is in time (site/lifecycle.mjs), from the RSVP
+  // deadline and the live event settings. null if the settings cannot form a
+  // timeline: then only the ordinary limits apply and the table card is shut.
+  const lifecycleOf = (s) => {
+    try {
+      return milestones({ deadline, site: siteSettings(s) });
+    } catch {
+      return null;
+    }
+  };
+  // The printed table card (R-021): a capability that lets anyone at the
+  // party upload, never view. It exists only once an administrator creates it
+  // (s.partyCard), works only inside the party upload window, and only the
+  // SHA-256 of its 256-bit code is kept. A card session belongs to one
+  // version of the code: rotating or closing the card ends it.
+  const partyWindow = (s) => {
+    const m = lifecycleOf(s);
+    return m && { m, opensAt: m.uploadsFrom, closesAt: m.uploadsUntil, open: inUploadWindow(now(), m) };
+  };
+  const partyOpen = (s, version) =>
+    s.partyCard?.state === "open" &&
+    s.partyCard.version === version &&
+    !!partyWindow(s)?.open;
+  // The server's clock, sent with the public settings so browsers can correct
+  // a phone that runs fast or slow (site/now.mjs).
+  const serverTime = () => new Date(now()).toISOString();
+  // Invitations and reminders ask guests to RSVP by the deadline, so none is
+  // drafted or sent once it has passed. The lifecycle model decides (it needs
+  // only the deadline for this); the RSVP save keeps its own check
+  // (server/rsvp-validation.mjs).
+  const invitationsOpen = () => rsvpOpen(now(), { deadline: Date.parse(deadline) });
+  const refuseLateInvitations = (type) => {
+    if (["invitation", "reminder"].includes(type) && !invitationsOpen())
+      throw error(409, "INVITATIONS_CLOSED");
+  };
   const sms = createSms({
     ledger,
     notion,
@@ -166,7 +219,9 @@ export function createApplication({
     origin,
     now,
     deadline,
+    invitationsOpen,
   });
+  const archive = createGalleryArchive({ media, ledger, now, log, ...galleryArchive });
   const sendNotification = createNotifications({
     ledger,
     mailer,
@@ -294,20 +349,74 @@ export function createApplication({
     row.expiresAt > now() &&
     (row.kind === "admin"
       ? !!row.rowId || adminEmails.includes(row.email)
-      : invitationOpen(s, row) &&
-        (row.accountId
-          ? accountActive(s, s.accounts?.[row.accountId])
-          : row.scope === "rsvp"));
+      : row.kind === "party"
+        ? row.scope === "upload" && partyOpen(s, row.cardVersion)
+        : invitationOpen(s, row) &&
+          (row.accountId
+            ? accountActive(s, s.accounts?.[row.accountId])
+            : row.scope === "rsvp"));
   // An invitation link or typed code opens the RSVP and nothing else: contact
   // details stay hidden and every other route treats the session as signed out.
   // Uploads, messages and edits need the email sign-in (owner's access model).
+  // The household may also leave one moderated note for Sophia per invitation
+  // link (POST /api/guestbook-note); a link session still reads nothing more.
   const rsvpScopeRoutes = new Set([
     "GET /api/session",
     "GET /api/invitation",
     "POST /api/rsvp",
+    "POST /api/guestbook-note",
     "POST /api/logout",
   ]);
+  // A table card session uploads and nothing else: it can open an upload,
+  // send its pieces, follow its own files and withdraw its own pending ones.
+  // Every other route (the gallery, photos, My account, messages, admin)
+  // treats it as signed out, so it can never read anything.
+  const partyScopeRoutes = new Set([
+    "GET /api/session",
+    "GET /api/uploads/quota",
+    "GET /api/uploads/mine",
+    "POST /api/uploads",
+    "POST /api/uploads/withdraw",
+    "POST /api/logout",
+  ]);
+  // Approved notes for Sophia that a reader may see: "public" (anyone, and only
+  // while the family's switch says so) or "guests" (signed-in guests and
+  // administrators). Each note goes to the narrower of the switch and what its
+  // writer agreed to (site/notes.mjs).
+  function shownNotes(s, reader) {
+    const visibility = visibilityOf(siteSettings(s));
+    return Object.values(s.messages)
+      .filter((m) => m.kind === "guestbook" && m.state === "approved")
+      .filter((m) => {
+        const audience = audienceOf(m, visibility);
+        return reader === "public" ? audience === "public" : audience !== "family";
+      })
+      .sort((a, b) => (a.at || 0) - (b.at || 0))
+      .map((m) => ({ id: m.id, name: m.name, text: m.text }));
+  }
+  // A note's name, text and consent, checked before any budget is spent, so a
+  // refused post never uses up the household's messages for the hour.
+  function noteInput(body) {
+    const name = safeText(body.name, 100),
+      text = safeText(body.text, 2000);
+    if (!name || !text) throw error(422, "MESSAGE_REQUIRED");
+    // What the writer agreed to, given the sentence the page showed them
+    // (`audience`); unchecked means only Sophia and her family read it.
+    if (body.audience !== undefined && !visibilities.includes(body.audience))
+      throw error(422, "INVALID_FIELDS");
+    return { name, text, display: displayFor(body.consent, body.audience) };
+  }
   const hiddenContact = () => ({ email: "", phone: "", address: null });
+  // A household's latest saved RSVP, reduced to what its own home page shows.
+  function householdReply(s, householdId) {
+    const id = s.invitations[householdId]?.latestSubmissionId,
+      r = id ? s.responses[id] : null;
+    if (!r) return { answered: false, answeredAt: null, answer: null };
+    const coming = Object.values(r.attendance || {}).some(
+      (v) => v.adultsTeens + v.kids > 0,
+    );
+    return { answered: true, answeredAt: r.submittedAt, answer: coming ? "yes" : "no" };
+  }
   // One derived status per household for the organizer dashboard; computed from
   // the ledger on read so it can never drift from the underlying records.
   const householdStatuses = [
@@ -584,6 +693,9 @@ export function createApplication({
         throw error(409, "MAIL_DRAFT_STALE");
     } else if (!invite?.active || invite.generation !== j.generation)
       throw error(409, "MAIL_DRAFT_STALE");
+    // Drafted before the deadline, sent after it: it would still say "by
+    // November 15", so it is set aside instead.
+    refuseLateInvitations(j.type);
     // An invitation or reminder drafted before the household answered (on the
     // website, or by phone into Notion) is set aside, not sent (re-audit L4).
     if (["invitation", "reminder"].includes(j.type) && attendanceOf(s, currentGuest))
@@ -612,6 +724,8 @@ export function createApplication({
       const result = await mailer.send({
         ...job,
         html: unseal(job.content, key),
+        // Drafts saved before the text version was kept send HTML only.
+        text: job.textContent ? unseal(job.textContent, key) : "",
       });
       return { state: "accepted", code: null, provider: result?.provider || null };
     } catch (e) {
@@ -697,6 +811,7 @@ export function createApplication({
       to: recipient,
       subject: rendered.subject,
       content: seal(rendered.html, key),
+      textContent: seal(rendered.text, key),
       state: "draft",
       createdAt: now(),
       responseId,
@@ -733,6 +848,7 @@ export function createApplication({
     mailer,
     origin,
     now,
+    refuseLateInvitations,
     sleep: mailSleep,
   });
   const adminEmail = createAdminEmail({
@@ -1015,13 +1131,24 @@ export function createApplication({
     if (path === "/api/config" && method === "GET")
       return {
         clientId,
+        // Administrators' Microsoft sign-in uses it whatever guestMicrosoft says.
         microsoftClientId,
+        guestMicrosoft: guestMicrosoft && !!microsoftClientId,
         deadline,
         mailConfigured: mailer.configured,
         live: true,
+        // Which message channels are really on, from the server's own switches
+        // (server/start.mjs): pages offer a channel only while it is live.
+        channels: {
+          whatsapp: whatsapp.enabled,
+          sms: sms.enabled,
+          smsKeyword: smsProgram.keyword,
+          smsNumber: smsProgram.phoneDisplay,
+        },
+        now: serverTime(),
       };
     if (path === "/api/site" && method === "GET") {
-      return { site: siteSettings(await ledger.read()) };
+      return { site: siteSettings(await ledger.read()), now: serverTime() };
     }
     // /api/calendar/ceremony.ics in English, /api/calendar/es/ceremony.ics in
     // Spanish (the /es/ pages link there); same event UID in both.
@@ -1041,22 +1168,33 @@ export function createApplication({
     if (path === "/api/public" && method === "GET") {
       const s = await ledger.read();
       return {
-        // Only what the public page shows; admin notes and audit fields stay private.
+        // Only what the public page shows; admin notes and audit fields stay
+        // private. Newest first, each with the moment it was published (an
+        // announcement published before publishedAt existed: when it was made).
         announcements: Object.values(s.announcements)
           .filter((r) => r.published && !r.archived)
-          .map(({ id, title, text, titleEs, textEs, at }) => ({
+          .map(({ id, title, text, titleEs, textEs, at, publishedAt }) => ({
             id,
             title,
             text,
             titleEs,
             textEs,
             at,
-          })),
-        messages: Object.values(s.messages)
-          .filter((r) => r.kind === "guestbook" && r.state === "approved")
-          .map((r) => ({ id: r.id, name: r.name, text: r.text })),
+            publishedAt: new Date(publishedAt ?? at).toISOString(),
+          }))
+          .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt) || b.at - a.at),
+        // Notes for Sophia only while the family has made them public, and only
+        // those whose writers agreed to that; otherwise GET /api/guestbook.
+        messages: shownNotes(s, "public"),
         photos: [], // Media metadata and bytes require a signed-in guest or administrator.
       };
+    }
+    // Whether the gallery has anything yet, so a signed-out visitor before the
+    // celebration sees "photos open after the celebration" when it is empty
+    // and the sign-in when it is not. A yes or no, never a count or an item.
+    if (path === "/api/gallery-status" && method === "GET") {
+      const s = await ledger.read();
+      return { hasMedia: Object.values(s.photos).some((r) => r.state === "approved") };
     }
     if (path === "/api/auth/admin-email/request" && method === "POST")
       return adminEmail.request(body);
@@ -1181,6 +1319,9 @@ export function createApplication({
     if (path === "/api/auth/sso/guest" && method === "POST") {
       if (!["microsoft", "google"].includes(body.provider))
         throw error(422, "INVALID_PROVIDER");
+      // Refused before the token is read or any failure budget is spent.
+      if (body.provider === "microsoft" && !guestMicrosoft)
+        throw error(404, "SSO_NOT_CONFIGURED");
       const nonce = openTicket(body.ticket, "guest");
       const identity = await chargeFailures(
         ledger,
@@ -1399,6 +1540,44 @@ export function createApplication({
       });
       return { csrf, setCookie: cookie(value) };
     }
+    // The page at /share/#party=<code> trades the table card's code for an
+    // upload-only session, once. The code travels in the body (the fragment
+    // is never sent or logged); only its hash is compared.
+    if (path === "/api/party-session" && method === "POST") {
+      const given =
+        typeof body.token === "string" && /^[A-Za-z0-9_-]{43}$/.test(body.token) ? body.token : null;
+      const s = await ledger.read(),
+        card = s.partyCard;
+      if (!given || !card?.tokenHash || !sameSecret(hash(given), card.tokenHash)) {
+        await rateLimit(ledger, "party-failures", 300, 900000, now());
+        throw error(401, "PARTY_CARD_INVALID");
+      }
+      const w = partyWindow(s),
+        times = w && { opensAt: new Date(w.opensAt).toISOString(), closesAt: new Date(w.closesAt).toISOString() };
+      if (w && card.state === "open" && now() < w.opensAt) throw error(403, "PARTY_NOT_OPEN", times);
+      if (!w?.open || card.state !== "open") throw error(403, "PARTY_CLOSED", times);
+      // New phones per hour on this instance; a real party is far below it.
+      await rateLimit(ledger, "party-sessions", 600, 3600000, now());
+      const value = token(),
+        csrf = token();
+      await ledger.transaction((s) => {
+        if (!s.partyCard || !sameSecret(hash(given), s.partyCard.tokenHash) || !partyOpen(s, s.partyCard.version))
+          throw error(403, "PARTY_CLOSED");
+        pruneSessions(s, now());
+        s.sessions[hash(value)] = {
+          kind: "party",
+          scope: "upload",
+          // A random name for this phone's visit, for its own counts and
+          // files; nothing about the phone or the person.
+          deviceId: randomUUID(),
+          cardVersion: s.partyCard.version,
+          csrf,
+          startedAt: now(),
+          expiresAt: Math.min(now() + 1800000, w.closesAt),
+        };
+      });
+      return { csrf, closesAt: times.closesAt, setCookie: cookie(value) };
+    }
     const ctx = await context(req);
     // Notion decides admin access: an unticked box ends every session of that
     // admin on this request, before any route runs.
@@ -1415,10 +1594,18 @@ export function createApplication({
       !rsvpScopeRoutes.has(method + " " + path)
     )
       ctx.session = null;
-    const { session } = ctx;
     if (
-      session?.kind === "guest" &&
-      (session.accountId ? !!session.email : session.scope === "rsvp") &&
+      ctx.session?.kind === "party" &&
+      !partyScopeRoutes.has(method + " " + path) &&
+      !uploadPiece.test(path)
+    )
+      ctx.session = null;
+    const { session } = ctx;
+    const party = session?.kind === "party";
+    if (
+      ((session?.kind === "guest" &&
+        (session.accountId ? !!session.email : session.scope === "rsvp")) ||
+        party) &&
       ctx.raw &&
       path !== "/api/logout" &&
       path !== "/api/logout-all" &&
@@ -1426,10 +1613,14 @@ export function createApplication({
       req.query?.poll !== "1" &&
       session.expiresAt - now() < 900000
     ) {
+      // A table card session lasts the evening while it is used, and never
+      // past the end of the party upload window (sessionValid checks the
+      // card and the window on every request).
       const startedAt = session.startedAt ?? session.expiresAt - 1800000,
         until = Math.min(
           now() + 1800000,
-          startedAt + (session.accountId ? 43200000 : linkSessionLimit),
+          startedAt + (session.accountId || party ? 43200000 : linkSessionLimit),
+          party ? partyWindow(ctx.state)?.closesAt ?? 0 : Infinity,
         );
       // Renew an email sign-in only while that email is still on the
       // household's Notion row, so removing it still ends access within about
@@ -1441,10 +1632,12 @@ export function createApplication({
       // Notion's last good answer during an outage. A Notion error, or no
       // answer within 2 seconds, skips the renewal; it never fails or
       // noticeably delays the request.
-      const current = session.accountId
-        ? async () =>
-            rosterMatch(await notion.list(), session.email)?.id === session.householdId
-        : async () => !!(await guestInvitation(session, { allowStale: true }));
+      const current = party
+        ? async () => true
+        : session.accountId
+          ? async () =>
+              rosterMatch(await notion.list(), session.email)?.id === session.householdId
+          : async () => !!(await guestInvitation(session, { allowStale: true }));
       const renew =
         until > session.expiresAt &&
         (await Promise.race([
@@ -1458,7 +1651,7 @@ export function createApplication({
     if (session && method !== "GET" && !uploadPiece.test(path))
       await rateLimit(
         ledger,
-        hash("actor:" + (session.actor || session.householdId)),
+        hash("actor:" + (session.actor || session.householdId || "party:" + session.deviceId)),
         120,
         3600000,
         now(),
@@ -1470,6 +1663,12 @@ export function createApplication({
         verified: !!session?.accountId,
         scope: session?.scope ?? null,
         owner: session?.kind === "admin" && ownerSession(session),
+        // The home page's "You replied ✓": only whether this session's own
+        // household has a saved RSVP, when, and yes or no. No name, counts or
+        // id, and nothing at all without a guest session.
+        ...(session?.kind === "guest" && {
+          household: householdReply(ctx.state, session.householdId),
+        }),
       };
     const requireAuth = (kind) => {
       if (!session || (kind && session.kind !== kind))
@@ -1477,11 +1676,17 @@ export function createApplication({
       if (method !== "GET" && !sameSecret(headers["x-csrf-token"], session.csrf))
         throw error(403, "CSRF_REJECTED");
     };
-    if (path === "/api/gallery" && method === "GET") {
+    // Who may see the gallery's media: an administrator, or a guest signed in
+    // with an email still on their household's row. Invitation-link sessions
+    // (RSVP only) never reach here with a session.
+    const galleryViewer = async () => {
       requireAuth();
       if (session.kind !== "admin" && !session.accountId)
         throw error(403, "VERIFIED_ACCOUNT_REQUIRED");
       if (session.kind !== "admin") await stillListed(session);
+    };
+    if (path === "/api/gallery" && method === "GET") {
+      await galleryViewer();
       return {
         media: Object.values(ctx.state.photos)
           .filter((r) => r.state === "approved")
@@ -1495,7 +1700,40 @@ export function createApplication({
             // existed have none.
             poster: r.poster ? "/api/photo/" + r.id + "?poster=1" : null,
           })),
+        // How many of this person's own files wait for the family's review
+        // (R-081): a count only, never anyone else's.
+        pending: session.accountId
+          ? waitingIn(ctx.state, { kind: "family", accountId: session.accountId }).length
+          : 0,
       };
+    }
+    // Approved notes for Sophia that signed-in guests may read (the same rule
+    // as the gallery: a verified email sign-in still on the list, or an
+    // administrator). An invitation-link session never reaches this route.
+    if (path === "/api/guestbook" && method === "GET") {
+      requireAuth();
+      if (session.kind !== "admin" && !session.accountId)
+        throw error(403, "VERIFIED_ACCOUNT_REQUIRED");
+      if (session.kind !== "admin") await stillListed(session);
+      return { messages: shownNotes(ctx.state, "guests") };
+    }
+    // Download all photos (server/gallery.mjs): the list of parts, then each
+    // part as a ZIP. The same people as the gallery, unless the owner keeps
+    // downloading everything at once to administrators (site settings).
+    if (
+      (path === "/api/gallery/archive" || path.startsWith("/api/gallery/archive/")) &&
+      method === "GET"
+    ) {
+      await galleryViewer();
+      const admin = session.kind === "admin";
+      if (!admin && galleryDownload(ctx.state.site) !== "guests")
+        throw error(403, "DOWNLOAD_RESTRICTED");
+      // Limits are per person: their account, or the administrator's email.
+      const who = admin ? "admin:" + session.email : "account:" + session.accountId;
+      if (path === "/api/gallery/archive") return archive.manifest(ctx.state, who);
+      const n = /^\/api\/gallery\/archive\/([1-9]\d{0,4})$/.exec(path)?.[1];
+      if (!n) throw error(404, "NOT_FOUND");
+      return archive.part(ctx.state, who, Number(n), req.query?.v);
     }
     if (path === "/api/auth/email/request" && method === "POST")
       return accounts.request(body);
@@ -1663,6 +1901,14 @@ export function createApplication({
       const row = await guestInvitation(session, { fresh: true }),
         fingerprint = digestInput(body),
         owner = token();
+      // The language of the page the RSVP was saved from (R-045), sent as a
+      // header so an older API simply ignores it. It is kept on this response
+      // and picks this receipt's language only: the invitation's language
+      // (admin-owned, used for invitations and reminders) and the family's
+      // guest list in Notion are never changed by it.
+      const pageLanguage = ["en", "es"].includes(headers["x-page-language"])
+        ? headers["x-page-language"]
+        : null;
       if (!row.invitationReady) throw error(409, "INVITATION_NOT_READY");
       // One save records the response and claims the Notion sync and the
       // receipt email; one final save records both outcomes (2 writes, not 5).
@@ -1730,6 +1976,7 @@ export function createApplication({
           householdId: row.id,
           fingerprint,
           submittedAt: new Date(now()).toISOString(),
+          ...(pageLanguage ? { locale: pageLanguage } : {}),
         };
         s.responses[id] = response;
         if (s.profiles?.[row.id]) {
@@ -1750,7 +1997,7 @@ export function createApplication({
             household: row,
             recipient: receiptTo,
             responseId: id,
-            locale: current.locale || "en",
+            locale: response.locale || current.locale || "en",
           });
         audit(s, row.id, "rsvp", id, now());
         // In-app only: RSVPs reach the family's inbox inside the same save,
@@ -1804,22 +2051,12 @@ export function createApplication({
     }
     if (path === "/api/messages" && method === "POST") {
       requireAuth("guest");
-      await guestInvitation(session);
-      await rateLimit(
-        ledger,
-        hash("message:" + session.householdId),
-        5,
-        3600000,
-        now(),
-      );
+      // Everything in the request is checked before the household's budget of
+      // 5 messages an hour is charged: a refused post costs nothing.
       if (!["contact", "guestbook"].includes(body.kind))
         throw error(422, "INVALID_KIND");
-      if (body.kind === "guestbook" && body.consent !== true)
-        throw error(422, "CONSENT_REQUIRED");
       const id = randomUUID(),
-        name = safeText(body.name, 100),
-        text = safeText(body.text, 2000);
-      if (!name || !text) throw error(422, "MESSAGE_REQUIRED");
+        { name, text, display } = noteInput(body);
       const contactEmail =
         body.kind === "contact"
           ? email(
@@ -1832,6 +2069,14 @@ export function createApplication({
       const topic = body.kind === "contact" ? body.topic || "Other" : "";
       if (body.kind === "contact" && !contactTopics.includes(topic))
         throw error(422, "INVALID_TOPIC");
+      await guestInvitation(session);
+      await rateLimit(
+        ledger,
+        hash("message:" + session.householdId),
+        5,
+        3600000,
+        now(),
+      );
       await ledger.transaction((s) => {
         s.notifications ??= {};
         s.notifications[id] = {
@@ -1850,6 +2095,54 @@ export function createApplication({
           name,
           text,
           kind: body.kind,
+          // A note's audience as its writer agreed (site/notes.mjs).
+          ...(body.kind === "guestbook" ? { display } : {}),
+          state: "pending",
+          at: now(),
+        };
+      });
+      await sendNotification(id);
+      return { id, state: "pending" };
+    }
+    // A household that came in with its invitation link leaves one note for
+    // Sophia without signing in again (R-024): one per household for each
+    // issue of the link (a reissued link allows one more), inside the
+    // household's 5 messages an hour and a site-wide daily budget, so a
+    // forwarded link cannot flood the review queue. The note waits for the
+    // family's review like any other, and the review shows it came from the
+    // link. Signed-in guests use POST /api/messages.
+    if (path === "/api/guestbook-note" && method === "POST") {
+      requireAuth("guest");
+      if (session.scope !== "rsvp") throw error(403, "LINK_SESSION_REQUIRED");
+      const { name, text, display } = noteInput(body);
+      await guestInvitation(session);
+      const sent = (s) =>
+        Object.values(s.messages).some(
+          (m) =>
+            m.via === "link" &&
+            m.householdId === session.householdId &&
+            m.generation === session.generation,
+        );
+      if (sent(await ledger.read())) throw error(409, "LINK_NOTE_ALREADY_SENT");
+      await rateLimit(ledger, hash("message:" + session.householdId), 5, 3600000, now());
+      await rateLimit(ledger, "link-notes", 200, 86400000, now());
+      const id = randomUUID();
+      await ledger.transaction((s) => {
+        if (sent(s)) throw error(409, "LINK_NOTE_ALREADY_SENT");
+        s.notifications ??= {};
+        s.notifications[id] = { id, kind: "guestbook", at: now(), read: false };
+        s.messages[id] = {
+          email: "",
+          topic: "",
+          id,
+          householdId: session.householdId,
+          accountId: null,
+          via: "link",
+          generation: session.generation,
+          name,
+          text,
+          kind: "guestbook",
+          display,
           state: "pending",
           at: now(),
         };
@@ -1861,10 +2154,72 @@ export function createApplication({
     // POST /api/uploads opens an upload, POST /api/uploads/<id>?offset=N
     // sends raw bytes from there, and GET /api/uploads/<id> says how it is
     // going. Nothing is visible to anyone until the family approves it.
-    if (path === "/api/uploads" && method === "POST") {
+    //
+    // Who may upload: a signed-in guest (counted for their family), or a
+    // phone that came in through the table card (counted for itself and for
+    // the card). Viewing is unchanged: only signed-in guests and the family.
+    const uploader = () => {
+      if (session?.kind === "party") {
+        requireAuth("party");
+        return { kind: "party", key: "party:" + session.deviceId, deviceId: session.deviceId };
+      }
       requireAuth("guest");
       if (!session.accountId) throw error(403, "VERIFIED_ACCOUNT_REQUIRED");
-      await guestInvitation(session);
+      return {
+        kind: "family",
+        key: "account:" + session.accountId,
+        accountId: session.accountId,
+        householdId: session.householdId,
+      };
+    };
+    // How many more can be shared, and when the next one fits (the page's
+    // "You can add more after …"), from the same rule the API enforces.
+    if (path === "/api/uploads/quota" && method === "GET") {
+      const who = uploader();
+      if (who.kind === "family") await stillListed(session);
+      const q = quotaOf(ctx.state, who);
+      return {
+        scope: q.scope,
+        limit: q.limit,
+        used: q.used,
+        remaining: Math.max(0, q.limit - q.used),
+        retryAt: q.retryAt === null ? null : new Date(q.retryAt).toISOString(),
+        now: new Date(now()).toISOString(),
+      };
+    }
+    // This person's or phone's own files waiting for the family's review.
+    if (path === "/api/uploads/mine" && method === "GET") {
+      const files = waitingIn(ctx.state, uploader()).map((r) => ({
+        id: r.id,
+        ref: referenceCode(r.id),
+        kind: r.kind || "photo",
+        state: r.state === "processing" ? "processing" : "review",
+      }));
+      return { pending: files.length, files };
+    }
+    // A phone from the table card can take back a file it sent, until the
+    // family has reviewed it: the record and every stored copy go.
+    if (path === "/api/uploads/withdraw" && method === "POST") {
+      const who = uploader();
+      const id = typeof body.id === "string" && /^[a-f0-9-]{36}$/.test(body.id) ? body.id : null;
+      if (who.kind !== "party" || !id) throw error(404, "NOT_FOUND");
+      await ledger.transaction((s) => {
+        const r = s.photos[id];
+        if (!owns(who, r) || !["pending", "processing"].includes(r.state)) throw error(404, "NOT_FOUND");
+        // Being converted right now: the media job finishes first.
+        if (r.lease > now()) throw error(409, "MEDIA_BUSY");
+        delete s.photos[id];
+        delete s.notifications?.[id];
+        delete s.uploads?.[id];
+        audit(s, "table-card", "withdraw", id, now());
+      });
+      for (const kind of ["photo", "video", "poster", "upload"])
+        await media.remove(id, kind).catch(() => {});
+      return { withdrawn: true };
+    }
+    if (path === "/api/uploads" && method === "POST") {
+      const who = uploader();
+      if (who.kind === "family") await guestInvitation(session);
       if (body.consent !== true) throw error(422, "CONSENT_REQUIRED");
       const type = typeof body.type === "string" ? body.type.toLowerCase() : "",
         kind = classify({ type, name: "" }).kind,
@@ -1877,26 +2232,33 @@ export function createApplication({
       if (!siteSettings(ctx.state).albums.some((a) => a.id === album))
         throw error(422, "INVALID_ALBUM");
       const caption = safeText(body.caption || "", 200);
-      // 20 photos and videos per household a day, said plainly to the guest.
-      // Checked here before storage opens a session, and again when saving.
-      const full = (s) =>
-        begunToday(s, session.householdId).length >= uploadLimits.perDay;
-      if (full(ctx.state)) throw error(429, "DAILY_UPLOAD_LIMIT");
+      // From the table card a name is optional and is all we ask; a signed-in
+      // guest is already known to the family.
+      const name = who.kind === "party" ? safeText(body.name || "", 60) : "";
+      // The limit, said plainly to the guest with when more fit. Checked here
+      // before storage opens a session, and again when saving.
+      const room = quotaOf(ctx.state, who);
+      if (room.full) throw quotaError(room);
       const id = randomUUID(),
         uri = await media.begin(id, type).catch(storageTrouble);
       const dropped = await ledger.transaction((s) => {
         s.uploads ??= {};
-        s.uploadsBegun ??= {};
         const gone = expireUploads(s);
-        if (full(s)) throw error(429, "DAILY_UPLOAD_LIMIT");
-        s.uploadsBegun[session.householdId] = [
-          ...begunToday(s, session.householdId),
-          now(),
-        ];
-        // At most one batch of unfinished uploads per person: opening one
-        // more gives up the oldest (its pieces then find nothing).
+        const q = quotaOf(s, who);
+        if (q.full) throw quotaError(q);
+        if (who.kind === "party") {
+          if (!partyOpen(s, session.cardVersion)) throw error(403, "PARTY_CLOSED");
+          s.partyDevices ??= {};
+          s.partyDevices[who.deviceId] = [...(s.partyDevices[who.deviceId] || []), now()];
+          s.partyCard.begun = (s.partyCard.begun || 0) + 1;
+        } else {
+          s.uploadsBegun ??= {};
+          s.uploadsBegun[who.householdId] = [...recent(s.uploadsBegun[who.householdId], now()), now()];
+        }
+        // At most one batch of unfinished uploads per person or phone:
+        // opening one more gives up the oldest (its pieces then find nothing).
         const open = Object.values(s.uploads)
-          .filter((u) => u.accountId === session.accountId && u.state === "receiving")
+          .filter((u) => owns(who, u) && u.state === "receiving")
           .sort((a, b) => a.createdAt - b.createdAt);
         for (const u of open.slice(0, Math.max(0, open.length - uploadLimits.files + 1))) {
           delete s.uploads[u.id];
@@ -1909,8 +2271,9 @@ export function createApplication({
           size,
           album,
           caption,
-          householdId: session.householdId,
-          accountId: session.accountId,
+          ...(who.kind === "party"
+            ? { source: "party", deviceId: who.deviceId, ...(name ? { uploaderName: name } : {}) }
+            : { householdId: who.householdId, accountId: who.accountId }),
           // The storage session URI lets whoever holds it write this upload.
           session: seal(uri, key),
           state: "receiving",
@@ -1919,8 +2282,9 @@ export function createApplication({
         };
         return gone;
       }).catch(async (e) => {
-        // Another upload took the last place meanwhile.
-        if (e.code === "DAILY_UPLOAD_LIMIT") await media.cancel(uri);
+        // Another upload took the last place meanwhile, or the card closed:
+        // nothing is left open in storage.
+        await media.cancel(uri).catch(() => {});
         throw e;
       });
       await discardUploads(dropped);
@@ -1928,20 +2292,18 @@ export function createApplication({
     }
     const piece = uploadPiece.exec(path);
     if (piece && method === "POST") {
-      requireAuth("guest");
-      const upload = ctx.state.uploads?.[piece[1]];
-      if (!session.accountId || upload?.accountId !== session.accountId)
-        throw error(404, "NOT_FOUND");
+      const who = uploader(),
+        upload = ctx.state.uploads?.[piece[1]];
+      if (!owns(who, upload)) throw error(404, "NOT_FOUND");
       // About 2.4 GB an hour in the largest pieces; a page sends one at a time.
-      await rateLimit(ledger, hash("pieces:" + session.accountId), 1500, 3600000, now());
+      await rateLimit(ledger, hash("pieces:" + who.key), 1500, 3600000, now());
       return receivePiece(upload, Number(req.query?.offset), req.bytes);
     }
     if (piece && method === "GET") {
-      requireAuth("guest");
-      const upload = ctx.state.uploads?.[piece[1]],
+      const who = uploader(),
+        upload = ctx.state.uploads?.[piece[1]],
         row = ctx.state.photos[piece[1]];
-      if (!session.accountId || (upload || row)?.accountId !== session.accountId)
-        throw error(404, "NOT_FOUND");
+      if (!owns(who, upload || row)) throw error(404, "NOT_FOUND");
       if (upload?.state === "receiving") {
         const stored = await media
           .offset(unseal(upload.session, key))
@@ -1956,21 +2318,12 @@ export function createApplication({
         : { state: "review" };
     }
     if (path.startsWith("/api/photo/") && method === "GET") {
-      requireAuth();
-      if (session.kind !== "admin" && !session.accountId)
-        throw error(403, "VERIFIED_ACCOUNT_REQUIRED");
-      if (session.kind !== "admin") await stillListed(session);
+      await galleryViewer();
       const id = path.slice(11);
       if (!/^[a-f0-9-]{36}$/.test(id)) throw error(404, "NOT_FOUND");
       const row = ctx.state.photos[id],
-        kind = req.query?.poster === "1" ? "poster" : row?.kind || "photo";
-      if (
-        !row ||
-        (row.state !== "approved" && session?.kind !== "admin") ||
-        // A video still converting (or that could not be) has nothing to show.
-        ["processing", "failed"].includes(row.state) ||
-        (kind === "poster" && !row.poster)
-      )
+        kind = req.query?.poster === "1" ? "poster" : mediaKind(row);
+      if (!servable(row, { admin: session.kind === "admin", kind }))
         throw error(404, "NOT_FOUND");
       const size = await media.size(id, kind).catch((e) => {
         throw e.code === 404 ? error(404, "NOT_FOUND") : e;
@@ -2027,6 +2380,9 @@ export function createApplication({
             )
           )
             throw error(422, "ALBUM_HAS_MEDIA");
+          // A save without the download choice (an older admin page) keeps
+          // the one stored, rather than quietly widening it to guests.
+          if (!site.gallery && s.site?.gallery) site.gallery = s.site.gallery;
           site.version++;
           s.site = site;
           audit(s, session.actor, "site-settings", "event", now());
@@ -2365,10 +2721,71 @@ export function createApplication({
               ? { ...m, replyTo: replyRecipient(ctx.state, m, notionRows.get(m.householdId)) }
               : m,
           ),
-          photos: Object.values(ctx.state.photos),
+          // A table card file shows where it came from, the name typed (if
+          // any) and the reference the guest was shown; the phone's random
+          // name stays on the server.
+          photos: Object.values(ctx.state.photos).map(({ deviceId: _phone, ...r }) => ({
+            ...r,
+            ref: referenceCode(r.id),
+          })),
           albums: siteSettings(ctx.state).albums,
           mailConfigured: mailer.configured,
+          guestbookVisibility: visibilityOf(siteSettings(ctx.state)),
         };
+      }
+      // The table card (R-021, R-022), off until an administrator creates it.
+      if (path === "/api/admin/party-card" && method === "GET")
+        return partyCardStatus(ctx.state);
+      if (path === "/api/admin/party-card" && method === "POST") {
+        if (!["create", "rotate", "close"].includes(body.action)) throw error(422, "INVALID_FIELDS");
+        // Created or rotated: a new 256-bit code. Only its hash is kept, so
+        // the card can be shown once, right now, and never again.
+        const code = body.action === "close" ? null : token();
+        const status = await ledger.transaction((s) => {
+          const card = s.partyCard;
+          if (body.action === "create") {
+            if (card?.state === "open") throw error(409, "PARTY_CARD_OPEN");
+            s.partyCard = {
+              state: "open",
+              tokenHash: hash(code),
+              version: (card?.version || 0) + 1,
+              createdAt: now(),
+              begun: 0,
+            };
+          } else {
+            if (card?.state !== "open") throw error(409, "PARTY_CARD_NOT_OPEN");
+            card.version++;
+            if (body.action === "rotate") {
+              card.tokenHash = hash(code);
+              card.rotatedAt = now();
+            } else {
+              // Closed: the code is refused from now on ("closed", so a guest
+              // holding the card is told so); turning the card on again makes
+              // a new code.
+              card.state = "closed";
+              card.closedAt = now();
+            }
+          }
+          // Phones on the old code or card are signed out at once.
+          for (const [k, v] of Object.entries(s.sessions))
+            if (v.kind === "party" && v.cardVersion !== s.partyCard.version) delete s.sessions[k];
+          audit(s, session.actor, "party-card-" + body.action, "party-card", now());
+          return partyCardStatus(s);
+        });
+        if (!code) return status;
+        const url = origin + "/share/#party=" + code;
+        return { ...status, url, card: await tableCardSvg(url) };
+      }
+      // Who can read approved notes for Sophia (site/notes.mjs): the one
+      // switch the API, the note form, the note page and Privacy all follow.
+      if (path === "/api/admin/guestbook-visibility" && method === "POST") {
+        if (!visibilities.includes(body.visibility)) throw error(422, "INVALID_FIELDS");
+        return ledger.transaction((s) => {
+          // Kept apart from s.site (see server/site-settings.mjs).
+          s.guestbook = { visibility: body.visibility };
+          audit(s, session.actor, "guestbook-visibility:" + body.visibility, "event", now());
+          return { visibility: body.visibility };
+        });
       }
       if (path === "/api/admin/message-reply" && method === "POST") {
         const text = safeText(body.text, 2000);
@@ -2438,6 +2855,9 @@ export function createApplication({
           if (!row) throw error(404, "NOT_FOUND");
           if (row.kind === "contact" && body.state === "approved")
             throw error(422, "CONTACT_IS_PRIVATE");
+          // Its writer left the box unchecked: for Sophia and the family only.
+          if (row.kind === "guestbook" && row.display === "family" && body.state === "approved")
+            throw error(422, "NOTE_IS_PRIVATE");
           // A video can be approved once it plays: not while it is still
           // converting, nor after a conversion that failed.
           const waiting = body.collection === "photos" && row.state === "processing";
@@ -2451,6 +2871,10 @@ export function createApplication({
               throw error(422, "INVALID_ALBUM");
             row.album = body.album;
           }
+          // Download all photos keeps media in approval order, so what the
+          // family approves later lands in the last part (server/gallery.mjs).
+          if (body.collection === "photos" && body.state === "approved" && row.state !== "approved")
+            row.approvedAt = now();
           row.state = body.state;
           audit(s, session.actor, "moderation", body.id, now());
           return { state: row.state, discard: waiting };
@@ -2526,7 +2950,7 @@ export function createApplication({
       if (path === "/api/admin/updates" && method === "GET")
         return {
           announcements: Object.values(ctx.state.announcements),
-          outbox: Object.values(ctx.state.outbox).map(({ content, ...r }) => r),
+          outbox: Object.values(ctx.state.outbox).map(({ content, textContent, ...r }) => r),
           mailConfigured: mailer.configured,
         };
       if (path === "/api/admin/updates" && method === "POST") {
@@ -2536,6 +2960,8 @@ export function createApplication({
           titleEs = safeText(body.titleEs || "", 140),
           textEs = safeText(body.textEs || "", 2000);
         if (!title || !text) throw error(422, "MESSAGE_REQUIRED");
+        // Guests read the home page in both languages.
+        if (!titleEs || !textEs) throw error(422, "SPANISH_REQUIRED");
         return ledger.transaction((s) => {
           s.announcements[id] = {
             id,
@@ -2545,6 +2971,7 @@ export function createApplication({
             textEs,
             published: true,
             at: now(),
+            publishedAt: now(),
           };
           audit(s, session.actor, "announcement-published", id, now());
           return { id };
@@ -2684,6 +3111,8 @@ export function createApplication({
                     )}</p>`,
                   key,
                 ),
+                // The same words as plain text: what the organizer typed.
+                textContent: seal(url ? text.replaceAll(LINK_PLACEHOLDER, url) : text, key),
                 state: "draft",
                 createdAt: now(),
                 groups: body.groups,
@@ -2789,6 +3218,7 @@ export function createApplication({
           origin +
           (invite.locale === "es" ? "/es" : "") +
           (body.type === "thanks" ? "/thank-you/" : "/details/");
+        refuseLateInvitations(body.type);
         // Invitations and reminders carry a private link the server mints per
         // draft (sealed in the outbox), so organizers never copy or paste links.
         // It shares the household's generation: issuing a new link revokes it.
@@ -2856,20 +3286,101 @@ export function createApplication({
         if (u.state === "receiving") gone.push(u);
       }
     for (const householdId of Object.keys(s.uploadsBegun || {}))
-      if (!begunToday(s, householdId).length) delete s.uploadsBegun[householdId];
+      if (!recent(s.uploadsBegun[householdId], now()).length) delete s.uploadsBegun[householdId];
+    forgetPartyPhones(s);
     return gone;
   }
-  // The 20 a day: when each of a household's uploads in the last 24 hours
-  // began. Kept in the ledger, so a restart, scaling to zero or the second
-  // instance cannot start the day over (as the in-memory counter did), and
-  // counted as each upload begins, so one given up for a newer batch (its
-  // record is deleted), refused or never finished still counts: each may
-  // bring up to 300 MB.
-  function begunToday(s, householdId) {
-    return (s.uploadsBegun?.[householdId] || []).filter(
-      (at) => at > now() - 86400000,
-    );
+  // A week after the party upload window, the table card's per-phone counts
+  // and the random phone names on its files are deleted (Privacy says so);
+  // the files themselves stay, like everyone else's.
+  function forgetPartyPhones(s) {
+    const w = partyWindow(s);
+    if (!w || now() < w.closesAt + 7 * DAY) return;
+    delete s.partyDevices;
+    for (const r of [...Object.values(s.photos || {}), ...Object.values(s.uploads || {})])
+      if (r.source === "party") delete r.deviceId;
   }
+  // The limits (server/upload-quota.mjs). For a family: when each of its
+  // uploads in the last 24 hours began, kept in the ledger, so a restart,
+  // scaling to zero or the second instance cannot start the count over (as
+  // the in-memory counter did), and counted as each upload begins, so one
+  // given up for a newer batch (its record is deleted), refused or never
+  // finished still counts: each may bring up to 300 MB. For a table card
+  // phone: its own count for the window, and the card's total.
+  function quotaOf(s, who) {
+    const t = now();
+    if (who.kind === "party") {
+      const begun = s.partyCard?.begun || 0;
+      if (begun >= quota.perPartyCard)
+        return { code: "PARTY_CARD_FULL", scope: "card", limit: quota.perPartyCard, used: begun, full: true, retryAt: null };
+      const used = (s.partyDevices?.[who.deviceId] || []).length;
+      return {
+        code: "PARTY_DEVICE_LIMIT",
+        scope: "device",
+        limit: quota.perPartyDevice,
+        used,
+        full: used >= quota.perPartyDevice,
+        retryAt: null,
+      };
+    }
+    const m = lifecycleOf(s),
+      times = recent(s.uploadsBegun?.[who.householdId], t),
+      limitAt = (at) => familyLimit(quota, m, at),
+      limit = limitAt(t),
+      full = times.length >= limit;
+    return {
+      code: "DAILY_UPLOAD_LIMIT",
+      scope: "family",
+      limit,
+      used: times.length,
+      full,
+      retryAt: full ? nextRoom(times, t, limitAt, m ? [m.uploadsFrom, m.uploadsUntil] : []) : null,
+    };
+  }
+  // The refusal carries the facts the page shows ("You can add more after
+  // 9:15 PM"), and a Retry-After header when waiting helps.
+  const quotaError = (q) =>
+    error(
+      429,
+      q.code,
+      {
+        reason: "quota",
+        scope: q.scope,
+        limit: q.limit,
+        used: q.used,
+        retryAt: q.retryAt === null ? null : new Date(q.retryAt).toISOString(),
+        now: new Date(now()).toISOString(),
+      },
+      q.retryAt === null ? undefined : Math.ceil((q.retryAt - now()) / 1000),
+    );
+  // What Admin shows about the table card: its state, the window, and counts
+  // (never the code, which is not kept).
+  function partyCardStatus(s) {
+    const card = s.partyCard,
+      w = partyWindow(s),
+      iso = (t) => (t ? new Date(t).toISOString() : null);
+    return {
+      state: card?.state || "off",
+      createdAt: iso(card?.createdAt),
+      rotatedAt: iso(card?.rotatedAt),
+      closedAt: iso(card?.closedAt),
+      opensAt: iso(w?.opensAt),
+      closesAt: iso(w?.closesAt),
+      inWindow: !!w?.open,
+      files: card?.begun || 0,
+      phones: Object.keys(s.partyDevices || {}).length,
+      perPhone: quota.perPartyDevice,
+      perCard: quota.perPartyCard,
+    };
+  }
+  // Whose upload or file this is: a signed-in person's, or a table card phone's.
+  const owns = (who, r) =>
+    !!r &&
+    (who.kind === "party"
+      ? r.source === "party" && !!who.deviceId && r.deviceId === who.deviceId
+      : !!who.accountId && r.accountId === who.accountId);
+  const waitingIn = (s, who) =>
+    Object.values(s.photos || {}).filter((r) => owns(who, r) && ["pending", "processing"].includes(r.state));
   async function discardUploads(list) {
     for (const u of list) {
       await media.cancel(unseal(u.session, key));
@@ -2938,8 +3449,16 @@ export function createApplication({
         kind: u.kind,
         // The album chosen at the start, unless the family removed it since.
         album: albums.some((a) => a.id === u.album) ? u.album : albums[0]?.id || "event",
-        householdId: u.householdId,
-        accountId: u.accountId,
+        // From the table card: labelled so for the family's review, with the
+        // name the guest gave (if any) and the phone's random name, which
+        // lets that phone take its own file back before the review.
+        ...(u.source === "party"
+          ? {
+              source: "party",
+              ...(u.deviceId ? { deviceId: u.deviceId } : {}),
+              ...(u.uploaderName ? { uploaderName: u.uploaderName } : {}),
+            }
+          : { householdId: u.householdId, accountId: u.accountId }),
         caption: u.caption,
         // A video waits for its conversion before the family can review it.
         state: u.kind === "video" ? "processing" : "pending",
@@ -2955,7 +3474,10 @@ export function createApplication({
     if (!upload) throw error(404, "NOT_FOUND");
     if (upload.kind === "photo" || upload.state === "failed")
       await media.remove(id, "upload").catch(() => {});
-    if (upload.kind === "photo" && upload.state === "received")
+    // On the party night the table card could bring hundreds of photos: the
+    // family sees them in Admin (the notification above) instead of one
+    // email each.
+    if (upload.kind === "photo" && upload.state === "received" && upload.source !== "party")
       await sendNotification(id);
     return uploadAnswer(upload);
   }
@@ -3091,9 +3613,9 @@ export function createApplication({
         const refused =
           failure &&
           (failure.status === 422 || failure.code === 404 || job.attempts >= 3);
-        await ledger.transaction((s) => {
+        const fromCard = await ledger.transaction((s) => {
           const r = s.photos[job.id];
-          if (r?.state !== "processing") return;
+          if (r?.state !== "processing") return false;
           delete r.lease;
           if (done) {
             r.state = "pending";
@@ -3105,10 +3627,12 @@ export function createApplication({
             r.state = "failed";
             r.problem = failure.status === 422 ? failure.code : "PROCESSING_FAILED";
           }
+          return r.source === "party";
         });
         if (done || refused) await media.remove(job.id, "upload").catch(() => {});
         if (done) {
-          await sendNotification(job.id);
+          // Table card videos are listed in Admin, not emailed one by one.
+          if (!fromCard) await sendNotification(job.id);
           result.converted++;
         } else if (refused) result.refused++;
         else {
@@ -3135,10 +3659,12 @@ export function createApplication({
   // so they cannot hold upload slots (re-audit). The key is the person, not
   // the session or the cookie's spelling, so one person signed in on several
   // devices still uploads one file at a time. The route still checks rights.
+  // A table card session (current card, inside the window) is one phone.
   const canUpload = async (cookieHeader) => {
     const { session } = await context({ headers: { cookie: cookieHeader } });
     if (!session) return null;
     if (session.kind === "admin") return "admin:" + session.email;
+    if (session.kind === "party") return "party:" + session.deviceId;
     return session.accountId ? "account:" + session.accountId : null;
   };
   return { dispatch, syncOne, canUpload, processMedia };

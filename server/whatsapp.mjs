@@ -7,7 +7,10 @@ import {
   validWhatsappWebhook,
 } from "./whatsapp-transport.mjs";
 import { recipientName } from "./audience.mjs";
-const version = "2026-09-28";
+// The version of the consent wording guests agree to (site/guest-whatsapp.js);
+// a new date whenever that wording changes. 2026-10-17: the Spanish text names
+// the program "avisos por WhatsApp" and the Spanish keywords BAJA and AYUDA.
+const version = "2026-10-17";
 const xml = (text = "") => ({
   binary: Buffer.from(
     '<?xml version="1.0" encoding="UTF-8"?><Response>' +
@@ -40,6 +43,9 @@ export function createWhatsapp({
   now = Date.now,
   // The RSVP deadline (site/content.mjs); checked against approved templates.
   deadline = null,
+  // False once that deadline has passed (server/application.mjs). Every
+  // template is an invitation or a reminder that asks for an RSVP by it.
+  invitationsOpen = () => true,
 }) {
   if (
     !Array.isArray(templates) ||
@@ -208,8 +214,13 @@ export function createWhatsapp({
       !["en", "es"].includes(input.language)
     )
       throw error(422, "WHATSAPP_CONSENT_INVALID");
-    const phone = whatsappDestination(input.phone),
-      row = await notion.read(id, { fresh: true });
+    const phone = whatsappDestination(input.phone);
+    // New sign-ups only while WhatsApp is really on, and only for numbers
+    // outside the US and Canada (+1): Meta does not deliver the invitation
+    // templates there, and those numbers have SMS. Unsubscribing always works.
+    if (input.consent && !enabled) throw error(503, "WHATSAPP_NOT_AVAILABLE");
+    if (input.consent && phone.startsWith("+1")) throw error(422, "WHATSAPP_US_NUMBER");
+    const row = await notion.read(id, { fresh: true });
     await ledger.transaction((s) => {
       s.whatsappPending ??= {};
       s.whatsappPreferences ??= {};
@@ -247,6 +258,7 @@ export function createWhatsapp({
     return consent(id);
   }
   async function draft(input) {
+    if (!invitationsOpen()) throw error(409, "INVITATIONS_CLOSED");
     if (
       !/^[a-zA-Z0-9_-]{8,128}$/.test(input.requestId || "") ||
       !Array.isArray(input.ids) ||
@@ -373,6 +385,7 @@ export function createWhatsapp({
   }
   async function send(id, reviewToken, actor) {
     if (!enabled) throw error(503, "WHATSAPP_NOT_ENABLED");
+    if (!invitationsOpen()) throw error(409, "INVITATIONS_CLOSED");
     const p = await review(id);
     if (!p.sendingEnabled) throw error(503, "WHATSAPP_TEMPLATE_NOT_APPROVED");
     if (p.reviewToken !== reviewToken)
@@ -439,6 +452,42 @@ export function createWhatsapp({
       throw error(503, code);
     }
   }
+  // The automatic replies to STOP, START and HELP, in English and Spanish. The
+  // Spanish ones speak to the one person who owns the phone (tú).
+  const replies = {
+    en: {
+      stop: "Simply Soph Media: You have unsubscribed from WhatsApp event updates. Reply START to subscribe again.",
+      subscribed:
+        "Simply Soph Media: You are subscribed to Sophia's WhatsApp event updates. Frequency varies. Reply STOP to unsubscribe or HELP for help.",
+      notReady:
+        "Simply Soph Media: First request WhatsApp updates in your website account or ask us to record your consent, then send START again. HELP: misxv@simplysoph.com.",
+      help: `Simply Soph Media event support: misxv@simplysoph.com. Reply STOP to unsubscribe. To RSVP, use the private link in your invitation: ${origin}/rsvp/`,
+    },
+    es: {
+      stop: "Simply Soph Media: Ya no recibirás avisos por WhatsApp de los XV de Sophia. Responde ALTA o START para volver a suscribirte.",
+      subscribed:
+        "Simply Soph Media: Tu suscripción a los avisos por WhatsApp de los XV de Sophia está activa. La frecuencia varía. Responde BAJA para cancelar o AYUDA para recibir ayuda.",
+      notReady:
+        "Simply Soph Media: Primero pide los avisos por WhatsApp en tu cuenta del sitio (o pídenos que registremos tu permiso) y luego vuelve a enviar ALTA o START. Ayuda: misxv@simplysoph.com.",
+      help: `Simply Soph Media, ayuda con los avisos de los XV de Sophia: misxv@simplysoph.com. Responde BAJA para cancelar. Para confirmar tu asistencia, usa el enlace privado de tu invitación: ${origin}/es/rsvp/`,
+    },
+  };
+  // A Spanish keyword gets a Spanish reply. An English one gets the language
+  // this phone chose: its sign-up on the website, else the guest list; English
+  // when the phone is unknown (or the guest list cannot be read).
+  async function replyLanguage(body, phone) {
+    if (/^(BAJA|PARAR|ALTA|INICIAR|AYUDA)$/.test(body)) return "es";
+    const pending = Object.values((await ledger.read()).whatsappPending || {}).find(
+      (p) => p.phone === phone,
+    );
+    if (pending) return pending.language === "es" ? "es" : "en";
+    try {
+      const row = (await notion.list()).find((r) => !r.archived && r.whatsappPhone === phone);
+      return row?.whatsappLanguage === "es" ? "es" : "en";
+    } catch {
+      return "en";
+    }
+  }
   async function callback(kind, params, signature) {
     if (!validWhatsappWebhook(webhook, kind, params, signature))
       throw error(403, "TWILIO_SIGNATURE_INVALID");
@@ -489,26 +538,18 @@ export function createWhatsapp({
         });
       });
       if (stop || start) await sync(phone);
-      if (stop)
-        return xml(
-          "Simply Soph Media: You have unsubscribed from WhatsApp event updates. Reply START to subscribe again.",
-        );
+      const help = /^(HELP|INFO|AYUDA)$/.test(body);
+      if (!stop && !start && !help) return xml();
+      const say = replies[await replyLanguage(body, phone)];
+      if (stop) return xml(say.stop);
       if (start) {
         const p = (await ledger.read()).whatsappPreferences?.[h];
-        return xml(
-          p?.type === "START" && p.syncState === "synced"
-            ? "Simply Soph Media: You are subscribed to Sophia's WhatsApp event updates. Frequency varies. Reply STOP to unsubscribe or HELP for help."
-            : "Simply Soph Media: First request WhatsApp updates in your website account or ask us to record your consent, then send START again. HELP: misxv@simplysoph.com.",
-        );
+        return xml(p?.type === "START" && p.syncState === "synced" ? say.subscribed : say.notReady);
       }
       // HELP gets the support answer the program requires. Any other text gets
-      // no automatic reply: a person answers messages (the owner's rule), so
-      // nothing goes out without one (re-audit).
-      if (/^(HELP|INFO|AYUDA)$/.test(body))
-        return xml(
-          "Simply Soph Media event support: misxv@simplysoph.com. Reply STOP to unsubscribe. RSVP at https://misxv.simplysoph.com/rsvp/ using your private invitation.",
-        );
-      return xml();
+      // no automatic reply (above): a person answers messages (the owner's
+      // rule), so nothing goes out without one (re-audit).
+      return xml(say.help);
     }
     const ranks = {
       accepted: 0,

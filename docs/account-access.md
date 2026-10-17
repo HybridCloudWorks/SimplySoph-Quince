@@ -21,7 +21,8 @@ The model, in one table. The decision record is [v1/access-model.md](v1/access-m
 
 ## Sign-in details
 
-- **Invitation links and codes** open the RSVP only. Contact details stay hidden, and every other page asks for the email sign-in.
+- **Invitation links and codes** open the RSVP only. Contact details stay hidden, and every other page asks for the email sign-in. One exception, for writing only: the household can leave Sophia one note from each issue of its link (`POST /api/guestbook-note`), without a second sign-in. It waits in the review queue like any note, marked as sent from the invitation link; a reissued link allows one more. The link session still reads nothing beyond its own RSVP.
+- **Notes for Sophia:** who can read approved notes is one switch on Admin → Messages: guests who sign in (the default) or anyone with the site's address. Each note keeps what its writer agreed to (not shown, signed-in guests, or anyone), and is shown to the narrower of the two. The note form, the note page and Privacy say what the switch says.
 - **Emailed links:**
   - 256-bit secrets, hashed at rest, and not kept in the mailbox's Sent Items.
   - Expire after 15 minutes and work once.

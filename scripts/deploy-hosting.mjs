@@ -44,6 +44,38 @@ export function servingConfig(firebase, targets, sha) {
   };
 }
 
+// After a release the custom domain must serve the bytes that were built, not
+// only the new X-Release-Commit header: an edge that still holds an old page or
+// script would pass the header check (round 2 review, R-127). fetch decodes any
+// compression, so the bodies compare with the files in dist/ directly.
+export const servedChecks = [['/', 'index.html'], ['/es/', 'es/index.html'], ['/client.js', 'client.js'], ['/styles.css', 'styles.css']];
+export async function staleServedPaths(origin, {dist = 'dist', fetchImpl = fetch, checks = servedChecks} = {}) {
+  const digest = bytes => createHash('sha256').update(bytes).digest('hex'), stale = [];
+  for (const [path, file] of checks) {
+    const expected = digest(await readFile(`${dist}/${file}`));
+    const served = await fetchImpl(`${origin}${path}`,{cache:'no-store',redirect:'error',signal:AbortSignal.timeout(15000)}).catch(() => null);
+    if (!served?.ok || digest(Buffer.from(await served.arrayBuffer())) !== expected) stale.push(path);
+  }
+  return stale;
+}
+// The gift registry links live in the API's event settings, which a static
+// release cannot change. They are still read before and after each release, so
+// a publish can never be the unnoticed moment a family-set link changed
+// (R-127). null: the API could not be read, which is reported, not failed.
+export async function liveRegistries(origin, {fetchImpl = fetch} = {}) {
+  try {
+    const res = await fetchImpl(`${origin}/api/site`,{cache:'no-store',redirect:'error',signal:AbortSignal.timeout(15000)});
+    if (!res.ok) return null;
+    const registries = (await res.json()).site?.registries;
+    return Array.isArray(registries) ? JSON.stringify(registries.map(r => [r.id, r.url])) : null;
+  } catch { return null; }
+}
+export function registryCheck(before, after) {
+  if (before === null || after === null) return 'Gift registry links: not compared (the API could not be read before and after).';
+  if (before !== after) throw new Error('The gift registry links changed during the release; inspect the event settings before retrying');
+  return 'Gift registry links: unchanged by the release.';
+}
+
 async function release(env = process.env) {
   assertReleaseContext(env);
   const config = servingConfig(JSON.parse(await readFile('firebase.json','utf8')), JSON.parse(await readFile('.firebaserc','utf8')),env.GITHUB_SHA);
@@ -74,6 +106,7 @@ async function release(env = process.env) {
     return (await result.json()).object.sha === env.GITHUB_SHA;
   }
   if (!await isCurrent()) { console.log('Newer commit exists; obsolete release skipped.'); return; }
+  const origin = 'https://misxv.simplysoph.com', registriesBefore = await liveRegistries(origin);
   const auth = new GoogleAuth({scopes:['https://www.googleapis.com/auth/cloud-platform']});
   const token = await auth.getAccessToken();
   if (!token) throw new Error('Google authentication failed');
@@ -102,16 +135,20 @@ async function release(env = process.env) {
   const published = await request(`${api}sites/${site}/releases?versionName=${encodeURIComponent(version.name)}`,'POST',{message:`GitHub ${env.GITHUB_SHA}`});
   console.log(`Released ${env.GITHUB_SHA}: ${published.name}`);
   // Normal HTTPS verification, bounded retry for edge propagation.
+  let waitingFor = 'the release header';
   for (let attempt=0; attempt<12; attempt++) {
-    const home = await fetch('https://misxv.simplysoph.com/',{cache:'no-store',signal:AbortSignal.timeout(15000)});
-    if (home.ok && home.headers.get('x-release-commit') === env.GITHUB_SHA) {
-      const summary = `Published [misxv.simplysoph.com](https://misxv.simplysoph.com)\n\nCommit: \`${env.GITHUB_SHA}\`\n\nRelease: \`${published.name}\`\n\nStatic site verified over HTTPS. Live RSVP/email activation remains separate.\n`;
+    const home = await fetch(`${origin}/`,{cache:'no-store',signal:AbortSignal.timeout(15000)});
+    const stale = home.ok && home.headers.get('x-release-commit') === env.GITHUB_SHA ? await staleServedPaths(origin) : null;
+    if (stale) waitingFor = stale.join(', ');
+    if (stale && !stale.length) {
+      const registries = registryCheck(registriesBefore, await liveRegistries(origin));
+      const summary = `Published [misxv.simplysoph.com](https://misxv.simplysoph.com)\n\nCommit: \`${env.GITHUB_SHA}\`\n\nRelease: \`${published.name}\`\n\nStatic site verified over HTTPS: ${servedChecks.map(([path]) => `\`${path}\``).join(', ')} serve the built bytes.\n\n${registries}\n\nLive RSVP/email activation remains separate.\n`;
       if (env.GITHUB_STEP_SUMMARY) await appendFile(env.GITHUB_STEP_SUMMARY,summary);
-      console.log('Custom domain serves the expected commit.'); return;
+      console.log(`Custom domain serves the expected commit and content. ${registries}`); return;
     }
     await new Promise(done => setTimeout(done,5000));
   }
-  throw new Error('Release created but custom-domain commit verification timed out; inspect before retrying');
+  throw new Error(`Release created but custom-domain verification timed out (still waiting for ${waitingFor}); inspect before retrying`);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

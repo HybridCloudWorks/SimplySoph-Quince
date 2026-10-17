@@ -15,7 +15,7 @@ const valid = {
 const cleared = Object.fromEntries([
   'MAIL_PROVIDER','SENDGRID_FALLBACK_ENABLED','SENDGRID_API_KEY','MICROSOFT_CLIENT_ID','MICROSOFT_TENANT_ID',
   'SMS_ENABLED','SMS_ACTIVATION_REVIEWED','TWILIO_AUTH_TOKEN','WHATSAPP_ENABLED','WHATSAPP_ACTIVATION_REVIEWED',
-  'SCHEDULER_AUDIENCE','SCHEDULER_SERVICE_ACCOUNT',
+  'SCHEDULER_AUDIENCE','SCHEDULER_SERVICE_ACCOUNT','GUEST_MICROSOFT_SIGN_IN','GALLERY_ARCHIVE_PART_MB',
 ].map(k => [k, '']));
 
 async function refuse(overrides) {
@@ -47,10 +47,12 @@ const cases = [
   ['an admin list with a non-address', {ADMIN_EMAILS:'organizer'}, /ADMIN_EMAILS must be one or more valid addresses/],
   ['a Microsoft client without its tenant', {MICROSOFT_CLIENT_ID:'test-ms-client'}, /Set both MICROSOFT_CLIENT_ID and MICROSOFT_TENANT_ID/],
   ['a Microsoft tenant without its client', {MICROSOFT_TENANT_ID:'test-ms-tenant'}, /Set both MICROSOFT_CLIENT_ID and MICROSOFT_TENANT_ID/],
+  ['a guest Microsoft switch that is neither true nor false', {GUEST_MICROSOFT_SIGN_IN:'off'}, /GUEST_MICROSOFT_SIGN_IN must be true or false/],
   ['SMS switched on without the activation review', {SMS_ENABLED:'true', TWILIO_AUTH_TOKEN:'test-only-token'}, /SMS activation requires/],
   ['SMS switched on without Twilio credentials', {SMS_ENABLED:'true', SMS_ACTIVATION_REVIEWED:'true'}, /SMS activation requires/],
   ['WhatsApp switched on without the activation review', {WHATSAPP_ENABLED:'true', TWILIO_AUTH_TOKEN:'test-only-token'}, /WhatsApp activation requires/],
   ['a scheduler audience without its service account', {SCHEDULER_AUDIENCE:'https://misxv.example.test/api/internal/drain'}, /Set both SCHEDULER_AUDIENCE and SCHEDULER_SERVICE_ACCOUNT/],
+  ['a gallery part size too large for one request', {GALLERY_ARCHIVE_PART_MB:'5000'}, /GALLERY_ARCHIVE_PART_MB must be a whole number/],
 ];
 
 test('the synthetic configuration itself is complete: the server starts listening', async (t) => {

@@ -22,7 +22,7 @@ A seven-agent audit on October 10, 2026 counted 11 sign-in paths and 7 sources o
 2. Keep one break-glass owner outside Notion.
 3. The admin field is the existing **Administrator Eligible** checkbox. It was not renamed, because the code reads it by that name.
 4. Guest identity is the Notion row's Email, plus an optional **Additional Emails** column.
-5. Invitation links and codes are RSVP-only.
+5. Invitation links and codes are RSVP-only, except that a household may leave Sophia one moderated note per issue of its link (round 2 review, R-024; pending the owner's sign-off). The link still reads nothing more.
 6. RSVPs write the family's **RSVP** column. "Website RSVP" is no longer written.
 7. Sign-in links are sent automatically on the guest's own request. Receipts go only to a verified address (the signed-in email or the Notion Email), never to an address typed into the form. Confirmed after the re-audit (Oct 11, 2026): receipts stay automatic, at most 5 per household a day; later ones wait as drafts for a person.
 8. Page permissions (gifts, padrinos, costs) are removed. The registry is public, and costs and the padrinos planning list are admin-only.

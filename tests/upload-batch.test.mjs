@@ -9,6 +9,7 @@ import {
   uploadAccept,
   uploadLimits,
 } from "../site/upload-batch.mjs";
+import * as batch from "../site/upload-batch.mjs";
 
 const MB = 1024 * 1024,
   UNIT = uploadLimits.unit;
@@ -189,13 +190,24 @@ test("after a few tries a file pauses, the batch stops there, and Try again resu
   assert.equal(api.calls.filter((c) => c.start).length, 2, "one upload each, resumed rather than restarted");
 });
 
-test("a refusal is final for that file only; a limit pauses at once; nothing invalid is sent", async () => {
+// Round 2 review, section 4: at the 21st file the summary said "paused, check
+// your connection and tap Try again" while the limit could not pass for hours.
+// This test used to assert exactly that ("a limit pauses at once": the limited
+// file "paused", the next one "queued"). A limit is now its own outcome: the
+// file and every later one are "limited", with the server's reset time, and
+// none of them can be tried again before it.
+test("a refusal is final for that file only; a limit stops the batch with its reset time and no early retry; nothing invalid is sent", async () => {
+  const retryAt = "2027-01-16T03:15:00.000Z";
   const api = fakeApi({
     before: (call) => {
       if (call.start === "long.mov")
         throw Object.assign(new Error("This video is longer than 60 seconds."), { status: 422, code: "VIDEO_TOO_LONG" });
       if (call.start === "limit.jpg")
-        throw Object.assign(new Error("Your household has shared 20 files today."), { status: 429, code: "DAILY_UPLOAD_LIMIT" });
+        throw Object.assign(new Error("Your family has reached its limit."), {
+          status: 429,
+          code: "DAILY_UPLOAD_LIMIT",
+          details: { error: "DAILY_UPLOAD_LIMIT", reason: "quota", limit: 60, used: 60, retryAt, scope: "family" },
+        });
     },
   });
   const waits = [];
@@ -207,11 +219,83 @@ test("a refusal is final for that file only; a limit pauses at once; nothing inv
     real("after.jpg", "image/jpeg", randomBytes(1000)),
   ]);
   await sendUploadBatch(rows, api.transport, () => {}, { ...quick, sleep: async (ms) => waits.push(ms) });
-  assert.deepEqual(rows.map((r) => r.state), ["rejected", "invalid", "received", "paused", "queued"]);
+  assert.deepEqual(rows.map((r) => r.state), ["rejected", "invalid", "received", "limited", "limited"]);
   assert.equal(rows[0].message, "This video is longer than 60 seconds.");
-  assert.equal(rows[3].message, "Your household has shared 20 files today.");
+  assert.equal(rows[0].reason, "validation");
+  assert.deepEqual(
+    [rows[3].reason, rows[3].limit, rows[3].retryAt, rows[4].reason, rows[4].retryAt],
+    ["quota", 60, Date.parse(retryAt), "quota", Date.parse(retryAt)],
+  );
   assert.deepEqual(waits, [], "no quick retries for a refusal or a limit");
   assert.ok(!api.calls.some((c) => c.start === "IMG.HEIC"), "the HEIC photo never left the phone");
+  assert.ok(!api.calls.some((c) => c.start === "after.jpg"), "nothing more is asked once the limit is reached");
+  // Try again is only for what can succeed: not before the reset time.
+  assert.equal(batch.retryable(rows[3], Date.parse(retryAt) - 1), false);
+  assert.equal(batch.retryable(rows[3], Date.parse(retryAt)), true);
+  assert.equal(batch.retryable(rows[0], Date.parse(retryAt)), false, "a refused file never is");
+});
+
+test("each failure is classified once: only a dropped connection or a busy server is tried again at once", () => {
+  const kind = (err) => batch.failureKind(err);
+  const e = (status, code, extra = {}) => Object.assign(new Error(code || ""), { status, code, ...extra });
+  assert.equal(kind(new TypeError("Failed to fetch")), "network");
+  assert.equal(kind(e(undefined, undefined, { timeout: true })), "network");
+  assert.equal(kind(e(408, "REQUEST_TIMEOUT")), "network");
+  assert.equal(kind(e(503, "UPLOAD_BUSY")), "busy");
+  assert.equal(kind(e(503, "UPLOAD_STORAGE_BUSY")), "busy");
+  assert.equal(kind(e(502)), "busy", "a proxy's error page");
+  assert.equal(kind(e(409, "CONFLICT")), "busy");
+  assert.equal(kind(e(429, "DAILY_UPLOAD_LIMIT")), "quota");
+  assert.equal(kind(e(429, "PARTY_DEVICE_LIMIT")), "quota");
+  assert.equal(kind(e(429, "PARTY_CARD_FULL")), "quota");
+  assert.equal(kind(e(429, "TOO_MANY_REQUESTS")), "rate");
+  assert.equal(kind(e(401, "SIGN_IN_REQUIRED")), "auth");
+  assert.equal(kind(e(403, "CSRF_REJECTED")), "auth");
+  assert.equal(kind(e(403, "PARTY_CLOSED")), "auth");
+  assert.equal(kind(e(422, "INVALID_PHOTO")), "validation");
+  assert.equal(kind(e(413, "PHOTO_TOO_LARGE")), "validation");
+  assert.equal(kind(e(410, "UPLOAD_EXPIRED")), "validation");
+});
+
+test("a rate limit waits for its time; a busy server and a lost connection pause with their own reason; a lost sign-in stops", async () => {
+  const at = "2027-01-15T22:00:00.000Z";
+  const run = async (failure, names = ["a.jpg", "b.jpg"]) => {
+    const waits = [];
+    const api = fakeApi({ before: (call) => call.start === "a.jpg" && failure() });
+    const rows = createUploadBatch(names.map((n) => real(n, "image/jpeg", randomBytes(1000))));
+    await sendUploadBatch(rows, api.transport, () => {}, { ...quick, sleep: async (ms) => waits.push(ms) });
+    return { rows, waits, api };
+  };
+  const rate = await run(() => {
+    throw Object.assign(new Error("Wait"), { status: 429, code: "TOO_MANY_REQUESTS", details: { reason: "rate", retryAt: at } });
+  });
+  assert.deepEqual(rate.rows.map((r) => [r.state, r.reason]), [["waiting", "rate"], ["queued", undefined]]);
+  assert.equal(rate.rows[0].retryAt, Date.parse(at));
+  assert.deepEqual(rate.waits, [], "an hourly budget does not pass in seconds");
+  assert.equal(batch.retryable(rate.rows[0], Date.parse(at) - 1), false);
+  assert.equal(batch.retryable(rate.rows[0], Date.parse(at)), true);
+
+  const busy = await run(() => {
+    throw Object.assign(new Error(""), { status: 503, code: "UPLOAD_BUSY" });
+  });
+  assert.deepEqual(busy.rows.map((r) => [r.state, r.reason]), [["paused", "busy"], ["queued", undefined]]);
+  assert.equal(busy.waits.length, 4, "a busy server gets the quick retries first");
+  assert.equal(batch.retryable(busy.rows[0], 0), true);
+
+  const offline = await run(() => {
+    throw new TypeError("Failed to fetch");
+  });
+  assert.deepEqual(offline.rows.map((r) => [r.state, r.reason]), [["paused", "network"], ["queued", undefined]]);
+  assert.equal(offline.waits.length, 4);
+  assert.equal(batch.retryable(offline.rows[0], 0), true);
+
+  const signedOut = await run(() => {
+    throw Object.assign(new Error("Your sign-in ended."), { status: 401, code: "SIGN_IN_REQUIRED" });
+  });
+  assert.deepEqual(signedOut.rows.map((r) => [r.state, r.reason]), [["blocked", "auth"], ["queued", undefined]]);
+  assert.deepEqual(signedOut.waits, []);
+  assert.equal(signedOut.api.calls.filter((c) => c.start).length, 1, "the next file is not tried with a lost sign-in");
+  assert.equal(batch.retryable(signedOut.rows[0], Date.parse(at)), false);
 });
 
 // An MP4/MOV file reduced to the boxes the length check reads.

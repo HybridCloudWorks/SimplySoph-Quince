@@ -181,7 +181,15 @@ async function convertedVideo(input, directory) {
   return { video, poster, duration: 8 };
 }
 
-export async function startHarness({ now = BEFORE_DEADLINE } = {}) {
+// Options: `whatsapp: true` reports WhatsApp as live (a transport that never
+// sends: nothing can reach a guest), `sms: true` the same for SMS, and
+// `guestMicrosoft: false` stands for GUEST_MICROSOFT_SIGN_IN=false.
+export async function startHarness({
+  now = BEFORE_DEADLINE,
+  whatsapp = false,
+  sms = false,
+  guestMicrosoft = true,
+} = {}) {
   try {
     await stat(path.join(dist, "rsvp", "index.html"));
   } catch {
@@ -235,6 +243,30 @@ export async function startHarness({ now = BEFORE_DEADLINE } = {}) {
     verifyGoogle,
     // Shows the Microsoft button; its sign-in is not exercised.
     microsoftClientId: "00000000-0000-4000-8000-00000000c1d0",
+    guestMicrosoft,
+    // Switched-on channels whose sending always refuses.
+    ...(whatsapp
+      ? {
+          whatsappTransport: {
+            enabled: true,
+            configured: true,
+            async send() {
+              throw error(503, "WHATSAPP_NOT_ENABLED");
+            },
+          },
+        }
+      : {}),
+    ...(sms
+      ? {
+          smsTransport: {
+            enabled: true,
+            configured: true,
+            async send() {
+              throw error(503, "SMS_NOT_ENABLED");
+            },
+          },
+        }
+      : {}),
     clientId: "harness-client.apps.googleusercontent.com",
     // Photos really go through sharp; video conversion (ffmpeg, which CI does
     // not install) is stood in for by convertedVideo below.
@@ -262,7 +294,8 @@ export async function startHarness({ now = BEFORE_DEADLINE } = {}) {
       actor: "owner:" + OWNER_EMAIL,
       email: OWNER_EMAIL,
       csrf: ownerCsrf,
-      expiresAt: clock + 3_600_000 * 24 * 90,
+      // Long enough for clock walks to the party (January 2027) and after.
+      expiresAt: clock + 3_600_000 * 24 * 500,
     };
   });
   return {
@@ -279,6 +312,23 @@ export async function startHarness({ now = BEFORE_DEADLINE } = {}) {
     media,
     // One run of the scheduled media job (Cloud Scheduler in production).
     processMedia: () => app.processMedia(),
+    // Any family admin request, as the owner (for example
+    // admin("party-card", { action: "create" }) for the table card).
+    async admin(p, body) {
+      return app.dispatch({
+        path: "/api/admin/" + p,
+        method: body ? "POST" : "GET",
+        headers: {
+          origin: siteOrigin,
+          cookie: "__session=" + ownerToken,
+          "x-csrf-token": ownerCsrf,
+        },
+        body: body || {},
+        ip: "harness",
+      });
+    },
+    // The owner's session as a browser cookie, for a test of the admin pages.
+    ownerCookie: () => ({ name: "__session", value: ownerToken, domain: "127.0.0.1", path: "/api" }),
     // The family's review on Admin → Photos & videos.
     async moderate(id, state) {
       return app.dispatch({
@@ -292,6 +342,20 @@ export async function startHarness({ now = BEFORE_DEADLINE } = {}) {
         body: { id, collection: "photos", state },
         ip: "harness",
       });
+    },
+    // A signed-in owner for the browser: the cookie to add to the context.
+    async adminCookie() {
+      const value = token();
+      await ledger.transaction((s) => {
+        s.sessions[hash(value)] = {
+          kind: "admin",
+          actor: "owner:" + OWNER_EMAIL,
+          email: OWNER_EMAIL,
+          csrf: token(),
+          expiresAt: clock + 3_600_000,
+        };
+      });
+      return { name: "__session", value, url: origin + "/api/" };
     },
     notion: notionApi,
     sent,
@@ -316,6 +380,21 @@ export async function startHarness({ now = BEFORE_DEADLINE } = {}) {
           locale,
           invited: invited ?? { ceremony: true, dinner: true, dance: true },
         },
+        ip: "harness",
+      });
+    },
+    // POST /api/admin/updates, as Admin → Communications publishes a website
+    // announcement (English and Spanish).
+    async announce(announcement) {
+      return app.dispatch({
+        path: "/api/admin/updates",
+        method: "POST",
+        headers: {
+          origin: siteOrigin,
+          cookie: "__session=" + ownerToken,
+          "x-csrf-token": ownerCsrf,
+        },
+        body: announcement,
         ip: "harness",
       });
     },

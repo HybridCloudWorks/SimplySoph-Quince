@@ -24,6 +24,9 @@ export function createMailBatches({
   mailer,
   origin,
   now,
+  // Throws once the RSVP deadline has passed: every batch here asks guests to
+  // RSVP by it (server/application.mjs).
+  refuseLateInvitations = () => {},
   sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
 }) {
   const accepted = (j) => ["accepted", "unknown", "sending"].includes(j.state);
@@ -81,6 +84,7 @@ export function createMailBatches({
     async create(body, actor) {
       if (!["invitation", "reminder"].includes(body.type))
         throw error(422, "INVALID_MAIL_TYPE");
+      refuseLateInvitations(body.type);
       // The request ID becomes the batch ID, so it must be a UUID like every admin ID.
       if (
         typeof body.requestId !== "string" ||
@@ -180,6 +184,7 @@ export function createMailBatches({
         const b = s.mailBatches?.[body.id];
         if (!b) throw error(404, "NOT_FOUND");
         if (b.state !== "draft") throw error(409, "BATCH_NOT_DRAFT");
+        refuseLateInvitations(b.type);
         const count = pending(s, b).length;
         // The organizer types the number of emails; it must match what will send.
         if (!count || body.count !== count) throw error(422, "CONFIRM_COUNT_MISMATCH");
@@ -200,6 +205,8 @@ export function createMailBatches({
         if (!b) throw error(404, "NOT_FOUND");
         if (!["confirmed", "sending"].includes(b.state))
           throw error(409, "BATCH_NOT_CONFIRMED");
+        // Kept for cancelling, never sent: they would ask for a past date.
+        refuseLateInvitations(b.type);
         if (b.lease?.until > now()) throw error(409, "BATCH_ALREADY_SENDING");
         const next = pending(s, b).slice(0, BATCH_CHUNK);
         b.state = next.length ? "sending" : "done";
