@@ -1146,6 +1146,28 @@ blockquote {
   border: 1px solid var(--line);
   background: white;
 }
+/* Download all photos (site/gallery-download.js): one full-width link per
+   part, text wrapping on a 320 px phone. */
+.download-all {
+  margin: 32px 0;
+  max-width: 40rem;
+}
+.download-all h2 {
+  margin-bottom: 8px;
+}
+.download-parts {
+  list-style: none;
+  margin: 16px 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.download-part.button {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
 .admin-shell video {
   max-width: 100%;
 }

@@ -627,6 +627,7 @@ for (const file of [
   "admin-whatsapp.js",
   "guest-whatsapp.js",
   "notes.mjs",
+  "gallery-download.js",
 ])
   await copyFile(
     new URL("../site/" + file, import.meta.url),

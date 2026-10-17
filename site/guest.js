@@ -50,11 +50,12 @@ import {
 import { galleryOpen } from "./lifecycle.mjs";
 import { date, at } from "./datetime.mjs";
 import { siteClock } from "./now.mjs";
-// The upload form and the WhatsApp choices load only on the pages that show
-// them, so every other page (the home page above all) stays light
-// (tests/home-weight.test.mjs).
+// The upload form, the WhatsApp choices and "Download all photos" load only on
+// the pages that show them, so every other page (the home page above all)
+// stays light (tests/home-weight.test.mjs).
 const uploads = () => import("./media-upload.js");
 const whatsapp = () => import("./guest-whatsapp.js");
+const downloads = () => import("./gallery-download.js");
 const portal = document.querySelector("#portal");
 // Shared wording (site/lexicon.mjs) in this page's language and, in Spanish,
 // its form of address.
@@ -1269,6 +1270,10 @@ async function gallery() {
   }
   state.hidden = true;
   document.querySelector("[data-gallery-share]")?.removeAttribute("hidden");
+  // "Download all photos", above the albums (site/gallery-download.js, loaded
+  // only here). Not awaited: the albums draw while it asks for the parts.
+  // A failed load leaves the albums as they are.
+  downloads().then(({ downloadAll }) => downloadAll(cards), () => {});
   const name = (id) => {
     const album = eventContent.albums.find((a) => a.id === id);
     return album ? (es ? album.es : album.en) : "";

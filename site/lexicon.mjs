@@ -48,6 +48,8 @@ export const terms = {
   photos: { en: "Photos", es: "Fotos" },
   photosAndNotes: { en: "Photos & notes", es: "Fotos y mensajes" },
   sharePhotos: { en: "Share your photos", es: "Compartir fotos" },
+  // The gallery's action for saving every approved photo and video at once.
+  downloadAll: { en: "Download all photos", es: "Descargar todas las fotos" },
   family: { en: "family", es: "familia" },
   ceremonyLong: { en: "Religious ceremony", es: "Ceremonia religiosa" },
   ceremony: { en: "Ceremony", es: "Ceremonia" },

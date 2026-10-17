@@ -20,9 +20,10 @@ import { milestones, inUploadWindow, rsvpOpen } from "../site/lifecycle.mjs";
 import { quotaSetting, familyLimit, recent, nextRoom, DAY } from "./upload-quota.mjs";
 import { tableCardSvg } from "./party-card.mjs";
 import { calendar, contactTopics, escapeHtml } from "../site/celebration.mjs";
-import { siteSettings, validateSettings } from "./site-settings.mjs";
+import { siteSettings, validateSettings, galleryDownload } from "./site-settings.mjs";
 import { smsProgram } from "../site/sms-program.mjs";
 import { audienceOf, displayFor, visibilities, visibilityOf } from "../site/notes.mjs";
+import { createGalleryArchive, servable, mediaKind } from "./gallery.mjs";
 import { randomUUID, randomBytes, createHmac, timingSafeEqual } from "node:crypto";
 import sharp from "sharp";
 import { imageGate, createGate } from "./gate.mjs";
@@ -157,6 +158,9 @@ export function createApplication({
   // How many photos and videos may be shared (server/upload-quota.mjs);
   // tests pass their own numbers.
   uploadQuota = {},
+  // "Download all photos": { partBytes, partsPerHour } (server/gallery.mjs
+  // has the defaults and why).
+  galleryArchive = {},
 }) {
   if (!Buffer.isBuffer(key) || key.length !== 32)
     throw new Error("32-byte application key required");
@@ -217,6 +221,7 @@ export function createApplication({
     deadline,
     invitationsOpen,
   });
+  const archive = createGalleryArchive({ media, ledger, now, log, ...galleryArchive });
   const sendNotification = createNotifications({
     ledger,
     mailer,
@@ -1671,11 +1676,17 @@ export function createApplication({
       if (method !== "GET" && !sameSecret(headers["x-csrf-token"], session.csrf))
         throw error(403, "CSRF_REJECTED");
     };
-    if (path === "/api/gallery" && method === "GET") {
+    // Who may see the gallery's media: an administrator, or a guest signed in
+    // with an email still on their household's row. Invitation-link sessions
+    // (RSVP only) never reach here with a session.
+    const galleryViewer = async () => {
       requireAuth();
       if (session.kind !== "admin" && !session.accountId)
         throw error(403, "VERIFIED_ACCOUNT_REQUIRED");
       if (session.kind !== "admin") await stillListed(session);
+    };
+    if (path === "/api/gallery" && method === "GET") {
+      await galleryViewer();
       return {
         media: Object.values(ctx.state.photos)
           .filter((r) => r.state === "approved")
@@ -1705,6 +1716,24 @@ export function createApplication({
         throw error(403, "VERIFIED_ACCOUNT_REQUIRED");
       if (session.kind !== "admin") await stillListed(session);
       return { messages: shownNotes(ctx.state, "guests") };
+    }
+    // Download all photos (server/gallery.mjs): the list of parts, then each
+    // part as a ZIP. The same people as the gallery, unless the owner keeps
+    // downloading everything at once to administrators (site settings).
+    if (
+      (path === "/api/gallery/archive" || path.startsWith("/api/gallery/archive/")) &&
+      method === "GET"
+    ) {
+      await galleryViewer();
+      const admin = session.kind === "admin";
+      if (!admin && galleryDownload(ctx.state.site) !== "guests")
+        throw error(403, "DOWNLOAD_RESTRICTED");
+      // Limits are per person: their account, or the administrator's email.
+      const who = admin ? "admin:" + session.email : "account:" + session.accountId;
+      if (path === "/api/gallery/archive") return archive.manifest(ctx.state, who);
+      const n = /^\/api\/gallery\/archive\/([1-9]\d{0,4})$/.exec(path)?.[1];
+      if (!n) throw error(404, "NOT_FOUND");
+      return archive.part(ctx.state, who, Number(n), req.query?.v);
     }
     if (path === "/api/auth/email/request" && method === "POST")
       return accounts.request(body);
@@ -2289,21 +2318,12 @@ export function createApplication({
         : { state: "review" };
     }
     if (path.startsWith("/api/photo/") && method === "GET") {
-      requireAuth();
-      if (session.kind !== "admin" && !session.accountId)
-        throw error(403, "VERIFIED_ACCOUNT_REQUIRED");
-      if (session.kind !== "admin") await stillListed(session);
+      await galleryViewer();
       const id = path.slice(11);
       if (!/^[a-f0-9-]{36}$/.test(id)) throw error(404, "NOT_FOUND");
       const row = ctx.state.photos[id],
-        kind = req.query?.poster === "1" ? "poster" : row?.kind || "photo";
-      if (
-        !row ||
-        (row.state !== "approved" && session?.kind !== "admin") ||
-        // A video still converting (or that could not be) has nothing to show.
-        ["processing", "failed"].includes(row.state) ||
-        (kind === "poster" && !row.poster)
-      )
+        kind = req.query?.poster === "1" ? "poster" : mediaKind(row);
+      if (!servable(row, { admin: session.kind === "admin", kind }))
         throw error(404, "NOT_FOUND");
       const size = await media.size(id, kind).catch((e) => {
         throw e.code === 404 ? error(404, "NOT_FOUND") : e;
@@ -2360,6 +2380,9 @@ export function createApplication({
             )
           )
             throw error(422, "ALBUM_HAS_MEDIA");
+          // A save without the download choice (an older admin page) keeps
+          // the one stored, rather than quietly widening it to guests.
+          if (!site.gallery && s.site?.gallery) site.gallery = s.site.gallery;
           site.version++;
           s.site = site;
           audit(s, session.actor, "site-settings", "event", now());
@@ -2848,6 +2871,10 @@ export function createApplication({
               throw error(422, "INVALID_ALBUM");
             row.album = body.album;
           }
+          // Download all photos keeps media in approval order, so what the
+          // family approves later lands in the last part (server/gallery.mjs).
+          if (body.collection === "photos" && body.state === "approved" && row.state !== "approved")
+            row.approvedAt = now();
           row.state = body.state;
           audit(s, session.actor, "moderation", body.id, now());
           return { state: row.state, discard: waiting };

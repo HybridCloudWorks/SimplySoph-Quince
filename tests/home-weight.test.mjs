@@ -61,6 +61,6 @@ test("the home page stays within its byte budget", async () => {
   // writes (round 2 review, R-037), so it arrives with guest.js; the byte
   // budget above still holds the page to its weight.
   // The upload form and the WhatsApp choices never load with the home page.
-  for (const file of ["media-upload.js", "upload-batch.mjs", "guest-whatsapp.js"])
+  for (const file of ["media-upload.js", "upload-batch.mjs", "guest-whatsapp.js", "gallery-download.js"])
     assert.equal(how(file), "elsewhere", `${file} loads with the home page`);
 });

@@ -60,6 +60,11 @@ if (env.EVENT_BUCKET) {
   // administrators' Microsoft sign-in does not depend on it.
   if (!["", "true", "false"].includes(env.GUEST_MICROSOFT_SIGN_IN ?? ""))
     throw new Error("GUEST_MICROSOFT_SIGN_IN must be true or false");
+  // Download all photos: the largest part, in MB (server/gallery.mjs has the
+  // default and why). Each part is one request through Hosting's 60 s limit.
+  const partMb = env.GALLERY_ARCHIVE_PART_MB;
+  if (partMb && !(/^\d+$/.test(partMb) && Number(partMb) >= 20 && Number(partMb) <= 1000))
+    throw new Error("GALLERY_ARCHIVE_PART_MB must be a whole number of MB from 20 to 1000");
   const smsTransport = twilioTransport({
     accountSid: env.TWILIO_ACCOUNT_SID,
     serviceSid: env.TWILIO_MESSAGING_SERVICE_SID,
@@ -171,6 +176,7 @@ if (env.EVENT_BUCKET) {
     },
     // Guest photos, videos, posters and uploads in progress (store.mjs).
     media: cloudMedia(adapter.bucket),
+    galleryArchive: partMb ? { partBytes: Number(partMb) * 1_000_000 } : {},
     key,
     origin,
     clientId: env.ADMIN_GOOGLE_CLIENT_ID,

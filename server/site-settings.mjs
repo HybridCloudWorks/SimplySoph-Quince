@@ -115,5 +115,15 @@ export function validateSettings(input) {
   if (new Set(next.registries.map((r) => r.id)).size !== next.registries.length)
     bad();
   // `guestbook` is not taken from here (see siteSettings).
+  // Who may download all approved photos and videos at once (the owner's
+  // choice, docs/cleanup.md). Settings saved before it existed mean "guests".
+  if (input.gallery !== undefined) {
+    if (!galleryDownloadChoices.includes(input.gallery?.download)) bad();
+    next.gallery = { download: input.gallery.download };
+  }
   return next;
 }
+// "guests": every signed-in guest who can see the gallery (the default);
+// "admins": only the family's administrators.
+export const galleryDownloadChoices = ["guests", "admins"];
+export const galleryDownload = (site) => site?.gallery?.download || "guests";
