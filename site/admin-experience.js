@@ -1,6 +1,6 @@
 import { api, esc, field, submit, notify, focusOn } from "./client.js";
 import { stamp, date } from "./datetime.mjs";
-import { localDay } from "./lifecycle.mjs";
+import { partyDay } from "./lifecycle.mjs";
 // The Privacy policy's review date (site/policies.mjs retentionReview): the
 // photos may not go before it (tests/lifespan.test.mjs keeps them equal).
 const reviewDay = "2027-02-01";
@@ -54,7 +54,6 @@ export const copyWarnings = (warnings = []) =>
 // until the family decides, and then the gallery and thank-you page say it.
 // The rule is tied to both dates (aria-describedby) and checked on the form
 // (min), and a date the server refuses is named and marked (P5-A11Y-07).
-const partyDay = (site) => localDay(Date.parse(site.reception.end || site.reception.start));
 const dayText = (day) => date(Date.parse(day + "T12:00:00Z"), "en", { weekday: false });
 const lifespanRules = (site) => ({
   "photos-before-review": ["lifespan.photosUntil", `Download your photos by: use ${dayText(reviewDay)} or later, the review date in the Privacy policy.`],

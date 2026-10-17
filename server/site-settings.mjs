@@ -4,7 +4,7 @@ import { error } from "./auth.mjs";
 import { visibilityOf } from "../site/notes.mjs";
 import { places } from "../site/promises.mjs";
 import { retentionReview } from "../site/policies.mjs";
-import { localDay } from "../site/lifecycle.mjs";
+import { partyDay } from "../site/lifecycle.mjs";
 // The saved settings, or the defaults until the family first saves them.
 // site.guestbook.visibility (who can read approved notes for Sophia,
 // site/notes.mjs) is kept apart in the ledger, s.guestbook, and changed only on
@@ -173,7 +173,7 @@ export function validateSettings(input) {
     };
     const siteUntil = day(input.lifespan?.siteUntil),
       photosUntil = day(input.lifespan?.photosUntil),
-      partyOver = localDay(Date.parse(next.reception.end || next.reception.start));
+      partyOver = partyDay(next);
     if (photosUntil && photosUntil < retentionReview) bad("photos-before-review");
     if (siteUntil && siteUntil < partyOver) bad("site-before-party");
     if (siteUntil && photosUntil && siteUntil < photosUntil) bad("site-before-photos");

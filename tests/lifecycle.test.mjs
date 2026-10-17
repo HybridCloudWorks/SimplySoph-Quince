@@ -22,9 +22,11 @@ import {
   PHASES,
   replyMarker,
   readReplyMarker,
+  partyDay,
 } from "../site/lifecycle.mjs";
 import { celebration } from "../site/celebration.mjs";
 import { event } from "../site/content.mjs";
+import { readFile } from "node:fs/promises";
 
 const m = milestones({ deadline: event.deadline, site: celebration });
 const at = (iso) => Date.parse(iso);
@@ -242,4 +244,22 @@ test("the device's reply note: yes or no, no identity, gone once the party is ov
   assert.equal(readReplyMarker(note, m.eventEnd), null);
   for (const bad of [null, "yes", { ...note, v: 2 }, { ...note, answer: "maybe" }, { ...note, until: "soon" }, { ...note, until: undefined }])
     assert.equal(readReplyMarker(bad, m.deadline - 1), null);
+});
+
+// The calendar day the party ends on, for the site's earliest last day
+// (site.lifespan): one function, asked by the API's check and by Admin's form.
+test("the party's day: the reception's end, or its start until the end is confirmed, in Fort Worth", async () => {
+  assert.equal(partyDay(celebration), "2027-01-16", "the reception ends at 12:30 AM on January 16");
+  const reception = (start, end = null) => ({ ...celebration, reception: { ...celebration.reception, start, end } });
+  assert.equal(partyDay(reception("2027-01-15T19:30:00-06:00")), "2027-01-15", "no end yet: the day it starts");
+  assert.equal(partyDay(reception("2027-01-15T19:30:00-06:00", "2027-01-15T23:59:59-06:00")), "2027-01-15");
+  assert.equal(partyDay(reception("2027-01-15T19:30:00-06:00", "2027-01-16T00:00:00-06:00")), "2027-01-16");
+  // Fort Worth's calendar, not UTC's: 11:30 PM Central is already the 16th in UTC.
+  assert.equal(partyDay(reception("2027-01-16T01:30:00Z", "2027-01-16T05:30:00Z")), "2027-01-15");
+  // Both places that need it ask here, and neither works it out itself.
+  for (const file of ["server/site-settings.mjs", "site/admin-experience.js"]) {
+    const source = await readFile(new URL(`../${file}`, import.meta.url), "utf8");
+    assert.match(source, /import \{[^}]*\bpartyDay\b[^}]*\} from "[./]+(?:site\/)?lifecycle\.mjs"/, file);
+    assert.doesNotMatch(source, /reception\??\.end\s*\|\||localDay\(/, `${file} works out the party's day itself`);
+  }
 });

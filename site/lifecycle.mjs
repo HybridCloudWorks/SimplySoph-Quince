@@ -58,6 +58,13 @@ export function startOfLocalDay(ms, tz = TIME_ZONE) {
 // first, then snaps to that day's midnight).
 export const localMidnightAfter = (ms, days, tz = TIME_ZONE) =>
   startOfLocalDay(startOfLocalDay(ms, tz) + days * DAY + DAY / 2, tz);
+// The calendar day the party ends on, "YYYY-MM-DD" in the event's time zone:
+// the reception's end, or its start while the end is not confirmed. The site
+// may not be set to close before it: the API's check of site.lifespan
+// (server/site-settings.mjs) and Admin's form (site/admin-experience.js) both
+// ask here. `site` is the event settings (GET /api/site).
+export const partyDay = (site, tz = TIME_ZONE) =>
+  localDay(Date.parse(site.reception.end || site.reception.start), tz);
 
 const instant = (iso, name) => {
   // Same rule as server/site-settings.mjs: an ISO time with an explicit offset.
