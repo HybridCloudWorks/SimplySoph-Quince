@@ -967,6 +967,9 @@ blockquote {
 .calendar-choices > a {
   font-weight: 600;
 }
+.whats-next {
+  margin: 24px 0;
+}
 .calendar-actions .hint {
   font-size: 0.8rem;
   margin-top: 12px;
