@@ -53,6 +53,17 @@ test("the photos date is never earlier than the promised review date, nor later 
     refused({ photosUntil: bad }, String(bad));
 });
 
+// The earliest last day for the site is the party's day (site/lifecycle.mjs
+// partyDay): the reception's end, or its start until the end is confirmed.
+test("the site may close on the party's own day, never before it, with or without a confirmed reception end", () => {
+  const unconfirmed = { ...celebration, reception: { ...celebration.reception, end: null } };
+  const check = (site, siteUntil) => validateSettings({ ...site, lifespan: { siteUntil } });
+  assert.deepEqual(check(celebration, "2027-01-16").lifespan, { siteUntil: "2027-01-16", photosUntil: null });
+  assert.throws(() => check(celebration, "2027-01-15"), (e) => e.details?.reason === "site-before-party");
+  assert.deepEqual(check(unconfirmed, "2027-01-15").lifespan, { siteUntil: "2027-01-15", photosUntil: null });
+  assert.throws(() => check(unconfirmed, "2027-01-14"), (e) => e.details?.reason === "site-before-party");
+});
+
 // P5-A11Y-07: Admin names the date and the rule instead of a generic refusal.
 test("a refused lifespan says which rule it broke, and Admin's form uses the same review date", async () => {
   const reason = (lifespan) => {

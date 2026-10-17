@@ -42,6 +42,14 @@ The site is published only by a push to `main`, so the previews change at the ne
 
 If the re-run's checks fail on something unrelated to the site (for example a new advisory in `npm audit`), fix that first; the deploy job runs only after the checks pass.
 
+### The checks on the night of a boundary
+
+A re-publish needs `npm run check` to pass on the day it runs, so no test may depend on today's date. `npm run check:clock` (`scripts/test-at.mjs`) runs the same checks with the clock moved to the dates the site goes through: November 16, 2026 (RSVPs closed), January 15, 2027 at 3:30 PM (before the ceremony) and 9:15 PM (party night), January 16 at 10:00 AM (the second re-publish), February 15, 2027, and January 20, 2028 (past every date the tests use). Every process the checks start sees that date (`tests/support/fake-now.mjs`); `node scripts/test-at.mjs <ISO time with offset>` runs one date.
+
+CI's **Checks at …** jobs run four of those dates on every pull request and push, beside `check`. The publish job waits only for `check`, so they never delay or block a re-publish; they exist to catch a date-dependent test before it merges.
+
+Before each boundary (a few days before November 15 and before January 15), confirm the latest **Checks at …** jobs on `main` passed, or run `npm run check:clock`. If a date fails, a test is reading today's date: make it pin its own instant (as `tests/upload-quota.test.mjs` does) before the boundary, never loosen what it checks.
+
 ### Automatic publishing at the boundaries (owner decision, not built)
 
 A scheduled workflow could re-publish at both boundaries without a person, but today's deploy safeguards deliberately refuse it, and only the owner can relax them:
@@ -133,7 +141,7 @@ npx -y firebase-tools@15.31.0 deploy --only hosting:misxv --project simplysoph-6
 npx -y firebase-tools@15.31.0 deploy --only hosting:misxv --project simplysoph-66c78 --account <project-owner-account> --non-interactive
 ```
 
-The Hosting predeploy hook runs `npm run check`, which builds pages and runs route/asset and behavior checks. Do not use an unscoped `firebase deploy` in this shared project. Firebase CLI 15.31.0 performed the deployment. Node 24 is the CI and API runtime target; guest pages are static and the dedicated Cloud Run container handles API requests. Gemini and a new load balancer are not required. Existing shared billing still applies; this does not promise zero charges.
+The Hosting predeploy hook runs `npm run check` (route/asset and behavior checks, on a build pinned to a test date), then `npm run build`, the same real-clock build the publish job makes, so a manual deploy publishes the pages and link previews of the current phase, never the test build (`tests/deploy-hosting.test.mjs` keeps the two equal). Do not use an unscoped `firebase deploy` in this shared project. Firebase CLI 15.31.0 performed the deployment. Node 24 is the CI and API runtime target; guest pages are static and the dedicated Cloud Run container handles API requests. Gemini and a new load balancer are not required. Existing shared billing still applies; this does not promise zero charges.
 
 Changes reach `main` only through pull requests whose `check` job passes (ruleset "Protect main"), and the publish job runs in the GitHub `production` environment, which only `main` can use. Publishing authenticates through Workload Identity Federation; its condition admits only pushes to `main` running this repository's `check.yml`.
 

@@ -202,6 +202,7 @@ test("config advertises the Microsoft client id", async () => {
 });
 
 // GUEST_MICROSOFT_SIGN_IN (an owner decision; on by default).
+// outlook.com, not example.com: a personal Microsoft account must carry a Microsoft address (tested below).
 test("guests may sign in with Microsoft while GUEST_MICROSOFT_SIGN_IN is on, the default", async () => {
   const f = await fixture();
   assert.equal((await f.app.dispatch({ path: "/api/config", method: "GET", headers: {} })).guestMicrosoft, true);

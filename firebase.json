@@ -18,7 +18,8 @@
       }
     ],
     "predeploy": [
-      "npm run check"
+      "npm run check",
+      "npm run build"
     ],
     "headers": [
       {

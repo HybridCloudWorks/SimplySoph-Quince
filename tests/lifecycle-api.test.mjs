@@ -53,10 +53,10 @@ async function fixture({ now = Date.parse("2026-10-01T18:00:00Z") } = {}) {
     ledger,
     notion,
     mailer: { configured: true, send: async (m) => sent.push(m) },
-    verifyGoogle: async () => ({ id: "organizer", email: "organizer@gmail.com" }),
+    verifyGoogle: async () => ({ id: "organizer", email: "organizer@example.com" }),
     key: Buffer.alloc(32, 4),
     origin,
-    adminEmails: ["organizer@gmail.com"],
+    adminEmails: ["organizer@example.com"],
     now: () => clock,
     mailSleep: async () => {},
   });
@@ -64,7 +64,7 @@ async function fixture({ now = Date.parse("2026-10-01T18:00:00Z") } = {}) {
     s.sessions[hash(adminToken)] = {
       kind: "admin",
       actor: "organizer",
-      email: "organizer@gmail.com",
+      email: "organizer@example.com",
       csrf: "admin-csrf",
       expiresAt: clock + 400 * 86400000,
     };

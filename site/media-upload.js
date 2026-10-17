@@ -11,7 +11,13 @@ import {
   uploadLimits,
 } from "./upload-batch.mjs";
 import { parts, time, date } from "./datetime.mjs";
-import { delayUntil } from "./lifecycle.mjs";
+import { delayUntil, localDay } from "./lifecycle.mjs";
+// now(): the server's time, from the page's one clock (site/now.mjs: the
+// clock siteClock() gives, read directly because this page needs only the
+// time, while it draws). It is the phone's clock corrected by the server's at
+// a request's midpoint, so "after 9:15 PM" and the Try again that comes back
+// then are right even on a phone whose clock is off.
+import { clock as now, sample } from "./now.mjs";
 
 const lang = es ? "es" : "en";
 const mb = (bytes) =>
@@ -19,25 +25,15 @@ const mb = (bytes) =>
     ? Math.max(1, Math.round(bytes / 1024)) + " KB"
     : (bytes / 1024 / 1024).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0) + " MB";
 const minutes = (s) => Math.floor(s / 60) + ":" + String(Math.round(s % 60)).padStart(2, "0");
-// The phone's clock corrected by the server's (each limit answer says when it
-// was given), so "after 9:15 PM" and the Try again that comes back then are
-// right even on a phone whose clock is off.
-let skew = 0;
-const noteServerTime = (iso) => {
-  const t = Date.parse(iso);
-  if (Number.isFinite(t)) skew = t - Date.now();
-};
-const now = () => Date.now() + skew;
 // "after 9:15 PM", or "after 9:15 PM on Saturday, January 16" when that is
-// another day (Fort Worth time, like every time on the site). Never
-// "tomorrow": the limits count 24 hours from each upload, not calendar days.
+// another day in Fort Worth (lifecycle localDay, like every day on the site).
+// Never "tomorrow": the limits count 24 hours from each upload, not calendar
+// days.
 function after(at) {
-  const a = parts(at),
-    b = parts(now()),
-    sameDay = a.year === b.year && a.month === b.month && a.day === b.day,
+  const sameDay = localDay(at) === localDay(now()),
     t = time(at, lang, { nbsp: true });
   if (es) {
-    const lead = (a.hour % 12 === 1 ? "después de la " : "después de las ") + t;
+    const lead = (parts(at).hour % 12 === 1 ? "después de la " : "después de las ") + t;
     return sameDay ? lead : `${lead} del ${date(at, lang, { year: false })}`;
   }
   return sameDay ? `after ${t}` : `after ${t} on ${date(at, lang, { year: false })}`;
@@ -46,14 +42,17 @@ function after(at) {
 // gave (server/upload-quota.mjs); the page never states a number of its own.
 function limitSentence({ scope, limit, retryAt }) {
   const n = Number.isSafeInteger(limit) ? limit : null;
+  // A table card phone's count lasts one visit (the card's session: it ends
+  // after 30 minutes unused, and a scan after that starts a new count), so the
+  // words promise "in one visit", not a limit per phone (server/application.mjs).
   if (scope === "device")
     return tr(
       n
-        ? `This phone has shared ${n} photos and videos from the table card, as many as we can take from one phone. Thank you!`
-        : "This phone has shared as many photos and videos as we can take from one phone. Thank you!",
+        ? `You’ve shared ${n} photos and videos from the table card, as many as we can take in one visit. Thank you!`
+        : "You’ve shared as many photos and videos as we can take in one visit. Thank you!",
       n
-        ? `Este teléfono ya compartió ${n} fotos y videos desde la tarjeta de la mesa, todos los que podemos recibir de un solo teléfono. ¡Gracias!`
-        : "Este teléfono ya compartió todas las fotos y videos que podemos recibir de un solo teléfono. ¡Gracias!",
+        ? `Ya compartiste ${n} fotos y videos desde la tarjeta de la mesa, todos los que podemos recibir en una visita. ¡Gracias!`
+        : "Ya compartiste todas las fotos y videos que podemos recibir en una visita. ¡Gracias!",
     );
   if (scope === "card")
     return tr(
@@ -399,12 +398,14 @@ export function mediaUpload(portal, albums, { party = false } = {}) {
   // How many more can be shared now, from the API; said only when it matters.
   async function showRoom() {
     let q;
+    const before = Date.now();
     try {
       q = await api("uploads/quota");
     } catch {
       return;
     }
-    noteServerTime(q.now);
+    // The answer says the server's time: one more sample for the page's clock.
+    sample(before, Date.now(), q.now);
     const retryAt = q.retryAt ? Date.parse(q.retryAt) : null;
     room.textContent =
       q.remaining <= 0
@@ -412,7 +413,7 @@ export function mediaUpload(portal, albums, { party = false } = {}) {
         : q.remaining < uploadLimits.files
           ? q.scope === "family"
             ? tr(`You can share ${q.remaining} more now.`, `Puedes compartir ${q.remaining} más por ahora.`)
-            : tr(`This phone can share ${q.remaining} more.`, `Este teléfono puede compartir ${q.remaining} más.`)
+            : tr(`You can share ${q.remaining} more on this visit.`, `Puedes compartir ${q.remaining} más en esta visita.`)
           : "";
     room.hidden = !room.textContent;
   }
@@ -557,7 +558,6 @@ export function mediaUpload(portal, albums, { party = false } = {}) {
     } catch (e) {
       error.textContent = e.message;
     } finally {
-      for (const e of entries) if (e.serverNow) noteServerTime(new Date(e.serverNow).toISOString());
       busy = false;
       // The pieces renewed the session; the page learns for how long now
       // (a background check, which renews nothing itself).

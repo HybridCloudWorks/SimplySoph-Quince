@@ -118,3 +118,25 @@ test('publishing refuses unless the live API reports the contract these pages ne
   await assert.rejects(assertLiveApi('https://example.org', {fetchImpl: async () => new Response('<html>', {status: 200}), needs: 1}),
     (e) => /could not be read/.test(e.message) && first.test(e.message));
 });
+
+// A manual `firebase deploy --only hosting:misxv` (docs/publishing.md) runs the
+// Hosting predeploy steps, then uploads dist/. `npm run check` leaves dist/
+// built for its pinned test date (--now in package.json), so a deploy that
+// stopped there would publish October 1 pages and previews. The last step is
+// the same build the CI publish job makes, on the real clock.
+test('a manual firebase deploy publishes the real-clock build the CI publish job makes, after the checks', async () => {
+  const {hosting} = JSON.parse(await readFile('firebase.json','utf8'));
+  const {scripts} = JSON.parse(await readFile('package.json','utf8'));
+  const workflow = await readFile('.github/workflows/check.yml','utf8');
+  // The publish job's steps: from "  deploy:" to the next job (or the end).
+  const job = workflow.split(/^ {2}(?=[\w-]+:\s*$)/m).find((block) => block.startsWith('deploy:'));
+  assert.ok(job, 'check.yml has the deploy job');
+  const builds = [...job.matchAll(/^\s+- run: (.+)$/gm)].map((m) => m[1].trim()).filter((run) => /\bbuild\b/.test(run));
+  assert.deepEqual(builds, ['npm run build'], 'the publish job builds once, with npm run build');
+  assert.equal(hosting.predeploy.at(-1), builds[0], 'the last predeploy step is the publish job\'s build');
+  assert.ok(hosting.predeploy.indexOf('npm run check') !== -1 && hosting.predeploy.indexOf('npm run check') < hosting.predeploy.length - 1,
+    'the checks run first');
+  // That build uses the real clock; the checks' build is the pinned one.
+  assert.doesNotMatch(scripts.build, /--now/);
+  assert.match(scripts.check, /--now=/);
+});

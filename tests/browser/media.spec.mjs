@@ -246,6 +246,29 @@ for (const lang of ["en", "es"])
     expect(Object.keys((await harness.ledger.read()).uploads || {})).toEqual([]);
   });
 
+// The upload page tells the time with the page's one clock (site/now.mjs, the
+// phone's clock corrected by the server's). On a phone a day fast, the next
+// place is still "on Friday, October 2" (not "after 12:00 PM", which that
+// phone would take for today) and Try again does not come back early.
+test("on a phone whose clock is a day fast, the limit's time and Try again follow the server's clock", async ({ page, harness }) => {
+  const household = households.rivera,
+    limit = uploadQuota.perDay;
+  await harness.issueInvitation(household);
+  await harness.ledger.transaction((s) => (s.uploadsBegun = { [household.id]: Array(limit).fill(harness.now() - 3600000) }));
+  await page.clock.setFixedTime(harness.now() + 24 * 3600000);
+  await page.goto(harness.url("/share/"));
+  await signInAs(page, harness, household.email);
+  await expect(page).toHaveURL(harness.url("/share/"));
+  const sentence = `Your family has shared ${limit} photos and videos in the last 24 hours, the most we can take at once. You can add more after 12:00 PM on Friday, October 2.`;
+  await expect(page.locator("#upload-room")).toHaveText(sentence);
+  const photo = await sharp({ create: { width: 40, height: 30, channels: 3, background: "#d7b779" } }).jpeg().toBuffer();
+  await page.getByLabel("Choose photos & videos").setInputFiles([{ name: "IMG_0311.JPG", mimeType: "image/jpeg", buffer: photo }]);
+  await page.getByLabel(/I have permission/).check();
+  await page.getByRole("button", { name: "Send my photos & videos" }).click();
+  await expect(page.locator("#upload-summary")).toHaveText(`0 of 1 arrived. ${sentence}`);
+  await expect(page.getByRole("button", { name: "Try again" })).toHaveCount(0);
+});
+
 test("a lost connection still pauses with the connection message and Try again, which resumes", async ({ page, harness }) => {
   const household = households.morales;
   await harness.issueInvitation(household);

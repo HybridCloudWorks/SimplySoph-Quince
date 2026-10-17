@@ -55,11 +55,14 @@ for (const [path, region] of [
     await link.focus();
     const name = await focusedText(page);
     release();
-    // The live settings have arrived (the calendar files come from the API now).
+    // The live settings have been applied: site/experience.js's
+    // experienceReady settles only after it has redrawn every part they change.
+    await page.evaluate(async () => {
+      await (await import("/experience.js")).experienceReady;
+    });
+    // And they did arrive (the calendar files come from the API now).
     if (region !== "[data-schedule-strip]")
       await expect(page.locator(`${region} a.calendar-link`).first()).toHaveAttribute("href", /^\/api\/calendar\//);
-    else await page.waitForResponse((r) => r.url().endsWith("/api/site")).catch(() => {});
-    await page.waitForTimeout(200);
     expect(await focusedText(page)).toBe(name);
     await expect(page.locator(`${region} a`).first()).toBeFocused();
   });

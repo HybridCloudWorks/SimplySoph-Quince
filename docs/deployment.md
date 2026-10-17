@@ -50,8 +50,9 @@ Every variable `server/start.mjs` reads. Secrets come from **pinned** Secret Man
 | `SCHEDULER_AUDIENCE`, `SCHEDULER_SERVICE_ACCOUNT` | No | No | none → drain off | Both or neither (startup fails otherwise). The Cloud Run service URL the OIDC token is minted for, and the scheduler service account email. See "Scheduled drain" |
 | `GALLERY_ARCHIVE_PART_MB` | No | No | `100` | Largest part of "Download all photos", in MB (whole number, 20–1000; anything else stops startup). Each part is one request through Hosting's 60-second limit; see "Media" |
 | `PORT` / `HOST` | No | No | `4173` / `127.0.0.1` (`0.0.0.0` on Cloud Run) | Dockerfile sets `PORT=8080` |
+| `K_SERVICE` | Set by Cloud Run | No | unset | Cloud Run sets it on every instance; then `HOST` defaults to `0.0.0.0`. Never set it yourself |
 
-`.env.example` lists the same names for local use only.
+`.env.example` lists the same names for local use only (`tests/start-config.test.mjs` checks both lists against `server/start.mjs`).
 
 ## Provisioning boundaries
 

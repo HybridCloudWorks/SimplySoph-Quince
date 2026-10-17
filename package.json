@@ -19,7 +19,8 @@
     "sms:setup": "node scripts/twilio-setup.mjs",
     "notion:inspect": "node scripts/inspect-notion.mjs",
     "cleanup:plan": "node scripts/cleanup-plan.mjs",
-    "check": "node scripts/build-pages.mjs --now=2026-10-01T18:00:00Z && node scripts/check.mjs && node --test tests/*.test.mjs"
+    "check": "node scripts/build-pages.mjs --now=2026-10-01T18:00:00Z && node scripts/check.mjs && node --test tests/*.test.mjs",
+    "check:clock": "node scripts/test-at.mjs"
   },
   "dependencies": {
     "@google-cloud/storage": "^8.4.0",
