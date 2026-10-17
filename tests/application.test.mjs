@@ -531,6 +531,51 @@ test("a note kept from before the choice (no stored consent) counts as consented
   const { id } = await f.guest("messages", { kind: "guestbook", name: "Old page", text: "old page", consent: true });
   assert.equal((await f.ledger.read()).messages[id].display, "public");
 });
+// R-167: each new note keeps which wording its writer agreed to, so a later
+// change of the sentences is auditable; legacy notes have none, contact
+// messages carry none, and no guest ever reads it.
+test("each new note stores the version of the consent wording its writer saw, which no guest reads", async () => {
+  const { consentVersion, noteWords } = await import("../site/notes.mjs");
+  const f = await notesFixture();
+  const guests = await f.note(true, "guests"),
+    everyone = await f.note(true, "public"),
+    unticked = await f.note(false, "guests", "for the family"),
+    { id: oldPage } = await f.guest("messages", { kind: "guestbook", name: "Old page", text: "old page", consent: true }),
+    { id: contact } = await f.guest("messages", { kind: "contact", name: "Writer", text: "A question", topic: "Other" });
+  const s = await f.ledger.read();
+  // (The household's five messages an hour are spent: the link's note from another.)
+  const g = await fixture(),
+    link = (await g.linkGuest("guestbook-note", { name: "Test family", text: "From the link", consent: true, audience: "guests" })).id;
+  assert.match(consentVersion("guests"), /^guests-[0-9a-f]{8}$/);
+  assert.match(consentVersion("public"), /^public-[0-9a-f]{8}$/);
+  assert.equal(s.messages[guests].consentVersion, consentVersion("guests"));
+  assert.equal(s.messages[everyone].consentVersion, consentVersion("public"));
+  // The box left unchecked was still worded for its audience, with its hint.
+  assert.equal(s.messages[unticked].consentVersion, consentVersion("guests"));
+  assert.equal((await g.ledger.read()).messages[link].consentVersion, consentVersion("guests"));
+  assert.equal(s.messages[oldPage].consentVersion, "required-statement");
+  assert.equal(Object.hasOwn(s.messages[contact], "consentVersion"), false);
+  // A change of the wording is a new version.
+  const before = consentVersion("guests"),
+    sentence = noteWords.consent.guests.es;
+  noteWords.consent.guests.es = sentence + " ";
+  try {
+    assert.notEqual(consentVersion("guests"), before);
+  } finally {
+    noteWords.consent.guests.es = sentence;
+  }
+  assert.equal(consentVersion("guests"), before);
+  // Guests read names and notes only.
+  await f.approve(guests);
+  await f.approve(everyone);
+  await f.setVisibility("public");
+  const read = JSON.stringify([
+    await f.app.dispatch({ path: "/api/public", method: "GET" }),
+    await f.guest("guestbook"),
+  ]);
+  assert.ok(read.includes("guests note") && read.includes("public note"));
+  assert.doesNotMatch(read, /consentVersion|guests-[0-9a-f]{8}|public-[0-9a-f]{8}/);
+});
 // Before: the household budget (5 an hour) was charged before the request was
 // checked, so refused posts used it up and the real note was then refused.
 test("a refused note or message does not use the household's message budget", async () => {

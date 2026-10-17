@@ -23,7 +23,7 @@ import { contactTopics, escapeHtml } from "../site/celebration.mjs";
 import { calendar } from "../site/calendar-file.mjs";
 import { siteSettings, validateSettings, galleryDownload } from "./site-settings.mjs";
 import { smsProgram } from "../site/sms-program.mjs";
-import { audienceOf, displayFor, visibilities, visibilityOf } from "../site/notes.mjs";
+import { audienceOf, consentVersion, displayFor, visibilities, visibilityOf } from "../site/notes.mjs";
 import { createGalleryArchive, servable, mediaKind } from "./gallery.mjs";
 import { randomUUID, randomBytes, randomInt, createHmac, hkdfSync, timingSafeEqual } from "node:crypto";
 import sharp from "sharp";
@@ -478,7 +478,8 @@ export function createApplication({
     // (`audience`); unchecked means only we read it (site/notes.mjs "family").
     if (body.audience !== undefined && !visibilities.includes(body.audience))
       throw error(422, "INVALID_FIELDS");
-    return { name, text, display: displayFor(body.consent, body.audience) };
+    // With the version of the wording agreed to, for the record (R-167).
+    return { name, text, display: displayFor(body.consent, body.audience), consentVersion: consentVersion(body.audience) };
   }
   const hiddenContact = () => ({ email: "", phone: "", address: null });
   // A household's latest saved RSVP, reduced to what its own home page shows.
@@ -2146,7 +2147,7 @@ export function createApplication({
       if (!["contact", "guestbook"].includes(body.kind))
         throw error(422, "INVALID_KIND");
       const id = randomUUID(),
-        { name, text, display } = noteInput(body);
+        { name, text, display, consentVersion } = noteInput(body);
       const contactEmail =
         body.kind === "contact"
           ? email(
@@ -2186,7 +2187,7 @@ export function createApplication({
           text,
           kind: body.kind,
           // A note's audience as its writer agreed (site/notes.mjs).
-          ...(body.kind === "guestbook" ? { display } : {}),
+          ...(body.kind === "guestbook" ? { display, consentVersion } : {}),
           state: "pending",
           at: now(),
         };
@@ -2204,7 +2205,7 @@ export function createApplication({
     if (path === "/api/guestbook-note" && method === "POST") {
       requireAuth("guest");
       if (session.scope !== "rsvp") throw error(403, "LINK_SESSION_REQUIRED");
-      const { name, text, display } = noteInput(body);
+      const { name, text, display, consentVersion } = noteInput(body);
       await guestInvitation(session);
       const sent = (s) =>
         Object.values(s.messages).some(
@@ -2237,6 +2238,7 @@ export function createApplication({
           text,
           kind: "guestbook",
           display,
+          consentVersion,
           state: "pending",
           at: now(),
         };

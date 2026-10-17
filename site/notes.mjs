@@ -79,5 +79,17 @@ export const noteWords = {
     es: "Si no la marcas, solo la familia de Sophia y las pocas personas que nos ayudan leerán tu mensaje.",
   },
 };
+// Which wording a writer agreed to, stored with each new note (never shown to
+// guests), so a later change of these sentences stays auditable (R-167): the
+// audience the box was worded for, and a fingerprint (FNV-1a) of the box and
+// its hint in both languages. A page that sent no audience showed the old
+// required statement. Notes from before this have none.
+export function consentVersion(audience) {
+  if (!visibilities.includes(audience)) return "required-statement";
+  let h = 2166136261;
+  for (const c of JSON.stringify([noteWords.consent[audience], noteWords.consentHint]))
+    h = Math.imul(h ^ c.charCodeAt(0), 16777619);
+  return `${audience}-${(h >>> 0).toString(16).padStart(8, "0")}`;
+}
 export const noteSentence = (kind, visibility, lang) =>
   noteWords[kind][visibility === "public" ? "public" : "guests"][lang === "es" ? "es" : "en"];
