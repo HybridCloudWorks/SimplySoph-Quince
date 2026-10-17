@@ -2,7 +2,7 @@
 // countdown, in a real browser against the built pages (scripts/build-pages.mjs,
 // site/nav.js, site/not-found.js, site/experience.js).
 import { test, expect } from "./fixtures.mjs";
-import { AFTER_DEADLINE } from "./harness.mjs";
+import { AFTER_DEADLINE, households } from "./harness.mjs";
 
 test.describe("on a phone", () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
@@ -32,10 +32,12 @@ test.describe("on a phone", () => {
     await menu.click();
     await expect(menu).toHaveAttribute("aria-expanded", "true");
     await expect(menu).toHaveAccessibleName("Close");
-    // Travel joins once it has hotels or an airport note (R-012).
+    // Travel joins once it has hotels or an airport note (R-012). The note
+    // for Sophia has its own item, named as its page (R-027).
     await expect(links.getByRole("link")).toHaveText([
       "Schedule",
-      "Photos & notes",
+      "Photos",
+      "A note for Sophia",
       "Gifts",
       "Questions",
       "Contact",
@@ -74,8 +76,8 @@ test.describe("on a phone", () => {
     await menu.focus();
     await page.keyboard.press("Enter");
     await expect(menu).toHaveAttribute("aria-expanded", "true");
-    // Through the six links, the language switch and RSVP, then the button.
-    for (let i = 0; i < 8; i++) await page.keyboard.press("Tab");
+    // Through the seven links, the language switch and RSVP, then the button.
+    for (let i = 0; i < 9; i++) await page.keyboard.press("Tab");
     await expect(menu).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(menu).toHaveAttribute("aria-expanded", "false");
@@ -142,7 +144,7 @@ test.describe("on a phone", () => {
     await page.getByRole("button", { name: "Menú" }).click();
     await expect(
       page.getByRole("navigation", { name: "Navegación principal" }).getByRole("link"),
-    ).toHaveText(["Programa", "Fotos y mensajes", "Mesa de regalos", "Preguntas", "Contacto", "Entrar"]);
+    ).toHaveText(["Programa", "Fotos", "Un mensaje para Sophia", "Mesa de regalos", "Preguntas", "Contacto", "Entrar"]);
   });
 
   test("the RSVP button is on the first screen of the home page", async ({
@@ -173,6 +175,133 @@ test.describe("on a phone", () => {
         expect(button.y + button.height, at).toBeLessThan(height);
       }
   });
+});
+
+// R-027: "A note for Sophia" is never more than two taps away on a phone,
+// from any page, in English and Spanish, in every phase: the pages that
+// link it (the home page, both RSVP confirmations) are one tap away, and
+// every page's menu has it as its own item (Menu, then the note). Every tap
+// is a real touch, and counted. Each header item is named as the page it
+// opens.
+const words = {
+  en: { note: "A note for Sophia", menu: "Menu", nav: "Main navigation", path: "/guestbook/", yes: "Everyone’s coming", no: "We can’t make it", save: "Save my RSVP" },
+  es: { note: "Un mensaje para Sophia", menu: "Menú", nav: "Navegación principal", path: "/es/guestbook/", yes: "Vamos todos", no: "No podremos asistir", save: "Guardar la respuesta" },
+};
+// Taps from the page that is open to the note's page, the fewest a guest
+// needs: one when the page links the note; two through the menu when it
+// has the note; otherwise three, through the menu item whose page links it
+// (as "Photos & notes" did), or none found at all.
+async function tapsToTheNote(page, lang) {
+  const w = words[lang],
+    from = page.url(),
+    linked = () => page.getByRole("main").locator(`a[href="${w.path}"]:visible`).first(),
+    menu = () => page.locator("body > header").getByRole("button", { name: w.menu }),
+    items = () => page.getByRole("navigation", { name: w.nav }).getByRole("link");
+  let taps;
+  if (await linked().count()) {
+    await linked().tap();
+    taps = 1;
+  } else {
+    await menu().tap();
+    await expect(items().first()).toBeVisible();
+    const note = items().filter({ hasText: new RegExp(`^${w.note}$`) });
+    if (await note.count()) {
+      await note.tap();
+      taps = 2;
+    } else {
+      taps = Infinity;
+      for (const name of await items().allTextContents()) {
+        await page.goto(from);
+        await menu().tap();
+        await items().filter({ hasText: new RegExp(`^${name}$`) }).tap();
+        await page.waitForLoadState();
+        if (await linked().count()) {
+          await linked().tap();
+          taps = 3;
+          break;
+        }
+      }
+      if (taps === Infinity) return taps;
+    }
+  }
+  await expect(page).toHaveURL(new RegExp(`${w.path}$`));
+  // The note's own page, ready to write on (its sign-in or its form).
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(w.note);
+  await expect(page.locator("#portal")).not.toBeEmpty();
+  return taps;
+}
+test.describe("the note for Sophia on a phone (R-027)", () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
+  for (const lang of ["en", "es"]) {
+    const at = (p) => (lang === "es" ? "/es" : "") + p;
+    test(`is at most two taps from every page, and one from the home page (${lang})`, async ({ page, harness }) => {
+      test.setTimeout(120_000);
+      for (const path of ["/", "/details/", "/ceremony/", "/reception/", "/gallery/", "/share/", "/registry/", "/faq/", "/contact/", "/account/", "/rsvp/", "/privacy/", "/terms/", "/whatsapp/", "/no-such-page/"]) {
+        await page.goto(harness.url(at(path)));
+        const taps = await tapsToTheNote(page, lang);
+        expect(taps, path).toBeLessThanOrEqual(2);
+        if (path === "/") expect(taps, "the home page links it").toBe(1);
+      }
+      // The note's own page leads to itself in two taps too (its menu item).
+      expect(await tapsToTheNote(page, lang)).toBeLessThanOrEqual(2);
+    });
+    test(`is one tap from either RSVP confirmation (${lang})`, async ({ page, harness }) => {
+      test.setTimeout(90_000);
+      const household = lang === "es" ? households.morales : households.rivera;
+      for (const answer of ["yes", "no"]) {
+        const { link } = await harness.issueInvitation(household, { locale: lang });
+        await page.goto(harness.forBrowser(link));
+        await page.getByRole("button", { name: words[lang][answer] }).tap();
+        await page.getByRole("button", { name: words[lang].save }).tap();
+        await expect(page).toHaveURL(/\/rsvp\/confirmed\/$/);
+        // Once the confirmation has drawn (it takes focus as it does).
+        await expect(page.getByRole("main").getByRole("heading", { level: 2 }).first()).toBeFocused();
+        expect(await tapsToTheNote(page, lang), answer).toBe(1);
+      }
+    });
+    test(`stays two taps away after the deadline, on the day and after the party (${lang})`, async ({ page, harness, setNow }) => {
+      test.setTimeout(120_000);
+      for (const iso of [new Date(AFTER_DEADLINE).toISOString(), "2027-01-15T15:00:00-06:00", "2027-01-16T10:00:00-06:00"]) {
+        await setNow(Date.parse(iso));
+        for (const path of ["/", "/details/", "/gallery/"]) {
+          await page.goto(harness.url(at(path)));
+          expect(await tapsToTheNote(page, lang), `${path} at ${iso}`).toBeLessThanOrEqual(2);
+        }
+      }
+    });
+    test(`names each header item as the page it opens (${lang})`, async ({ page, harness }) => {
+      test.setTimeout(90_000);
+      await page.goto(harness.url(at("/")));
+      await page.locator("body > header").getByRole("button", { name: words[lang].menu }).tap();
+      const items = await page.getByRole("navigation", { name: words[lang].nav }).getByRole("link").allTextContents();
+      expect(items).toContain(words[lang].note);
+      for (const item of items) {
+        await page.goto(harness.url(at("/")));
+        await page.locator("body > header").getByRole("button", { name: words[lang].menu }).tap();
+        await page.getByRole("navigation", { name: words[lang].nav }).getByRole("link", { name: item, exact: true }).tap();
+        await expect(page.getByRole("heading", { level: 1 }), item).toHaveText(item);
+        await expect(page).toHaveTitle(new RegExp(`^${item} · `));
+      }
+    });
+  }
+});
+
+test("on a computer the header keeps one row at its narrowest, 1081 px, in English and Spanish, with the note's item", async ({ page, harness }) => {
+  for (const [path, note] of [
+    ["/", "A note for Sophia"],
+    ["/es/", "Un mensaje para Sophia"],
+  ]) {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(harness.url(path));
+    const wide = (await page.locator("body > header").boundingBox()).height;
+    await page.setViewportSize({ width: 1081, height: 900 });
+    await page.goto(harness.url(path));
+    await expect(page.getByRole("button", { name: /^(Menu|Menú)$/ })).toBeHidden();
+    await expect(page.getByRole("navigation", { name: /^(Main navigation|Navegación principal)$/ }).getByRole("link", { name: note })).toBeVisible();
+    expect((await page.locator("body > header").boundingBox()).height, path).toBe(wide);
+    const rows = await page.evaluate(() => new Set([...document.querySelectorAll("#site-nav li")].map((li) => Math.round(li.getBoundingClientRect().top))).size);
+    expect(rows, path).toBe(1);
+  }
 });
 
 test("on a computer the links are always shown and there is no Menu button", async ({

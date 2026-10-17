@@ -69,7 +69,6 @@ export const terms = {
   smsProgram: { en: "SMS Updates", es: "Avisos por SMS" },
   smsTerms: { en: "SMS Terms", es: "Términos de SMS" },
   photos: { en: "Photos", es: "Fotos" },
-  photosAndNotes: { en: "Photos & notes", es: "Fotos y mensajes" },
   sharePhotos: { en: "Share your photos", es: "Compartir fotos" },
   seePhotos: { en: "See the photos", es: "Ver las fotos" },
   seeSchedule: { en: "See the schedule", es: "Ver el programa" },

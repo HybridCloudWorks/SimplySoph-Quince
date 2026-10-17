@@ -96,9 +96,9 @@ test("once the content exists it shows instead of the promise, and the labels th
 
 test("Travel rejoins the header in its own slot, and the Schedule links it, once it has hotels", async () => {
   for (const [lang, names, link] of [
-    ["", ["Schedule", "Travel", "Photos &amp; notes"], 'href="/travel/">Coming from out of town? See Travel'],
+    ["", ["Schedule", "Travel", "Photos"], 'href="/travel/">Coming from out of town? See Travel'],
     // L10N-49: "Consulta Viaje" read as "consult Trip".
-    ["es/", ["Programa", "Hospedaje y transporte", "Fotos y mensajes"], 'href="/es/travel/">¿Vienes de fuera? Consulta Hospedaje y transporte'],
+    ["es/", ["Programa", "Hospedaje y transporte", "Fotos"], 'href="/es/travel/">¿Vienes de fuera? Consulta Hospedaje y transporte'],
   ]) {
     const labels = [...header(await filled(`${lang}index.html`)).matchAll(/<li[^>]*><a [^>]*>([^<]+)<\/a><\/li>/g)].map((m) => m[1]);
     assert.deepEqual(labels.slice(0, 3), names, lang);
