@@ -55,6 +55,12 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createAccounts, accountActive, rosterMatch } from "./accounts.mjs";
+// The API contract this server serves, reported by GET /api/config. Raise it
+// when the API adds something pages will rely on; pages say what they need
+// in site/api-contract.mjs, and scripts/deploy-hosting.mjs refuses to publish
+// pages that need more than the live API reports. 1: the API of the round 2
+// review (the clock, channels, the note's audience, the table card, …).
+export const apiVersion = 1;
 const events = ["ceremony", "dinner", "dance"];
 const safeText = (s, max = 1000) => {
   if (
@@ -212,8 +218,9 @@ export function createApplication({
     return "p." + body + "." + partyMac("cookie", body).toString("base64url");
   }
   // The payload of a genuine, unexpired table card cookie, or null. Whether
-  // its card is still the current one is sessionValid's question.
-  function readParty(raw) {
+  // its card is still the current one is sessionValid's question. `stale`
+  // also accepts a genuine cookie past its expiry, to say why it ended.
+  function readParty(raw, { stale = false } = {}) {
     const m = partyCookie.exec(raw || "");
     if (!m) return null;
     const given = Buffer.from(m[2], "base64url");
@@ -233,11 +240,18 @@ export function createApplication({
       Number.isSafeInteger(p.issuedAt) &&
       Number.isSafeInteger(p.expiresAt) &&
       p.issuedAt <= t + 60000 &&
-      p.expiresAt > t &&
+      (stale || p.expiresAt > t) &&
       p.expiresAt <= p.issuedAt + 43200000
       ? p
       : null;
   }
+  const partyEnd = (s, p) => {
+    const w = partyWindow(s),
+      closesAt = w ? new Date(w.closesAt).toISOString() : null;
+    if (!w?.open || s.partyCard?.state !== "open") return { reason: "closed", closesAt };
+    if (s.partyCard.version !== p.cardVersion) return { reason: "rotated", closesAt };
+    return { reason: "expired", closesAt };
+  };
   // What the routes see: the same shape as any session.
   const partySessionOf = (p) => ({
     kind: "party",
@@ -534,10 +548,17 @@ export function createApplication({
     const signed = raw ? readParty(raw) : null,
       s = await ledger.read(),
       row = signed ? partySessionOf(signed) : raw ? s.sessions[hash(raw)] : null,
-      session = row && (signed || row.kind !== "party") && sessionValid(s, row) ? row : null;
+      session = row && (signed || row.kind !== "party") && sessionValid(s, row) ? row : null,
+      // A genuine table card cookie that no longer opens anything: why (the
+      // card's window closed or the family turned it off, a new code
+      // replaced it, or its time ran out), so the phone is told to scan the
+      // card again, never to sign in or open an invitation link it does not
+      // have (QA-01, QA-02).
+      card = !session && raw ? readParty(raw, { stale: true }) : null;
     return {
       state: s,
       session,
+      partyEnded: card ? partyEnd(s, card) : null,
       sessionHash: raw && !signed ? hash(raw) : null,
       raw,
     };
@@ -1217,6 +1238,9 @@ export function createApplication({
       throw error(403, "ORIGIN_REJECTED");
     if (path === "/api/config" && method === "GET")
       return {
+        // The contract this API serves (site/api-contract.mjs): the publish
+        // job refuses pages that need a newer one.
+        apiVersion,
         clientId,
         // Administrators' Microsoft sign-in uses it whatever guestMicrosoft says.
         microsoftClientId,
@@ -1729,10 +1753,12 @@ export function createApplication({
         ]));
       if (renew)
         refresh.renew = party
-          ? { cookie: signParty({ ...session.payload, expiresAt: until }) }
+          ? { cookie: signParty({ ...session.payload, expiresAt: until }), until }
           : { sessionHash: ctx.sessionHash, startedAt, until, raw: ctx.raw };
     }
     // Pieces of a photo or video upload have their own, larger budget below.
+    // A table card phone's name is random and new with each scan, so its
+    // counters live apart and can never crowd out anyone else's (QA-06).
     if (session && method !== "GET" && !uploadPiece.test(path))
       await rateLimit(
         ledger,
@@ -1740,6 +1766,7 @@ export function createApplication({
         120,
         3600000,
         now(),
+        { minted: party },
       );
     if (path === "/api/session" && method === "GET")
       return {
@@ -1754,8 +1781,18 @@ export function createApplication({
         ...(session?.kind === "guest" && {
           household: householdReply(ctx.state, session.householdId),
         }),
+        // How long a guest or table card session has left, counting this
+        // request's renewal, so a page can warn before it ends and offer to
+        // keep it (WCAG 2.2.1; site/client.js sessionLimit). A duration, not
+        // a time, so a phone's wrong clock does not matter.
+        ...((session?.kind === "guest" || party) && {
+          expiresIn: Math.max(0, (refresh.renew?.until ?? session.expiresAt) - now()),
+        }),
+        // Signed out, but this phone held a table card session: why it ended.
+        ...(!session && ctx.partyEnded && { partyEnded: ctx.partyEnded.reason }),
       };
     const requireAuth = (kind) => {
+      if (!session && ctx.partyEnded) throw error(401, "PARTY_SESSION_ENDED", ctx.partyEnded);
       if (!session || (kind && session.kind !== kind))
         throw error(401, "SIGN_IN_REQUIRED");
       if (method !== "GET" && !sameSecret(headers["x-csrf-token"], session.csrf))
@@ -2418,7 +2455,7 @@ export function createApplication({
         upload = ctx.state.uploads?.[piece[1]];
       if (!owns(who, upload)) throw error(404, "NOT_FOUND");
       // About 2.4 GB an hour in the largest pieces; a page sends one at a time.
-      await rateLimit(ledger, hash("pieces:" + who.key), 1500, 3600000, now());
+      await rateLimit(ledger, hash("pieces:" + who.key), 1500, 3600000, now(), { minted: who.kind === "party" });
       return receivePiece(upload, Number(req.query?.offset), req.bytes);
     }
     if (piece && method === "GET") {

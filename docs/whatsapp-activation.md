@@ -34,6 +34,15 @@ What Meta rejected along the way, so it is not repeated:
 
 Once Meta approves them, send the four `HX…` Content SIDs for the `WHATSAPP_TEMPLATES_JSON` update. The server refuses to start with WhatsApp switched on while an approved template shows a date other than the current RSVP deadline, so the old templates can never go out with the wrong day.
 
+### Owner action: the Spanish deadline wording (optional resubmission)
+
+The approved Spanish templates say "Confirma tu asistencia **antes del** 15 de noviembre de 2026". In Spanish, "antes del 15" leaves the 15th out, while the English says "by November 15" and the RSVP stays open until 11:59 PM that day (Fort Worth time); the website says "a más tardar el" (round 2 wording review, L10N-09). The code keeps sending the approved text exactly, because a template must match what Meta approved. To fix the meaning, the owner resubmits both Spanish templates under new names (a changed template is a new submission; see the rejections above) with this one change, then updates `WHATSAPP_TEMPLATES_JSON`:
+
+- `invitation_es`: … Confirma tu asistencia **a más tardar el** 15 de noviembre de 2026 aquí: {{1}} Responde STOP para darte de baja o HELP para ayuda.
+- `reminder_es`: … Confirma tu asistencia **a más tardar el** 15 de noviembre de 2026 aquí: {{1}} Responde STOP para darte de baja o HELP para ayuda.
+
+The rest of each template stays word for word. The server's date check (`server/whatsapp.mjs` deadlineText) finds "15 de noviembre de 2026" in both wordings, so either the current or the resubmitted templates pass it. Until the new ones are approved, keep the approved ones.
+
 Meta currently blocks marketing-template delivery to US numbers. A US owner can test verified inbound opt-in/help/opt-out replies; full international invitation delivery needs a separately authorized eligible non-US test recipient. Do not classify invitations as utility to bypass this restriction.
 
 ## Configuration And Acceptance

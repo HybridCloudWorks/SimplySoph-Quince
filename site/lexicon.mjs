@@ -10,7 +10,9 @@
 //     and those pages' link previews);
 //   - the hosts speaking to one person, and information pages: tú (My
 //     account, the sign-in email, the venue and policy pages, the WhatsApp
-//     replies and the WhatsApp card, which is one phone's own choice);
+//     replies); the WhatsApp card speaks as the page it is on (ustedes on
+//     the RSVP confirmation, tú on My account), its consent in the guest's
+//     own words;
 //   - never usted; Sophia's own words are hers and keep their tú;
 //   - chrome shared by every page (header, buttons, titles): neutral nouns or
 //     infinitives, so it never carries a form into a page.
@@ -61,7 +63,8 @@ export const terms = {
   },
   sendNote: { en: "Send my note", es: "Enviar mi mensaje" },
   messagesWithUs: { en: "Messages with us", es: "Mensajes con nosotros" },
-  familyReplyLabel: { en: "Sophia’s family:", es: "La familia de Sophia:" },
+  // The hosts say "we" (L10N-41), as the announcement "We replied:" does.
+  familyReplyLabel: { en: "Our reply:", es: "Nuestra respuesta:" },
   whatsappProgram: { en: "WhatsApp updates", es: "Avisos por WhatsApp" },
   smsProgram: { en: "SMS Updates", es: "Avisos por SMS" },
   smsTerms: { en: "SMS Terms", es: "Términos de SMS" },

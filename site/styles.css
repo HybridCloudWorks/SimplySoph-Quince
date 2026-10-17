@@ -839,11 +839,15 @@ summary:active {
 .good-to-know a,
 .upload-actions a,
 .route-strip a,
-.row-actions > a:not(.button) {
+.row-actions > a:not(.button),
+.error-summary li > a {
   display: inline-block;
   min-height: 44px;
   padding-block: 11px;
   padding-block: max(0px, (44px - 1lh) / 2);
+  /* A long address breaks inside its box, never past the screen's edge. */
+  max-width: 100%;
+  overflow-wrap: break-word;
 }
 
 /* Forms. An invalid field gets a red border, a thicker edge and an icon, so

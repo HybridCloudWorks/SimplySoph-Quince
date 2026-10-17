@@ -141,7 +141,9 @@ export function googleButton(target, clientId, purpose, onCredential, onError) {
     google.accounts.id.renderButton(target, {
       theme: "outline",
       size: "large",
-      text: "signin_with",
+      // Spanish matches the Microsoft button beside it ("Continuar con …"):
+      // Google's own "Acceder" can't be changed (L10N-46).
+      text: es ? "continue_with" : "signin_with",
       shape: "rectangular",
       width: WIDTH,
       locale: es ? "es" : "en",

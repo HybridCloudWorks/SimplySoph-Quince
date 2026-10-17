@@ -27,6 +27,7 @@ import {
   adminRoutes,
   copy,
   textContent,
+  textAfterParty,
   ready,
   sections,
 } from "../site/content.mjs";
@@ -47,6 +48,14 @@ const option = (name) =>
 const buildNow = option("now") ? Date.parse(option("now")) : Date.now();
 if (!Number.isFinite(buildNow)) throw new Error("--now must be an ISO date and time");
 const phase = phaseAt(buildNow, milestones({ deadline: event.deadline, site: celebration }));
+// After the party (by the build's clock) the pages promise nothing more and
+// ask for no RSVP; pages built before it change at runtime (site/now.mjs:
+// [data-promise], [data-before-party], [data-after-party]; site/guest.js:
+// [data-rsvp-while] with "open", "closed" or "over").
+const partyOver = phase === "after" || phase === "archived";
+const rsvpState = partyOver ? "over" : phase === "rsvp-open" ? "open" : "closed";
+const rsvpWhile = (...states) => (states.includes(rsvpState) ? "" : " hidden");
+const whenOver = (after) => ((after ? !partyOver : partyOver) ? " hidden" : "");
 // --out=<name> builds into .cache/builds/<name>/ instead of dist/ (tests that
 // compare phases build there, so they never touch the dist/ other tests read).
 const outName = option("out");
@@ -65,6 +74,23 @@ const fixture = fixturePath
 // The public build uses the family's approved content; the admin preview swaps
 // in the idea-book examples (see the end of this file).
 const publicFamily = { ...approvedFamily, ...fixture.family };
+// The family's own prose shows on the English and the Spanish pages, so it is
+// written in both ({ en, es }): English alone would sit on a Spanish page not
+// marked as English (WCAG 3.1.2, P5-A11Y-13). The build refuses it, saying where.
+function bothLanguages(f) {
+  const check = (value, where) => {
+    if (value === null || value === undefined || value === "") return;
+    if (typeof value !== "object" || ![value.en, value.es].every((t) => typeof t === "string" && t.trim()))
+      throw new Error(`family.${where} must be written in English and Spanish: { en: "…", es: "…" }`);
+  };
+  for (const key of ["bio", "parentsMessage", "dressCode", "parking", "children", "thanksNote"]) check(f[key], key);
+  (f.moments || []).forEach((m, i) => check(m.text, `moments[${i}].text`));
+  (f.court || []).forEach((p, i) => check(p.line, `court[${i}].line`));
+  (f.hotels || []).forEach((h, i) => (check(h.where, `hotels[${i}].where`), check(h.notes, `hotels[${i}].notes`)));
+  if (f.airport) check(f.airport.notes, "airport.notes");
+  (f.portraits || []).forEach((p, i) => check(p.caption, `portraits[${i}].caption`));
+}
+bothLanguages(publicFamily);
 let family = publicFamily;
 const outBase = outName ? `../.cache/builds/${outName}/` : "../";
 const root = new URL(outBase + "dist/", import.meta.url),
@@ -162,7 +188,7 @@ function contents(route, lang) {
       // The invitation in the page's language (scripts/images.mjs).
       art = images.invitation[lang],
       words = `${posted.parking(family) ? ` data-parking="${esc(promised("ceremony", lang, { content: family.parking }))}"` : ""}${thankYou(lang) ? ` data-thanks="${esc(thankYou(lang))}"` : ""}`;
-    return `<section class="hero" data-home${words}><div class="hero-copy"><p class="eyebrow"${es ? "" : ' lang="es"'}>${terms.eyebrow[lang]}</p><h1>Sophia</h1><p class="hero-line" data-hero-line>${t.tagline}</p><p class="date" data-event-date>${t.date}</p><div class="actions" data-home-actions>${link("rsvp", t.rsvp)}<a href="${href("details", lang)}">${t.all}${arrow}</a></div><p class="hero-deadline" data-reply-by>${sayTerm(terms.rsvpBy, lang, registerFor(""))} ${by}</p><div class="countdown" data-countdown hidden></div><div class="home-status" data-home-status hidden></div><div class="home-latest" data-latest-update hidden></div></div><div class="hero-schedule" data-home-schedule><h2 class="strip-heading">${routeTitle("details", lang)}</h2><div data-schedule-strip>${scheduleStrip(celebration, lang)}</div></div><blockquote class="sophia-quote" data-home-quote data-voice="sophia"><p>“${esc(celebration.quote[lang])}”</p><cite>— ${esc(celebration.name)}</cite></blockquote><p class="home-note" data-home-note><a href="${href("guestbook", lang)}">${esc(sayTerm(terms.leaveNote, lang, registerFor("")))}${arrow}</a></p><figure class="invitation" data-home-invitation>${picture(art, { alt: esc(invitationAlt(celebration, lang)), sizes: "(max-width: 760px) 290px, 365px", loading: "eager", priority: "high" })}<figcaption><a href="${art.jpeg.at(-1)[1]}" target="_blank" rel="noopener">${t.invitationCaption}${newTab(lang)}</a></figcaption></figure></section><div class="home-updates" data-announcements></div>`;
+    return `<section class="hero" data-home${words}><div class="hero-copy"><p class="eyebrow"${es ? "" : ' lang="es"'}>${terms.eyebrow[lang]}</p><h1>Sophia</h1><p class="hero-line" data-hero-line>${t.tagline}</p><p class="date" data-event-date>${t.date}</p><div class="actions" data-home-actions>${link("rsvp", t.rsvp)}<a href="${href("details", lang)}">${t.all}${arrow}</a></div><p class="hero-deadline" data-reply-by>${sayTerm(terms.rsvpBy, lang, registerFor(""))} ${by}.</p><div class="countdown" data-countdown hidden></div><div class="home-status" data-home-status hidden></div><div class="home-latest" data-latest-update hidden></div></div><div class="hero-schedule" data-home-schedule><h2 class="strip-heading">${routeTitle("details", lang)}</h2><div data-schedule-strip>${scheduleStrip(celebration, lang)}</div></div><blockquote class="sophia-quote" data-home-quote data-voice="sophia"><p>“${esc(celebration.quote[lang])}”</p><cite>— ${esc(celebration.name)}</cite></blockquote><p class="home-note" data-home-note><a href="${href("guestbook", lang)}">${esc(sayTerm(terms.leaveNote, lang, registerFor("")))}${arrow}</a></p><figure class="invitation" data-home-invitation>${picture(art, { alt: esc(invitationAlt(celebration, lang)), sizes: "(max-width: 760px) 290px, 365px", loading: "eager", priority: "high" })}<figcaption><a href="${art.jpeg.at(-1)[1]}" target="_blank" rel="noopener">${t.invitationCaption}${newTab(lang)}</a></figcaption></figure></section><div class="home-updates" data-announcements></div>`;
   }
   // The page title; pages that belong to a larger section also name it above
   // the title and list its other pages with content underneath.
@@ -181,12 +207,21 @@ function contents(route, lang) {
   let body = "";
   if (textContent[route]) {
     const c = textContent[route],
-      // Travel's last line is its hotels promise, dated once the family sets a date.
+      after = textAfterParty[route],
+      // Travel's last line is its hotels promise, dated once the family sets
+      // a date, and gone after the party.
       last =
         route === "travel"
-          ? esc(promised("travel", lang, { by: family.promises?.hotels?.by, now: buildNow }))
-          : c[2][es ? 1 : 0];
-    body = `<div class="editorial"><span class="ornament" aria-hidden="true">✦</span><h2>${c[0][es ? 1 : 0]}</h2><p class="lead">${c[1][es ? 1 : 0]}</p><p>${last}</p>${nextSteps}</div>`;
+          ? partyOver
+            ? ""
+            : `<p data-promise>${esc(promised("travel", lang, { by: family.promises?.hotels?.by, now: buildNow }))}</p>`
+          : `<p${after ? ` data-before-party${whenOver(false)}` : ""}>${c[2][es ? 1 : 0]}</p>`;
+    // A page that speaks of the party in the future says it in the past once
+    // it is over (the thank-you page before the family's own words).
+    const later = after
+      ? `<p class="lead" data-after-party${whenOver(true)}>${after[0][es ? 1 : 0]}</p><p data-after-party${whenOver(true)}>${after[1][es ? 1 : 0]}</p>`
+      : "";
+    body = `<div class="editorial"><span class="ornament" aria-hidden="true">✦</span><h2>${c[0][es ? 1 : 0]}</h2><p class="lead"${after ? ` data-before-party${whenOver(false)}` : ""}>${c[1][es ? 1 : 0]}</p>${last}${later}${nextSteps}</div>`;
   }
   const localized = (value) =>
     typeof value === "string" ? value : value?.[lang] || value?.en || "";
@@ -286,7 +321,8 @@ function contents(route, lang) {
   if (route === "details") {
     const minutes = driveMinutes();
     const notes = [
-      [say("Dress code", "Código de vestimenta"), esc(promised("details", lang, { content: family.dressCode, by: family.promises?.dressCode?.by, now: buildNow }))],
+      // A promise until the dress code exists, and nothing after the party.
+      (family.dressCode || !partyOver) && [say("Dress code", "Código de vestimenta"), esc(promised("details", lang, { content: family.dressCode, by: family.promises?.dressCode?.by, now: buildNow })), !family.dressCode],
       [
         say("Between the two places", "Entre un lugar y otro"),
         minutes
@@ -298,16 +334,17 @@ function contents(route, lang) {
     ].filter(Boolean);
     // Travel, once it has hotels or the airport (content.mjs waitsFor).
     const travel = ready("travel", family)
-      ? `<p><a href="${href("travel", lang)}">${say("Coming from out of town? See Travel", "¿Vienes de fuera? Consulta Viaje")}${arrow}</a></p>`
+      ? `<p><a href="${href("travel", lang)}">${say(`Coming from out of town? See ${routeTitle("travel", "en")}`, `¿Vienes de fuera? Consulta ${routeTitle("travel", "es")}`)}${arrow}</a></p>`
       : "";
-    body = `<p class="lead" data-event-date>${t.date}</p><p class="hint">${t.time}</p><div data-schedule>${scheduleList(celebration, lang)}</div>${whatToExpect(lang)}<aside class="good-to-know" aria-labelledby="good-to-know"><h2 id="good-to-know">${say("Good to know", "Lo que debes saber")}</h2><dl>${notes.map(([term, text]) => `<dt>${term}</dt><dd>${text}</dd>`).join("")}</dl>${travel}<p><a href="${href("faq", lang)}">${say("More answers in Questions", "Más respuestas en Preguntas")}${arrow}</a></p></aside>`;
+    body = `<p class="lead" data-event-date>${t.date}</p><p class="hint">${t.time}</p><div data-schedule>${scheduleList(celebration, lang)}</div>${whatToExpect(lang)}<aside class="good-to-know" aria-labelledby="good-to-know"><h2 id="good-to-know">${say("Good to know", "Lo que debes saber")}</h2><dl>${notes.map(([term, text, promise]) => `<dt${promise ? " data-promise" : ""}>${term}</dt><dd${promise ? " data-promise" : ""}>${text}</dd>`).join("")}</dl>${travel}<p><a href="${href("faq", lang)}">${say("More answers in Questions", "Más respuestas en Preguntas")}${arrow}</a></p></aside>`;
   }
   // The photo is built here once; live settings re-render only the facts, and
   // keep the parking line the page carries (site/experience.js).
   if (route === "ceremony" || route === "reception") {
     const v = celebration[route],
-      parking = promised(route, lang, { content: family.parking, by: family.promises?.parking?.by, now: buildNow });
-    body = `<div class="venue-layout venue-${route}"><div data-venue="${route}" data-parking="${esc(parking)}">${venueSection(route, celebration, lang, false, parking)}</div><figure class="venue-image">${picture(images[route === "ceremony" ? "church" : "reception"], { alt: esc((route === "ceremony" ? say("Front of ", "Fachada de ") : say("Entrance of ", "Entrada de ")) + v.name), sizes: "(max-width: 760px) calc(100vw - 32px), 600px" })}<figcaption>${esc(v.name)}</figcaption></figure></div>`;
+      promise = !family.parking,
+      parking = promise && partyOver ? "" : promised(route, lang, { content: family.parking, by: family.promises?.parking?.by, now: buildNow });
+    body = `<div class="venue-layout venue-${route}"><div data-venue="${route}" data-parking="${esc(parking)}"${promise ? " data-parking-promise" : ""}>${venueSection(route, celebration, lang, false, parking, promise)}</div><figure class="venue-image">${picture(images[route === "ceremony" ? "church" : "reception"], { alt: esc((route === "ceremony" ? say("Front of ", "Fachada de ") : say("Entrance of ", "Entrada de ")) + v.name), sizes: "(max-width: 760px) calc(100vw - 32px), 600px" })}<figcaption>${esc(v.name)}</figcaption></figure></div>`;
   }
   // The deadline is shown inside the RSVP itself (site/guest.js).
   if (route === "rsvp" || route === "rsvp/confirmed")
@@ -338,10 +375,10 @@ function contents(route, lang) {
   // hides these steps (site/media-upload.js).
   if (route === "share") {
     const other = es ? "en" : "es";
-    body = `<div class="share-intro"><p class="lead">${say("Share your photos and videos, during the party or after it.", "Comparte tus fotos y videos, durante la fiesta o después.")}</p><p>${say("Send them straight from your phone. We review each one before it appears in the gallery for our guests.", "Envíalos directamente desde tu teléfono. Revisamos cada uno antes de que aparezca en la galería para nuestros invitados.")}</p></div><div id="media-upload" tabindex="-1"></div><section class="share-steps" data-share-steps aria-labelledby="share-steps-title"><h2 id="share-steps-title">${say("How to share", "Cómo compartir")}</h2><ol><li>${say("Sign in below.", "Entra abajo.")}</li><li>${say("Choose your photos and videos.", "Elige tus fotos y videos.")}</li><li>${say("We review them, and then they appear in the gallery for our guests.", "Los revisamos y luego aparecen en la galería para nuestros invitados.")}</li></ol><p lang="${other}">${
+    body = `<div class="share-intro"><p class="lead">${say("Share your photos and videos, during the party or after it.", "Comparte tus fotos y videos, durante la fiesta o después.")}</p><p>${say("Send them straight from your phone. We review each one before it appears in the gallery for our guests.", "Envíalos directamente desde tu teléfono. Revisamos cada uno antes de que aparezca en la galería para nuestros invitados.")}</p></div><div id="media-upload" tabindex="-1"></div><section class="share-steps" data-share-steps aria-labelledby="share-steps-title"><h2 id="share-steps-title">${say("How to share", "Cómo compartir")}</h2><ol><li>${say("Sign in below.", "Entra con tu correo aquí abajo.")}</li><li>${say("Choose your photos and videos.", "Elige tus fotos y videos.")}</li><li>${say("We review them, and then they appear in the gallery for our guests.", "Los revisamos y luego aparecen en la galería para nuestros invitados.")}</li></ol><p lang="${other}">${
       es
         ? `<strong>In English:</strong> sign in below, then choose your photos and videos. <a href="${href("share", "en")}" hreflang="en">Open this page in English</a>`
-        : `<strong>En español:</strong> entra abajo y luego elige tus fotos y videos. <a href="${href("share", "es")}" hreflang="es">Ver esta página en español</a>`
+        : `<strong>En español:</strong> entra con tu correo aquí abajo y luego elige tus fotos y videos. <a href="${href("share", "es")}" hreflang="es">Ver esta página en español</a>`
     }</p></section><div class="portal share-portal" id="portal" data-view="share"></div><div class="media-reminder" role="note"><p><strong>${say("A little reminder", "Un pequeño recordatorio")}</strong></p><p>${say("Only share photos and videos you have permission to share, including a parent’s or guardian’s permission for children. Once we approve them, they are visible to our signed-in guests.", "Comparte solo fotos y videos que tengas permiso de compartir, incluido el permiso de un padre, madre o tutor para los menores. Cuando los aprobamos, los pueden ver nuestros invitados que entran al sitio.")} <a href="${href("terms", lang)}">${say("Photo & video policy", "Uso de fotos y videos")}</a></p></div>`;
   }
   // Contact leads with the address and says where a reply appears (R-084);
@@ -349,7 +386,7 @@ function contents(route, lang) {
   // under the first line (data-contact-host, site/experience.js). Sending a
   // message on the site is the quiet second choice below (portal-quiet).
   if (route === "guestbook" || route === "contact")
-    body = `<p class="lead">${route === "guestbook" ? say("Leave Sophia a note with your wishes for the years ahead.", "Déjale a Sophia un mensaje con tus buenos deseos para los años que vienen.") : say("Questions about your invitation, your RSVP or the day? Write to us and we’ll get back to you.", "¿Tienes preguntas sobre tu invitación, tu respuesta o el día de la fiesta? Escríbenos y te contestamos.")}</p>${route === "contact" ? `<p class="contact-host" data-contact-host hidden></p><p><a class="target" href="mailto:${event.sender}">${event.sender}</a></p><p class="contact-reply">${say("Write to that address and we’ll reply by email. If you sign in and write to us here, our reply appears in My account.", "Si escribes a ese correo, te respondemos por correo. Si entras y nos escribes aquí, nuestra respuesta aparece en Mi cuenta.")}</p>` : ""}${
+    body = `<p class="lead">${route === "guestbook" ? say("Leave Sophia a note with your wishes for the years ahead.", "Déjale a Sophia un mensaje con tus buenos deseos para los años que vienen.") : say("Questions about your invitation, your RSVP or the day? Write to us and we’ll get back to you.", "¿Tienes preguntas sobre tu invitación, tu respuesta o el día de la fiesta? Escríbenos y te contestamos.")}</p>${route === "contact" ? `<p class="contact-host" data-contact-host hidden></p><p><a class="target" href="mailto:${event.sender}">${event.sender}</a></p><p class="contact-reply">${say("Write to that address and we’ll reply by email. Or sign in and write to us from My account, where our replies appear.", "Si escribes a ese correo, te respondemos por correo. También puedes entrar y escribirnos desde Mi cuenta, donde aparecen nuestras respuestas.")}</p>` : ""}${
       // The notes come first, under their heading, then the way to leave one.
       // Who can read them follows the family's setting (site/notes.mjs): the
       // built sentence is the default, and site/guest.js replaces it at runtime.
@@ -366,13 +403,13 @@ function contents(route, lang) {
         [
           say("When do I need to RSVP?", "¿Hasta cuándo puedo confirmar?"),
           {
-            html: `<p data-rsvp-while="open"${phase === "rsvp-open" ? "" : " hidden"}>${say(
+            html: `<p data-rsvp-while="open"${rsvpWhile("open")}>${say(
               `By ${t.deadline}. Open the invitation link we sent your family, or go to <a href="${href("rsvp", lang)}">RSVP</a>.`,
               `A más tardar el ${t.deadline}. Abre el enlace de invitación que le enviamos a tu familia, o ve a <a href="${href("rsvp", lang)}">${terms.rsvpAction.es}</a>.`,
-            )}</p><p data-rsvp-while="closed"${phase === "rsvp-open" ? " hidden" : ""}>${say(
-              `RSVPs closed on ${t.deadline}. To RSVP or change your RSVP now, please <a href="${href("contact", lang)}">contact us</a>.`,
-              `Las respuestas cerraron el ${t.deadline}. Para confirmar tu asistencia o cambiar tu respuesta, <a href="${href("contact", lang)}">escríbenos</a>.`,
-            )}</p>`,
+            )}</p><p data-rsvp-while="closed"${rsvpWhile("closed")}>${say(
+              `RSVPs closed on ${t.deadline}. To reply or change your RSVP now, please <a href="${href("contact", lang)}">contact us</a>.`,
+              `El plazo para confirmar terminó el ${t.deadline}. Para confirmar tu asistencia o cambiar tu respuesta, <a href="${href("contact", lang)}">escríbenos</a>.`,
+            )}</p><p data-rsvp-while="over"${rsvpWhile("over")}>${say(`RSVPs closed on ${t.deadline}.`, `El plazo para confirmar terminó el ${t.deadline}.`)}</p>`,
           },
         ],
         [
@@ -408,7 +445,8 @@ function contents(route, lang) {
           esc(
             say(
               `The ceremony ends around ${time(celebration.ceremony.end, lang, nb)} and dinner starts ${at(celebration.dinner.start, lang, nb)} at ${celebration.reception.name}.`,
-              `La ceremonia termina alrededor de ${at(celebration.ceremony.end, lang, nb)} y la cena empieza ${at(celebration.dinner.start, lang, nb)} en ${celebration.reception.name}.`,
+              // at() says "a las 5:00 p. m.": "alrededor de" takes it without the "a".
+              `La ceremonia termina alrededor de ${at(celebration.ceremony.end, lang, nb).replace(/^a /, "")} y la cena empieza ${at(celebration.dinner.start, lang, nb)} en ${celebration.reception.name}.`,
             ),
           ),
         ],
@@ -422,16 +460,19 @@ function contents(route, lang) {
             `Por favor, guarda tu teléfono durante la ceremonia. Puedes compartir tus fotos de la recepción en <a href="${href("share", lang)}">${terms.sharePhotos.es}</a>.`,
           ),
         ],
+        // Asked only until the party is over (site/guest.js swaps it then).
         [
           say("Can I change my RSVP?", "¿Puedo cambiar mi respuesta?"),
           say(
             "Yes, until the RSVP deadline. Open your invitation link again, or sign in with your email, and change your answer. We go by the last answer you save.",
             "Sí, hasta la fecha límite. Abre otra vez tu enlace de invitación, o entra con tu correo, y cambia tu respuesta. Tomamos en cuenta la última respuesta que guardes.",
           ),
+          "open closed",
         ],
-        [
+        (family.dressCode || !partyOver) && [
           say("What should I wear?", "¿Cómo debo vestirme?"),
           esc(promised("faq", lang, { content: family.dressCode, by: family.promises?.dressCode?.by, now: buildNow })),
+          family.dressCode ? "" : "promise",
         ],
         [
           say("Do I need to bring a gift?", "¿Tengo que llevar regalo?"),
@@ -450,16 +491,19 @@ function contents(route, lang) {
       ]
         .filter(Boolean)
         .reduce(
-          (list, [q, a]) =>
-            list + `<details><summary>${q}</summary>${a.html ?? `<p>${a}</p>`}</details>`,
+          // A third item: when the question applies (data-rsvp-while), or
+          // "promise" for a promised answer that goes after the party.
+          (list, [q, a, when]) =>
+            list +
+            `<details${when === "promise" ? " data-promise" : when ? ` data-rsvp-while="${when}"${rsvpWhile(...when.split(" "))}` : ""}><summary>${q}</summary>${a.html ?? `<p>${a}</p>`}</details>`,
           '<div class="faq-list">',
         ) + `</div><p>${link("contact", t.contact)}</p>`;
   if (route === "thank-you") body += lifespan;
   if (route === "privacy")
-    body = `<article class="editorial"><h2>${say("What we collect and why", "Qué guardamos y para qué")}</h2><p>${say("Our guest list has each family’s names, contact details and the seats we saved for them. When you RSVP, we save who is coming to each part of the day, plus any contact corrections or requests you add. When you sign in, we also keep the photos and videos you upload, your notes for Sophia and the messages you send us. We use all of this only to plan the celebration and to keep in touch with you about it.", "Nuestra lista de invitados tiene los nombres y datos de contacto de cada familia y los lugares que apartamos para ella. Cuando confirmas tu asistencia, guardamos quién viene a cada parte del día y las correcciones de contacto o solicitudes que agregues. Cuando entras al sitio, también guardamos las fotos y los videos que subas, tus mensajes para Sophia y lo que nos escribas. Usamos todo esto solo para organizar la celebración y para estar en contacto contigo sobre ella.")}</p><p data-note-audience="privacy">${esc(noteSentence("privacy", "guests", lang))}</p><p>${say("Services that help us run the site: Firebase Hosting (Google) serves these pages. Google Cloud privately stores RSVPs, sign-in records, messages, photos and videos. Our guest list is kept in Notion. Our email comes from misxv@simplysoph.com through Microsoft 365; if Microsoft 365 is unavailable, our backup service, SendGrid, sends it instead. Twilio sends our text messages, and Twilio and Meta deliver our WhatsApp messages. Google Fonts provides the lettering and receives normal network information, like your IP address, when a page loads. If you choose to sign in with Google or Microsoft, they confirm your email address to us. We share information with these services only so they can do their part.", "Servicios que nos ayudan con el sitio: Firebase Hosting (de Google) publica estas páginas. Google Cloud guarda en privado las respuestas, los registros de acceso, los mensajes, las fotos y los videos. Nuestra lista de invitados está en Notion. Nuestros correos salen de misxv@simplysoph.com a través de Microsoft 365; si Microsoft 365 no está disponible, los envía nuestro servicio de respaldo, SendGrid. Twilio envía nuestros mensajes de texto, y Twilio y Meta entregan nuestros mensajes de WhatsApp. Google Fonts proporciona los tipos de letra y recibe información normal de conexión, como tu dirección IP, al cargar una página. Si decides entrar con Google o Microsoft, ellos nos confirman tu correo. Solo compartimos información con estos servicios para que hagan su parte.")}</p><p>${say("Like most websites, our servers keep short-term technical logs, such as IP address and browser type, to keep the site working and safe.", "Como la mayoría de los sitios web, nuestros servidores guardan por poco tiempo registros técnicos, como la dirección IP y el tipo de navegador, para que el sitio funcione bien y de forma segura.")}</p><h3>${say("Your choices", "Tus opciones")}</h3><p>${say("Mailing addresses, requests, messages, photos, videos and phone numbers are all optional. Please keep your invitation link within your family: anyone who has it can open and change your RSVP. To see, correct or delete your information, email us:", "Las direcciones postales, solicitudes, mensajes, fotos, videos y teléfonos son opcionales. Por favor, comparte tu enlace de invitación solo con tu familia: cualquier persona que lo tenga puede abrir y cambiar tu respuesta. Para ver, corregir o borrar tu información, escríbenos:")}</p><a href="mailto:${event.sender}">${event.sender}</a></article>`;
+    body = `<article class="editorial"><h2>${say("What we collect and why", "Qué guardamos y para qué")}</h2><p>${say("Our guest list has each family’s names, contact details and the seats we saved for them. When you RSVP, we save who is coming to each part of the day, plus any contact corrections or requests you add. When you sign in, we also keep the photos and videos you upload, your notes for Sophia and the messages you send us. We use all of this only to plan the celebration and to keep in touch with you about it.", "Nuestra lista de invitados tiene los nombres y datos de contacto de cada familia y los lugares que apartamos para ella. Cuando confirmas tu asistencia, guardamos quién viene a cada parte del día y las correcciones de contacto o solicitudes que agregues. Cuando entras al sitio, también guardamos las fotos y los videos que subas, tus mensajes para Sophia y lo que nos escribas. Usamos todo esto solo para organizar la celebración y para estar en contacto contigo sobre ella.")}</p><p data-note-audience="privacy">${esc(noteSentence("privacy", "guests", lang))}</p><p>${say("Services that help us run the site: Firebase Hosting (Google) serves these pages. Google Cloud privately stores RSVPs, sign-in records, messages, photos and videos. Our guest list is kept in Notion. Our email comes from misxv@simplysoph.com through Microsoft 365; if Microsoft 365 is unavailable, our backup service, SendGrid, sends it instead. Twilio sends our text messages, and Twilio and Meta deliver our WhatsApp messages. Google Fonts provides the typefaces and receives normal network information, like your IP address, when a page loads. If you choose to sign in with Google or Microsoft, they confirm your email address to us. We share information with these services only so they can do their part.", "Servicios que nos ayudan con el sitio: Firebase Hosting (de Google) publica estas páginas. Google Cloud guarda en privado las respuestas, los registros de acceso, los mensajes, las fotos y los videos. Nuestra lista de invitados está en Notion. Nuestros correos salen de misxv@simplysoph.com a través de Microsoft 365; si Microsoft 365 no está disponible, los envía nuestro servicio de respaldo, SendGrid. Twilio envía nuestros mensajes de texto, y Twilio y Meta entregan nuestros mensajes de WhatsApp. Google Fonts proporciona los tipos de letra y recibe información normal de conexión, como tu dirección IP, al cargar una página. Si decides entrar con Google o Microsoft, ellos nos confirman tu correo. Solo compartimos información con estos servicios para que hagan su parte.")}</p><p>${say("Like most websites, our servers keep short-term technical logs, such as IP address and browser type, to keep the site working and safe.", "Como la mayoría de los sitios web, nuestros servidores guardan por poco tiempo registros técnicos, como la dirección IP y el tipo de navegador, para que el sitio funcione bien y de forma segura.")}</p><h3>${say("Your choices", "Tus opciones")}</h3><p>${say("Mailing addresses, requests, messages, photos, videos and phone numbers are all optional. Please keep your invitation link within your family: anyone who has it can open and change your RSVP. To see, correct or delete your information, email us:", "Las direcciones postales, solicitudes, mensajes, fotos, videos y teléfonos son opcionales. Por favor, comparte tu enlace de invitación solo con tu familia: cualquier persona que lo tenga puede abrir y cambiar tu respuesta. Para ver, corregir o borrar tu información, escríbenos:")}</p><a href="mailto:${event.sender}">${event.sender}</a></article>`;
   if (route === "terms") body = "";
   if (route === "whatsapp")
-    body += `<article class="editorial"><h2>${say("Stay in touch on WhatsApp", "Mantente en contacto por WhatsApp")}</h2><p>${say(`WhatsApp updates are for family and friends outside the US and Canada.<span data-sms-offer> If you have a US or Canadian mobile number, you can get text messages instead: see <a href="${href("sms", lang)}">${routeTitle("sms", lang)}</a>.</span> ${esc(policies.host.en)} On WhatsApp we send your invitation link, RSVP reminders and news about the celebration. How often depends on the news. Internet and data charges may apply. WhatsApp is optional: email still works, and you don’t need WhatsApp to RSVP or to attend.`, `Los avisos por WhatsApp son para familiares y amigos fuera de Estados Unidos y Canadá.<span data-sms-offer> Si tienes un celular de Estados Unidos o Canadá, puedes recibir mensajes de texto: consulta <a href="${href("sms", lang)}">${routeTitle("sms", lang)}</a>.</span> ${esc(policies.host.es)} Por WhatsApp te enviamos tu enlace de invitación, recordatorios para confirmar y novedades de la celebración. La frecuencia depende de las novedades. Pueden aplicarse cargos de internet y datos. WhatsApp es opcional: el correo sigue funcionando y no necesitas WhatsApp para confirmar ni para asistir.`)}</p><h3>${say("How to sign up", "Cómo suscribirte")}</h3><p>${say("Sign in with the email where you received your invitation. On your account page, enter your WhatsApp number with its country code, choose English or Spanish, and agree to WhatsApp messages. Then follow the WhatsApp link and send START from that same number to confirm it. Your updates start once your number is confirmed. If you haven’t received your invitation yet, please contact us first.", "Entra al sitio con el correo donde recibiste tu invitación. En tu cuenta, escribe tu número de WhatsApp con el código de país, elige inglés o español y acepta los mensajes de WhatsApp. Luego sigue el enlace a WhatsApp y envía START desde ese mismo número para confirmarlo. Los avisos empiezan cuando tu número quede confirmado. Si todavía no recibes tu invitación, escríbenos primero.")}</p><p class="notice" data-whatsapp-off hidden>${say("WhatsApp updates haven’t started yet. This page explains how they will work.", "Los avisos por WhatsApp aún no empiezan. Esta página explica cómo funcionarán.")}</p><p data-whatsapp-signup><a class="button burgundy" href="${href("account", lang)}">${say("Sign in", "Entrar")}</a></p><h3>${say("Need help or want to stop?", "¿Necesitas ayuda o quieres cancelar?")}</h3><p>${say("Reply STOP or BAJA to stop WhatsApp messages, or unsubscribe on your account page. Reply HELP or AYUDA for help, or email misxv@simplysoph.com. Sending START doesn’t RSVP for you; please answer on the website with your invitation link.", "Responde STOP o BAJA para dejar de recibir mensajes de WhatsApp, o cancela tu suscripción en tu cuenta. Responde HELP o AYUDA para recibir ayuda, o escribe a misxv@simplysoph.com. Enviar START no confirma tu asistencia; responde en el sitio con tu enlace de invitación.")}</p><p>${say(`WhatsApp is separate from text messages (SMS). We keep a private record of your number, language, consent and any opt-out with our guest list, and Twilio and Meta process the messages to deliver them. We never sell this information or share it for marketing. ${esc(policies.retention.en)}`, `WhatsApp es independiente de los mensajes de texto (SMS). Guardamos en privado tu número, idioma, consentimiento y cancelación junto con nuestra lista de invitados, y Twilio y Meta procesan los mensajes para entregarlos. Nunca vendemos esta información ni la compartimos para publicidad. ${esc(policies.retention.es)}`)}</p><a href="${href("privacy", lang)}">${say("Privacy policy", "Política de privacidad")}</a></article>`;
+    body += `<article class="editorial"><h2>${say("Stay in touch on WhatsApp", "Mantente en contacto por WhatsApp")}</h2><p>${say(`WhatsApp updates are for family and friends outside the US and Canada.<span data-sms-offer> If you have a US or Canadian mobile number, you can get text messages instead: see <a href="${href("sms", lang)}">${routeTitle("sms", lang)}</a>.</span> ${esc(policies.host.en)} On WhatsApp we send your invitation link, RSVP reminders and news about the celebration. How often depends on the news. Data charges may apply. WhatsApp is optional: email still works, and you don’t need WhatsApp to RSVP or to attend.`, `Los avisos por WhatsApp son para familiares y amigos fuera de Estados Unidos y Canadá.<span data-sms-offer> Si tienes un celular de Estados Unidos o Canadá, puedes recibir mensajes de texto: consulta <a href="${href("sms", lang)}">${routeTitle("sms", lang)}</a>.</span> ${esc(policies.host.es)} Por WhatsApp te enviamos tu enlace de invitación, recordatorios para confirmar y novedades de la celebración. La frecuencia depende de las novedades. Pueden aplicarse cargos de datos. WhatsApp es opcional: el correo sigue funcionando y no necesitas WhatsApp para confirmar ni para asistir.`)}</p><h3>${say("How to sign up", "Cómo suscribirte")}</h3><p>${say("Sign in with the email where you received your invitation. On your account page, enter your WhatsApp number with its country code, choose English or Spanish, and agree to WhatsApp messages. Then follow the WhatsApp link and send START from that same number to confirm it. Your updates start once your number is confirmed. If you haven’t received your invitation yet, please contact us first.", "Entra al sitio con el correo donde recibiste tu invitación. En tu cuenta, escribe tu número de WhatsApp con el código de país, elige inglés o español y acepta los mensajes de WhatsApp. Luego sigue el enlace a WhatsApp y envía START desde ese mismo número para confirmarlo. Los avisos empiezan cuando tu número quede confirmado. Si todavía no recibes tu invitación, escríbenos primero.")}</p><p class="notice" data-whatsapp-off hidden>${say("WhatsApp updates haven’t started yet. This page explains how they will work.", "Los avisos por WhatsApp aún no empiezan. Esta página explica cómo funcionarán.")}</p><p data-whatsapp-signup><a class="button burgundy" href="${href("account", lang)}">${say("Sign in", "Entrar")}</a></p><h3>${say("Need help or want to stop?", "¿Necesitas ayuda o quieres cancelar?")}</h3><p>${say("Reply STOP or BAJA to stop WhatsApp messages, or unsubscribe on your account page. Reply HELP or AYUDA for help, or email misxv@simplysoph.com. Sending START doesn’t RSVP for you; please answer on the website with your invitation link.", "Responde STOP o BAJA para dejar de recibir mensajes de WhatsApp, o cancela tu suscripción en tu cuenta. Responde HELP o AYUDA para recibir ayuda, o escribe a misxv@simplysoph.com. Enviar START no confirma tu asistencia; responde en el sitio con tu enlace de invitación.")}</p><p>${say(`WhatsApp is separate from text messages (SMS). We keep a private record of your number, language, consent and any opt-out with our guest list, and Twilio and Meta process the messages to deliver them. We never sell this information or share it for marketing. ${esc(policies.retention.en)}`, `WhatsApp es independiente de los mensajes de texto (SMS). Guardamos en privado tu número, idioma, consentimiento y cancelación junto con nuestra lista de invitados, y Twilio y Meta procesan los mensajes para entregarlos. Nunca vendemos esta información ni la compartimos con fines de mercadotecnia. ${esc(policies.retention.es)}`)}</p><a href="${href("privacy", lang)}">${say("Privacy policy", "Política de privacidad")}</a></article>`;
   if (route === "privacy")
     body += `<article class="editorial"><h2>${say("Optional WhatsApp updates", "Avisos por WhatsApp (opcionales)")}</h2><p>${say("WhatsApp updates are optional and separate from text messages and email. If you sign up, we keep your WhatsApp number, your language, when and how you agreed, any opt-out, and whether each message was delivered. These details stay in our private records and on our guest list, and we share them with our messaging services only to send you messages about the celebration. Reply STOP or BAJA to stop; we keep a short note of your opt-out so we don’t message you again by mistake.", "Los avisos por WhatsApp son opcionales e independientes de los mensajes de texto y del correo. Si te suscribes, guardamos tu número de WhatsApp, tu idioma, cuándo y cómo aceptaste, si cancelaste y si cada mensaje se entregó. Estos datos se quedan en nuestros registros privados y en nuestra lista de invitados, y solo los compartimos con nuestros servicios de mensajería para enviarte mensajes sobre la celebración. Responde STOP o BAJA para cancelar; guardamos una nota breve de tu cancelación para no volver a escribirte por error.")}</p><a href="${href("whatsapp", lang)}">${say("How WhatsApp updates work", "Cómo funcionan los avisos por WhatsApp")}</a></article>`;
   // Twilio campaign reviewers verify this public call to action against the
@@ -487,10 +531,10 @@ function contents(route, lang) {
     <li>${say("<strong>Cancel.</strong> Reply <strong>STOP</strong> at any time. You will receive one confirmation and no further program messages unless you text the keyword again.", "<strong>Cancelar.</strong> Responde <strong>STOP</strong> en cualquier momento. Recibirás una confirmación y ningún otro mensaje del programa, salvo que vuelvas a enviar la palabra clave.")}</li>
     <li>${say(`<strong>Help.</strong> Reply <strong>HELP</strong> or email <a href="mailto:misxv@simplysoph.com">misxv@simplysoph.com</a>.`, `<strong>Ayuda.</strong> Responde <strong>HELP</strong> o escribe a <a href="mailto:misxv@simplysoph.com">misxv@simplysoph.com</a>.`)}</li>
     <li>${say("<strong>Coverage.</strong> US and Canadian mobile numbers. Carriers are not liable for any delayed or undelivered messages. Use a number you control and tell us if it changes.", "<strong>Cobertura.</strong> Números móviles de EE. UU. y Canadá. Los operadores no son responsables de ningún mensaje demorado o no entregado. Usa un número que controles y avísanos si cambia.")}</li>
-    <li>${say("<strong>Privacy.</strong> We do not sell or share your SMS opt-in data or personal information with third parties for marketing purposes. No mobile information will be shared with third parties or affiliates for marketing or promotional purposes. Text messaging originator opt-in data and consent will not be shared with any third parties.", "<strong>Privacidad.</strong> No vendemos ni compartimos tus datos de suscripción SMS ni tu información personal con terceros para fines de mercadeo. No compartiremos información móvil con terceros ni afiliados para fines de mercadeo o promoción. Los datos de suscripción y consentimiento de mensajes no se compartirán con ningún tercero.")}</li>
+    <li>${say("<strong>Privacy.</strong> We do not sell or share your SMS opt-in data or personal information with third parties for marketing purposes. No mobile information will be shared with third parties or affiliates for marketing or promotional purposes. Text messaging originator opt-in data and consent will not be shared with any third parties.", "<strong>Privacidad.</strong> No vendemos ni compartimos tus datos de suscripción SMS ni tu información personal con terceros con fines de mercadotecnia. No compartiremos información móvil con terceros ni afiliados con fines de mercadotecnia o promoción. Los datos de suscripción y consentimiento de mensajes no se compartirán con ningún tercero.")}</li>
     </ol>${smsReplies}${smsLinks}</article>`;
   if (route === "privacy")
-    body += `<article class="editorial"><h2>${say("Optional SMS messages", "Avisos por SMS (opcionales)")}</h2><p>${say("Simply Soph Media text messages are optional. If you text our keyword to join, we keep your mobile number, the keywords you send, when you agreed, and whether each text was delivered, and we note your choice on our guest list. Our text-message service processes the texts only to deliver them. We do not sell or share your SMS opt-in data or personal information with third parties for marketing purposes. No mobile information will be shared with third parties or affiliates for marketing or promotional purposes. Text messaging originator opt-in data and consent will not be shared with any third parties. Using the website or answering by email does not sign you up for texts.", "Los mensajes de texto de Simply Soph Media son opcionales. Si envías nuestra palabra clave para suscribirte, guardamos tu número de celular, las palabras clave que envías, cuándo aceptaste y si cada mensaje se entregó, y anotamos tu preferencia en nuestra lista de invitados. Nuestro servicio de mensajes de texto los procesa solo para entregarlos. No vendemos ni compartimos con terceros tus datos de suscripción SMS ni tu información personal para fines de publicidad. No compartiremos información móvil con terceros ni afiliados para fines de publicidad o promoción. Los datos de suscripción y consentimiento de mensajes de texto no se compartirán con ningún tercero. Usar el sitio o responder por correo no te suscribe a los mensajes de texto.")}</p><p>${say("Reply STOP at any time to stop texts. We keep a short note of your opt-out so we don’t text you again by mistake. To see, correct or delete your information, email misxv@simplysoph.com.", "Responde STOP en cualquier momento para dejar de recibir mensajes. Guardamos una nota breve de tu cancelación para no volver a escribirte por error. Para ver, corregir o borrar tu información, escribe a misxv@simplysoph.com.")}</p><a href="${href("sms-terms", lang)}">${routeTitle("sms-terms", lang)}</a></article>`;
+    body += `<article class="editorial"><h2>${say("Optional SMS messages", "Avisos por SMS (opcionales)")}</h2><p>${say("Simply Soph Media text messages are optional. If you text our keyword to join, we keep your mobile number, the keywords you send, when you agreed, and whether each text was delivered, and we note your choice on our guest list. Our text-message service processes the texts only to deliver them. We do not sell or share your SMS opt-in data or personal information with third parties for marketing purposes. No mobile information will be shared with third parties or affiliates for marketing or promotional purposes. Text messaging originator opt-in data and consent will not be shared with any third parties. Using the website or answering by email does not sign you up for texts.", "Los mensajes de texto de Simply Soph Media son opcionales. Si envías nuestra palabra clave para suscribirte, guardamos tu número de celular, las palabras clave que envías, cuándo aceptaste y si cada mensaje se entregó, y anotamos tu preferencia en nuestra lista de invitados. Nuestro servicio de mensajes de texto los procesa solo para entregarlos. No vendemos ni compartimos con terceros tus datos de suscripción SMS ni tu información personal con fines de mercadotecnia. No compartiremos información móvil con terceros ni afiliados con fines de mercadotecnia o promoción. Los datos de suscripción y consentimiento de mensajes de texto no se compartirán con ningún tercero. Usar el sitio o responder por correo no te suscribe a los mensajes de texto.")}</p><p>${say("Reply STOP at any time to stop texts. We keep a short note of your opt-out so we don’t text you again by mistake. To see, correct or delete your information, email misxv@simplysoph.com.", "Responde STOP en cualquier momento para dejar de recibir mensajes. Guardamos una nota breve de tu cancelación para no volver a escribirte por error. Para ver, corregir o borrar tu información, escribe a misxv@simplysoph.com.")}</p><a href="${href("sms-terms", lang)}">${routeTitle("sms-terms", lang)}</a></article>`;
   // Policy paragraphs; a run of "- " items becomes a real list.
   if (["privacy", "terms"].includes(route)) {
     const notice =
@@ -554,7 +598,7 @@ function contents(route, lang) {
   }
 
   if (route === "privacy")
-    body += `<article class="editorial"><h2>${say("Signing in", "Cómo entrar al sitio")}</h2><p>${say("You sign in with an email address that’s on our guest list for your family. We confirm it with a one-time link, or Google or Microsoft confirms it for us. To make your account work, we keep a record of which email signed in and when, plus your contact details, your RSVP and your messages. Your RSVP and head count also go on our private guest list. Changing your contact email doesn’t change the email you sign in with.", "Entras al sitio con un correo que está en nuestra lista de invitados para tu familia. Lo confirmamos con un enlace de un solo uso, o Google o Microsoft nos lo confirman. Para que tu cuenta funcione, guardamos qué correo entró y cuándo, además de tus datos de contacto, tu respuesta y tus mensajes. Tu respuesta y el número de personas que vienen también se anotan en nuestra lista privada de invitados. Cambiar tu correo de contacto no cambia el correo con el que entras.")}</p></article>`;
+    body += `<article class="editorial"><h2>${say("Signing in", "Cómo entrar al sitio")}</h2><p>${say("You sign in with an email address that’s on our guest list for your family. We confirm it with a one-time link, or Google or Microsoft confirms it for us. To make your account work, we keep a record of which email signed in and when, plus your contact details, your RSVP and your messages. Your RSVP and head count also go on our private guest list. Changing your contact email doesn’t change the email you sign in with.", "Entras al sitio con un correo que está en nuestra lista de invitados para tu familia. Lo confirmamos con un enlace de un solo uso, o Google o Microsoft nos lo confirman. Para que tu cuenta funcione, guardamos con qué correo entraste y cuándo, además de tus datos de contacto, tu respuesta y tus mensajes. Tu respuesta y el número de personas que vienen también se anotan en nuestra lista privada de invitados. Cambiar tu correo de contacto no cambia el correo con el que entras.")}</p></article>`;
   return `<section class="page section">${heading}${body}</section>`;
 }
 // One row on every screen: the wordmark, then a flat link per section (behind
@@ -595,7 +639,7 @@ const fonts =
 const eventLine = (lang) =>
   lang === "es"
     ? `${capitalize(longDate(event.startsAt, "es"))} en Fort Worth, Texas.`
-    : `${longDate(event.startsAt, "en")} in Fort Worth, Texas.`;
+    : `${longDate(event.startsAt, "en")}, in Fort Worth, Texas.`;
 const previews = {
   // The invitation's own preview: the deadline sentence to the household.
   invite: (lang) => `${eventLine(lang)} ${sayTerm(terms.rsvpBy, lang, registerFor(""))} ${longDate(event.deadline, lang)}.`,
@@ -711,6 +755,7 @@ for (const file of [
   "pages.css",
   "guest.js",
   "media-upload.js",
+  "session-limit.js",
   "upload-batch.mjs",
   "admin.js",
   "client.js",
@@ -738,6 +783,7 @@ for (const file of [
   "guest-account.js",
   "notes.mjs",
   "gallery-download.js",
+  "guest-gallery.js",
   "promises.mjs",
   "lifespan.mjs",
 ])

@@ -404,6 +404,15 @@ test("no English sentence on a Spanish page or in a Spanish email", async () => 
   assert.deepEqual(found, []);
 });
 
+// L10N-01: datetime's at() already says "a las 5:00 p. m.", so a sentence
+// that puts its own preposition before it ("alrededor de a las") doubles it.
+test("no built page doubles the preposition before a time (“de a las”, “de a la”)", async () => {
+  const found = [];
+  for (const [file, lang] of await guestPages())
+    for (const m of (await pageText(file, lang)).matchAll(/\bde a las?\b[^\n]{0,30}/g)) found.push(`${file}: ${m[0]}`);
+  assert.deepEqual(found, []);
+});
+
 // ---- (c) One form of address per screen ----
 // The words server/copy-check.mjs counts as tú or as ustedes, so this test
 // names what it found.

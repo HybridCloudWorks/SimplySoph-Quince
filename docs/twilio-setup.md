@@ -23,7 +23,7 @@ A guest joins by texting **SOPHIA** to **+1 682-786-8002** from their own phone.
 
 **Send a test to my phone.** Text SOPHIA from your own phone, enter that number, confirm, send. No guest row is involved. Use this whenever you want to see what guests see.
 
-**Text guests.** Tick the subscribed households (or **Select all subscribed**, or distribution groups), write the message, press **Review before sending**. The batch panel shows the exact message and every recipient. Tick the review box, type the number of texts, press **Confirm and send**. Keep the tab open until it says done; closing it or pressing **Stop** halts sending. `{link}` becomes each household's private RSVP link.
+**Text guests.** Tick the subscribed households (or **Select all subscribed**, or distribution groups), write the message, press **Review before sending**. The batch panel shows the exact message and every recipient. Tick the review box, type the number of texts, press **Confirm and send**. Keep the tab open until it says done; closing it or pressing **Stop** halts sending. `{link}` becomes each household's private invitation link.
 
 **Recent text batches** shows every batch with how many texts were accepted, rejected or still waiting, and **Latest five texts** lets you review and send one text at a time.
 

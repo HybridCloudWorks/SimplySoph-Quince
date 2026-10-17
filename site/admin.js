@@ -15,6 +15,7 @@ import {
   linkFragment,
   reloadOnNewLink,
   addMessages,
+  focusOn,
 } from "./client.js";
 import {
   startMicrosoft,
@@ -26,7 +27,7 @@ import {
 import { contactTopics, contactTopicsEn } from "./celebration.mjs";
 import { date, time, stamp as recordedAt } from "./datetime.mjs";
 import { adminMessages } from "./admin-messages.js";
-import { audienceOf } from "./notes.mjs";
+import { audienceOf, consentOf } from "./notes.mjs";
 // Admin's own error wording (guest pages never load it).
 addMessages(adminMessages);
 const root = document.querySelector("#admin-app"),
@@ -513,10 +514,15 @@ async function partyCard(box) {
       const result = await api("admin/party-card", { action });
       madeCard = result.card ? { card: result.card } : null;
       await partyCard(box);
+      // The button pressed is gone: focus goes to what comes next
+      // (P5-A11Y-06), and a new code says so in its own words.
+      box.querySelector(action === "close" ? "[data-party-action=create]" : "a[download]")?.focus();
       notify(
         action === "close"
           ? "The table card is off."
-          : "The table card is on. Download the card below and print it.",
+          : action === "rotate"
+            ? "New code made: cards printed before no longer work. Download the new card below and print it."
+            : "The table card is on. Download the card below and print it.",
       );
     });
   };
@@ -542,7 +548,10 @@ function noteFacts(r, visibility) {
     family: "The writer left the box unchecked: for Sophia and the family only. It can’t be shown.",
     guests: "The writer agreed to show it to guests who sign in.",
     public: "The writer agreed to show it to anyone with the site’s address.",
-  }[r.display] || "Sent before the choice existed, under “We may publish this name and message after we read them.”: treated as agreeing to be shown to anyone.";
+  }[r.display] ||
+    (consentOf(r) === "public"
+      ? "Sent before the choice existed, under “We may publish this name and message after we read them.”: treated as agreeing to be shown to anyone."
+      : "Sent while the server didn’t yet record the writer’s choice: treated as agreeing to show it only to guests who sign in.");
   const audience = audienceOf(r, visibility);
   return `<p class="hint">${esc(consent)}${r.state === "approved" ? ` Shown now to: ${audience === "public" ? "anyone with the site’s address" : audience === "guests" ? "guests who sign in" : "nobody"}.` : ""}</p>${r.via === "link" ? `<p class="hint">Sent from the household’s invitation link, without an email sign-in.</p>` : ""}`;
 }
@@ -676,11 +685,18 @@ async function updates() {
       .slice(0, 5);
     panel.innerHTML = `<form id="announcement" class="card"><h2>Publish a website announcement</h2>${field("English title", "title", { required: true, max: 140 })}<label>English message<textarea name="text" required maxlength="2000"></textarea></label>${field("Spanish title", "titleEs", { required: true, max: 140 })}<label>Spanish message<textarea name="textEs" required maxlength="2000"></textarea></label><p class="hint">Guests read the website in English and Spanish, so each announcement needs both. The home page speaks to each family, so write the Spanish to them as ustedes (“Los esperamos”, “confirmen”).</p>${formEnd("Publish on website")}<section class="recent-records"><h2>Latest five announcements</h2><a href="/admin/history/?kind=announcements">View full announcement history</a>${announcements.map((a) => `<article class="compact-record"><h3>${esc(a.title)}</h3><p>${esc(a.text)}</p><small>${a.at ? esc(recordedAt(a.at)) : ""} · ${a.published ? "Published" : "Unpublished"}</small></article>`).join("") || "<p>No announcements yet.</p>"}</section>`;
     submit(panel.querySelector("#announcement"), async (f) => {
-      const { warnings } = await api("admin/updates", Object.fromEntries(f));
-      notify("Announcement published. No email sent.");
+      const { warnings = [] } = await api("admin/updates", Object.fromEntries(f));
       await updates();
-      // Published as written; the family decides about any flagged wording.
-      panel.insertAdjacentHTML("afterbegin", copyWarnings(warnings));
+      // Published as written; the family decides about any flagged wording,
+      // which takes focus and is counted in the note (P5-A11Y-06). The panel
+      // was drawn again, so it is looked up again.
+      const fresh = root.querySelector("#communication-panel");
+      fresh.insertAdjacentHTML("afterbegin", copyWarnings(warnings));
+      if (warnings.length) focusOn(fresh.querySelector("#copy-warnings-title"));
+      notify(
+        "Announcement published. No email sent." +
+          (warnings.length ? ` Check the Spanish wording: ${warnings.length} ${warnings.length === 1 ? "note" : "notes"} at the top.` : ""),
+      );
     });
     return;
   }

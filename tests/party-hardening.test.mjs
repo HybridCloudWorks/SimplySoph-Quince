@@ -438,3 +438,40 @@ test("over HTTP: a finished upload's last piece sent again is answered without a
   const stranger = await exchange(f, code);
   assert.deepEqual(await send(port, stranger, id, bytes), { status: 404, error: "NOT_FOUND" });
 });
+
+// ---- QA-01, QA-02, a11y-01: when a card session ends ----------------------
+
+test("a card phone whose session ended is told why (expired, replaced, closed), never to sign in, and its page learns how long a live one has left", async () => {
+  const { f, code } = await cardFixture();
+  const phone = await exchange(f, code);
+  const session = (who = phone, query) => f.request(who, "session", null, { query });
+  const refused = (who) => f.request(who, "uploads", f.startBody(Buffer.alloc(10))).then(() => null, (e) => e);
+  // Live: how long it has left; a check-in in its last 15 minutes renews it.
+  assert.equal((await session()).expiresIn, 30 * 60000);
+  f.advance(20 * 60000);
+  assert.equal((await session(phone, { poll: "1" })).expiresIn, 10 * 60000, "a background check renews nothing");
+  assert.equal((await session()).expiresIn, 30 * 60000, "the reply counts its own renewal");
+  // Idle past the end (this phone never stored the renewed cookie).
+  f.advance(10 * 60000 + 1);
+  assert.deepEqual(await session(), { kind: null, csrf: null, verified: false, scope: null, owner: false, partyEnded: "expired" });
+  const expired = await refused(phone);
+  assert.equal(expired.status, 401);
+  assert.equal(expired.code, "PARTY_SESSION_ENDED");
+  assert.deepEqual(expired.details, { reason: "expired", closesAt: new Date(WINDOW_END).toISOString() });
+  // Replaced: the family makes a new code.
+  const second = await exchange(f, code);
+  const { url } = await f.request("admin", "admin/party-card", { action: "rotate" });
+  assert.equal((await refused(second)).details.reason, "rotated");
+  assert.equal((await session(second)).partyEnded, "rotated");
+  // Closed: the upload window ends between two requests.
+  f.setNow(WINDOW_END - 60000);
+  const late = await exchange(f, codeOf(url));
+  assert.equal((await session(late)).kind, "party");
+  f.setNow(WINDOW_END);
+  assert.equal((await refused(late)).details.reason, "closed");
+  assert.equal((await session(late)).partyEnded, "closed");
+  // A cookie that is not a genuine card cookie is simply signed out.
+  const forged = { cookie: phone.cookie.slice(0, -2) + (phone.cookie.endsWith("AA") ? "BB" : "AA"), csrf: phone.csrf };
+  assert.equal((await refused(forged)).code, "SIGN_IN_REQUIRED");
+  assert.equal((await session(forged)).partyEnded, undefined);
+});

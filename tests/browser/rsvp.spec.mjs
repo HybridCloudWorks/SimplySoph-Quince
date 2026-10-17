@@ -190,7 +190,7 @@ test("after the deadline a household that never answered sees the closed note, n
   ).toBeVisible();
   await expect(
     page.getByText(
-      "RSVPs closed on Sunday, November 15. To RSVP or change your RSVP now, please contact us.",
+      "RSVPs closed on Sunday, November 15. To reply or change your RSVP now, please contact us.",
     ),
   ).toBeVisible();
   await expect(
@@ -216,11 +216,11 @@ test("after the deadline the Spanish page shows the closed note in Spanish", asy
 
   await page.goto(harness.forBrowser(link));
   await expect(
-    page.getByRole("heading", { name: "Las respuestas están cerradas" }),
+    page.getByRole("heading", { name: "Ya no se reciben respuestas" }),
   ).toBeVisible();
   await expect(
     page.getByText(
-      "Las respuestas cerraron el domingo 15 de noviembre. Para confirmar su asistencia o cambiar su respuesta, escríbannos.",
+      "El plazo para confirmar terminó el domingo 15 de noviembre. Para confirmar su asistencia o cambiar su respuesta, escríbannos.",
     ),
   ).toBeVisible();
   await expect(

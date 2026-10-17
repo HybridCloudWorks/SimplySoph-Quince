@@ -19,7 +19,7 @@ const before = {
   ceremony: ["Parking and arrival details will be shared here.", "Compartiremos aquí los detalles de llegada y estacionamiento."],
   reception: [
     "Entrance, parking and accessibility details will be shared here.",
-    "Compartiremos los detalles de entrada, estacionamiento y accesibilidad.",
+    "Compartiremos aquí los detalles de entrada, estacionamiento y accesibilidad.",
   ],
 };
 const empty = structuredClone(family);

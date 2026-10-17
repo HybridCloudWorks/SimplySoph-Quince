@@ -133,7 +133,7 @@ for (const [screen, view] of [
       await expect(note).toHaveAttribute("aria-invalid", "true");
       await note.fill("Happy birthday, Sophia!");
       await press(sendNote);
-      await expect(page.getByRole("status").filter({ hasText: "Thank you!" })).toBeVisible();
+      await expect(page.locator("#portal .notice.success").filter({ hasText: "Thank you!" })).toBeFocused();
       expect(Object.values((await harness.ledger.read()).messages).filter((m) => m.via === "link")).toHaveLength(1);
       // "Send me a new link", from a sign-in link used twice.
       for (let i = 0; i < 2; i++) {
@@ -346,7 +346,8 @@ test("My account puts the household’s RSVP first, labels contact fields for au
   await save.click();
   const saved = page.getByText("Contact details saved.");
   await expect(saved).toBeFocused();
-  await expect(saved).toHaveAttribute("role", "status");
+  // Announced by taking focus, so not a live region as well (P5-A11Y-10).
+  await expect(saved).not.toHaveAttribute("role", /.*/);
   await expect(page.locator("#status")).toBeEmpty();
   await save.click();
   await expect(saved).toBeFocused();

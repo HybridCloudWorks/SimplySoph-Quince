@@ -128,8 +128,9 @@ test("the home page's invitation link says “opens in a new tab” once (R-090)
 
 test("Contact as built: the address first, then where a reply appears, the sign-in quiet under it, and an empty host slot (R-084, R-166)", async () => {
   for (const [file, reply] of [
-    ["contact/index.html", "Write to that address and we’ll reply by email. If you sign in and write to us here, our reply appears in My account."],
-    ["es/contact/index.html", "Si escribes a ese correo, te respondemos por correo. Si entras y nos escribes aquí, nuestra respuesta aparece en Mi cuenta."],
+    // L10N-04: Contact has no form of its own; signed in, guests write from My account.
+    ["contact/index.html", "Write to that address and we’ll reply by email. Or sign in and write to us from My account, where our replies appear."],
+    ["es/contact/index.html", "Si escribes a ese correo, te respondemos por correo. También puedes entrar y escribirnos desde Mi cuenta, donde aparecen nuestras respuestas."],
   ]) {
     const html = main(await page(file)),
       at = (text) => html.indexOf(text);

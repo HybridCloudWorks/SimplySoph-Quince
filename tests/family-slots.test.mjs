@@ -97,7 +97,8 @@ test("once the content exists it shows instead of the promise, and the labels th
 test("Travel rejoins the header in its own slot, and the Schedule links it, once it has hotels", async () => {
   for (const [lang, names, link] of [
     ["", ["Schedule", "Travel", "Photos &amp; notes"], 'href="/travel/">Coming from out of town? See Travel'],
-    ["es/", ["Programa", "Viaje", "Fotos y mensajes"], 'href="/es/travel/">¿Vienes de fuera? Consulta Viaje'],
+    // L10N-49: "Consulta Viaje" read as "consult Trip".
+    ["es/", ["Programa", "Hospedaje y transporte", "Fotos y mensajes"], 'href="/es/travel/">¿Vienes de fuera? Consulta Hospedaje y transporte'],
   ]) {
     const labels = [...header(await filled(`${lang}index.html`)).matchAll(/<li[^>]*><a [^>]*>([^<]+)<\/a><\/li>/g)].map((m) => m[1]);
     assert.deepEqual(labels.slice(0, 3), names, lang);
@@ -198,7 +199,7 @@ test("no court or padrino names are committed to the public content", async () =
     );
 });
 
-test("a value that is not a sensible number or date stops the build instead of reaching a page", async () => {
+test("a value that is not a sensible number or date, or prose in one language only, stops the build instead of reaching a page", async () => {
   const bad = new URL(".cache/fixture-bad.mjs", repo);
   const { writeFile } = await import("node:fs/promises");
   for (const [field, value, message] of [
@@ -207,6 +208,10 @@ test("a value that is not a sensible number or date stops the build instead of r
     ["promises", { dressCode: { by: "soon" } }, /promises\.dressCode\.by must be YYYY-MM-DD/],
     ["traditions", ["fireworks"], /Unknown tradition/],
     ["thankYou", { en: "Thanks!" }, /family\.thankYou must be \{ en, es \}/],
+    // P5-A11Y-13: English alone would show unmarked on the Spanish pages.
+    ["parking", { en: "Park in the north lot after 3 PM." }, /family\.parking must be written in English and Spanish/],
+    ["dressCode", "Formal", /family\.dressCode must be written in English and Spanish/],
+    ["hotels", [{ name: "Fixture Inn", notes: { en: "Near the church." }, url: "https://example.com/" }], /family\.hotels\[0\]\.notes must be written in English and Spanish/],
   ]) {
     await writeFile(bad, `export const family = ${JSON.stringify({ [field]: value })};\n`);
     await assert.rejects(

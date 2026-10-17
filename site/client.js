@@ -157,8 +157,8 @@ const messages = {
     "Tu familia alcanzó el límite de fotos y videos por ahora.",
   ],
   PARTY_DEVICE_LIMIT: [
-    "This phone has shared the most photos and videos we take from one phone at a time. Thank you!",
-    "Este teléfono ya compartió el máximo de fotos y videos que recibimos de un teléfono a la vez. ¡Gracias!",
+    "This phone has shared as many photos and videos as we can take from one phone. Thank you!",
+    "Este teléfono ya compartió todas las fotos y videos que podemos recibir de un solo teléfono. ¡Gracias!",
   ],
   PARTY_CARD_FULL: [
     "The table card has received all the photos and videos it can take. Thank you!",
@@ -176,6 +176,17 @@ const messages = {
     "Sharing from the table card has closed.",
     "Ya no se puede compartir desde la tarjeta de la mesa.",
   ],
+  // A table card session that ended (server: PARTY_SESSION_ENDED, with its
+  // reason): a card phone has no invitation link or account, so it is told
+  // to scan the card again, never to sign in (QA-01, QA-02).
+  PARTY_SESSION_ENDED: [
+    "Your time with the table card ran out. Scan the card on your table again to keep sharing.",
+    "Se terminó tu tiempo con la tarjeta de la mesa. Vuelve a escanear la tarjeta de tu mesa para seguir compartiendo.",
+  ],
+  PARTY_CARD_REPLACED: [
+    "This table card was replaced with a new one. Scan the new card on your table to keep sharing.",
+    "Esta tarjeta de la mesa se cambió por una nueva. Escanea la tarjeta nueva de tu mesa para seguir compartiendo.",
+  ],
   MEDIA_BUSY: [
     "This video is being prepared right now. Try again in a few minutes.",
     "Este video se está preparando en este momento. Inténtalo de nuevo en unos minutos.",
@@ -186,7 +197,10 @@ const messages = {
   ],
   WHATSAPP_PHONE_INVALID: [
     "WhatsApp can't use this number. Check the country code and the number, like +52 55 1234 5678.",
-    "WhatsApp no puede usar este número. Revisa el código de país y el número, como +52 55 1234 5678.",
+    {
+      tu: "WhatsApp no puede usar este número. Revisa el código de país y el número, como +52 55 1234 5678.",
+      ustedes: "WhatsApp no puede usar este número. Revisen el código de país y el número, como +52 55 1234 5678.",
+    },
   ],
   // site/guest-whatsapp.js adds the SMS keyword when SMS is live.
   WHATSAPP_US_NUMBER: [
@@ -207,6 +221,9 @@ const messages = {
     "Abre de nuevo tu enlace de invitación para enviar tu mensaje desde él.",
   ],
 };
+// Why a table card session ended ("expired", "rotated" or "closed"), in words.
+export const cardEnded = (reason) =>
+  tr(...messages[{ rotated: "PARTY_CARD_REPLACED", closed: "PARTY_CLOSED" }[reason] || "PARTY_SESSION_ENDED"]);
 // Admin pages add their own errors, and their own wording of some of the
 // above (site/admin-messages.js), so guest pages never download them.
 export const addMessages = (more) => Object.assign(messages, more);
@@ -256,7 +273,10 @@ function trouble(sending, network) {
         ustedes: "Algo falló de nuestro lado. Inténtenlo de nuevo en un minuto o escríbannos a misxv@simplysoph.com.",
       });
 }
+// `options.typed`: whether a failure keeps something the guest typed (a POST
+// does unless it says otherwise: opening a link or a card types nothing).
 export async function api(path, body, options = {}) {
+  const typed = options.typed ?? body !== undefined;
   let res;
   try {
     res = await fetch("/api/" + path, {
@@ -272,7 +292,7 @@ export async function api(path, body, options = {}) {
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
-    throw Object.assign(new Error(trouble(body !== undefined, true)), {
+    throw Object.assign(new Error(trouble(typed, true)), {
       code: "NETWORK_ERROR",
     });
   }
@@ -280,19 +300,23 @@ export async function api(path, body, options = {}) {
   try {
     data = await res.json();
   } catch {
-    throw Object.assign(new Error(trouble(body !== undefined, false)), {
+    throw Object.assign(new Error(trouble(typed, false)), {
       code: "SERVER_UNAVAILABLE",
       status: res.status,
     });
   }
   if (!res.ok) {
-    const pair = messages[data?.error];
+    // A page that holds a table card session never reads the sign-in words.
+    const code = data?.error === "SIGN_IN_REQUIRED" && session.kind === "party" ? "PARTY_SESSION_ENDED" : data?.error,
+      pair = messages[code];
     throw Object.assign(
       new Error(
-        pair
+        code === "PARTY_SESSION_ENDED"
+          ? cardEnded(data.reason)
+          : pair
           ? tr(...pair)
           : res.status >= 500
-            ? trouble(body !== undefined, false)
+            ? trouble(typed, false)
             : tr("We couldn’t finish that. Please try again, or contact us.", {
                 tu: "No pudimos completar la solicitud. Inténtalo de nuevo o escríbenos.",
                 ustedes: "No pudimos completar la solicitud. Inténtenlo de nuevo o escríbannos.",
@@ -300,25 +324,44 @@ export async function api(path, body, options = {}) {
       ),
       // `details`: the facts behind a refusal (a limit, how many were used,
       // when more fit), for pages that say more than the code's sentence.
-      { code: data?.error, status: res.status, details: data },
+      { code, status: res.status, details: data },
     );
   }
   if (data.csrf) setCsrf(data.csrf);
+  if (path.split("?")[0] === "session") sessionSeen(data);
   return data;
+}
+// What GET /api/session last said, for site/session-limit.js: when the
+// session ends (on this device's clock) and its kind ("guest", "party", …),
+// and who wants to hear each answer.
+export const session = { ends: 0, kind: null, seen: null };
+function sessionSeen(data) {
+  session.ends = Number.isFinite(data.expiresIn) ? Date.now() + data.expiresIn : 0;
+  if (data.kind) session.kind = data.kind;
+  else if (data.partyEnded) session.kind = "party";
+  session.seen?.(data);
 }
 // The page-wide note at the bottom, for news that belongs to no control: what
 // a form or button caused is shown next to it instead. An optional
-// { href, label } adds a link after the message (built as DOM, not HTML). The
-// note stays until it is closed or replaced (never on a timer: WCAG 2.2.1),
-// and while it shows, the page keeps the focused control scrolled clear of it.
+// { href, label } adds a link after the message, and { label, onClick } a
+// button (built as DOM, not HTML). The note stays until it is closed or
+// replaced (never on a timer: WCAG 2.2.1), and while it shows, the page keeps
+// the focused control scrolled clear of it. A note replaced while it has
+// focus hands focus to the new note's Close.
 export function notify(text, link) {
   const box = document.querySelector("#status");
   if (!box) return;
-  const message = document.createElement("span");
+  const message = document.createElement("span"),
+    hadFocus = box.contains(document.activeElement);
   message.textContent = text;
   if (link) {
-    const a = document.createElement("a");
-    a.href = link.href;
+    const a = document.createElement(link.href ? "a" : "button");
+    if (link.href) a.href = link.href;
+    else {
+      a.type = "button";
+      a.className = "status-action plain-button";
+      a.addEventListener("click", link.onClick);
+    }
     a.textContent = link.label;
     message.append(" ", a);
   }
@@ -338,10 +381,11 @@ export function notify(text, link) {
   document.documentElement.style.scrollPaddingBottom = room;
   document.body.style.paddingBottom = room;
   const focused = document.activeElement;
-  if (focused && focused !== document.body && !box.contains(focused))
+  if (hadFocus) close.focus();
+  else if (focused && focused !== document.body && !box.contains(focused))
     focused.scrollIntoView({ block: "nearest", behavior: "instant" });
 }
-function clearNote() {
+export function clearNote() {
   const box = document.querySelector("#status");
   if (box?.contains(document.activeElement) && notify.returnTo?.isConnected)
     notify.returnTo.focus();
@@ -355,6 +399,33 @@ export function focusOn(el) {
   if (!el) return;
   if (!el.matches("a[href],button,input,select,textarea,[tabindex]")) el.tabIndex = -1;
   el.focus();
+}
+// Redraws a part of the page filled in without a reload (the home page's
+// phase, the live event settings) and keeps keyboard focus (P5-A11Y-02):
+// markup that is already right is left alone; a focused link or button that
+// is redrawn is focused again (the same one, else the one in its place), and
+// when none is left, the nearest heading takes focus. Returns whether it drew.
+const parse = document.createElement("template"),
+  stops = "a[href],button,input,select,textarea,[tabindex]",
+  named = (el) => (el.getAttribute("href") || "") + "|" + el.textContent.trim();
+export function redraw(node, html) {
+  if (!node) return false;
+  parse.innerHTML = html;
+  if (parse.innerHTML === node.innerHTML) return false;
+  const active = document.activeElement,
+    inside = active !== node && node.contains(active),
+    place = inside ? [...node.querySelectorAll(stops)].indexOf(active) : -1,
+    name = inside && named(active);
+  node.innerHTML = html;
+  if (!inside) return true;
+  const now = [...node.querySelectorAll(stops)];
+  focusOn(
+    now.find((el) => named(el) === name) ||
+      now[Math.min(place, now.length - 1)] ||
+      [...(node.closest("section, article") || document).querySelectorAll("h1, h2")].find((h) => !node.contains(h)) ||
+      document.querySelector("main"),
+  );
+  return true;
 }
 let fields = 0;
 // A labelled input. `hint` adds a sentence under it: the input is named by the
@@ -487,7 +558,7 @@ export function checkForm(form, only = () => true) {
   // them to fix.
   const summary = document.createElement("div");
   summary.className = "error-summary";
-  summary.setAttribute("role", "alert");
+  // Not a live region: it takes focus, which announces it once (P5-A11Y-10).
   summary.tabIndex = -1;
   for (const [opening, controls] of lines) {
     const line = document.createElement("p"),

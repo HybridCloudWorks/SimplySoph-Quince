@@ -36,16 +36,15 @@ import {
   markBusy,
   sayError,
   mentionsUs,
+  cardEnded,
 } from "./client.js";
-import { galleryOpen } from "./lifecycle.mjs";
 import { date, dayMonth, time, at } from "./datetime.mjs";
-import { siteClock, clock } from "./now.mjs";
-// The upload form, the WhatsApp choices, "Download all photos" and "What's
-// next" load only on the pages that show them, so every other page (the home
+import { clock, answer as deviceReply } from "./now.mjs";
+// The upload form, the WhatsApp choices, the gallery and "What's next"
+// load only on the pages that show them, so every other page (the home
 // page above all) stays light (tests/home-weight.test.mjs).
 const uploads = () => import("./media-upload.js");
 const whatsapp = () => import("./guest-whatsapp.js");
-const downloads = () => import("./gallery-download.js");
 const promises = () => import("./promises.mjs");
 // Microsoft and Google sign-in, only where their buttons or return are.
 const sso = () => import("./sso.js");
@@ -63,12 +62,16 @@ const eventNames = {
 // the step's heading goes in front (R-073).
 let pageTitle = document.title;
 let settled = false;
+// The RSVP step's session limit, stopped when another step replaces it.
+let stopLimit = null;
 // Puts a step in the portal. A step the guest moved to (any after the page
 // load, or the confirmation right after a save) is named in the tab title and
 // takes focus, its heading or message, so keyboard and screen-reader users
 // land on what changed. "contact us" in a step's alert becomes a link
 // (client.js sayError).
 function show(html, { focus = settled } = {}) {
+  stopLimit?.();
+  stopLimit = null;
   portal.innerHTML = html;
   settled = true;
   const heading = portal.querySelector("h2");
@@ -116,14 +119,17 @@ const invitedEvents = (inv) => Object.keys(eventNames).filter((e) => inv.invited
 const attendingOf = ({ invited, response: r }) =>
   Object.keys(eventNames).filter((e) => invited[e] && r.attendance[e].adultsTeens + r.attendance[e].kids > 0);
 // "What's next" (site/promises.mjs): what is still to come (data-coming, from
-// the build) unless `pending` is false, and the channels the server has live.
-async function whatsNext(session, pending = true) {
+// the build) unless `pending` is false, and the channels the server has live;
+// `photos`: where the photos will be, for a household that is not coming.
+async function whatsNext(session, pending = true, { photos = false } = {}) {
   try {
     const [m, cfg] = await Promise.all([promises(), config().catch(() => ({}))]);
     return m.whatsNext({
-      coming: pending ? JSON.parse(portal.dataset.coming || "{}") : {},
+      // Nothing is promised "soon" on the day itself (or after it).
+      coming: pending && ["rsvp-open", "rsvp-closed"].includes(lifecycleState()?.phase ?? "rsvp-open") ? JSON.parse(portal.dataset.coming || "{}") : {},
       channels: cfg.channels,
       linkSession: session.scope === "rsvp",
+      photos,
       lang,
       register,
       now: clock(),
@@ -261,17 +267,39 @@ function accessForm(value = "", reason = "") {
   // still opens the household's saved answer).
   const onRsvp = portal.dataset.view.startsWith("rsvp"),
     closed = onRsvp && !rsvpOpenNow(),
+    // This device's note that the family replied (site/now.mjs, the one the
+    // home page reads): a bookmarked RSVP opened after the session ended
+    // says so instead of asking for an RSVP (QA-07). The note holds yes or
+    // no and when, never the counts, so the page shows no counts.
+    replied = onRsvp ? deviceReply() : null,
+    repliedNote = replied
+      ? `<div class="notice" role="status"><p class="home-replied">${
+          replied === "yes"
+            ? tr("You replied", "Ya respondieron") + ' <span aria-hidden="true">✓</span>'
+            : tr("Thank you for letting us know", "Gracias por avisarnos")
+        }</p><p>${
+          closed
+            ? tr("This device remembers that your family replied. To see your RSVP, open your invitation link again, from the email or message we sent you, or paste it below.", {
+                tu: "Este dispositivo recuerda que tu familia ya respondió. Para ver tu respuesta, abre de nuevo tu enlace de invitación, del correo o mensaje que te enviamos, o pégalo aquí abajo.",
+                ustedes: "Este dispositivo recuerda que su familia ya respondió. Para ver su respuesta, abran de nuevo su enlace de invitación, del correo o mensaje que les enviamos, o péguenlo aquí abajo.",
+              })
+            : tr("This device remembers that your family replied. To see or change your RSVP, open your invitation link again, from the email or message we sent you, or paste it below.", {
+                tu: "Este dispositivo recuerda que tu familia ya respondió. Para ver o cambiar tu respuesta, abre de nuevo tu enlace de invitación, del correo o mensaje que te enviamos, o pégalo aquí abajo.",
+                ustedes: "Este dispositivo recuerda que su familia ya respondió. Para ver o cambiar su respuesta, abran de nuevo su enlace de invitación, del correo o mensaje que les enviamos, o péguenlo aquí abajo.",
+              })
+        }</p></div>`
+      : "",
     alert = reason ? `<p class="notice" role="alert">${esc(reason)}</p>` : "",
     codeForm = `<form id="access">${field(tr("Invitation link or code", "Enlace o código de invitación"), "token", { value, required: true, max: 1000, hint: term(terms.invitationCodeHint), attrs: 'autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off"' })}<p class="error" role="alert"></p><button type="submit" class="button burgundy" data-busy="${tr("Checking…", "Comprobando…")}">${tr("Continue", "Continuar")}</button></form>`;
   show(
     onRsvp
-      ? `${alert}${closed ? closedNote(rsvpDeadline()) : ""}${anyDraft() ? `<p class="notice" role="status">${tr("Your answers are kept in this tab. Open your invitation email again, or paste its link below, to finish.", { tu: "Tus respuestas siguen guardadas en esta pestaña. Abre de nuevo tu correo de invitación, o pega el enlace aquí abajo, para terminar.", ustedes: "Sus respuestas siguen guardadas en esta pestaña. Abran de nuevo su correo de invitación, o peguen el enlace aquí abajo, para terminar." })}</p>` : ""}<h2>${tr("Open your invitation", { tu: "Abre tu invitación", ustedes: "Abran su invitación" })}</h2><p>${tr("The private link in your invitation opens your RSVP. You can also paste that link, or type the code from your invitation, below.", { tu: "El enlace privado de tu invitación abre tu respuesta. También puedes pegar ese enlace, o escribir el código de tu invitación, aquí abajo.", ustedes: "El enlace privado de su invitación abre su respuesta. También pueden pegar ese enlace, o escribir el código de su invitación, aquí abajo." })}</p>${codeForm}<hr>${emailSignInHtml()}`
+      ? `${alert}${closed ? closedNote(rsvpDeadline()) : ""}${repliedNote}${anyDraft() ? `<p class="notice" role="status">${tr("Your answers are kept in this tab. Open your invitation email again, or paste its link below, to finish.", { tu: "Tus respuestas siguen guardadas en esta pestaña. Abre de nuevo tu correo de invitación, o pega el enlace aquí abajo, para terminar.", ustedes: "Sus respuestas siguen guardadas en esta pestaña. Abran de nuevo su correo de invitación, o peguen el enlace aquí abajo, para terminar." })}</p>` : ""}<h2>${tr("Open your invitation", { tu: "Abre tu invitación", ustedes: "Abran su invitación" })}</h2><p>${tr("The private link in your invitation opens your RSVP. You can also paste that link, or type the code from your invitation, below.", { tu: "El enlace privado de tu invitación abre tu respuesta. También puedes pegar ese enlace, o escribir el código de tu invitación, aquí abajo.", ustedes: "El enlace privado de su invitación abre su respuesta. También pueden pegar ese enlace, o escribir el código de su invitación, aquí abajo." })}</p>${codeForm}<hr>${emailSignInHtml()}`
       : // Signed out, My account is "Sign in" (R-041): the email sign-in
         // first, in the first phone screen, then one line for an invitation
         // link or code, which open the RSVP, with the code box folded.
-        `${alert}${emailSignInHtml()}<div class="invitation-way" data-invitation-way><hr><p>${tr(`Have an invitation link or code? It opens <a href="${route("rsvp")}">your RSVP</a>.`, `¿Tienes un enlace o código de invitación? Abre <a href="${route("rsvp")}">tu respuesta</a>.`)}</p><details><summary>${tr("Type the code from your invitation", "Escribe el código de tu invitación")}</summary>${codeForm}</details></div>`,
+        `${alert}${emailSignInHtml()}<div class="invitation-way" data-invitation-way><hr><p>${tr(`Have an invitation link or code? It opens <a href="${route("rsvp")}">your RSVP</a>.`, `¿Tienes un enlace o código de invitación? Con él puedes abrir <a href="${route("rsvp")}">tu respuesta</a>.`)}</p><details><summary>${tr("Type the code from your invitation", "Escribe el código de tu invitación")}</summary>${codeForm}</details></div>`,
   );
-  if (!closed)
+  if (!closed && !replied)
     portal.querySelector("#access")?.insertAdjacentHTML("beforebegin", replyBy(rsvpDeadline()));
   submit(document.querySelector("#access"), async (data) => {
     const { token, answer } = invitationFrom(data.get("token"));
@@ -293,8 +321,8 @@ function signedOut(view, alert = "") {
   if (view === "contact" && !alert)
     show(
       emailSignInHtml({
-        heading: tr("Or send a message here", "O envíanos un mensaje aquí"),
-        intro: `<p>${tr("Sign in with your email first; the link we send brings you back here.", "Primero entra con tu correo; el enlace que te enviamos te trae de vuelta aquí.")}</p>`,
+        heading: tr("Or write to us from My account", "O escríbenos desde Mi cuenta"),
+        intro: `<p>${tr("Sign in with your email first; then you can write to us from My account.", "Primero entra con tu correo; después podrás escribirnos desde Mi cuenta.")}</p>`,
       }),
     );
   else
@@ -303,7 +331,11 @@ function signedOut(view, alert = "") {
         ? `<p class="notice" role="alert">${esc(alert)}</p>`
         : view === "share"
           ? ""
-          : `<p class="notice">${tr("Sign in with your email to continue.", "Entra con tu correo para continuar.")}</p>`) +
+          : view === "guestbook"
+            ? // A household that answered by its invitation link can send its
+              // one note from that link, with no sign-in (QA-07).
+              `<p class="notice">${tr("Answered with your invitation link? Open it again and you can send Sophia one note from it without signing in. Or sign in with your email.", "¿Respondiste con tu enlace de invitación? Ábrelo de nuevo y podrás enviarle a Sophia un mensaje desde él sin entrar con tu correo. O entra con tu correo.")}</p>`
+            : `<p class="notice">${tr("Sign in with your email to continue.", "Entra con tu correo para continuar.")}</p>`) +
         emailSignInHtml(),
     );
   wireEmailSignIn();
@@ -316,7 +348,7 @@ async function fromTableCard(code) {
   try {
     const session = await api("session");
     if (!(session.kind === "guest" && session.verified))
-      await api("party-session", { token: code });
+      await api("party-session", { token: code }, { typed: false });
     await showPortal();
   } catch (e) {
     signedOut("share", cardRefusal(e));
@@ -364,7 +396,7 @@ async function ssoChoices() {
     way ? "beforebegin" : "beforeend",
     `<div class="sso-choices"><h2>${tr("Or sign in with", "O entra con")}</h2>${ssoRow({
       microsoft:
-        offered.microsoft && tr("Sign in with Microsoft", "Entrar con Microsoft"),
+        offered.microsoft && tr("Sign in with Microsoft", "Continuar con Microsoft"),
       google: offered.google,
       note: tr(
         `Use the ${which} account with the email where you received your invitation. No code or password needed.`,
@@ -414,6 +446,7 @@ const accountPage = async (inv) =>
     dropAllDrafts,
     whatsNext,
     attendingOf,
+    partyOver,
   });
 // "Your invitation includes up to 2 adults/teens and 1 child."
 function allocation(capacity) {
@@ -440,8 +473,8 @@ function countField(event, key, max, value) {
         : tr("Adults / teens", "Adultos / jóvenes") + (age ? tr(` (${age} and older)`, ` (${age} años o más)`) : ""),
     // The note under a count left empty names its event, so the notes down
     // the form are not six identical lines.
-    note = `${eventNames[event]}: ${key === "kids" ? tr("choose how many children.", "elijan cuántos niños.") : tr("choose how many adults/teens.", "elijan cuántos adultos/jóvenes.")}`;
-  return `<label>${label}<select name="${event}.${key}" id="rsvp-${event}-${key}" required data-label="${esc(`${eventNames[event]} – ${label}`)}" data-check="${esc(tr("Choose how many for:", "Elijan cuántos para:"))}" data-error="${esc(note)}"><option value="">${tr("Choose a number", "Elegir cantidad")}</option>${Array.from({ length: max + 1 }, (_, n) => `<option value="${n}"${String(n) === String(value) ? " selected" : ""}>${n}</option>`).join("")}</select></label>`;
+    note = `${eventNames[event]}: ${key === "kids" ? tr("choose how many children.", "falta elegir cuántos niños.") : tr("choose how many adults/teens.", "falta elegir cuántos adultos/jóvenes.")}`;
+  return `<label>${label}<select name="${event}.${key}" id="rsvp-${event}-${key}" required data-label="${esc(`${eventNames[event]} – ${label}`)}" data-check="${esc(tr("Choose how many for:", "Elegir cuántos para:"))}" data-error="${esc(note)}"><option value="">${tr("Choose a number", "Elegir cantidad")}</option>${Array.from({ length: max + 1 }, (_, n) => `<option value="${n}"${String(n) === String(value) ? " selected" : ""}>${n}</option>`).join("")}</select></label>`;
 }
 // Set from an email quick-answer link (#token.yes / #token.no): the page opens
 // on the review step with every count filled in. Nothing is saved until the
@@ -645,19 +678,33 @@ function timedOut(inv, box) {
   addEventListener("focus", resume);
   document.addEventListener("visibilitychange", resume);
 }
-// While a guest fills in the form, the page checks in now and then: that
-// request keeps the session open (link and email sessions renew while used).
-// If the session has already ended, say so now rather than after Save.
-let checkedAt = Date.now();
-function stillHere(inv, form) {
-  if (Date.now() - checkedAt < 300000) return;
-  checkedAt = Date.now();
-  api("session").then(
-    (s) => {
-      if (s.kind !== "guest" && form.isConnected) timedOut(inv, form);
+// While the RSVP is on screen, a session that is about to end says so in
+// time to keep it (WCAG 2.2.1): filling in the form keeps it, and two minutes
+// before the end the page offers to (site/session-limit.js). If it ends
+// anyway, the step says so now rather than after Save, and keeps the answers.
+async function rsvpLimit(inv, box) {
+  const { sessionLimit } = await import("./session-limit.js");
+  // Another step may have replaced this one while the module loaded.
+  if (!box.isConnected) return;
+  stopLimit?.();
+  stopLimit = sessionLimit({
+    kind: "guest",
+    form: box.matches("form") ? box : box.querySelector("form"),
+    ended: () => box.isConnected && timedOut(inv, box),
+    words: {
+      warn: (n) =>
+        tr(`Still there? For your security, this page stops saving in ${n} ${n === 1 ? "minute" : "minutes"}.`, {
+          tu: `¿Sigues ahí? Por seguridad, esta página dejará de guardar en ${n} ${n === 1 ? "minuto" : "minutos"}.`,
+          ustedes: `¿Siguen ahí? Por seguridad, esta página dejará de guardar en ${n} ${n === 1 ? "minuto" : "minutos"}.`,
+        }),
+      keep: tr("Keep going", "Continuar"),
+      kept: tr("You have more time.", { tu: "Tienes más tiempo.", ustedes: "Tienen más tiempo." }),
+      final: tr("This page can’t be kept open any longer. Your answers stay here even if it stops saving.", {
+        tu: "Esta página ya no se puede mantener abierta más tiempo. Tus respuestas se quedan aquí aunque deje de guardar.",
+        ustedes: "Esta página ya no se puede mantener abierta más tiempo. Sus respuestas se quedan aquí aunque deje de guardar.",
+      }),
     },
-    () => {},
-  );
+  });
 }
 // The server's own test for a contact email (server/rsvp-validation.mjs), so
 // the form catches "name@family" too, not only an address without an @.
@@ -666,7 +713,7 @@ function rsvpForm(inv, values, { restored = false } = {}) {
   current = { inv, values };
   const contact = values.contact || inv.contact || {};
   show(
-    `<h2>${esc(inv.name)}</h2><p class="allocation">${allocation(inv.capacity)}</p>${replyBy(inv.deadline)}${restored ? `<p class="notice" role="status">${tr("We kept the answers you started.", "Guardamos las respuestas que empezaron.")}</p>` : ""}<div class="quick-answers"><button type="button" class="button burgundy" data-quick="yes">${term(terms.everyoneComing)}</button><button type="button" class="button outline" data-quick="no">${term(terms.cantMakeIt)}</button></div><p>${tr("Or choose how many will come to each part of the celebration.", "O elijan cuántos irán a cada parte de la celebración.")}</p><form id="response">${invitedEvents(
+    `<h2>${esc(inv.name)}</h2><p class="allocation">${allocation(inv.capacity)}</p>${replyBy(inv.deadline)}${restored ? `<p class="notice" role="status">${tr("We kept the answers you started.", "Recuperamos las respuestas que ya habían empezado.")}</p>` : ""}<div class="quick-answers"><button type="button" class="button burgundy" data-quick="yes">${term(terms.everyoneComing)}</button><button type="button" class="button outline" data-quick="no">${term(terms.cantMakeIt)}</button></div><p>${tr("Or choose how many will come to each part of the celebration.", "O elijan cuántos irán a cada parte de la celebración.")}</p><form id="response">${invitedEvents(
       inv,
     )
       .map(
@@ -680,10 +727,10 @@ function rsvpForm(inv, values, { restored = false } = {}) {
     }<label>${tr("Anything we should know? Allergies, accessibility needs, or a song you’d love to hear (optional)", "¿Algo que debamos saber? Alergias, necesidades de accesibilidad o una canción que les gustaría escuchar (opcional)")}<textarea name="requests" maxlength="1000">${esc(values.requests || "")}</textarea></label><p class="resume-note" role="status"></p><p class="error" role="alert"></p><button class="button burgundy" type="submit">${term(terms.reviewRsvp)}</button></form>`,
   );
   const form = portal.querySelector("#response");
+  rsvpLimit(inv, form);
   const keep = () => {
     current.values = formValues(form, inv);
     keepDraft(inv, current.values);
-    stillHere(inv, form);
   };
   form.addEventListener("input", keep);
   form.addEventListener("change", keep);
@@ -728,6 +775,7 @@ function review(inv, values, { push = true } = {}) {
     if (history.state?.rsvp !== "form") history.replaceState({ rsvp: "form" }, "");
     history.pushState({ rsvp: "review" }, "");
   }
+  rsvpLimit(inv, portal);
   const alert = portal.querySelector("[role=alert]"),
     note = portal.querySelector(".resume-note"),
     save = portal.querySelector("#confirm");
@@ -795,9 +843,19 @@ addEventListener("popstate", (e) => {
 // Signed out, it leads the /rsvp/ page from the deadline on. After a save
 // refused as too late, the server's words (`refused`, whose "contact us" is
 // the link) take the place of ours and of the button.
+// After the party it asks for nothing: no contact sentence or button.
 function closedNote(deadline, answered = "", refused = "") {
-  const until = esc(deadlineDay(deadline));
-  return `<div class="notice"><h2>${tr("RSVPs are closed", "Las respuestas están cerradas")}</h2>${refused ? `<p role="alert">${esc(refused)}</p>` : `<p>${tr(`RSVPs closed on ${until}. To RSVP or change your RSVP now, please contact us.`, `Las respuestas cerraron el ${until}. Para confirmar su asistencia o cambiar su respuesta, escríbannos.`)}</p>`}${answered}${refused ? "" : `<p><a class="button burgundy" href="${route("contact")}">${term(terms.contactUs)}</a></p>`}</div>`;
+  const until = esc(deadlineDay(deadline)),
+    over = partyOver();
+  return `<div class="notice"><h2>${tr("RSVPs are closed", "Ya no se reciben respuestas")}</h2>${
+    refused
+      ? `<p role="alert">${esc(refused)}</p>`
+      : `<p>${
+          over
+            ? tr(`RSVPs closed on ${until}.`, `El plazo para confirmar terminó el ${until}.`)
+            : tr(`RSVPs closed on ${until}. To reply or change your RSVP now, please contact us.`, `El plazo para confirmar terminó el ${until}. Para confirmar su asistencia o cambiar su respuesta, escríbannos.`)
+        }</p>`
+  }${answered}${refused || over ? "" : `<p><a class="button burgundy" href="${route("contact")}">${term(terms.contactUs)}</a></p>`}</div>`;
 }
 function rsvpClosed(inv, refused) {
   return closedNote(
@@ -849,6 +907,14 @@ function confirmation(inv, session, next = "") {
       : `<p>${tr("The RSVP deadline has passed. To change your RSVP, please contact us.", "La fecha límite ya pasó. Para cambiar su respuesta, escríbannos.")}</p><p><a class="target" href="${route("contact")}">${term(terms.contactUs)}</a></p>`;
   // The same link on both confirmations (and under the home page's quote).
   const note = `<p class="note-link"><a class="target" href="${route("guestbook")}">${esc(term(terms.leaveNote))}<span class="arrow" aria-hidden="true">→</span></a></p>`;
+  // WhatsApp opt-in changes data, so it needs the email sign-in; an
+  // invitation-link session is pointed to My account instead (in `next`).
+  const whatsapp =
+    session.scope === "rsvp" || over
+      ? ""
+      : // Shown only while WhatsApp is live (site/guest-whatsapp.js removes it otherwise).
+        `<details class="card" hidden><summary>${tr("Optional: WhatsApp updates", "Opcional: avisos por WhatsApp")}</summary><section id="whatsapp-preferences"></section></details>`;
+  const account = `<p><a class="target" href="${route("account")}">${session.verified ? tr("Open my account", "Abrir mi cuenta") : tr("Sign in with your email to see photos and send us messages", { tu: "Entra con tu correo para ver fotos y enviarnos mensajes", ustedes: "Entren con su correo para ver fotos y enviarnos mensajes" })}</a></p>`;
   if (!attending.length)
     // The note page takes this household's note straight from the invitation
     // link (one per link), or from an email sign-in: no second sign-in.
@@ -856,7 +922,7 @@ function confirmation(inv, session, next = "") {
       over
         ? tr("We missed you, and we send you our love.", "Los extrañamos y les mandamos todo nuestro cariño.")
         : tr("We’ll miss you, and we send you our love.", "Los vamos a extrañar y les mandamos todo nuestro cariño.")
-    }</p></div>${saved}${note}${edit}`;
+    }</p></div>${saved}${note}${edit}${over ? "" : `${next}${whatsapp}${account}`}`;
   const calendars = attending
     .map(
       (e) =>
@@ -871,18 +937,10 @@ function confirmation(inv, session, next = "") {
     attending.includes("ceremony") &&
       `<a href="${route("ceremony")}">${"parkingPosted" in portal.dataset ? tr("Ceremony location & parking", "Ubicación y estacionamiento de la ceremonia") : tr("Ceremony location", "Ubicación de la ceremonia")}</a>`,
     (dinner || dance) &&
-      `<a href="${route("reception")}">${dinner && dance ? tr("Dinner & reception location", "Ubicación de la cena y recepción") : dinner ? tr("Dinner location", "Ubicación de la cena") : tr("Reception location", "Ubicación de la recepción")}</a>`,
+      `<a href="${route("reception")}">${dinner && dance ? tr("Dinner & reception location", "Ubicación de la cena y la recepción") : dinner ? tr("Dinner location", "Ubicación de la cena") : tr("Reception location", "Ubicación de la recepción")}</a>`,
   ]
     .filter(Boolean)
     .join("");
-  // WhatsApp opt-in changes data, so it needs the email sign-in; an
-  // invitation-link session is pointed to My account instead (in `next`).
-  const whatsapp =
-    session.scope === "rsvp" || over
-      ? ""
-      : // Shown only while WhatsApp is live (site/guest-whatsapp.js removes it otherwise).
-        `<details class="card" hidden><summary>${tr("Optional: WhatsApp updates", "Opcional: avisos por WhatsApp")}</summary><section id="whatsapp-preferences"></section></details>`;
-  const account = `<p><a class="target" href="${route("account")}">${session.verified ? tr("Open my account", "Abrir mi cuenta") : tr("Sign in with your email to see photos and send us messages", { tu: "Entra con tu correo para ver fotos y enviarnos mensajes", ustedes: "Entren con su correo para ver fotos y enviarnos mensajes" })}</a></p>`;
   if (over)
     return `<div class="notice success"><h2>${tr("Thank you for celebrating with us!", "¡Gracias por celebrar con nosotros!")}</h2><p>${tr("Thank you", "Gracias")}, ${esc(inv.name)}.</p></div>${summary(r.attendance, inv)}${saved}<div class="row-actions"><a class="button burgundy" href="${route("gallery")}">${term(terms.seePhotos)}</a><a href="${route("share")}">${esc(term(terms.sharePhotos))}<span class="arrow" aria-hidden="true">→</span></a></div>${note}${account}`;
   return `<div class="notice success"><h2>${tr("We can’t wait to celebrate with you!", "¡Los esperamos con mucha ilusión!")}</h2><p>${tr("Thank you", "Gracias")}, ${esc(inv.name)}.</p></div>${summary(r.attendance, inv)}${saved}<h3>${tr("Add to your calendar", "Agregar al calendario")}</h3><div class="calendar-actions">${calendars}</div><h3>${tr("Getting there", "Cómo llegar")}</h3><div class="row-actions">${places}</div>${edit}${note}${next}${whatsapp}${account}`;
@@ -914,6 +972,10 @@ async function showPortal() {
     // The invitation code only opens the RSVP, so pages for messages and
     // uploads offer the email sign-in alone (UI-11).
     if (["rsvp", "rsvp/confirmed", "account"].includes(view)) accessForm();
+    // A phone whose table card session ended (a reload after a long pause, a
+    // new card, the window's close) is told how to come back: the card.
+    else if (view === "share" && session.partyEnded)
+      signedOut(view, session.partyEnded === "closed" ? cardRefusal({ code: "PARTY_CLOSED" }) : cardEnded(session.partyEnded));
     else signedOut(view);
     return;
   }
@@ -968,7 +1030,13 @@ async function showPortal() {
       );
       return;
     }
-    const next = !partyOver() && attendingOf(inv).length ? await whatsNext(session) : "";
+    // A household that is not coming still hears how news and the photos
+    // reach them (QA-05), without what to wear or where to park.
+    const next = partyOver()
+      ? ""
+      : attendingOf(inv).length
+        ? await whatsNext(session)
+        : await whatsNext(session, false, { photos: true });
     show(confirmation(inv, session, next), { focus: justSaved() });
     const updates = portal.querySelector("#whatsapp-preferences");
     if (updates) (await whatsapp()).whatsappPreferences(updates, inv.contact.phone || "");
@@ -1037,8 +1105,9 @@ async function noteForm(session) {
     // Said for who will really see it (R-024): with notes for signed-in
     // guests (site/notes.mjs), a household in by its invitation link does
     // not see the notes here itself.
+    // It takes focus (show), which announces it once: no live region too.
     show(
-      `<p class="notice success" role="status">${
+      `<p class="notice success">${
         !note.consent
           ? tr("Thank you! Sophia will read your note; it won’t appear on this page.", "¡Gracias! Sophia leerá tu mensaje; no aparecerá en esta página.")
           : visibility === "public" || !viaLink
@@ -1089,12 +1158,14 @@ await experienceReady;
 // The server's clock and RSVP deadline (both requests started with the page).
 await clockReady;
 noteAudience();
-// Questions: "When do I need to RSVP?" answers for open or closed RSVPs, and
-// changes at the deadline, on the server's clock.
+// Questions: "When do I need to RSVP?" answers while RSVPs are open, once
+// they have closed, and after the party (when nothing asks for an RSVP), and
+// "Can I change my RSVP?" goes then; all on the server's clock.
 const rsvpAnswers = document.querySelectorAll("[data-rsvp-while]");
 if (rsvpAnswers.length)
   watch(() => {
-    for (const el of rsvpAnswers) el.hidden = (el.dataset.rsvpWhile === "open") !== rsvpOpenNow();
+    const now = partyOver() ? "over" : rsvpOpenNow() ? "open" : "closed";
+    for (const el of rsvpAnswers) el.hidden = !el.dataset.rsvpWhile.split(" ").includes(now);
   });
 if (document.querySelector("[data-whatsapp-signup]")) (await whatsapp()).whatsappProgramPage();
 reloadOnNewLink();
@@ -1122,7 +1193,7 @@ if (microsoft) {
   submit(document.querySelector("#email-verify"), async () => {
     let returnTo;
     try {
-      ({ returnTo } = await api("auth/email/verify", { token: fragment }));
+      ({ returnTo } = await api("auth/email/verify", { token: fragment }, { typed: false }));
     } catch (e) {
       if (e.code !== "EMAIL_LINK_INVALID") throw e;
       // The link was already used (it works once) or is past its 15 minutes.
@@ -1132,7 +1203,7 @@ if (microsoft) {
       show(
         emailSignInHtml({
           heading: tr("Get a new sign-in link", "Pide un enlace nuevo"),
-          button: tr("Send me a new link", "Envíame un enlace nuevo"),
+          button: tr("Send me a new link", "Enviar un enlace nuevo"),
           intro: `<p class="notice" role="alert">${tr("This sign-in link has expired or was already used. Each link works once, within 15 minutes.", "Este enlace de acceso ya venció o ya se usó. Cada enlace funciona una sola vez, durante 15 minutos.")}</p>`,
         }),
       );
@@ -1150,7 +1221,7 @@ if (microsoft) {
   fragment = linkToken;
   if (["yes", "no"].includes(answer)) quickAnswer = answer;
   try {
-    await api("invitation-session", { token: fragment });
+    await api("invitation-session", { token: fragment }, { typed: false });
     fragment = "";
     await showPortal();
   } catch (e) {
@@ -1180,216 +1251,5 @@ if (microsoft) {
 await notesForSophia();
 
 
-// The guests' gallery shows one clear state: a sign-in panel (photos and
-// videos are for signed-in guests only), a friendly "nothing yet", or the
-// approved media, with album cards and sections only for what exists.
-async function gallery() {
-  const state = document.querySelector("[data-gallery-state]"),
-    photos = document.querySelector("[data-gallery]"),
-    videos = document.querySelector("[data-videos]"),
-    cards = document.querySelector("[data-gallery-albums]");
-  if (!state || !photos || !videos || !cards) return;
-  // A panel with one or two actions: [href, label, primary?].
-  const panel = (title, text, ...links) => {
-    state.innerHTML = `<div class="notice gallery-panel"><h2>${esc(title)}</h2><p>${esc(text)}</p>${
-      links.length
-        ? `<p class="gallery-actions">${links.map(([href, label], i) => `<a class="button ${i ? "outline" : "burgundy"}" href="${esc(href)}">${esc(label)}</a>`).join(" ")}</p>`
-        : ""
-    }</div>`;
-  };
-  // Before the celebration (R-071), an empty gallery is about to open rather
-  // than empty, and there is nothing to sign in for yet: one honest line and
-  // the two things a guest can do now. Approved items (childhood photos, say)
-  // are never hidden by it: it shows only when there are none.
-  let before = false,
-    ceremony = null;
-  try {
-    const clock = await siteClock();
-    before = !galleryOpen(clock.now(), clock.m);
-    ceremony = clock.m.ceremonyStart;
-  } catch {
-    // No timeline: the gallery as it is after the celebration.
-  }
-  const opensAfter = () =>
-    panel(
-      tr("Photos open after the celebration", "Las fotos estarán aquí después de la celebración"),
-      ceremony
-        ? tr(
-            `Our guests’ photos and videos from ${date(ceremony, lang, { year: false })} appear here after the celebration, once we’ve reviewed them.`,
-            `Las fotos y los videos de nuestros invitados del ${date(ceremony, lang, { year: false })} aparecerán aquí después de la celebración, cuando los hayamos revisado.`,
-          )
-        : tr(
-            "Our guests’ photos and videos appear here after the celebration, once we’ve reviewed them.",
-            "Las fotos y los videos de nuestros invitados aparecerán aquí después de la celebración, cuando los hayamos revisado.",
-          ),
-      [route("share"), term(terms.sharePhotos)],
-      [route("guestbook"), term(terms.leaveNote)],
-    );
-  let items, pending;
-  try {
-    // Only a verified sign-in (or an administrator) may see media; anyone else
-    // gets the sign-in panel without a refused request in the console.
-    const session = await api("session");
-    if (session.kind !== "admin" && !session.verified) {
-      if (before && !(await api("gallery-status").catch(() => ({ hasMedia: true }))).hasMedia) {
-        opensAfter();
-        return;
-      }
-      panel(
-        tr("Our guests’ photos and videos", "Las fotos y videos de nuestros invitados"),
-        tr(
-          "We share them privately with our guests. Sign in with the email where you received your invitation to see them and to add your own.",
-          "Los compartimos en privado con nuestros invitados. Entra con el correo donde recibiste tu invitación para verlos y para agregar los tuyos.",
-        ),
-        [route("account") + "?return=gallery", tr("Sign in to see the gallery", "Entra para ver la galería")],
-      );
-      return;
-    }
-    ({ media: items, pending } = await api("gallery"));
-  } catch (e) {
-    panel(
-      tr("The gallery isn’t available right now", "La galería no está disponible por ahora"),
-      e.message,
-    );
-    return;
-  }
-  // The signed-in person's own files the family has not reviewed yet (R-081).
-  const waiting = document.querySelector("[data-gallery-pending]");
-  if (waiting && pending > 0) {
-    waiting.textContent = tr(
-      `You have ${pending} ${pending === 1 ? "file" : "files"} waiting for our review. ${pending === 1 ? "It appears" : "They appear"} here once we’ve looked.`,
-      `Tienes ${pending} ${pending === 1 ? "archivo" : "archivos"} esperando nuestra revisión. ${pending === 1 ? "Aparecerá" : "Aparecerán"} aquí cuando lo${pending === 1 ? "" : "s"} hayamos visto.`,
-    );
-    waiting.hidden = false;
-  }
-  if (!items.length && before) {
-    opensAfter();
-    return;
-  }
-  if (!items.length) {
-    panel(
-      tr("Nothing here yet", "Todavía no hay nada aquí"),
-      tr(
-        "Photos and videos from the celebration appear here once we’ve reviewed them. Took some? Share them with us.",
-        "Las fotos y videos de la celebración aparecen aquí cuando los revisamos. ¿Tomaste algunos? Compártelos con nosotros.",
-      ),
-      [route("share"), term(terms.sharePhotos)],
-    );
-    return;
-  }
-  state.hidden = true;
-  document.querySelector("[data-gallery-share]")?.removeAttribute("hidden");
-  // "Download all photos", above the albums (site/gallery-download.js, loaded
-  // only here). Not awaited: the albums draw while it asks for the parts.
-  // A failed load leaves the albums as they are.
-  downloads().then(({ downloadAll }) => downloadAll(cards), () => {});
-  const name = (id) => {
-    const album = eventContent.albums.find((a) => a.id === id);
-    return album ? (es ? album.es : album.en) : "";
-  };
-  const counted = (n, one, many) => `${n} ${n === 1 ? one : many}`;
-  // A card for each album with something in it (a real cover, never a
-  // placeholder), and only when there is more than one to choose between.
-  const albums = eventContent.albums
-    .map((a) => ({ ...a, rows: items.filter((p) => p.album === a.id) }))
-    .filter((a) => a.rows.length);
-  if (albums.length > 1) {
-    cards.innerHTML = `<div class="album-grid">${albums
-      .map((a, i) => {
-        const cover = a.rows.find((p) => p.kind === "photo")?.url || a.rows.find((p) => p.poster)?.poster,
-          shots = a.rows.filter((p) => p.kind === "photo").length,
-          clips = a.rows.length - shots;
-        return `<button type="button" class="album-card album-${i % 3}" data-album="${esc(a.id)}" aria-pressed="false"><span class="album-art" aria-hidden="true">${cover ? `<img src="${esc(cover)}" alt="" loading="lazy">` : ""}</span><span class="album-title">${esc(name(a.id))} <small>${esc(
-          [
-            shots && counted(shots, tr("photo", "foto"), tr("photos", "fotos")),
-            clips && counted(clips, "video", "videos"),
-          ]
-            .filter(Boolean)
-            .join(" · "),
-        )}</small></span><span class="album-overlay" aria-hidden="true">${tr("Show this album", "Ver este álbum")}</span></button>`;
-      })
-      .join("")}</div>`;
-    cards.hidden = false;
-  }
-  const alt = (p) => p.caption || tr("Photo from the celebration", "Foto de la celebración");
-  const figure = (p) => {
-    // No empty caption box under media that has none.
-    const caption = p.caption ? `<figcaption>${esc(p.caption)}</figcaption>` : "",
-      download = `<a class="target" href="${esc(p.url)}?download=1" download>${tr("Download", "Descargar")}</a>`;
-    // A photo opens larger with a tap on it, or with its own button for the
-    // keyboard and screen readers. Videos keep their own controls.
-    return p.kind === "video"
-      ? `<figure><video controls playsinline preload="${p.poster ? "none" : "metadata"}"${p.poster ? ` poster="${esc(p.poster)}"` : ""} src="${esc(p.url)}"></video>${caption}${download}</figure>`
-      : `<figure><img loading="lazy" alt="${esc(alt(p))}" src="${esc(p.url)}" data-enlarge="${esc(p.id)}">${caption}<p class="media-actions"><button type="button" class="plain-button" data-enlarge="${esc(p.id)}" aria-haspopup="dialog" aria-label="${esc(tr(`View larger: ${alt(p)}`, `Ver más grande: ${alt(p)}`))}">${tr("View larger", "Ver más grande")}</button>${download}</p></figure>`;
-  };
-  // The larger view: a modal dialog (the page behind it is inert), named, with
-  // the photo's description as its text alternative. Focus starts on Close,
-  // stays inside while it is open (Tab and Shift+Tab go round), Escape or
-  // Close shuts it, and focus goes back to what opened it.
-  const viewer = document.createElement("dialog");
-  viewer.className = "media-viewer";
-  viewer.setAttribute("aria-labelledby", "media-viewer-title");
-  viewer.innerHTML = `<div class="media-viewer-bar"><h2 id="media-viewer-title"></h2><button type="button" class="button outline" data-close>${tr("Close", "Cerrar")}</button></div><img alt=""><p class="media-actions"><a download>${tr("Download", "Descargar")}</a></p>`;
-  document.body.append(viewer);
-  let opener = null;
-  const enlarge = (id, from) => {
-    const p = items.find((x) => x.id === id);
-    if (!p) return;
-    opener = from;
-    viewer.querySelector("#media-viewer-title").textContent = alt(p);
-    const img = viewer.querySelector("img");
-    img.src = p.url;
-    img.alt = alt(p);
-    viewer.querySelector("a[download]").href = p.url + "?download=1";
-    viewer.showModal();
-    viewer.querySelector("[data-close]").focus();
-  };
-  viewer.addEventListener("click", (e) => {
-    // Close, or a tap on the dimmed page around the photo.
-    if (e.target.closest("[data-close]") || e.target === viewer) viewer.close();
-  });
-  viewer.addEventListener("keydown", (e) => {
-    if (e.key !== "Tab") return;
-    const stops = [...viewer.querySelectorAll("button, a[href]")],
-      i = stops.indexOf(document.activeElement);
-    e.preventDefault();
-    stops[(i + (e.shiftKey ? -1 : 1) + stops.length) % stops.length].focus();
-  });
-  viewer.addEventListener("close", () => {
-    // A photo opened by a tap returns focus to its button.
-    const back = opener?.matches("button") ? opener : opener?.closest("figure")?.querySelector("button[data-enlarge]");
-    back?.focus();
-    opener = null;
-  });
-  photos.addEventListener("click", (e) => {
-    const from = e.target.closest("[data-enlarge]");
-    if (from) enlarge(from.dataset.enlarge, from);
-  });
-  function render(album = "") {
-    const rows = items.filter((p) => !album || p.album === album);
-    for (const [kind, node] of [
-      ["photo", photos],
-      ["video", videos],
-    ]) {
-      const mine = rows.filter((p) => p.kind === kind);
-      node.innerHTML = mine.map(figure).join("");
-      // The videos section (and the photos one) only when it has something.
-      node.closest("section").hidden = !mine.length;
-    }
-    const label = document.querySelector("[data-album-label]");
-    if (label) label.textContent = album ? name(album) : albums.length > 1 ? tr("All albums", "Todos los álbumes") : "";
-    for (const b of cards.querySelectorAll("[data-album]"))
-      b.setAttribute("aria-pressed", String(b.dataset.album === album));
-  }
-  cards.addEventListener("click", (e) => {
-    const b = e.target.closest("[data-album]");
-    if (!b) return;
-    render(b.getAttribute("aria-pressed") === "true" ? "" : b.dataset.album);
-    [photos, videos]
-      .map((node) => node.closest("section"))
-      .find((section) => !section.hidden)
-      ?.scrollIntoView({ block: "start" });
-  });
-  render();
-}
-await gallery();
+// The guests' gallery, only on its page (site/guest-gallery.js).
+if (document.querySelector("[data-gallery-state]")) await (await import("./guest-gallery.js")).gallery();

@@ -531,6 +531,29 @@ test("a note kept from before the choice (no stored consent) counts as consented
   const { id } = await f.guest("messages", { kind: "guestbook", name: "Old page", text: "old page", consent: true });
   assert.equal((await f.ledger.read()).messages[id].display, "public");
 });
+// QA-03: the new pages (with the choice) went live at 03:22Z on Oct 17 while
+// the old API still stored no choice. A note without one from that moment on
+// may have been written as "guests who sign in": it is never shown wider.
+test("a note with no stored choice written once the choice was live counts as guests-only; one a millisecond earlier keeps the legacy rule", async () => {
+  const { choiceLiveFrom, consentOf, audienceOf } = await import("../site/notes.mjs");
+  assert.equal(choiceLiveFrom, Date.parse("2026-10-17T03:22:00Z"));
+  const note = (when) => ({ kind: "guestbook", state: "approved", at: when });
+  assert.equal(consentOf(note(choiceLiveFrom - 1)), "public");
+  assert.equal(consentOf(note(choiceLiveFrom)), "guests");
+  assert.equal(consentOf(note(choiceLiveFrom + 1)), "guests");
+  assert.equal(audienceOf(note(choiceLiveFrom), "public"), "guests");
+  // A stored choice always wins, on either side.
+  assert.equal(consentOf({ ...note(choiceLiveFrom + 1), display: "public" }), "public");
+  assert.equal(consentOf({ ...note(choiceLiveFrom - 1), display: "family" }), "family");
+  // Through the API, with the family's switch on public.
+  const f = await notesFixture();
+  await f.ledger.transaction((s) => {
+    for (const [id, when] of [["before", choiceLiveFrom - 1], ["skew", choiceLiveFrom]])
+      s.messages[id] = { id, email: "", topic: "", householdId: household, accountId: null, name: "Ana", text: id, kind: "guestbook", state: "approved", at: when };
+  });
+  await f.setVisibility("public");
+  assert.deepEqual(await f.shown(), { public: ["before"], guests: ["before", "skew"] });
+});
 // R-167: each new note keeps which wording its writer agreed to, so a later
 // change of the sentences is auditable; legacy notes have none, contact
 // messages carry none, and no guest ever reads it.
@@ -705,6 +728,12 @@ test("/api/config reports WhatsApp and SMS as live only from the server's own sw
   assert.equal(on.sms, true);
   // Configured but not switched on is not live.
   assert.equal((await config({ whatsappTransport: { enabled: false, configured: true } })).whatsapp, false);
+});
+// The publish job reads this before it releases pages (scripts/deploy-hosting.mjs).
+test("/api/config reports the API contract it serves", async () => {
+  const { apiVersion } = await import("../server/application.mjs");
+  const f = await fixture();
+  assert.equal((await f.app.dispatch({ path: "/api/config", method: "GET", headers: {} })).apiVersion, apiVersion);
 });
 // Before: receipts used the invitation's language even when the household
 // answered from the other language's page (R-045).
@@ -1808,7 +1837,8 @@ test("the sign-in email greets the one person who asked, in their language, and 
     "works once",
     "15 minutes",
     "Didn’t ask for this? Ignore this email",
-    "Sophia’s family",
+    // One signature for one sender, as in every email (L10N-27).
+    "With love, Sophia &amp; family",
   ])
     assert.ok(en.html.includes(words), words);
   assert.ok(!/Inicia sesión|Continuar/.test(en.html), "one language only");
@@ -1821,7 +1851,7 @@ test("the sign-in email greets the one person who asked, in their language, and 
   assert.equal(es.subject, "Tu enlace de acceso · Los XV de Sophia");
   // It speaks to one person (tú), so it does not greet the household (R-034).
   assert.ok(!/Test family/.test(en.html + es.html));
-  for (const words of ["<p>Hola:</p>", "viernes 15 de enero de 2027", "una sola vez", "15 minutos", "¿No lo pediste? Ignora este correo", "la familia de Sophia"])
+  for (const words of ["<p>Hola:</p>", "viernes 15 de enero de 2027", "una sola vez", "15 minutos", "¿No lo pediste? Ignora este correo", "Con cariño, Sophia y su familia"])
     assert.ok(es.html.includes(words), words);
   assert.match(es.html, /\/es\/account\/#[A-Za-z0-9_-]{43}"/);
   assert.ok(!/Sign in|works once/.test(es.html), "one language only");
@@ -2879,7 +2909,7 @@ test("an RSVP receipt repeats the answer for the invited events and how to chang
   assert.ok(html.includes(">Dinner</td>") && html.includes(">2 adults/teens, 1 child</td>"));
   assert.ok(!html.includes("Reception"));
   assert.ok(html.includes("You can change it until Sunday, November 15, 2026"));
-  assert.ok(html.includes("open your invitation email again"));
+  assert.ok(html.includes("open your invitation link again, from the email or message we sent you"));
   // The private link is not stored, so there is no button to the bare code form.
   assert.ok(!html.includes(origin + "/rsvp/") && html.includes(origin + "/details/"));
 });

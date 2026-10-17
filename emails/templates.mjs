@@ -64,7 +64,7 @@ const copy = {
     // The receipt's title already thanks them, so this line doesn't again.
     declined: "You let us know no one in your family can attend. We’ll miss you, and we send you our love.",
     changeUntil: (d) =>
-      `You can change it until ${d}: open your invitation email again and tap its RSVP button.`,
+      `You can change it until ${d}: open your invitation link again, from the email or message we sent you.`,
     private: "This invitation link is just for your family, so please don’t forward this email.",
     help: `Add ${event.sender} to your contacts so our emails reach your inbox. Questions? Just reply — we read every message.`,
     sign: "With love, Sophia & family",
@@ -99,7 +99,7 @@ const copy = {
     details: [
       "Antes de celebrar · Los XV de Sophia",
       "Ya falta poco para la celebración.",
-      "Esto es lo que necesitan saber antes del día. En el sitio encontrarán cómo llegar a cada lugar y cualquier novedad de último momento.",
+      "Esto es lo que necesitan saber antes de la fiesta. En el sitio encontrarán cómo llegar a cada lugar y cualquier novedad de último momento.",
       "Ver los detalles",
     ],
     change: [
@@ -126,7 +126,7 @@ const copy = {
     // this line doesn't again.
     declined: "Nos avisaron que nadie de su familia podrá asistir. Los vamos a extrañar y les mandamos todo nuestro cariño.",
     changeUntil: (d) =>
-      `Pueden cambiarla hasta el ${d}: abran de nuevo su correo de invitación y toquen el botón “${terms.rsvpAction.es}”.`,
+      `Pueden cambiarla hasta el ${d}: abran de nuevo su enlace de invitación, del correo o mensaje que les enviamos.`,
     private: "Este enlace de invitación es solo para su familia; por favor, no reenvíen este correo.",
     help: `Agreguen ${event.sender} a sus contactos para que nuestros correos lleguen a su bandeja de entrada. ¿Preguntas? Respondan a este correo; leemos todos los mensajes.`,
     sign: "Con cariño, Sophia y su familia",
@@ -199,7 +199,7 @@ const signInCopy = {
     cta: "Sign in to the website",
     once: "This link works once, within 15 minutes. No password needed.",
     ignore: "Didn’t ask for this? Ignore this email; nobody can sign in without the link.",
-    sign: "With love, Sophia’s family",
+    sign: "With love, Sophia & family",
   },
   es: {
     subject: `Tu ${terms.signInLink.es} · Los XV de Sophia`,
@@ -209,7 +209,7 @@ const signInCopy = {
     cta: "Entrar al sitio",
     once: "Este enlace funciona una sola vez, durante 15 minutos. No necesitas contraseña.",
     ignore: "¿No lo pediste? Ignora este correo; nadie puede entrar sin el enlace.",
-    sign: "Con cariño, la familia de Sophia",
+    sign: "Con cariño, Sophia y su familia",
   },
 };
 export function renderSignInEmail({ locale = "en", url, eventDate = "" }) {

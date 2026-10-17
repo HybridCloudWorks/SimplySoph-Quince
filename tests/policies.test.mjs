@@ -83,9 +83,9 @@ test("Privacy describes the table card, its counts, this device's note and who r
     [
       "es",
       "es/privacy/index.html",
-      "la tarjeta de las mesas está apagada salvo que la activemos",
+      "la tarjeta de la mesa está desactivada salvo que la activemos",
       `desde el inicio de la ceremonia hasta el final del ${date(m.uploadsUntil - 1, "es", { weekday: false, year: false })} (hora de Fort Worth)`,
-      "borramos esos conteos una semana después de que se cierra el envío desde la tarjeta",
+      "borramos esos conteos una semana después de que se cierre el envío desde la tarjeta",
       /En este dispositivo: cuando confirmas tu asistencia, el sitio recuerda si tu familia respondió \(sí o no\) y cuándo[^<]*No guarda ningún nombre ni otro dato, y se borra la primera vez que abres el sitio después de la fiesta, cuando cierras sesión/,
       /durante la celebración, cualquier persona en la fiesta|una semana después de la celebración|solo Sophia y su familia/,
     ],
@@ -94,7 +94,8 @@ test("Privacy describes the table card, its counts, this device's note and who r
     for (const words of [card, window, counts]) assert.ok(html.includes(words), `${lang}: ${words}`);
     assert.match(html, device, lang);
     assert.doesNotMatch(html, wrong, lang);
-    assert.match(noteWords.consentHint[lang], lang === "en" ? /Sophia’s family and the few people helping us/ : /la familia de Sophia y las pocas personas que nos ayudan/);
+    // The hosts say "we" (L10N-06), and keep R-040's "and the few people helping us".
+    assert.match(noteWords.consentHint[lang], lang === "en" ? /only we and the few people helping us/ : /solo nosotros y las pocas personas que nos ayudan/);
     for (const v of ["guests", "public"]) assert.doesNotMatch(noteWords.privacy[v][lang], /only Sophia and her family|solo Sophia y su familia/);
   }
   assert.equal(new Date(m.uploadsUntil).toISOString(), "2027-01-18T06:00:00.000Z", "the window ends at midnight after January 17, Fort Worth time");

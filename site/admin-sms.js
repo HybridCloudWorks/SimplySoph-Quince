@@ -17,7 +17,7 @@ const statusWords = {
 // refuses it). Never reuse the registered sample texts, which give an old
 // deadline (docs/sms-campaign-registration.md).
 const DEFAULT_TEXT =
-  "Simply Soph Media: Hello from Sophia's quinceañera! Your family's private RSVP link: {link} Reply STOP to opt out.";
+  "Simply Soph Media: Hello from Sophia's quinceañera! Your family's private invitation link: {link} Reply STOP to opt out.";
 // From the RSVP deadline the server refuses texts with {link} (they ask for
 // an RSVP) with INVITATIONS_CLOSED; said here in this page's terms.
 function lateLink(e) {

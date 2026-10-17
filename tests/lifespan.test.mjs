@@ -53,6 +53,22 @@ test("the photos date is never earlier than the promised review date, nor later 
     refused({ photosUntil: bad }, String(bad));
 });
 
+// P5-A11Y-07: Admin names the date and the rule instead of a generic refusal.
+test("a refused lifespan says which rule it broke, and Admin's form uses the same review date", async () => {
+  const reason = (lifespan) => {
+    try {
+      settings(lifespan);
+    } catch (e) {
+      return e.details?.reason;
+    }
+  };
+  assert.equal(reason({ photosUntil: "2027-01-31" }), "photos-before-review");
+  assert.equal(reason({ siteUntil: "2027-01-15" }), "site-before-party");
+  assert.equal(reason({ siteUntil: "2027-03-01", photosUntil: "2027-03-02" }), "site-before-photos");
+  const admin = await readFile(new URL("site/admin-experience.js", repo), "utf8");
+  assert.ok(admin.includes(`const reviewDay = "${retentionReview}";`), "Admin's earliest photos date is the review date");
+});
+
 test("the gallery and the thank-you page carry an empty, hidden slot for it, and only they load its script", async () => {
   const page = (file) => readFile(new URL("dist/" + file, repo), "utf8");
   for (const lang of ["", "es/"])

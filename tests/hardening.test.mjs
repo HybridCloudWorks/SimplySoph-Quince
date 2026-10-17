@@ -21,6 +21,32 @@ test("flooding the counter table never resets a live limit (SEC-6)", async () =>
   await rateLimit(ledger, "after", 3, 900000, now + 900001);
 });
 
+// QA-06: each table card scan without a cookie mints a new phone name, so
+// 20,000 scripted phones used to fill the table and silently stop sign-in
+// emails and invitation links for an hour.
+test("keys anyone can mint fill only their own table, which drops its least recently used; bounded keys and the key being counted never fail open", async () => {
+  const ledger = {};
+  const now = 1_000_000;
+  // A guest-list address at its limit stays limited throughout.
+  for (let i = 0; i < 3; i++) await rateLimit(ledger, "email-to:abuela", 3, 900000, now);
+  // A phone at its limit, then 25,000 scripted phones.
+  for (let i = 0; i < 2; i++) await rateLimit(ledger, "party:busy-phone", 2, 900000, now, { minted: true });
+  for (let i = 0; i < 25000; i++) {
+    if (i % 1000 === 0)
+      // The busy phone keeps sending, so it stays recently used and limited.
+      await assert.rejects(() => rateLimit(ledger, "party:busy-phone", 2, 900000, now, { minted: true }), (e) => e.status === 429);
+    await rateLimit(ledger, "party:phone-" + i, 120, 3600000, now, { minted: true });
+  }
+  // Nothing they did touches the other table: new guests and links still get budgets...
+  await rateLimit(ledger, "email-to:new-guest", 3, 900000, now);
+  await rateLimit(ledger, "invite:household", 20, 900000, now);
+  // ...and a key at its limit is still refused.
+  await assert.rejects(() => rateLimit(ledger, "email-to:abuela", 3, 900000, now), (e) => e.status === 429);
+  await assert.rejects(() => rateLimit(ledger, "party:busy-phone", 2, 900000, now, { minted: true }), (e) => e.status === 429);
+  // The minted table dropped the phones nobody used since, not the busy one.
+  await rateLimit(ledger, "party:phone-24999", 120, 3600000, now, { minted: true });
+});
+
 test("sign-in requests take at least the floor, whatever happens inside (SEC-8)", async () => {
   const started = Date.now();
   assert.equal(await atLeast(120, async () => "quick"), "quick");

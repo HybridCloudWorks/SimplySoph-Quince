@@ -839,8 +839,12 @@ blockquote {
   padding: 0 4px;
   color: var(--gold);
 }
-#status a {
+#status a,
+#status .status-action {
   color: var(--gold);
+}
+#status .status-action {
+  min-height: 44px;
 }
 @media (max-width: 53.125em) {
   .split,

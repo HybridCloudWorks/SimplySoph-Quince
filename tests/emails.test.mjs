@@ -51,7 +51,8 @@ test('a receipt lists the answer for the invited events, until when it can chang
   assert.ok(en.html.includes('>Ceremony</td>')&&en.html.includes('>2 adults/teens, 1 child</td>'));
   for(const out of [en.text,en.html]){
     assert.ok(!/Reception/.test(out),'only the events on the invitation');
-    assert.ok(out.includes('You can change it until Sunday, November 15, 2026')&&out.includes('open your invitation email again'));
+    // L10N-28: households invited by text or WhatsApp have no invitation email.
+    assert.ok(out.includes('You can change it until Sunday, November 15, 2026')&&out.includes('open your invitation link again, from the email or message we sent you'));
     assert.ok(!/permitted|Review your response/.test(out));
   }
   assert.ok(!en.html.includes('/rsvp/'),'no button to the generic code form');

@@ -176,10 +176,12 @@ export function calendarActions(kind, c = celebration, lang = "en", live = false
 // (scripts/build-pages.mjs); live settings re-render only these facts.
 // `parking` is the family's parking text, or the promise to post it
 // (site/promises.mjs), which the page carries for the re-render.
-export function venueSection(kind, c = celebration, lang = "en", live = false, parking = "") {
+// `promise`: the parking line is a promise to post it, which ends with the
+// party (site/now.mjs hides [data-promise]).
+export function venueSection(kind, c = celebration, lang = "en", live = false, parking = "", promise = false) {
   const v = c[kind],
     e = escapeHtml;
-  return `<article class="venue-details"><p class="eyebrow">${e(date(v.start, lang))}</p><h2>${e(v.name)}</h2><address>${e(v.address)}</address>${kind === "reception" ? `<dl class="venue-schedule"><dt>${term(terms.dinner, lang)}</dt><dd>${e(timeRange(c.dinner.start, c.dinner.end, lang, nb))}</dd><dt>${term(terms.receptionDance, lang)}</dt><dd>${e(timeRange(v.start, v.end, lang, nb))}</dd></dl>` : `<p class="lead">${e(timeRange(v.start, v.end, lang, nb))}</p>`}${maps(v.address, lang, term(kind === "ceremony" ? terms.ceremonyLong : terms.dinnerAndReception, lang))}${v.notes[lang] ? `<p>${e(v.notes[lang])}</p>` : ""}${parking ? `<p class="venue-parking">${e(parking)}</p>` : ""}<div class="calendar-actions">${kind === "reception" ? `<div><strong>${term(terms.dinner, lang)}</strong>${calendarActions("dinner", c, lang, live)}</div>` : ""}<div><strong>${term(kind === "ceremony" ? terms.ceremony : terms.receptionDance, lang)}</strong>${calendarActions(kind, c, lang, live)}</div></div></article>`;
+  return `<article class="venue-details"><p class="eyebrow">${e(date(v.start, lang))}</p><h2>${e(v.name)}</h2><address>${e(v.address)}</address>${kind === "reception" ? `<dl class="venue-schedule"><dt>${term(terms.dinner, lang)}</dt><dd>${e(timeRange(c.dinner.start, c.dinner.end, lang, nb))}</dd><dt>${term(terms.receptionDance, lang)}</dt><dd>${e(timeRange(v.start, v.end, lang, nb))}</dd></dl>` : `<p class="lead">${e(timeRange(v.start, v.end, lang, nb))}</p>`}${maps(v.address, lang, term(kind === "ceremony" ? terms.ceremonyLong : terms.dinnerAndReception, lang))}${v.notes[lang] ? `<p>${e(v.notes[lang])}</p>` : ""}${parking ? `<p class="venue-parking"${promise ? " data-promise" : ""}>${e(parking)}</p>` : ""}<div class="calendar-actions">${kind === "reception" ? `<div><strong>${term(terms.dinner, lang)}</strong>${calendarActions("dinner", c, lang, live)}</div>` : ""}<div><strong>${term(kind === "ceremony" ? terms.ceremony : terms.receptionDance, lang)}</strong>${calendarActions(kind, c, lang, live)}</div></div></article>`;
 }
 // The day at a glance, from the confirmed schedule: the church, then dinner and
 // the dance at the reception venue, each linking to its venue page.
@@ -218,7 +220,7 @@ export function scheduleList(c = celebration, lang = "en", live = false) {
 export function invitationAlt(c = celebration, lang = "en") {
   const t = (v) => time(v, lang);
   return label(
-    `Sophia’s invitation: “Today begins a new chapter… join me to celebrate it.” Religious ceremony on ${date(c.ceremony.start, "en")} ${at(c.ceremony.start, "en")} at ${c.ceremony.name}; dinner ${timeRange(c.dinner.start, c.dinner.end, "en", { prose: true })}; reception and dance from ${t(c.reception.start)} at ${c.reception.name}, ${c.reception.address}. With love, Sophia.`,
+    `Sophia’s invitation: “Today begins a new chapter… join me to celebrate it.” Religious ceremony on ${date(c.ceremony.start, "en")}, ${at(c.ceremony.start, "en")} at ${c.ceremony.name}; dinner ${timeRange(c.dinner.start, c.dinner.end, "en", { prose: true })}; reception and dance from ${t(c.reception.start)} at ${c.reception.name}, ${c.reception.address}. With love, Sophia.`,
     `Invitación de Sophia: “Hoy comienza un nuevo capítulo… acompáñame a celebrarlo.” Ceremonia religiosa el ${date(c.ceremony.start, "es")} ${at(c.ceremony.start, "es")} en ${c.ceremony.name}; cena ${timeRange(c.dinner.start, c.dinner.end, "es", { prose: true })}; recepción y baile desde ${at(c.reception.start, "es").replace(/^a /, "")} en ${c.reception.name}, ${c.reception.address}. Con cariño, Sophia.`,
     lang,
   );
@@ -254,7 +256,9 @@ export function calendarFacts(kind, c = celebration, lang = "en") {
     end: utc(item.end),
     title: `${say(terms.calendarTitle)} — ${say(eventTitles[kind])}`,
     location: venue.name + ", " + venue.address,
-    description: `${capitalize(say(terms.eventProse))}. ${venue.name}, ${venue.address}. ${say(terms.timeZoneNote)} ${label("Latest details", "Detalles actualizados", lang)}: ${page}`,
+    // No "all times are Fort Worth time": the event is stored in UTC, so a
+    // calendar elsewhere shows it in its own time zone (L10N-20).
+    description: `${capitalize(say(terms.eventProse))}. ${venue.name}, ${venue.address}. ${label("Latest details", "Detalles actualizados", lang)}: ${page}`,
     page,
   };
 }

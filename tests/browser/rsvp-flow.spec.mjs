@@ -80,9 +80,10 @@ test("“We can’t make it” saves a decline; the note thanks the family, and 
   await expect(page.getByLabel("Your name, as you’d like it to appear")).toHaveValue("Rivera Family");
   await page.getByLabel("Your note").fill("We’ll be thinking of you, Sophia!");
   await page.getByRole("button", { name: "Send my note" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Thank you!" })).toHaveText(
-    "Thank you! Sophia will read your note; it won’t appear on this page.",
-  );
+  // It takes focus, which announces it once (no live region too: P5-A11Y-10).
+  const thanks = page.locator("#portal .notice.success");
+  await expect(thanks).toHaveText("Thank you! Sophia will read your note; it won’t appear on this page.");
+  await expect(thanks).toBeFocused();
   const [note] = Object.values((await harness.ledger.read()).messages);
   expect(note).toMatchObject({
     kind: "guestbook",
@@ -221,7 +222,7 @@ test("answers survive Back from the review, a reload and a switch to Spanish, an
   await page.getByRole("link", { name: "Español" }).click();
   await expect(page).toHaveURL(harness.url("/es/rsvp/"));
   await expect(
-    page.getByText("Guardamos las respuestas que empezaron."),
+    page.getByText("Recuperamos las respuestas que ya habían empezado."),
   ).toBeVisible();
   await expect(
     eventGroup(page, "Recepción y baile").getByLabel("Adultos / jóvenes"),
@@ -439,10 +440,10 @@ test("the form checks itself: one summary in the page’s language, linked to ea
   // In Spanish, in Spanish.
   await page.goto(harness.url("/es/rsvp/"));
   await page.getByRole("button", { name: "Revisar la respuesta" }).click();
-  await expect(page.locator(".error-summary p")).toHaveText(["Elijan cuántos para:"]);
+  await expect(page.locator(".error-summary p")).toHaveText(["Elegir cuántos para:"]);
   await expect(page.locator(".error-summary").getByRole("listitem")).toHaveText(["Cena", "Recepción y baile"]);
   await expect(eventGroup(page, "Cena").getByLabel("Niños")).toHaveAccessibleDescription(
-    "Cena: elijan cuántos niños.",
+    "Cena: falta elegir cuántos niños.",
   );
 });
 

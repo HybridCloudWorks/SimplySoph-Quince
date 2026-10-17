@@ -186,7 +186,7 @@ test("editing a saved answer in English says it replaces it; the first answer do
 test("Questions links the RSVP until the deadline, then says RSVPs are closed, in English and Spanish", async ({ page, harness, setNow }) => {
   for (const [path, open, rsvp, closed] of [
     ["/faq/", "By Sunday, November 15, 2026.", "/rsvp/", "RSVPs closed on Sunday, November 15, 2026."],
-    ["/es/faq/", "A más tardar el domingo 15 de noviembre de 2026.", "/es/rsvp/", "Las respuestas cerraron el domingo 15 de noviembre de 2026."],
+    ["/es/faq/", "A más tardar el domingo 15 de noviembre de 2026.", "/es/rsvp/", "El plazo para confirmar terminó el domingo 15 de noviembre de 2026."],
   ]) {
     await setNow(DEADLINE - 60_000);
     await page.goto(harness.url(path));
@@ -194,17 +194,23 @@ test("Questions links the RSVP until the deadline, then says RSVPs are closed, i
     const answer = page.locator("details").first();
     await expect(answer.getByText(open)).toBeVisible();
     await expect(answer.locator('a[href="' + rsvp + '"]')).toBeVisible();
-    await expect(answer.getByText(closed)).toBeHidden();
+    // (After the party a third answer says only the date: L10N-03.)
+    const closedAnswer = answer.locator('[data-rsvp-while="closed"]');
+    await expect(closedAnswer).toBeHidden();
+    await expect(answer.locator('[data-rsvp-while="over"]')).toBeHidden();
     // The deadline passes while the page is open: back on the page, it has changed.
     await setNow(AFTER_DEADLINE);
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-    await expect(answer.getByText(closed)).toBeVisible();
+    await expect(closedAnswer).toBeVisible();
+    await expect(closedAnswer).toContainText(closed);
+    await expect(answer.locator('[data-rsvp-while="over"]')).toBeHidden();
     await expect(answer.getByText(open)).toBeHidden();
     await expect(answer.getByRole("link", { name: /contact us|escríbenos/ })).toHaveAttribute("href", path.replace("faq", "contact"));
     // And on a fresh visit.
     await page.reload();
     await page.locator("summary").first().click();
-    await expect(page.locator("details").first().getByText(closed)).toBeVisible();
+    await expect(page.locator("details").first().locator('[data-rsvp-while="closed"]')).toContainText(closed);
+    await expect(page.locator("details").first().locator('[data-rsvp-while="closed"]')).toBeVisible();
   }
 });
 
@@ -216,7 +222,7 @@ test("Travel is linked from nowhere until it has content, yet still opens; the S
     }
     const travel = await page.goto(harness.url(lang + "/travel/"));
     expect(travel.status()).toBe(200);
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText(lang ? "Viaje" : "Travel");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(lang ? "Hospedaje y transporte" : "Travel");
   }
   await page.goto(harness.url("/details/"));
   const box = page.locator(".good-to-know");
@@ -254,7 +260,7 @@ test("event settings saved with the old parking sentence still show the promise 
   });
   for (const [path, notes, promise] of [
     ["/ceremony/", "Please silence your phone and follow the church’s guidance during the ceremony.", "Parking and arrival details will be shared here."],
-    ["/es/reception/", "La cena y la recepción serán en el mismo lugar.", "Compartiremos los detalles de entrada, estacionamiento y accesibilidad."],
+    ["/es/reception/", "La cena y la recepción serán en el mismo lugar.", "Compartiremos aquí los detalles de entrada, estacionamiento y accesibilidad."],
   ]) {
     await page.goto(harness.url(path));
     // Redrawn from the live settings (the calendar links move to /api/).

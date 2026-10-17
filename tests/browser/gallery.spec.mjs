@@ -165,6 +165,10 @@ for (const [lang, size] of [
     // Videos keep their own controls and no enlarge button.
     await expect(page.locator("[data-videos] video")).toHaveAttribute("controls", "");
     await expect(page.locator("[data-videos] [data-enlarge]")).toHaveCount(0);
+    // P5-A11Y-12: each Download says what it saves, and a video has a name.
+    await expect(page.locator("[data-videos] video")).toHaveAttribute("aria-label", /.+/);
+    await expect(page.locator("[data-gallery] figure", { hasText: "Abuela dancing" }).getByRole("link", { name: es ? /^Descargar ?: Abuela dancing$/ : /^Download ?: Abuela dancing$/ })).toHaveCount(1);
+    await expect(page.locator("[data-videos] figure").first().getByRole("link")).toHaveAccessibleName(new RegExp(`^${es ? "Descargar" : "Download"} ?: `));
 
     // Keyboard: the photo's own button opens the dialog, focus starts on
     // Close, Tab goes round inside it, Escape closes it and focus comes back.
@@ -176,10 +180,12 @@ for (const [lang, size] of [
     await expect(dialog).toBeVisible();
     await expect(dialog.getByRole("img", { name: caption })).toBeVisible();
     const close = dialog.getByRole("button", { name: es ? "Cerrar" : "Close" }),
-      download = dialog.getByRole("link", { name: es ? "Descargar" : "Download" });
+      download = dialog.getByRole("link", { name: new RegExp(`^${es ? "Descargar" : "Download"} ?: ${caption}$`) });
     await expect(close).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(download).toBeFocused();
+    // A standalone link: a 44 px target (P5-A11Y-11).
+    expect((await download.boundingBox()).height).toBeGreaterThanOrEqual(44);
     await page.keyboard.press("Tab");
     await expect(close).toBeFocused();
     await page.keyboard.press("Shift+Tab");

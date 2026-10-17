@@ -23,7 +23,7 @@ import { terms } from "./lexicon.mjs";
 import { mapLinks, newTab, arrow, pageHref, escapeHtml as esc } from "./celebration.mjs";
 // The page's words and form of address: the hosts speak to the household
 // here (ustedes, site/lexicon.mjs registers).
-import { tr, term as t } from "./client.js";
+import { tr, term as t, redraw, announce } from "./client.js";
 
 export function startHome({ lang, content }) {
   const es = lang === "es",
@@ -40,26 +40,18 @@ export function startHome({ lang, content }) {
     invitation: $("[data-home-invitation]"),
     note: $("[data-home-note]"),
   };
-  const choices = document.createElement("p");
-  choices.className = "map-choices";
-  choices.hidden = true;
-  nodes.actions?.after(choices);
-  nodes.choices = choices;
   // "Not your family? Forget this on this device", under "You replied ✓".
   const forget = document.createElement("p");
   forget.className = "home-forget";
   forget.hidden = true;
   nodes.status?.after(forget);
   nodes.forget = forget;
-  // Redraw only what changed (compared as the browser writes it), so the
-  // built page is kept as it is when it is already right, and focus and screen
-  // readers are left alone.
-  const parse = document.createElement("template");
+  // Redraw only what changed (client.js redraw), so the built page is kept
+  // as it is when it is already right, and focus stays with the guest.
   const put = (node, html) => {
     if (!node) return;
+    redraw(node, html);
     node.hidden = !html;
-    parse.innerHTML = html;
-    if (parse.innerHTML !== node.innerHTML) node.innerHTML = html;
   };
   const show = (node, visible) => node && (node.hidden = !visible);
   // The invitation's line ("Please join us…") until the party is over; then
@@ -98,7 +90,7 @@ export function startHome({ lang, content }) {
   };
   const nextLine = (c, p) => {
     const [name, place] = part(c, p.part);
-    return `<p class="now-next"><span class="now-next-label">${tr("Next", "Después")}</span> ${esc(name)} · ${esc(time(p.start, lang, { nbsp: true }))} · ${esc(place)}</p>`;
+    return `<p class="now-next"><span class="now-next-label">${tr("Next", "A continuación")}</span> ${esc(name)} · ${esc(time(p.start, lang, { nbsp: true }))} · ${esc(place)}</p>`;
   };
   const replied = (yes, until) =>
     `<p class="home-replied">${
@@ -117,12 +109,14 @@ export function startHome({ lang, content }) {
     `<a${primary ? ' class="button burgundy"' : ""} href="${pageHref(route, lang)}${hash}">${label}${primary ? "" : arrow}</a>`;
   function action(key, primary, c) {
     if (key.startsWith("directions:")) {
-      const place = key.slice(11);
-      return `<a${primary ? ' class="button burgundy"' : ""} href="${esc(mapLinks(c[place].address).google)}" target="_blank" rel="noopener noreferrer">${
-        place === "ceremony"
-          ? tr("Directions to the ceremony", "Cómo llegar a la ceremonia")
-          : tr("Directions to the reception", "Cómo llegar a la recepción")
-      }${newTab(lang)}</a>`;
+      // Google Maps, with Apple Maps and Waze right after it, each named for
+      // where it goes (P5-A11Y-08).
+      const place = key.slice(11),
+        links = mapLinks(c[place].address),
+        where = place === "ceremony" ? tr("Directions to the ceremony", "Cómo llegar a la ceremonia") : tr("Directions to the reception", "Cómo llegar a la recepción"),
+        to = `<span class="visually-hidden">: ${where.charAt(0).toLowerCase() + where.slice(1)}</span>`,
+        app = (href, name) => `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer">${name}${to}${newTab(lang)}</a>`;
+      return `<a${primary ? ' class="button burgundy"' : ""} href="${esc(links.google)}" target="_blank" rel="noopener noreferrer">${where}${newTab(lang)}</a><span class="map-choices">${tr("Also in", "También en")} ${app(links.apple, "Apple Maps")} · ${app(links.waze, "Waze")}</span>`;
     }
     return {
       rsvp: () => page("rsvp", t(terms.rsvpAction), primary),
@@ -144,27 +138,16 @@ export function startHome({ lang, content }) {
     hero.dataset.phase = s.phase;
     put(nodes.line, over ? thanks : invitationLine);
     put(nodes.actions, s.actions.map((key, i) => action(key, i === 0, c)).join(""));
-    const directions = s.actions.find((key) => key.startsWith("directions:"));
-    if (directions) {
-      const links = mapLinks(c[directions.slice(11)].address);
-      put(
-        nodes.choices,
-        `${tr("Also in", "También en")} <a href="${esc(links.apple)}" target="_blank" rel="noopener noreferrer">Apple Maps${newTab(lang)}</a> · <a href="${esc(links.waze)}" target="_blank" rel="noopener noreferrer">Waze${newTab(lang)}</a>`,
-      );
-    } else put(nodes.choices, "");
-    put(
-      nodes.replyBy,
-      s.showReplyBy ? `${t(terms.rsvpBy)} ${day(m.deadline)}` : "",
-    );
+    put(nodes.replyBy, s.showReplyBy ? `${t(terms.rsvpBy)} ${day(m.deadline)}.` : "");
     let status = "",
       clock = "",
       wake = null;
     if (st.kind === "replied") status = replied(yes, st.until);
     if (st.kind === "event-countdown" && st.replied) status = replied(yes, null);
     if (st.kind === "reply-countdown")
-      [clock, wake] = countdown(tr("Time left to RSVP", "Tiempo para confirmar"), st.target, now);
+      [clock, wake] = countdown(tr("Time left to RSVP", "Para confirmar quedan"), st.target, now);
     if (st.kind === "event-countdown")
-      [clock, wake] = countdown(tr("Until the celebration", "Falta para la celebración"), st.target, now);
+      [clock, wake] = countdown(tr("Until the celebration", "Para la celebración faltan"), st.target, now);
     const today = `<p class="countdown-label">${tr("Today is the day!", "¡Hoy es el gran día!")}</p>`;
     if (st.kind === "today") {
       clock = today;
@@ -181,7 +164,7 @@ export function startHome({ lang, content }) {
     put(
       nodes.forget,
       sessionKnown && replyFrom() === "device" && (st.kind === "replied" || st.replied)
-        ? `${tr("Not your family?", "¿No es su familia?")} <button type="button" class="plain-button">${tr("Forget this on this device", "Olvidar esto en este dispositivo")}</button>`
+        ? `${tr("Not your family?", "¿No es su familia?")} <button type="button" class="plain-button">${tr("Forget this reply on this device", "Olvidar esta respuesta en este dispositivo")}</button>`
         : "",
     );
     put(nodes.countdown, clock);
@@ -198,6 +181,8 @@ export function startHome({ lang, content }) {
     if (!e.target.closest("button")) return;
     forgetReply();
     nodes.actions?.querySelector("a")?.focus();
+    // The button is gone: say what happened (P5-A11Y-09).
+    announce(tr("Forgotten on this device. This page no longer knows who replied.", "Se olvidó en este dispositivo. Esta página ya no sabe quién respondió."));
   });
 
   // Signed in: the server says whether this household replied (only that; a

@@ -54,7 +54,7 @@ test("before the deadline home and RSVP invite, with the deadline, in both langu
   for (const file of ["index.html", "rsvp/index.html"])
     assert.equal(
       (await b.meta(file)).description,
-      "Friday, January 15, 2027 in Fort Worth, Texas. Please RSVP by Sunday, November 15, 2026.",
+      "Friday, January 15, 2027, in Fort Worth, Texas. Please RSVP by Sunday, November 15, 2026.",
     );
   // Spanish speaks to the household (ustedes: "confirmen").
   assert.equal(
@@ -62,7 +62,7 @@ test("before the deadline home and RSVP invite, with the deadline, in both langu
     "Viernes 15 de enero de 2027 en Fort Worth, Texas. Por favor, confirmen su asistencia a más tardar el domingo 15 de noviembre de 2026.",
   );
   // Other pages carry the event, not the deadline.
-  assert.equal((await b.meta("details/index.html")).description, "Friday, January 15, 2027 in Fort Worth, Texas.");
+  assert.equal((await b.meta("details/index.html")).description, "Friday, January 15, 2027, in Fort Worth, Texas.");
 });
 
 test("from the deadline no preview asks for an RSVP", async () => {
@@ -73,7 +73,7 @@ test("from the deadline no preview asks for an RSVP", async () => {
       assert.equal(og, description, file);
       assert.doesNotMatch(description, /RSVP|confirm|November|noviembre/i, `${name} ${file}`);
     }
-    assert.equal((await b.meta("index.html")).description, "Friday, January 15, 2027 in Fort Worth, Texas.");
+    assert.equal((await b.meta("index.html")).description, "Friday, January 15, 2027, in Fort Worth, Texas.");
     assert.equal((await b.meta("es/index.html")).description, "Viernes 15 de enero de 2027 en Fort Worth, Texas.");
   }
 });
@@ -116,6 +116,36 @@ test("after the deadline Questions says RSVPs are closed instead of linking the 
     assert.match(before, /<p data-rsvp-while="open">[^<]*<a href="(\/es)?\/rsvp\/">/, file);
     assert.match(before, /<p data-rsvp-while="closed" hidden>/, file);
     assert.match(after, /<p data-rsvp-while="open" hidden>/, file);
-    assert.match(after, /<p data-rsvp-while="closed">(RSVPs closed on|Las respuestas cerraron el)/, file);
+    // L10N-05: answers do not "close" in Spanish; the deadline ends.
+    assert.match(after, /<p data-rsvp-while="closed">(RSVPs closed on|El plazo para confirmar terminó el)/, file);
+  }
+});
+
+// L10N-03, L10N-10, L10N-48: a page built after the party asks for no RSVP,
+// promises nothing more, and speaks of the party in the past; a page built
+// before carries the words for both, marked for the swap at runtime.
+test("built after the party, the pages ask for no RSVP, promise nothing, and thank in the past", async () => {
+  const page = (name, file) =>
+    readFile(new URL(`../.cache/builds/previews-${name}/dist/${file}`, import.meta.url), "utf8");
+  const main = (html) => html.match(/<main[\s\S]*?<\/main>/)[0];
+  for (const lang of ["", "es/"]) {
+    const after = (file) => page("after-party", lang + file).then(main),
+      night = (file) => page("party-night", lang + file).then(main);
+    // Questions: only "RSVPs closed on …", no contact sentence, no change of RSVP.
+    const faq = await after("faq/index.html");
+    assert.match(faq, /<p data-rsvp-while="over">(RSVPs closed on|El plazo para confirmar terminó el) [^<]*\.<\/p>/, lang);
+    assert.match(faq, /<p data-rsvp-while="closed" hidden>/, lang);
+    assert.match(faq, /<details data-rsvp-while="open closed" hidden><summary>(Can I change my RSVP\?|¿Puedo cambiar mi respuesta\?)/, lang);
+    // No dress code or parking promise anywhere.
+    for (const file of ["details/index.html", "faq/index.html", "ceremony/index.html", "reception/index.html", "travel/index.html"]) {
+      assert.doesNotMatch(await after(file), /soon|shared here|pronto|Compartiremos|Lo compartiremos|data-promise/i, lang + file);
+      // The night before it ends, a promise is still there, marked.
+      if (file !== "travel/index.html") assert.match(await night(file), /data-promise/, lang + file);
+    }
+    // Thank-you, before the family writes its own: thanks in the past tense.
+    const thanks = await after("thank-you/index.html");
+    assert.match(thanks, /<p class="lead" data-after-party>(Thank you for celebrating with us\.|Gracias por celebrar con nosotros\.)<\/p>/, lang);
+    assert.match(thanks, /<p class="lead" data-before-party hidden>/, lang);
+    assert.match(await night("thank-you/index.html"), /<p class="lead" data-after-party hidden>/, lang);
   }
 });

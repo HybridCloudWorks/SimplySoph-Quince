@@ -1,12 +1,16 @@
-import { api, esc, field, submit, notify } from "./client.js";
-import { stamp } from "./datetime.mjs";
+import { api, esc, field, submit, notify, focusOn } from "./client.js";
+import { stamp, date } from "./datetime.mjs";
+import { localDay } from "./lifecycle.mjs";
+// The Privacy policy's review date (site/policies.mjs retentionReview): the
+// photos may not go before it (tests/lifespan.test.mjs keeps them equal).
+const reviewDay = "2027-02-01";
 // The approved pages with the idea-book example text, served only to signed-in
 // administrators by /api/admin/preview. Guests keep seeing the current pages.
 const previewPages = [
   ["sophia", "Meet Sophia", "Conoce a Sophia"],
   ["court", "Court of honor", "Corte de honor"],
   ["padrinos", "Padrinos", "Padrinos"],
-  ["travel", "Travel", "Viaje"],
+  ["travel", "Travel", "Hospedaje y transporte"],
   ["faq", "Questions", "Preguntas"],
   ["gallery", "Photos", "Fotos"],
   ["thank-you", "Thank you", "Gracias"],
@@ -40,14 +44,44 @@ const contactHost = (host) =>
 // retired word, or tú and ustedes mixed: server/copy-check.mjs). A warning,
 // never a refusal: the text is saved and shown as written, and the family
 // decides whether to change it (docs/publishing.md).
+// Page content, not a live region: after a save, focus moves to its heading
+// and the saved note says how many there are (P5-A11Y-06).
 export const copyWarnings = (warnings = []) =>
   warnings.length
-    ? `<section class="notice copy-warnings" role="status" aria-labelledby="copy-warnings-title"><h2 id="copy-warnings-title">Check the Spanish wording</h2><p>These saved texts differ from the website’s wording decisions. They are shown to guests as written; change them here if you agree.</p><ul>${warnings.map((w) => `<li><strong>${esc(w.field)}:</strong> ${esc(w.note)}</li>`).join("")}</ul></section>`
+    ? `<section class="notice copy-warnings" aria-labelledby="copy-warnings-title"><h2 id="copy-warnings-title" tabindex="-1">Check the Spanish wording</h2><p>These saved texts differ from the website’s wording decisions. They are shown to guests as written; change them here if you agree.</p><ul>${warnings.map((w) => `<li><strong>${esc(w.field)}:</strong> ${esc(w.note)}</li>`).join("")}</ul></section>`
     : "";
 // How long the site and the photos stay (server/site-settings.mjs): blank
 // until the family decides, and then the gallery and thank-you page say it.
-const lifespanFields = (life) =>
-  `<fieldset><legend>Site and photo lifespan</legend><p class="hint">Optional. Leave blank until the family decides. Once set, the gallery and the thank-you page say “The site stays up through …” and “Download your photos by …”. The photos date can’t be before February 1, 2027, the review date in the Privacy policy, or after the site’s.</p>${field("The site stays up through", "lifespan.siteUntil", { type: "date", value: life.siteUntil || "", max: 10 })}${field("Download your photos by", "lifespan.photosUntil", { type: "date", value: life.photosUntil || "", max: 10 })}</fieldset>`;
+// The rule is tied to both dates (aria-describedby) and checked on the form
+// (min), and a date the server refuses is named and marked (P5-A11Y-07).
+const partyDay = (site) => localDay(Date.parse(site.reception.end || site.reception.start));
+const dayText = (day) => date(Date.parse(day + "T12:00:00Z"), "en", { weekday: false });
+const lifespanRules = (site) => ({
+  "photos-before-review": ["lifespan.photosUntil", `Download your photos by: use ${dayText(reviewDay)} or later, the review date in the Privacy policy.`],
+  "site-before-party": ["lifespan.siteUntil", `The site stays up through: use ${dayText(partyDay(site))} or later, after the celebration.`],
+  "site-before-photos": ["lifespan.siteUntil", "The site stays up through: use the same day as “Download your photos by” or later."],
+});
+const lifespanFields = (site) => {
+  const life = site.lifespan,
+    rules = lifespanRules(site),
+    attrs = (min, reason) => `min="${min}" aria-describedby="lifespan-rule" data-error="${esc(rules[reason][1].replace(/^[^:]+: u/, "U"))}"`;
+  return `<fieldset><legend>Site and photo lifespan</legend><p class="hint" id="lifespan-rule">Optional. Leave blank until the family decides. Once set, the gallery and the thank-you page say “The site stays up through …” and “Download your photos by …”. The photos date can’t be before ${dayText(reviewDay)}, the review date in the Privacy policy, or after the site’s. The site’s date can’t be before ${dayText(partyDay(site))}.</p>${field("The site stays up through", "lifespan.siteUntil", { type: "date", value: life.siteUntil || "", max: 10, attrs: attrs(partyDay(site), "site-before-party") })}${field("Download your photos by", "lifespan.photosUntil", { type: "date", value: life.photosUntil || "", max: 10, attrs: attrs(reviewDay, "photos-before-review") })}</fieldset>`;
+};
+// Marks the field a refused save names: aria-invalid, its note tied to it.
+function markRefused(form, name, words) {
+  const input = form.elements[name];
+  if (!input) return;
+  input.setAttribute("aria-invalid", "true");
+  const note = document.createElement("span");
+  note.className = "field-error";
+  note.id = input.id + "-error";
+  note.setAttribute("aria-hidden", "true");
+  note.textContent = words;
+  document.getElementById(note.id)?.remove();
+  input.closest("label").append(note);
+  input.setAttribute("aria-describedby", [...new Set([...(input.getAttribute("aria-describedby") || "").split(" "), note.id])].filter(Boolean).join(" "));
+  input.focus();
+}
 export async function websiteEditor(root) {
   const { site, warnings } = await api("admin/site");
   site.gallery ??= { download: "guests" };
@@ -64,7 +98,7 @@ export async function websiteEditor(root) {
       field("End · leave blank until confirmed", key + ".end", {
         value: value.end || "",
       });
-    root.innerHTML = `${copyWarnings(warnings)}${previewCard()}<p>Changes appear on the website and update its calendar downloads together. Use ISO times with an explicit offset, for example <code>2027-01-15T16:00:00-06:00</code> (Central Standard Time). Save before leaving this page.</p><form id="site-settings" class="settings-form"><fieldset><legend>Homepage</legend>${field("Signed name", "name", { value: site.name, required: true, max: 100 })}${bilingual("Message", "quote", site.quote)}${field("Countdown date/time", "countdownAt", { value: site.countdownAt, required: true })}</fieldset>${["ceremony", "reception"].map((k) => `<fieldset><legend>${k === "ceremony" ? "Ceremony" : "Dinner & reception venue"}</legend>${field("Venue name", k + ".name", { value: site[k].name, required: true, max: 200 })}${field("Full address", k + ".address", { value: site[k].address, required: true, max: 400 })}${times(k, site[k])}${bilingual("Guest notes", k + ".notes", site[k].notes)}</fieldset>`).join("")}<fieldset><legend>Dinner</legend>${times("dinner", site.dinner)}</fieldset><fieldset><legend>Gallery albums</legend><p>Album IDs stay unchanged so uploaded media keeps its album.</p>${site.albums.map((a, i) => `<div class="card">${field("Album ID", "albums." + i + ".id", { value: a.id, required: true, max: 40 })}${field("English name", "albums." + i + ".en", { value: a.en, required: true, max: 100 })}${field("Spanish name", "albums." + i + ".es", { value: a.es, required: true, max: 100 })}<button type="button" data-remove-album="${i}" class="plain-button">Remove empty album</button></div>`).join("")}<button type="button" id="add-album" class="plain-button">Add album</button></fieldset>${downloadChoice(site)}${contactHost(site.contact.host)}${lifespanFields(site.lifespan)}<fieldset><legend>Registries · public, no sign-in required</legend>${site.registries.map((r, i) => `<div class="card">${field("Store ID", "registries." + i + ".id", { value: r.id, required: true, max: 40 })}${field("Store name", "registries." + i + ".name", { value: r.name, required: true, max: 100 })}${bilingual("Description", "registries." + i + ".description", r.description)}${field("Registry HTTPS URL · blank hides the visit button", "registries." + i + ".url", { value: r.url, type: "url", max: 2000 })}<button type="button" data-remove-registry="${i}" class="plain-button">Remove registry</button></div>`).join("")}<button type="button" id="add-registry" class="plain-button">Add store</button></fieldset><p class="error" role="alert"></p><button class="button burgundy" type="submit">Save website & calendars</button></form>`;
+    root.innerHTML = `${copyWarnings(warnings)}${previewCard()}<p>Changes appear on the website and update its calendar downloads together. Use ISO times with an explicit offset, for example <code>2027-01-15T16:00:00-06:00</code> (Central Standard Time). Save before leaving this page.</p><form id="site-settings" class="settings-form"><fieldset><legend>Homepage</legend>${field("Signed name", "name", { value: site.name, required: true, max: 100 })}${bilingual("Message", "quote", site.quote)}${field("Countdown date/time", "countdownAt", { value: site.countdownAt, required: true })}</fieldset>${["ceremony", "reception"].map((k) => `<fieldset><legend>${k === "ceremony" ? "Ceremony" : "Dinner & reception venue"}</legend>${field("Venue name", k + ".name", { value: site[k].name, required: true, max: 200 })}${field("Full address", k + ".address", { value: site[k].address, required: true, max: 400 })}${times(k, site[k])}${bilingual("Guest notes", k + ".notes", site[k].notes)}</fieldset>`).join("")}<fieldset><legend>Dinner</legend>${times("dinner", site.dinner)}</fieldset><fieldset><legend>Gallery albums</legend><p>Album IDs stay unchanged so uploaded media keeps its album.</p>${site.albums.map((a, i) => `<div class="card">${field("Album ID", "albums." + i + ".id", { value: a.id, required: true, max: 40 })}${field("English name", "albums." + i + ".en", { value: a.en, required: true, max: 100 })}${field("Spanish name", "albums." + i + ".es", { value: a.es, required: true, max: 100 })}<button type="button" data-remove-album="${i}" class="plain-button">Remove empty album</button></div>`).join("")}<button type="button" id="add-album" class="plain-button">Add album</button></fieldset>${downloadChoice(site)}${contactHost(site.contact.host)}${lifespanFields(site)}<fieldset><legend>Registries · public, no sign-in required</legend>${site.registries.map((r, i) => `<div class="card">${field("Store ID", "registries." + i + ".id", { value: r.id, required: true, max: 40 })}${field("Store name", "registries." + i + ".name", { value: r.name, required: true, max: 100 })}${bilingual("Description", "registries." + i + ".description", r.description)}${field("Registry HTTPS URL · blank hides the visit button", "registries." + i + ".url", { value: r.url, type: "url", max: 2000 })}<button type="button" data-remove-registry="${i}" class="plain-button">Remove registry</button></div>`).join("")}<button type="button" id="add-registry" class="plain-button">Add store</button></fieldset><p class="error" role="alert"></p><button class="button burgundy" type="submit">Save website & calendars</button></form>`;
     const capture = () => {
       for (const [key, value] of new FormData(root.querySelector("form"))) {
         const parts = key.split(".");
@@ -73,6 +107,12 @@ export async function websiteEditor(root) {
         obj[parts.at(-1)] = value;
       }
     };
+    // The form is drawn again after each of these; focus goes to the new
+    // card's first field, or back to the Add button (P5-A11Y-06).
+    const again = (focus) => {
+      render();
+      focusOn(root.querySelector(focus));
+    };
     root.querySelector("#add-album").onclick = () => {
       capture();
       site.albums.push({
@@ -80,7 +120,7 @@ export async function websiteEditor(root) {
         en: "New album",
         es: "Nuevo álbum",
       });
-      render();
+      again(`[name="albums.${site.albums.length - 1}.id"]`);
     };
     root.querySelector("#add-registry").onclick = () => {
       capture();
@@ -91,26 +131,40 @@ export async function websiteEditor(root) {
         url: "",
         logo: "",
       });
-      render();
+      again(`[name="registries.${site.registries.length - 1}.id"]`);
     };
     for (const b of root.querySelectorAll("[data-remove-album]"))
       b.onclick = () => {
         capture();
         site.albums.splice(Number(b.dataset.removeAlbum), 1);
-        render();
+        again("#add-album");
       };
     for (const b of root.querySelectorAll("[data-remove-registry]"))
       b.onclick = () => {
         capture();
         site.registries.splice(Number(b.dataset.removeRegistry), 1);
-        render();
+        again("#add-registry");
       };
     submit(root.querySelector("form"), async () => {
       capture();
-      await api("admin/site", site);
+      try {
+        await api("admin/site", site);
+      } catch (e) {
+        const rule = lifespanRules(site)[e.details?.reason];
+        if (rule) {
+          markRefused(root.querySelector("form"), ...rule);
+          e.message = rule[1];
+        }
+        throw e;
+      }
       await websiteEditor(root);
+      // Focus where the guest's attention belongs: the Spanish wording to
+      // check, else the Save button again.
+      const flagged = root.querySelectorAll(".copy-warnings li").length;
+      focusOn(root.querySelector(flagged ? "#copy-warnings-title" : "#site-settings [type=submit]"));
       notify(
-        "Website settings saved. Calendar downloads now use these details.",
+        "Website settings saved. Calendar downloads now use these details." +
+          (flagged ? ` Check the Spanish wording: ${flagged} ${flagged === 1 ? "note" : "notes"} at the top.` : ""),
       );
     });
   }

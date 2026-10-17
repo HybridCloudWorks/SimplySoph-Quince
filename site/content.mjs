@@ -102,7 +102,7 @@ export const routes = [
   ["gallery", ...named(terms.photos)],
   ["share", ...named(terms.sharePhotos)],
   ["registry", ...named(terms.gifts)],
-  ["travel", "Travel", "Viaje"],
+  ["travel", "Travel", "Hospedaje y transporte"],
   ["faq", "Questions", "Preguntas"],
   ["guestbook", ...named(terms.noteTitle)],
   ["contact", "Contact", "Contacto"],
@@ -176,7 +176,7 @@ export const copy = {
     signIn: terms.signIn.en,
     menu: "Menu",
     site: "Sophia’s Quinceañera",
-    time: "All times are local to Fort Worth, Texas.",
+    time: terms.timeZoneNote.en,
     contact: "Questions? Contact us",
     // The link adds "(opens in a new tab)" itself (celebration.mjs newTab).
     invitationCaption: "Open the full invitation",
@@ -197,7 +197,7 @@ export const copy = {
     signIn: terms.signIn.es,
     menu: "Menú",
     site: "Los XV de Sophia",
-    time: "Todos los horarios son de Fort Worth, Texas.",
+    time: terms.timeZoneNote.es,
     contact: "¿Preguntas? Escríbenos",
     invitationCaption: "Ver la invitación completa",
     newTab: "(se abre en otra pestaña)",
@@ -248,11 +248,23 @@ export const textContent = {
     // Then the hotels promise (site/promises.mjs places.travel).
   ],
   "thank-you": [
+    // Before the party; after it, textAfterParty below.
     ["A chapter to remember", "Un capítulo para recordar"],
     ["We look forward to celebrating together.", "Esperamos celebrar juntos."],
     [
       "After the celebration, we’ll share Sophia’s thank-you message and favorite moments here.",
       "Después de la celebración, compartiremos aquí el mensaje de agradecimiento de Sophia y los mejores momentos.",
+    ],
+  ],
+};
+// What a page in textContent says once the party is over, in place of its
+// lead and last line (the thank-you page, until the family writes its own).
+export const textAfterParty = {
+  "thank-you": [
+    ["Thank you for celebrating with us.", "Gracias por celebrar con nosotros."],
+    [
+      "Soon we’ll share Sophia’s thank-you message and favorite moments here.",
+      "Pronto compartiremos aquí el mensaje de agradecimiento de Sophia y los mejores momentos.",
     ],
   ],
 };
