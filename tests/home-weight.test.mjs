@@ -52,7 +52,11 @@ test("the home page stays within its byte budget", async () => {
   const { total, how } = await weight("index.html");
   // Measured at 232,475 and 10,261 bytes after the round 2 merges (the upload
   // form and the WhatsApp choices, 48,045 bytes, now load only where used).
-  assert.ok(total.first <= 241_000, `home page, first load: ${total.first} bytes`);
+  // Then the accessibility fixes (R-048 to R-065: hover and pressed states,
+  // forced colours, focus tokens, one busy state) added 19,591 bytes of CSS
+  // and script that every page needs, so the budget rose to 256,000 by
+  // decision: measured 252,066.
+  assert.ok(total.first <= 256_000, `home page, first load: ${total.first} bytes`);
   assert.ok(total.later <= 17_000, `home page, loaded after it draws: ${total.later} bytes`);
   // The phase-aware drawing (and its date formats) is imported only by the
   // home page, after it has drawn (site/experience.js), never with the page.

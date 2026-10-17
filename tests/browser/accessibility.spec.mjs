@@ -14,7 +14,7 @@ import {
   signIn,
   contrast,
 } from "./a11y-helpers.mjs";
-import { terms } from "../../site/lexicon.mjs";
+import { terms, registerFor } from "../../site/lexicon.mjs";
 
 // ---- R-048: lining figures ----
 // Every visible element whose own text has a digit and is set in Cormorant
@@ -180,7 +180,8 @@ test("map buttons use the button text size, and the next-day date never splits",
     for (const route of ["ceremony", "reception"]) {
       await page.goto(harness.url(pathOf(route, lang)));
       const buttons = page.locator(".venue-actions .button");
-      await expect(buttons).toHaveCount(2);
+      // Google Maps, Apple Maps and Waze (R-067).
+      await expect(buttons).toHaveCount(3);
       for (const size of await buttons.evaluateAll((all) => all.map((b) => getComputedStyle(b).fontSize)))
         expect(size, `${lang} /${route}`).toBe("15.2px");
     }
@@ -372,8 +373,15 @@ const height = async (locator) => (await locator.boundingBox()).height;
 test("standalone links and the Microsoft button are at least 44px tall", async ({ page, harness }) => {
   test.setTimeout(60_000);
   for (const lang of ["en", "es"]) {
-    const instead = lang === "es" ? "O entra con Microsoft o Google" : "Sign in with Microsoft or Google instead";
     for (const route of ["rsvp", "share", "guestbook", "contact"]) {
+      // In Spanish the link speaks as the page does: to the household on the
+      // RSVP (ustedes), to one person elsewhere (site/lexicon.mjs registers).
+      const instead =
+        lang === "en"
+          ? "Sign in with Microsoft or Google instead"
+          : registerFor(route) === "ustedes"
+            ? "O entren con Microsoft o Google"
+            : "O entra con Microsoft o Google";
       await page.goto(harness.url(pathOf(route, lang)));
       expect(await height(page.getByRole("link", { name: instead })), `${lang} /${route}`).toBeGreaterThanOrEqual(43.9);
     }
@@ -384,7 +392,7 @@ test("standalone links and the Microsoft button are at least 44px tall", async (
     for (const link of await page.locator(".route-strip a").all())
       expect(await height(link), "travel venue link").toBeGreaterThanOrEqual(43.9);
     await page.goto(harness.url(pathOf("sms", lang)));
-    for (const name of lang === "es" ? ["Términos SMS", "Política de Privacidad"] : ["SMS Terms", "Privacy Policy"])
+    for (const name of lang === "es" ? ["Términos de SMS", "Política de privacidad"] : ["SMS Terms", "Privacy Policy"])
       expect(await height(page.getByRole("main").getByRole("link", { name, exact: true })), name).toBeGreaterThanOrEqual(43.9);
     await page.goto(harness.url(pathOf("account", lang)));
     const microsoft = page.locator('[data-sso="microsoft"]');
@@ -394,6 +402,9 @@ test("standalone links and the Microsoft button are at least 44px tall", async (
 });
 
 // ---- R-059 (and R-060 for WhatsApp's links): signed-in forms ----
+// WhatsApp's choices appear only while the server reports WhatsApp live (R-031).
+test.describe("with WhatsApp live", () => {
+test.use({ harnessOptions: { whatsapp: true } });
 test("consent checkboxes are 22px in the brand wine, and WhatsApp's links are 44px targets", async ({ page, harness }) => {
   const household = households.rivera;
   await harness.issueInvitation(household);
@@ -410,7 +421,7 @@ test("consent checkboxes are 22px in the brand wine, and WhatsApp's links are 44
   const updates = page.locator("#whatsapp-preferences");
   await expect(updates.getByRole("checkbox")).toBeVisible();
   const boxes = [[updates.getByRole("checkbox"), "WhatsApp consent"]];
-  for (const name of ["WhatsApp program details", "Privacy policy"])
+  for (const name of ["How WhatsApp updates work", "Privacy policy"])
     expect(await height(updates.getByRole("link", { name })), name).toBeGreaterThanOrEqual(43.9);
   const check = async (box, what) => {
     const { width, height: tall } = await box.boundingBox();
@@ -423,6 +434,7 @@ test("consent checkboxes are 22px in the brand wine, and WhatsApp's links are 44
   await check(page.locator("#message").getByRole("checkbox"), "note consent");
   await page.goto(harness.url("/share/"));
   await check(page.locator("#photo").getByRole("checkbox"), "upload consent");
+});
 });
 
 // ---- R-062: names ----
@@ -596,7 +608,7 @@ test("the keyboard reaches the header's controls in reading order, on a phone an
   await order([
     ["link", "Skip to content"],
     ["link", home],
-    ...["Schedule", "Travel", "Photos", "Gifts", "Questions", "Contact", "Sign in"].map((n) => ["link", n]),
+    ...["Schedule", "Travel", "Photos & notes", "Gifts", "Questions", "Contact", "Sign in"].map((n) => ["link", n]),
     ["link", "Español"],
     ["link", "RSVP"],
   ]);

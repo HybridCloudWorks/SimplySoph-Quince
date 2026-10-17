@@ -618,12 +618,14 @@ test("after the party the header's RSVP pill is gone from every page", async ({ 
 
 test("each venue page offers Waze beside Google Maps and Apple Maps", async ({ page, harness }) => {
   await page.goto(harness.url("/ceremony/"));
-  await expect(page.getByRole("link", { name: "Open in Waze (opens in a new tab)" })).toHaveAttribute(
+  // Each map link also names its venue for screen readers (R-062); Chromium
+  // puts a space before the hidden ": venue".
+  await expect(page.getByRole("link", { name: /^Open in Waze ?: Religious ceremony \(opens in a new tab\)$/ })).toHaveAttribute(
     "href",
     "https://waze.com/ul?q=4100%20Blue%20Mound%20Rd%2C%20Fort%20Worth%2C%20TX%2076106&navigate=yes",
   );
   await page.goto(harness.url("/es/reception/"));
-  const waze = page.getByRole("link", { name: "Abrir en Waze (se abre en otra pestaña)" });
+  const waze = page.getByRole("link", { name: /^Abrir en Waze ?: Cena y recepción \(se abre en otra pestaña\)$/ });
   await expect(waze).toHaveAttribute("href", /^https:\/\/waze\.com\/ul\?q=5103%20Azle%20Ave/);
   await expect(waze).toHaveAttribute("target", "_blank");
   expect((await waze.boundingBox()).height).toBeGreaterThanOrEqual(44);

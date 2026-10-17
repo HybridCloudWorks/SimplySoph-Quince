@@ -38,7 +38,9 @@ test("EN: a guest at the table shares from the card without signing in, and the 
   // Consent is required on this path too.
   const send = page.getByRole("button", { name: "Send my photos & videos" });
   await send.click();
-  await expect(page.locator(".error-summary")).toHaveText("Tick the box: Permission from the people pictured");
+  // The summary: a line, then a list with one link per thing to fix (R-057).
+  await expect(page.locator(".error-summary p")).toHaveText("Tick the box:");
+  await expect(page.locator(".error-summary li")).toHaveText(["Permission from the people pictured"]);
   await page.getByLabel(/I have permission from the people pictured/).check();
   await send.click();
   const row = page.locator(".upload-result").filter({ hasText: "IMG_2101.JPG" });
