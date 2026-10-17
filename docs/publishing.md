@@ -67,13 +67,30 @@ Several pages promise something the family has not supplied yet: the dress code 
 | Family decision | Where it goes (`site/content.mjs` `family`) | What changes on the next publish |
 |---|---|---|
 | The day each promised item will be posted | `promises.dressCode.by`, `promises.hotels.by`, `promises.parking.by` as `"YYYY-MM-DD"` | Every place says "We'll post … here by Tuesday, December 1, 2026" / "Publicaremos aquí … a más tardar el martes 1 de diciembre de 2026"; the confirmation and My account say the same. A date that has passed goes back to the undated wording. |
-| The dress code, parking, hotels or the airport note | `dressCode`, `parking` (one text for both venues), `hotels`, `airport` | The content replaces the promise. Parking also makes the confirmation say "Ceremony location & parking". Hotels or the airport note add Travel back to the header (in its old place) and a link to it from the Schedule. |
+| The dress code, parking, hotels or the airport note | `dressCode`, `parking` (one text for both venues), `hotels`, `airport` | The content replaces the promise. Parking also makes the confirmation say "Ceremony location & parking", and the home page shows it under Now / Next on January 15. Hotels or the airport note add Travel back to the header (in its old place) and a link to it from the Schedule. Then post the dated announcement below. |
+| The home page's thank-you after the party | `thankYou` as `{ en, es }` | It replaces "Thank you for celebrating with us." / "Gracias por celebrar con nosotros." on the home page after the party, and the link previews published after it. |
 | The drive time between the church and the reception | `driveMinutes` (a whole number) | The Schedule's "Good to know" line and Travel's route strip state it; until then they say only that the two places are a drive apart. |
 | The children's age cut-off | `childAgeCutoff` (children are younger than this) | The RSVP labels read "Children (under 12)" / "Adults / teens (12 and older)" and Questions answers "Who counts as a child?". |
 | Which traditions are part of Sophia's day | `traditions`, keys of `padrinoTraditions` (for example `["corona", "zapatos"]`) | The Schedule gains "What to expect" with those traditions' approved meanings. Its title names no service; whether the service is a Mass is a separate decision. |
 | Spanish invitation art | `site/assets/invitation-es.png` | See above. |
 
-`npm run check` stops the build if one of these values is malformed (a date not written `YYYY-MM-DD`, a number that isn't a whole number in range, a tradition that isn't in `padrinoTraditions`).
+`npm run check` stops the build if one of these values is malformed (a date not written `YYYY-MM-DD`, a number that isn't a whole number in range, a tradition that isn't in `padrinoTraditions`, a thank-you in one language only).
+
+### Owner runbook: say when something new is posted
+
+Content that replaces a promise changes the page quietly, and households who read the promise (and SMS subscribers, who were told they would hear when it is posted) will not notice. Each time the family adds the dress code, hotels or parking:
+
+1. Publish the content (above) and check the page that promised it.
+2. In **Admin → Communications**, post a website announcement in English and Spanish naming what is new and where, for example "Parking details are posted" / "Ya publicamos los detalles de estacionamiento" with a line pointing to the venue pages. The home page shows it right under the status line as "Posted <date>" / "Publicado el <date>", the newest first.
+3. If SMS or WhatsApp updates are live, send the same news there.
+
+### Names stay out of this repository
+
+This repository is public, so no guest's or helper's name is ever committed to it. The court of honor and the padrinos would list names: `family.court` and `family.padrinos` in `site/content.mjs` stay empty, and `npm run check` fails if either ever gets an entry (`tests/family-slots.test.mjs`). Names belong only in the runtime event settings (`server/site-settings.mjs`, served by `GET /api/site`), like Contact's optional line naming who reads the messages (Admin → Website & event). Pages for the court and the padrinos built from those settings do not exist yet; until they do, both pages keep their waiting text.
+
+### Site and photo lifespan
+
+How long the site stays up and until when guests can download the photos is the family's decision, set in **Admin → Website & event → Site and photo lifespan** (`site.lifespan` in the event settings, blank until then). Once set, the gallery and the thank-you page say "The site stays up through …" and "Download your photos by …"; nothing about it shows before. The photos date can't be earlier than February 1, 2027, the review date in the Privacy policy and [cleanup.md](cleanup.md), or later than the site's date.
 
 ### Owner action: event settings text on the live server
 

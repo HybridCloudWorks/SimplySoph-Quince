@@ -197,6 +197,17 @@ Record date, tester and evidence for each item in the inventory. Status on Octob
 - [x] SMS: accepted on October 13, 2026 (handset keywords and a delivered test text; see [twilio-setup.md](twilio-setup.md)).
 - [ ] WhatsApp: the checks in the [WhatsApp guide](whatsapp-activation.md), after Meta approves the templates.
 
+### Real phones before January 1, 2027
+
+One iPhone (Safari) and one Android phone (Chrome), on the published site. The browser journeys run only Chromium on a computer, so these are checked by hand; record the phone, browser version, date and result for each.
+
+- [ ] **One press after a form error, on WebKit.** On the iPhone, on `/account/` press **Email my sign-in link** with the field empty, type the email, and tap the button once: "Check your email" opens and one email arrives. Then the same on the RSVP code box, and on the note a household leaves from its invitation link (`/guestbook/` after opening the link).
+- [ ] **Calendar files.** On the RSVP confirmation, **Add to calendar** opens the `.ics` in Calendar on the iPhone (Safari offers to add the event) and in the calendar app or Google Calendar on Android (Chrome downloads it, the notification opens it), with the right time in Fort Worth time; **Google Calendar** opens a prefilled event on both.
+- [ ] **The table card's QR on the venue's network.** At the AMZ Event Center, on the venue's Wi-Fi and on cellular data in the hall: the printed card's QR opens `/share/` with the upload form (no sign-in), a photo arrives with its reference, and the family sees it in Admin → Photos labelled "From the table card".
+- [ ] **A sign-in link opened by the mail app in another browser.** Request a link from Chrome on the phone and open it from the Gmail or Outlook app (which opens its own browser view): the link signs in there and returns to the page the sign-in started from; back in Chrome the guest is still signed out and can request a new link; a link opened twice offers "Send me a new link". The home page's "You replied ✓" follows the browser that saved the RSVP, not the mail app's.
+- [ ] **Text scaling.** iOS Dynamic Type at its largest standard size and Android font size at its largest: the home page, the RSVP form and its review, the confirmation and the menu keep one column with no sideways scrolling, nothing clipped, and Save still on the screen after scrolling a little.
+- [ ] **HEIC and real video through the resumable upload.** From the iPhone's Photos, choose a photo shot in HEIC (High Efficiency) and a 30 to 60 second 4K video; from Android a 60 second video: the photo arrives as JPEG, the videos upload in pieces with progress (switch apps mid-upload and come back), the media job converts them, and they play after approval.
+
 ## Reliability and limits
 
 - **Ledger.** GCS generation preconditions serialize writes across instances. A failed write never returns a saved receipt. The 20 MB cap suits one small event; media bytes are stored separately. Each request checks the ledger's generation and downloads it only when it changed. Rate-limit counters live in memory, not the ledger (the uploads a family begins, the table card's per-phone and per-card counts and the 20 "Download all photos" parts an hour per person are the exceptions, see "Media"). An RSVP takes 2 ledger writes: one save records the response and claims the Notion sync and the receipt email, and one final save records both outcomes. Heavy bursts can still return a retryable `BUSY`.
