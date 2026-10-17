@@ -20,8 +20,41 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm audit --omit=dev
+  # The same checks with the clock moved to dates the site goes through
+  # (scripts/test-at.mjs): a test that reads the real clock fails here, on the
+  # pull request, instead of failing `check` on the night the calendar
+  # reaches that date (R-008). docs/publishing.md has the full list.
+  clock:
+    name: Checks at ${{ matrix.at }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        at:
+          - '2026-11-16T10:00:00-06:00'
+          - '2027-01-15T21:15:00-06:00'
+          - '2027-01-16T10:00:00-06:00'
+          - '2028-01-20T12:00:00-06:00'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: node scripts/test-at.mjs
+        env:
+          FAKE_NOW: ${{ matrix.at }}
   deploy:
     name: Publish production website
+    # Only `check`, not `clock`: `check` proves this commit at today's date,
+    # which is what gets published. `clock` runs beside it on every pull
+    # request and push, so a date-dependent test is caught before it merges,
+    # while a re-publish on the night of a boundary neither waits for four
+    # more runs nor is held up by a test about another date.
     needs: check
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04

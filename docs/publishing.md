@@ -42,6 +42,14 @@ The site is published only by a push to `main`, so the previews change at the ne
 
 If the re-run's checks fail on something unrelated to the site (for example a new advisory in `npm audit`), fix that first; the deploy job runs only after the checks pass.
 
+### The checks on the night of a boundary
+
+A re-publish needs `npm run check` to pass on the day it runs, so no test may depend on today's date. `npm run check:clock` (`scripts/test-at.mjs`) runs the same checks with the clock moved to the dates the site goes through: November 16, 2026 (RSVPs closed), January 15, 2027 at 3:30 PM (before the ceremony) and 9:15 PM (party night), January 16 at 10:00 AM (the second re-publish), February 15, 2027, and January 20, 2028 (past every date the tests use). Every process the checks start sees that date (`tests/support/fake-now.mjs`); `node scripts/test-at.mjs <ISO time with offset>` runs one date.
+
+CI's **Checks at …** jobs run four of those dates on every pull request and push, beside `check`. The publish job waits only for `check`, so they never delay or block a re-publish; they exist to catch a date-dependent test before it merges.
+
+Before each boundary (a few days before November 15 and before January 15), confirm the latest **Checks at …** jobs on `main` passed, or run `npm run check:clock`. If a date fails, a test is reading today's date: make it pin its own instant (as `tests/upload-quota.test.mjs` does) before the boundary, never loosen what it checks.
+
 ### Automatic publishing at the boundaries (owner decision, not built)
 
 A scheduled workflow could re-publish at both boundaries without a person, but today's deploy safeguards deliberately refuse it, and only the owner can relax them:
