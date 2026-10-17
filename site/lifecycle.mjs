@@ -90,6 +90,9 @@ export function milestones(
     receptionStart: instant(site.reception.start, "reception.start"),
   };
   m.dayStart = startOfLocalDay(m.ceremonyStart, tz);
+  // The celebration's calendar day ends at local midnight, while the reception
+  // may run past it: "Today is the day!" stops there, the evening does not.
+  m.dayEnd = localMidnightAfter(m.dayStart, 1, tz);
   // No confirmed end: the evening ends at the next local midnight.
   m.eventEnd = site.reception.end
     ? instant(site.reception.end, "reception.end")
@@ -169,6 +172,7 @@ export function nextChange(now, m) {
     m.dinnerEnd,
     m.receptionStart,
     m.shareFrom,
+    m.dayEnd,
     m.eventEnd,
     m.uploadsUntil,
     m.archiveFrom,
@@ -203,7 +207,7 @@ export function homeState(now, m, { answered = null } = {}) {
       actions = ["directions:ceremony", "schedule"];
       break;
     case "live": {
-      status = { kind: "now-next", now: nn.now, next: nn.next };
+      status = { kind: "now-next", now: nn.now, next: nn.next, today: now < m.dayEnd };
       actions =
         now < m.ceremonyEnd
           ? ["directions:ceremony", "schedule"]
@@ -229,10 +233,31 @@ export function homeState(now, m, { answered = null } = {}) {
     primary: actions[0],
     showReplyBy: phase === "rsvp-open" && !answered,
     showSchedule: phase !== "after" && phase !== "archived",
-    // The header's RSVP pill is about replying: it goes once the party is over.
-    rsvpPill: phase !== "after" && phase !== "archived",
+    // The header's RSVP pill asks for a reply: it goes once this household has
+    // answered, and for everyone once the party is over.
+    rsvpPill: answered !== true && phase !== "after" && phase !== "archived",
     nextChange: nextChange(now, m),
   };
+}
+
+// This device's note that its household replied, kept between visits (a
+// private-link session lasts at most 2 hours, an email sign-in 12): only yes
+// or no, when it was saved, and until when it matters (the end of the party).
+// No name, id, email or link, so a shared device reveals nothing more than
+// "you replied". The browser stores it; these two functions only shape and
+// check it.
+export const replyMarker = (answer, savedAt, m) => ({
+  v: 1,
+  answer,
+  savedAt,
+  until: new Date(m.eventEnd).toISOString(),
+});
+// The marker if it is well formed and still current, otherwise null (to be
+// deleted).
+export function readReplyMarker(value, now) {
+  if (!value || value.v !== 1 || !["yes", "no"].includes(value.answer)) return null;
+  const until = Date.parse(value.until);
+  return Number.isFinite(until) && now < until ? value : null;
 }
 
 // Device clock vs server clock. `before`/`after` are Date.now() around the

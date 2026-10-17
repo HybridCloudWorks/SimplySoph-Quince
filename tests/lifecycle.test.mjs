@@ -20,6 +20,8 @@ import {
   galleryOpen,
   rsvpOpen,
   PHASES,
+  replyMarker,
+  readReplyMarker,
 } from "../site/lifecycle.mjs";
 import { celebration } from "../site/celebration.mjs";
 import { event } from "../site/content.mjs";
@@ -210,4 +212,34 @@ test("link previews: pages about photos and notes never carry the deadline", () 
   assert.equal(previewKey("details", "rsvp-open"), "event");
   assert.equal(previewKey("", "rsvp-closed"), "event");
   assert.equal(previewKey("", "after"), "thanks");
+});
+
+test("'Today is the day!' ends at local midnight, while the evening goes on to 12:30 AM", () => {
+  assert.equal(m.dayEnd, at("2027-01-16T00:00:00-06:00"));
+  assert.equal(homeState(m.dayEnd - 1, m).status.today, true);
+  assert.equal(homeState(m.dayEnd, m).status.today, false);
+  assert.equal(homeState(m.dayEnd, m).phase, "live");
+  assert.equal(homeState(m.dayEnd, m).primary, "share");
+  // A page left open over midnight is woken there.
+  assert.equal(nextChange(at("2027-01-15T23:00:00-06:00"), m), m.dayEnd);
+});
+
+test("a household that replied is not asked again by the header either", () => {
+  const t = at("2026-10-17T10:00:00-05:00");
+  assert.equal(homeState(t, m, { answered: null }).rsvpPill, true);
+  assert.equal(homeState(t, m, { answered: false }).rsvpPill, true);
+  assert.equal(homeState(t, m, { answered: true }).rsvpPill, false);
+  // After the deadline an unanswered household can still open the closed note.
+  assert.equal(homeState(m.deadline, m, { answered: null }).rsvpPill, true);
+  assert.equal(homeState(m.eventEnd, m, { answered: null }).rsvpPill, false);
+});
+
+test("the device's reply note: yes or no, no identity, gone once the party is over", () => {
+  const note = replyMarker("no", "2026-10-17T15:00:00.000Z", m);
+  assert.deepEqual(note, { v: 1, answer: "no", savedAt: "2026-10-17T15:00:00.000Z", until: "2027-01-16T06:30:00.000Z" });
+  assert.deepEqual(Object.keys(note).sort(), ["answer", "savedAt", "until", "v"]);
+  assert.equal(readReplyMarker(note, m.eventEnd - 1), note);
+  assert.equal(readReplyMarker(note, m.eventEnd), null);
+  for (const bad of [null, "yes", { ...note, v: 2 }, { ...note, answer: "maybe" }, { ...note, until: "soon" }, { ...note, until: undefined }])
+    assert.equal(readReplyMarker(bad, m.deadline - 1), null);
 });
