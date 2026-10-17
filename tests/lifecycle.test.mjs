@@ -246,6 +246,21 @@ test("the device's reply note: yes or no, no identity, gone once the party is ov
     assert.equal(readReplyMarker(bad, m.deadline - 1), null);
 });
 
+// One clock in the browser (site/now.mjs) and one Fort Worth day (localDay).
+// The upload page once kept a second correction of the phone's clock (the
+// last answer's `now` winning, with no request midpoint) and compared days
+// part by part; it now reads the page's clock and feeds it samples.
+test("the upload page tells the time with the page's one clock and lifecycle's day, not its own", async () => {
+  const source = (f) => readFile(new URL(`../site/${f}`, import.meta.url), "utf8");
+  const page = await source("media-upload.js");
+  assert.match(page, /import \{[^}]*\bclock\b[^}]*\} from "\.\/now\.mjs"/);
+  assert.match(page, /import \{[^}]*\bsample\b[^}]*\} from "\.\/now\.mjs"/);
+  assert.match(page, /import \{[^}]*\blocalDay\b[^}]*\} from "\.\/lifecycle\.mjs"/);
+  assert.match(page, /localDay\(at\) === localDay\(now\(\)\)/);
+  for (const [file, text] of [["media-upload.js", page], ["upload-batch.mjs", await source("upload-batch.mjs")]])
+    assert.doesNotMatch(text, /Date\.now\(\)\s*\+|\bskew\b|serverNow|noteServerTime|\.day === /, `${file} keeps a clock of its own`);
+});
+
 // The calendar day the party ends on, for the site's earliest last day
 // (site.lifespan): one function, asked by the API's check and by Admin's form.
 test("the party's day: the reception's end, or its start until the end is confirmed, in Fort Worth", async () => {
