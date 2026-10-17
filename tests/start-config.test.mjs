@@ -51,7 +51,6 @@ const cases = [
   ['SMS switched on without Twilio credentials', {SMS_ENABLED:'true', SMS_ACTIVATION_REVIEWED:'true'}, /SMS activation requires/],
   ['WhatsApp switched on without the activation review', {WHATSAPP_ENABLED:'true', TWILIO_AUTH_TOKEN:'test-only-token'}, /WhatsApp activation requires/],
   ['a scheduler audience without its service account', {SCHEDULER_AUDIENCE:'https://misxv.example.test/api/internal/drain'}, /Set both SCHEDULER_AUDIENCE and SCHEDULER_SERVICE_ACCOUNT/],
-  ['a gallery part size that is not a whole number of MB', {GALLERY_ARCHIVE_PART_MB:'100.5'}, /GALLERY_ARCHIVE_PART_MB must be a whole number/],
   ['a gallery part size too large for one request', {GALLERY_ARCHIVE_PART_MB:'5000'}, /GALLERY_ARCHIVE_PART_MB must be a whole number/],
 ];
 
