@@ -389,7 +389,10 @@ test("over HTTP: table card phones with uploads of their own hold at most 4 of t
 
 test("over HTTP: a slot is given back after an answer, a refusal, a client that goes away and a body that stalls", async (t) => {
   const { f, code } = await cardFixture();
-  const port = await serve(t, f, { idleMs: 600, slowAfterMs: 200 });
+  // The slow body's second write comes 300 ms in: well past slowAfterMs, and
+  // far enough inside idleMs that a busy machine can't turn the 408 into an
+  // idle drop. A slot kept until the idle time would also fail "goes away".
+  const port = await serve(t, f, { idleMs: 2000, slowAfterMs: 200 });
   const bytes = await photo();
   const phone = await exchange(f, code);
   const open = async () => (await f.request(phone, "uploads", f.startBody(bytes))).id;
