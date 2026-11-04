@@ -86,6 +86,14 @@ export function createSms({
   // batch holding one is refused before anything is sent, and kept for
   // cancelling, as invitation emails are.
   invitationsOpen = () => true,
+  // The automatic invitation after SOPHIA (owner decision, November 3, 2026;
+  // docs/twilio-setup.md "Automatic invitation after SOPHIA"). Off when not
+  // given. `setting(s)` reads the reviewed setting from the ledger state;
+  // `name(row)` names the household as the admin lists it; `mintLink(s, {row,
+  // invite, draftId})` mints and registers the household's private link and
+  // returns it sealed, as the batch path does; `onSent(householdIds)` runs
+  // after an accepted send (the Notion Status refresh).
+  autoInvite = null,
 }) {
   const enabled = transport?.enabled === true;
   const refuseLateLinks = (drafts) => {
@@ -356,7 +364,9 @@ export function createSms({
     });
   }
   function batches(s) {
-    const ids = [...new Set(Object.values(s.smsDrafts || {}).filter((d) => !d.test).map((d) => d.campaignId))];
+    // Automatic invitations are single texts, never a batch to confirm; the
+    // tab's "Latest five texts" and the SMS history list them.
+    const ids = [...new Set(Object.values(s.smsDrafts || {}).filter((d) => !d.test && !d.auto).map((d) => d.campaignId))];
     return ids
       .map((id) => batchSummary(s, id))
       .sort((a, b) => b.createdAt - a.createdAt)
@@ -411,6 +421,154 @@ export function createSms({
       if (superseded && reconcile) await syncOptOut(phone, false);
     } catch {
       // The Notion mirror is retried by the drain; sending follows the receipt.
+    }
+  }
+  // The automatic invitation after an opt-in keyword. Every condition must
+  // hold, else nothing is sent and one event names the reason (never a phone
+  // or a text): the setting is on; this phone is the Phone of exactly one
+  // household row in Notion; that row's capacity is valid; the household has
+  // an active invitation; the RSVP deadline has not passed; SMS Opt Out is
+  // not ticked; the keyword receipt is bound to the row (syncOptOut, which
+  // runs first); and no invitation text with a link has already been sent or
+  // attempted for this household (so a second SOPHIA, or STOP then SOPHIA,
+  // never sends one twice). The draft is then dispatched through send(), so
+  // the claim, the ledger states, the delivery callbacks and the "unknown is
+  // never retried" rule are the batch path's. A Notion outage skips with
+  // NOTION_UNAVAILABLE: the household stays Subscribed and the family's next
+  // batch covers it. Nothing here throws: the welcome reply always goes back.
+  const AUTO_CAMPAIGN = "auto-invite";
+  const autoNotify = (s, householdId, name, title, text) => {
+    // One open notice per household: a second SOPHIA with the same problem
+    // does not add another.
+    if (
+      Object.values(s.notifications || {}).some(
+        (n) => n.kind === "sms-auto" && n.householdId === householdId && !n.archived && !n.read,
+      )
+    )
+      return;
+    const id = randomUUID();
+    s.notifications ??= {};
+    s.notifications[id] = {
+      id,
+      kind: "sms-auto",
+      householdId,
+      title: `${name}: ${title}`,
+      text,
+      at: now(),
+      read: false,
+      emailState: "none",
+    };
+  };
+  async function sendAutoInvite(phone) {
+    if (!autoInvite) return;
+    const skip = (reason, householdId, notice) =>
+      ledger.transaction((s) => {
+        logEvent(s, now(), "auto-invite.skipped", {
+          actor: "website",
+          ...(householdId && { householdId }),
+          data: { channel: "sms", reason },
+        });
+        if (notice) autoNotify(s, householdId, notice.name, notice.title, notice.text);
+      });
+    try {
+      const s = await ledger.read();
+      const setting = autoInvite.setting(s);
+      if (!setting?.enabled) return;
+      let rows;
+      try {
+        rows = await notion.list();
+      } catch {
+        return skip("NOTION_UNAVAILABLE");
+      }
+      const matched = rows.filter(
+        (r) => !r.archived && r.phone?.replace(/[ ()-]/g, "") === phone,
+      );
+      if (matched.length !== 1) return skip(matched.length ? "PHONE_SHARED" : "NO_ROW");
+      const row = matched[0],
+        name = autoInvite.name(row);
+      if (!row.validCapacity)
+        return skip("CAPACITY_NEEDS_REVIEW", row.id, {
+          name,
+          title: "texted SOPHIA, but the invitation could not be sent automatically",
+          text: "The head count on their Notion row needs review before an invitation can be issued. Fix the row, then text them from the SMS tab.",
+        });
+      const invite = s.invitations?.[row.id];
+      if (!invite?.active)
+        return skip("NO_ACTIVE_LINK", row.id, {
+          name,
+          title: "texted SOPHIA, but the invitation could not be sent automatically",
+          text: "They have no active private link yet. Issue their invitation on Invitations, then text them from the SMS tab.",
+        });
+      if (!invitationsOpen()) return skip("INVITATIONS_CLOSED", row.id);
+      if (row.smsOptOut) return skip("SMS_OPTED_OUT", row.id);
+      if (!smsKeywordConsent(s, row.id, phone)) return skip("SMS_NOT_SUBSCRIBED", row.id);
+      if (!enabled) return skip("SMS_NOT_ENABLED", row.id);
+      const already = (st) =>
+        st.smsClaims?.[hash(JSON.stringify([AUTO_CAMPAIGN, phone]))] ||
+        Object.values(st.smsDrafts || {}).some(
+          (d) =>
+            !d.test &&
+            !d.archived &&
+            d.householdId === row.id &&
+            d.link &&
+            d.generation === invite.generation &&
+            ["accepted", "unknown", "sending"].includes(d.state),
+        );
+      if (already(s)) return skip("ALREADY_INVITED", row.id);
+      // The household's language: its invitation's, else WhatsApp Language,
+      // else English.
+      const locale = invite.locale || (row.whatsappLanguage === "es" ? "es" : "en");
+      const id = randomUUID();
+      const created = await ledger.transaction((st) => {
+        const current = st.invitations?.[row.id];
+        if (!current?.active || current.generation !== invite.generation || already(st)) return false;
+        st.smsDrafts ??= {};
+        st.smsDrafts[id] = {
+          id,
+          auto: true,
+          householdId: row.id,
+          campaignId: AUTO_CAMPAIGN,
+          groups: [],
+          directlySelected: true,
+          to: phone,
+          name,
+          text: locale === "es" ? setting.textEs : setting.text,
+          link: autoInvite.mintLink(st, { row, invite: current, draftId: id, locale }),
+          generation: current.generation,
+          state: "draft",
+          at: now(),
+        };
+        return true;
+      });
+      if (!created) return skip("ALREADY_INVITED", row.id);
+      try {
+        await send(id, (await review(id)).reviewToken, "website");
+      } catch (e) {
+        if (["SMS_REJECTED", "SMS_DELIVERY_UNKNOWN"].includes(e.code)) {
+          // Recorded on the draft by send(); the family is told once.
+          await ledger.transaction((st) =>
+            autoNotify(st, row.id, name, "texted SOPHIA, but the automatic invitation was not accepted", "Twilio did not accept the text (see Latest five texts on the SMS tab). Review it there before sending again."),
+          );
+          return;
+        }
+        // Stale, opted out or changed since drafting: set aside, never sent.
+        await ledger.transaction((st) => {
+          const d = st.smsDrafts?.[id];
+          if (d?.state === "draft") {
+            d.archived = true;
+            d.error = e.code || "SMS_DRAFT_STALE";
+          }
+        });
+        return skip(e.code || "SMS_DRAFT_STALE", row.id);
+      }
+      try {
+        await autoInvite.onSent?.([row.id]);
+      } catch {
+        // The Status refresh is best effort; the scheduled drain catches up.
+      }
+    } catch {
+      // The inbound reply never waits on this.
+      await skip("FAILED").catch(() => {});
     }
   }
   async function callback(kind, params, signature) {
@@ -490,6 +648,11 @@ export function createSms({
       });
       if (welcome) reply = `<Message>${xml(smsProgram.confirmation)}</Message>`;
       if (start || stop) await syncOptOut(phone);
+      // After the welcome decision and the row binding, before the reply
+      // goes back: Cloud Run may throttle the CPU once the response is
+      // written, so nothing can run after. The invitation may therefore
+      // reach the phone just before the welcome (docs/twilio-setup.md).
+      if (start && !existing) await sendAutoInvite(phone);
     } else {
       const ranks = {
         accepted: 0,

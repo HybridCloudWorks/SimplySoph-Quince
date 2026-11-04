@@ -6,4 +6,7 @@
 // starts to rely on something the API added; raise server/application.mjs
 // apiVersion when the API adds it (tests/deploy-hosting.test.mjs keeps the
 // API at least as new as the pages built with it).
-export const pagesNeedApi = 3;
+// 4: the SMS tab's "Automatic invitation when someone texts SOPHIA" card
+// (POST /api/admin/sms/auto-invite, its preview, and `autoInvite` on
+// GET /api/admin/sms/drafts).
+export const pagesNeedApi = 4;

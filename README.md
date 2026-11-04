@@ -37,7 +37,7 @@ The guest list lives in **Notion**. The website reads it and writes the answers 
 
 Administrators sign in at [misxv.simplysoph.com/admin/login/](https://misxv.simplysoph.com/admin/login/).
 
-**Nothing is sent to guests without a person pressing Send.** The only automatic messages are a guest's own sign-in link, a confirmation of their RSVP, the registered welcome text when someone first texts SOPHIA, and the answers to STOP, START and HELP. If Notion is briefly unavailable, saved answers wait and are written to Notion as soon as it's back.
+**Nothing is sent to guests without a person pressing Send, with one reviewed exception.** The only automatic messages are a guest's own sign-in link, a confirmation of their RSVP, the registered welcome text when someone first texts SOPHIA, the answers to STOP, START and HELP, and, once the family has reviewed both texts and turned the setting on in Admin → Communications → SMS, that household's own SMS invitation right after it texts SOPHIA (off by default; see [Automatic invitation after SOPHIA](docs/twilio-setup.md#automatic-invitation-after-sophia)). If Notion is briefly unavailable, saved answers wait and are written to Notion as soon as it's back.
 
 ## Guides
 

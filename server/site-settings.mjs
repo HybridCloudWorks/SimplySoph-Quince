@@ -5,6 +5,10 @@ import { visibilityOf } from "../site/notes.mjs";
 import { places } from "../site/promises.mjs";
 import { retentionReview } from "../site/policies.mjs";
 import { partyDay } from "../site/lifecycle.mjs";
+import { event } from "../site/content.mjs";
+import { date } from "../site/datetime.mjs";
+import { smsProgram } from "../site/sms-program.mjs";
+import { smsCompliantText, smsPreview } from "./sms.mjs";
 // The saved settings, or the defaults until the family first saves them.
 // site.guestbook.visibility (who can read approved notes for Sophia,
 // site/notes.mjs) is kept apart in the ledger, s.guestbook, and changed only on
@@ -15,6 +19,10 @@ export const siteSettings = (state) => {
   const site = structuredClone(
     state.site || { ...celebration, registries: registryDefaults },
   );
+  // site.sms (the automatic SMS invitation, autoInviteSettings below) names
+  // the administrator who reviewed it, so it is read on the SMS tab only and
+  // never served with the public site (GET /api/site).
+  delete site.sms;
   site.guestbook = { visibility: visibilityOf(state) };
   for (const kind of ["ceremony", "reception"])
     if (site[kind]?.notes) site[kind].notes = venueFacts(site[kind].notes);
@@ -52,6 +60,81 @@ const venueFacts = (notes) =>
 // delete one already kept. Settings saved before the choice existed, and an
 // API that does not send it, mean "remember".
 export const deviceReplyChoices = ["remember", "off"];
+// The automatic SMS invitation (owner decision, November 3, 2026, amending
+// decision 7 for this one case; docs/twilio-setup.md): once a reviewed
+// setting is on, a household that texts SOPHIA is sent its private RSVP link
+// right after the welcome text, without waiting for a batch. Off until the
+// family reviews both texts and turns it on from Admin → Communications →
+// SMS. The default texts follow the registered samples
+// (docs/sms-campaign-registration.md) with the current deadline from
+// site/content.mjs, so they never carry the samples' old date. The composer
+// fills no household name, so none is promised here either. Like the
+// samples, both avoid accented letters, so each stays GSM-7 (160-character
+// segments) and two segments long once the link is in.
+export const AUTO_INVITE_TEXT_MAX = 320;
+export const autoInviteDefaults = () => ({
+  enabled: false,
+  text: `${smsProgram.name}: You're invited to Sophia's quinceanera on ${date(event.startsAt, "en")}! RSVP by ${date(event.deadline, "en", { weekday: false })}: {link} Reply STOP to opt out.`,
+  textEs: `${smsProgram.name}: Confirma tu asistencia a los XV de Sophia antes del ${date(event.deadline, "es", { weekday: false })}: {link} Responde STOP para cancelar.`,
+  reviewedAt: null,
+  reviewedBy: null,
+});
+// The saved setting, or the defaults (off) until the family first saves it.
+export const autoInviteSettings = (state) => ({
+  ...autoInviteDefaults(),
+  ...(state.site?.sms?.autoInvite || {}),
+});
+// A stand-in for the sealed per-household link, as long as a real one, so
+// the preview's segment count and the length check hold for the sent text.
+export const AUTO_INVITE_SAMPLE_LINK =
+  "https://misxv.simplysoph.com/rsvp/#" + "x".repeat(43);
+// Both texts must carry {link}, the brand prefix and STOP, fit the SMS code's
+// length rule once the link is filled in, and stay short enough to be one or
+// two segments. The review stamp is the server's (the route sets it from the
+// admin's session), never taken from the page.
+export function validateAutoInvite(input) {
+  const bad = (reason) => {
+    throw error(422, "INVALID_SITE_SETTINGS", { reason });
+  };
+  if (!input || typeof input !== "object") bad("auto-invite");
+  if (typeof input.enabled !== "boolean") bad("auto-invite-enabled");
+  const text = (v, field) => {
+    if (
+      typeof v !== "string" ||
+      !v.trim() ||
+      v.length > AUTO_INVITE_TEXT_MAX ||
+      /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(v)
+    )
+      bad(field + "-length");
+    const t = v.trim();
+    if (!t.includes("{link}")) bad(field + "-link");
+    if (!smsCompliantText(t)) bad(field + "-brand-or-stop");
+    try {
+      smsPreview(t.replaceAll("{link}", AUTO_INVITE_SAMPLE_LINK));
+    } catch {
+      bad(field + "-length");
+    }
+    return t;
+  };
+  const next = {
+    enabled: input.enabled,
+    text: text(input.text, "text"),
+    textEs: text(input.textEs, "textEs"),
+    reviewedAt: null,
+    reviewedBy: null,
+  };
+  if (input.reviewedAt != null) {
+    if (!Number.isInteger(input.reviewedAt) || input.reviewedAt < 0) bad("auto-invite-reviewed");
+    next.reviewedAt = input.reviewedAt;
+  }
+  if (input.reviewedBy != null) {
+    if (typeof input.reviewedBy !== "string" || input.reviewedBy.length > 254 || /[\x00-\x1f\x7f]/.test(input.reviewedBy))
+      bad("auto-invite-reviewed");
+    next.reviewedBy = input.reviewedBy;
+  }
+  if (next.enabled && (!next.reviewedAt || !next.reviewedBy)) bad("auto-invite-reviewed");
+  return next;
+}
 export function validateSettings(input) {
   // `reason` names the rule a field broke, when Admin can point to it.
   const bad = (reason) => {
@@ -197,6 +280,13 @@ export function validateSettings(input) {
   if (input.device !== undefined) {
     if (!deviceReplyChoices.includes(input.device?.reply)) bad();
     next.device = { reply: input.device.reply };
+  }
+  // The automatic SMS invitation (validateAutoInvite above). A whole-site
+  // save that carries it keeps it; one that leaves it out keeps the stored
+  // one (POST /api/admin/site); the SMS tab's own route changes it.
+  if (input.sms !== undefined) {
+    if (input.sms?.autoInvite === undefined) bad("auto-invite");
+    next.sms = { autoInvite: validateAutoInvite(input.sms.autoInvite) };
   }
   return next;
 }

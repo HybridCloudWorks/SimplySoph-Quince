@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import twilio from "twilio";
 import { Ledger, memoryAdapter, memoryMedia } from "../server/store.mjs";
 import { createApplication } from "../server/application.mjs";
 import { uploadQuota } from "../server/upload-quota.mjs";
@@ -1082,6 +1083,29 @@ test("distribution groups deduplicate recipients, drafts are idempotent, and sta
 });
 
 // Seeds the ledger as if the guest texted the program keyword and it synced.
+// A signed Twilio inbound webhook, as the SMS program's number receives it.
+const smsWebhookConfig = {
+  origin,
+  accountSid: "AC" + "1".repeat(32),
+  serviceSid: "MG" + "2".repeat(32),
+  authToken: "fixture-token",
+};
+function twilioInbound(f, extra) {
+  const params = {
+    AccountSid: smsWebhookConfig.accountSid,
+    MessagingServiceSid: smsWebhookConfig.serviceSid,
+    To: "+16827868002",
+    ...extra,
+  };
+  return f.app.dispatch({
+    path: "/api/twilio/inbound",
+    method: "POST",
+    body: params,
+    headers: {
+      "x-twilio-signature": twilio.getExpectedTwilioSignature(smsWebhookConfig.authToken, origin + "/api/twilio/inbound", params),
+    },
+  });
+}
 async function keywordOptIn(f, phone) {
   await f.ledger.transaction((s) => {
     s.smsPreferences = {
@@ -3749,4 +3773,108 @@ test("admin guests and the SMS household list carry the Notion Status as notionS
   );
   // Email audiences are unchanged: no household list at all.
   assert.equal((await f.admin("audience")).households, undefined);
+});
+
+// The reviewed automatic SMS invitation after SOPHIA (owner decision,
+// November 3, 2026; docs/twilio-setup.md): saved from the SMS tab, audited,
+// read back with the drafts, kept by a Website & event save, never public.
+test("the automatic SMS invitation is off until an admin reviews both texts and turns it on; every change is audited", async () => {
+  const f = await fixture({ smsTransport: { enabled: true, async send() {} } });
+  const before = (await f.admin("sms/drafts")).autoInvite;
+  assert.deepEqual([before.enabled, before.reviewedAt, before.reviewedBy, before.paused], [false, null, null, false]);
+  assert.match(before.text, /^Simply Soph Media: .*RSVP by December 1, 2026: \{link\} Reply STOP to opt out\.$/);
+  assert.match(before.textEs, /^Simply Soph Media: .*1 de diciembre de 2026: \{link\} Responde STOP para cancelar\.$/);
+  // The preview says the encoding and segments, with a stand-in link filled in.
+  const preview = await f.admin("sms/auto-invite/preview", { text: before.text, textEs: before.textEs });
+  assert.deepEqual([preview.en.encoding, preview.en.segments, preview.es.encoding, preview.es.segments], ["GSM-7", 2, "GSM-7", 2]);
+  await assert.rejects(
+    () => f.admin("sms/auto-invite/preview", { text: "Simply Soph Media: no link, STOP", textEs: before.textEs }),
+    (e) => e.code === "INVALID_SITE_SETTINGS" && e.details.reason === "text-link",
+  );
+  // Guests cannot; turning on needs the review box; bad texts are refused.
+  await assert.rejects(() => f.guest("admin/sms/auto-invite", { enabled: true, confirm: true, ...before }), (e) => e.code === "SIGN_IN_REQUIRED");
+  await assert.rejects(
+    () => f.admin("sms/auto-invite", { enabled: true, text: before.text, textEs: before.textEs }),
+    (e) => e.code === "CONFIRM_REVIEW",
+  );
+  await assert.rejects(
+    () => f.admin("sms/auto-invite", { enabled: true, confirm: true, text: "Hello {link}", textEs: before.textEs }),
+    (e) => e.code === "INVALID_SITE_SETTINGS" && e.details.reason === "text-brand-or-stop",
+  );
+  const text = "Simply Soph Media: Your invitation: {link} Reply STOP to opt out.";
+  const on = (await f.admin("sms/auto-invite", { enabled: true, confirm: true, text, textEs: before.textEs, reviewedBy: "forged" })).autoInvite;
+  // The stamp is the session's, never the page's.
+  assert.deepEqual([on.enabled, on.text, on.reviewedAt, on.reviewedBy, on.paused], [true, text, at, "organizer", false]);
+  assert.deepEqual((await f.admin("sms/drafts")).autoInvite, on);
+  let s = await f.ledger.read();
+  assert.deepEqual(s.audit.filter((a) => a.id === "sms").map((a) => [a.actor, a.action]), [["organizer", "sms-auto-invite-on"]]);
+  // Never served with the public site, nor to the Website & event page.
+  assert.equal(JSON.stringify(await f.app.dispatch({ path: "/api/site" })).includes("autoInvite"), false);
+  const { site } = await f.admin("site");
+  assert.equal(site.sms, undefined);
+  // A Website & event save keeps it.
+  await f.admin("site", site);
+  assert.equal((await f.admin("sms/drafts")).autoInvite.enabled, true);
+  // Turn off: no review box needed, texts kept, audited.
+  const off = (await f.admin("sms/auto-invite", { enabled: false, text, textEs: before.textEs })).autoInvite;
+  assert.deepEqual([off.enabled, off.text, off.reviewedAt, off.reviewedBy], [false, text, null, null]);
+  s = await f.ledger.read();
+  assert.deepEqual(s.audit.filter((a) => a.id === "sms").map((a) => a.action), ["sms-auto-invite-on", "sms-auto-invite-off"]);
+  // Past the RSVP deadline the switch is paused: nothing can be sent.
+  const late = await fixture({ deadline: "2026-09-30T23:59:00-06:00" });
+  assert.equal((await late.admin("sms/drafts")).autoInvite.paused, true);
+});
+
+test("with the automatic invitation on, a SOPHIA sends the household its invitation and flips its Notion Status to Invited", async () => {
+  const sent = [],
+    statuses = [];
+  const f = await fixture({
+    smsTransport: {
+      enabled: true,
+      inboundTime: async () => at - 1000,
+      async send(m) {
+        sent.push(m);
+        return { state: "accepted", provider: "twilio", providerId: "SM" + "e".repeat(32) };
+      },
+    },
+    smsWebhook: smsWebhookConfig,
+    notion: {
+      async projectStatus(id, status) {
+        statuses.push([id, status]);
+      },
+      async projectSmsConsent() {},
+      async projectSmsOptOut() {},
+    },
+  });
+  f.row.phone = "+18175550100";
+  f.row.status = "Waiting";
+  f.row.statusColumnPresent = true;
+  const { autoInvite } = await f.admin("sms/drafts");
+  // Off: the welcome only.
+  const first = await twilioInbound(f, { From: f.row.phone, Body: "SOPHIA", OptOutType: "START", MessageSid: "SM" + "1".repeat(32) });
+  assert.match(first.binary.toString(), /<Message>Simply Soph Media: You&apos;re subscribed/);
+  assert.equal(sent.length, 0);
+  // On: the invitation goes out through the batch path, sealed link filled.
+  await f.admin("sms/auto-invite", { enabled: true, confirm: true, text: autoInvite.text, textEs: autoInvite.textEs });
+  const second = await twilioInbound(f, { From: f.row.phone, Body: "SOPHIA", OptOutType: "START", MessageSid: "SM" + "2".repeat(32) });
+  assert.match(second.binary.toString(), /<Response\/>/);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].to, f.row.phone);
+  assert.match(sent[0].text, /^Simply Soph Media: .*RSVP by December 1, 2026: https:\/\/misxv\.simplysoph\.com\/rsvp\/#[A-Za-z0-9_-]+ Reply STOP to opt out\.$/);
+  const { drafts, batches } = await f.admin("sms/drafts");
+  const d = drafts.find((x) => x.auto);
+  assert.deepEqual([d.state, d.campaignId, d.text, d.link, d.name], ["accepted", "auto-invite", autoInvite.text, undefined, "family, Test"]);
+  assert.deepEqual(batches, []);
+  assert.deepEqual(statuses, [[household, "Invited"]]);
+  // The minted link opens the RSVP now that the text was sent.
+  const minted = sent[0].text.match(/#([A-Za-z0-9_-]+) /)[1];
+  const login = await f.app.dispatch({ path: "/api/invitation-session", method: "POST", body: { token: minted }, headers: { origin }, ip: "guest" });
+  assert.ok(login.setCookie);
+  // A third SOPHIA sends nothing more.
+  await twilioInbound(f, { From: f.row.phone, Body: "SOPHIA", OptOutType: "START", MessageSid: "SM" + "3".repeat(32) });
+  assert.equal(sent.length, 1);
+  assert.deepEqual(
+    (await f.ledger.read()).eventLog.filter((e) => e.type === "auto-invite.skipped").map((e) => e.data.reason),
+    ["ALREADY_INVITED"],
+  );
 });

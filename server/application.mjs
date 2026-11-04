@@ -21,7 +21,14 @@ import { quotaSetting, familyLimit, recent, nextRoom, DAY } from "./upload-quota
 import { tableCardSvg } from "./party-card.mjs";
 import { contactTopics, escapeHtml } from "../site/celebration.mjs";
 import { calendar } from "../site/calendar-file.mjs";
-import { siteSettings, validateSettings, galleryDownload } from "./site-settings.mjs";
+import {
+  siteSettings,
+  validateSettings,
+  galleryDownload,
+  autoInviteSettings,
+  validateAutoInvite,
+  AUTO_INVITE_SAMPLE_LINK,
+} from "./site-settings.mjs";
 import { smsProgram } from "../site/sms-program.mjs";
 import { audienceOf, consentVersion, displayFor, visibilities, visibilityOf } from "../site/notes.mjs";
 import { createGalleryArchive, servable, mediaKind } from "./gallery.mjs";
@@ -62,8 +69,11 @@ import { createAccounts, accountActive, rosterMatch } from "./accounts.mjs";
 // pages that need more than the live API reports. 1: the API of the round 2
 // review (the clock, channels, the note's audience, the table card, …).
 // 2: POST /api/admin/status/sync ("Check statuses now" on Invitations) and
-// the schema action's { added, options } answer.
-export const apiVersion = 3;
+// the schema action's { added, options } answer. 3: the SMS tab's filters
+// and the Notion Status on the audience. 4: the automatic SMS invitation
+// (POST /api/admin/sms/auto-invite and its preview; `autoInvite` on
+// GET /api/admin/sms/drafts).
+export const apiVersion = 4;
 const events = ["ceremony", "dinner", "dance"];
 const safeText = (s, max = 1000) => {
   if (
@@ -299,6 +309,26 @@ export function createApplication({
     invitationsOpen,
     render: (d) =>
       d.link ? d.text.replaceAll(LINK_PLACEHOLDER, unseal(d.link, key)) : d.text,
+    // The reviewed automatic invitation after SOPHIA (server/sms.mjs
+    // sendAutoInvite): the link is minted and bound to the draft exactly as
+    // the batch path does below, and the Notion Status is refreshed as after
+    // a batch chunk.
+    autoInvite: {
+      setting: autoInviteSettings,
+      name: recipientName,
+      mintLink: (s, { row, invite, draftId, locale }) => {
+        const minted = token();
+        s.invitationLinks ??= {};
+        s.invitationLinks[hash(minted)] = {
+          householdId: row.id,
+          generation: invite.generation,
+          channel: "sms",
+          draftId,
+        };
+        return seal(origin + (locale === "es" ? "/es" : "") + "/rsvp/#" + minted, key);
+      },
+      onSent: (ids) => refreshStatuses(ids),
+    },
   });
   const whatsapp = createWhatsapp({
     ledger,
@@ -2612,6 +2642,8 @@ export function createApplication({
           // And whether a device remembers a reply (R-160): an older page
           // must not switch the owner's "off" back on.
           if (!site.device && s.site?.device) site.device = s.site.device;
+          // And the automatic SMS invitation, changed on the SMS tab.
+          if (!site.sms && s.site?.sms) site.sms = s.site.sms;
           site.version++;
           s.site = site;
           audit(s, session.actor, "site-settings", "event", now());
@@ -3397,6 +3429,12 @@ export function createApplication({
           })),
           batches: sms.batches(ctx.state),
           sendingEnabled: sms.enabled,
+          // The automatic invitation after SOPHIA: paused (nothing sends)
+          // once the RSVP deadline has passed, whatever the switch says.
+          autoInvite: {
+            ...autoInviteSettings(ctx.state),
+            paused: !invitationsOpen(),
+          },
           pendingOptOutSync: Object.values(
             ctx.state.smsSuppression || {},
           ).filter((r) => r.syncState === "pending").length,
@@ -3429,6 +3467,36 @@ export function createApplication({
       }
       if (path === "/api/admin/sms/batch/cancel" && method === "POST")
         return sms.cancelBatch(body.id, session.actor);
+      // The automatic invitation after SOPHIA: any administrator may change
+      // it; turning it on needs the review box, and the stamp is this
+      // session's, never the page's. Every change is audited.
+      if (path === "/api/admin/sms/auto-invite/preview" && method === "POST") {
+        const setting = validateAutoInvite({ enabled: false, text: body.text, textEs: body.textEs });
+        const sample = (text) => smsPreview(text.replaceAll(LINK_PLACEHOLDER, AUTO_INVITE_SAMPLE_LINK));
+        return { en: sample(setting.text), es: sample(setting.textEs) };
+      }
+      if (path === "/api/admin/sms/auto-invite" && method === "POST") {
+        if (body.enabled === true && body.confirm !== true) throw error(422, "CONFIRM_REVIEW");
+        const reviewed = body.enabled === true;
+        const setting = validateAutoInvite({
+          enabled: body.enabled,
+          text: body.text,
+          textEs: body.textEs,
+          reviewedAt: reviewed ? now() : null,
+          reviewedBy: reviewed ? session.actor : null,
+        });
+        return ledger.transaction((s) => {
+          // Until the family first saves Website & event, the site is the
+          // code's defaults: store those with the setting, same version.
+          if (!s.site) {
+            s.site = siteSettings(s);
+            delete s.site.guestbook;
+          }
+          s.site.sms = { autoInvite: setting };
+          audit(s, session.actor, "sms-auto-invite-" + (setting.enabled ? "on" : "off"), "sms", now());
+          return { autoInvite: { ...setting, paused: !invitationsOpen() } };
+        });
+      }
       if (path === "/api/admin/sms/sync" && method === "POST")
         return sms.retrySync();
       if (path === "/api/admin/invitations/issue-batch" && method === "POST")

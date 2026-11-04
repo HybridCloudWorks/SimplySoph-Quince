@@ -64,6 +64,7 @@ export async function smsComposer(root) {
       : ""
   }<label>Message<textarea name="text" required maxlength="1600">${esc(DEFAULT_TEXT)}</textarea></label><p>Every text must start with “Simply Soph Media:” and include STOP. Type <code>{link}</code> where each household's private RSVP link belongs; households without an active link are skipped and listed.</p><p class="error" role="alert"></p><button type="submit" class="button burgundy">Review before sending</button></form>
 <div id="sms-batch-panel"></div>
+${autoInviteCard(sms.autoInvite, sms.sendingEnabled)}
 <section class="recent-records"><h2>Recent text batches</h2>${
     sms.batches.length
       ? `<div class="table-wrap"><table><thead><tr><th scope="col">Created</th><th scope="col">Message</th><th scope="col">State</th><th scope="col">Texts</th><th scope="col">Waiting to send</th><th scope="col"></th></tr></thead><tbody>${sms.batches
@@ -80,7 +81,7 @@ export async function smsComposer(root) {
       .filter((d, i) => i < 5 || d.id === review)
       .map(
         (d) =>
-          `<article class="compact-record"><h3>${esc(d.name)}</h3><p>${esc(d.to)}</p><p>${esc(d.text)}</p><p>Status: ${esc(d.delivery || d.state)}${d.error ? ` (${esc(d.error)}${d.providerError ? ` · Twilio ${esc(String(d.providerError))}` : ""})` : ""}</p>${d.state === "draft" ? `<button type="button" class="button outline" data-review-sms="${esc(d.id)}">Review this text</button><div class="sms-review" aria-live="polite"></div>` : ""}</article>`,
+          `<article class="compact-record"><h3>${esc(d.name)}</h3>${d.auto ? '<p class="hint">Automatic (texted SOPHIA)</p>' : ""}<p>${esc(d.to)}</p><p>${esc(d.text)}</p><p>Status: ${esc(d.delivery || d.state)}${d.error ? ` (${esc(d.error)}${d.providerError ? ` · Twilio ${esc(String(d.providerError))}` : ""})` : ""}</p>${d.state === "draft" ? `<button type="button" class="button outline" data-review-sms="${esc(d.id)}">Review this text</button><div class="sms-review" aria-live="polite"></div>` : ""}</article>`,
       )
       .join("") || "<p>No texts yet.</p>"
   }</div></section>`;
@@ -191,6 +192,93 @@ export async function smsComposer(root) {
     });
   }
   root.querySelector(`[data-review-sms="${CSS.escape(review || "")}"]`)?.click();
+
+  // The automatic invitation after SOPHIA: both texts previewed as a batch
+  // text is (segments and encoding, with a stand-in link), saved only with
+  // the review box ticked; "Turn off" needs no review.
+  const auto = root.querySelector("#sms-auto-invite");
+  if (auto) {
+    const pane = auto.querySelector("[data-auto-preview]");
+    let timer = null;
+    const previewTexts = async () => {
+      try {
+        const p = await api("admin/sms/auto-invite/preview", {
+          text: auto.elements.text.value,
+          textEs: auto.elements.textEs.value,
+        });
+        pane.innerHTML = `<p>English: ${esc(p.en.encoding)} · about ${p.en.segments} SMS segment(s). Spanish: ${esc(p.es.encoding)} · about ${p.es.segments} SMS segment(s). ${esc(p.en.costNote)}</p>`;
+      } catch (e) {
+        pane.innerHTML = `<p class="error">${esc(autoInviteProblem(e))}</p>`;
+      }
+    };
+    auto.addEventListener("input", () => {
+      clearTimeout(timer);
+      timer = setTimeout(previewTexts, 400);
+    });
+    await previewTexts();
+    submit(auto, async (f) => {
+      try {
+        await api("admin/sms/auto-invite", {
+          enabled: true,
+          confirm: f.get("confirm") === "on",
+          text: f.get("text"),
+          textEs: f.get("textEs"),
+        });
+      } catch (e) {
+        e.message = autoInviteProblem(e);
+        throw e;
+      }
+      notify("Saved. From now on, a household that texts SOPHIA is sent its invitation automatically.");
+      await reload();
+    });
+    const off = root.querySelector("[data-auto-off]");
+    if (off)
+      off.onclick = async () => {
+        if (!confirm("Turn off the automatic invitation? Households that text SOPHIA from now on wait for a batch.")) return;
+        try {
+          await api("admin/sms/auto-invite", {
+            enabled: false,
+            text: auto.elements.text.value,
+            textEs: auto.elements.textEs.value,
+          });
+          notify("Turned off. Nothing is sent automatically any more.");
+          await reload();
+        } catch (e) {
+          notify(autoInviteProblem(e));
+        }
+      };
+  }
+}
+
+// The server's reason, in this page's words (server/site-settings.mjs
+// validateAutoInvite).
+function autoInviteProblem(e) {
+  const reasons = {
+    "text-link": "The English text needs {link}, where the household's private link goes.",
+    "textEs-link": "The Spanish text needs {link}, where the household's private link goes.",
+    "text-brand-or-stop": "The English text must start with “Simply Soph Media:” and include STOP.",
+    "textEs-brand-or-stop": "The Spanish text must start with “Simply Soph Media:” and include STOP.",
+    "text-length": "The English text is empty or too long (320 characters at most).",
+    "textEs-length": "The Spanish text is empty or too long (320 characters at most).",
+  };
+  if (e.code === "CONFIRM_REVIEW") return "Tick the review box to turn automatic sending on.";
+  return reasons[e.details?.reason] || e.message;
+}
+
+function autoInviteCard(a, sendingEnabled) {
+  if (!a) return "";
+  const state = a.enabled
+    ? `<p class="notice"><strong>On</strong> since ${esc(when(a.reviewedAt))}, turned on by ${esc(a.reviewedBy || "an administrator")}.${
+        a.paused
+          ? " <strong>Paused:</strong> the RSVP deadline has passed, so no invitation link is sent automatically any more."
+          : sendingEnabled
+            ? " Every household that texts SOPHIA is sent its invitation right after the welcome text."
+            : " Sending is switched off on the server, so nothing goes out until it is on."
+      }</p><button type="button" class="button outline" data-auto-off>Turn off</button>`
+    : `<p><strong>Off.</strong> Households that text SOPHIA wait for a batch from this page.${
+        a.paused ? " The RSVP deadline has passed, so it cannot send anything if turned on." : ""
+      }</p>`;
+  return `<form id="sms-auto-invite" class="card"><h2>Automatic invitation when someone texts SOPHIA</h2><p>The one exception to sending by hand: when this is on, a household that texts SOPHIA gets the welcome text and then its private RSVP link in its own language, without waiting for a batch. It is sent only when the phone matches exactly one household in Notion, that household has an active link, the head count on its row is valid, the RSVP deadline has not passed, and no invitation text has been sent to it already; otherwise nothing is sent and a notification says what to fix. The two texts may arrive in either order.</p>${state}<label>English text<textarea name="text" required maxlength="320">${esc(a.text)}</textarea></label><label>Spanish text<textarea name="textEs" required maxlength="320">${esc(a.textEs)}</textarea></label><p>Both must start with “Simply Soph Media:”, include STOP and <code>{link}</code>.</p><div data-auto-preview aria-live="polite"></div><label class="check"><input type="checkbox" name="confirm" required>I reviewed both texts; send them automatically to every household that texts SOPHIA from now on</label><p class="error" role="alert"></p><button type="submit" class="button burgundy">${a.enabled ? "Save the texts" : "Turn on"}</button></form>`;
 }
 
 async function openBatch(panel, id, reload) {
