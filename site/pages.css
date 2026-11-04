@@ -865,13 +865,7 @@ blockquote {
   .field-grid {
     grid-template-columns: 1fr;
   }
-  #share-panel {
-    grid-column: auto;
-    grid-row: auto;
-  }
-  .field-grid > #batch-toolbar {
-    grid-column: auto;
-  }
+
   .page-heading {
     margin-bottom: 24px;
   }
@@ -1347,48 +1341,53 @@ blockquote {
   min-height: 44px;
   padding: 8px 0;
 }
-/* The "Share by text" card fills the empty cell beside the Notion status
-   filter; it lives once, each row keeps only its link (site/admin.js
-   sharePanel). */
-#share-panel {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  padding: 16px 20px;
-  min-width: 0;
-  align-self: start;
-  grid-column: 2;
-  grid-row: 2 / span 2;
+/* Invitations, above the table: three filters in one row, then two cards of
+   equal height side by side: the batch actions and "Share by text"
+   (site/admin.js). Both stack in one column on a narrow screen. */
+#batch-row {
+  display: grid;
+  gap: 16px;
+  margin: 20px 0 28px;
 }
-/* The batch buttons take the cell under the Notion status filter, beside
-   the card, so the card never pushes them down. */
-.field-grid > #batch-toolbar {
-  grid-column: 1;
+@media (min-width: 53.1875em) {
+  .field-grid.filters-3 {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+  #batch-row {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+.tool-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px 24px;
+}
+.tool-card h3,
+.tool-card p {
   margin: 0;
-  align-self: end;
 }
-#share-panel .share-title {
+.tool-card .row-actions {
+  margin: 0;
+}
+.tool-card .hint {
+  margin-top: auto;
+}
+.tool-card-head {
   display: flex;
   align-items: center;
-  gap: 12px;
+  justify-content: space-between;
+  gap: 16px;
   flex-wrap: wrap;
-  font-weight: 600;
-  margin: 0;
 }
-#share-panel .share-title label {
+.tool-card-head label {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   margin: 0;
-  font-weight: 400;
 }
-#share-panel [data-share-words] {
-  margin: 8px 0;
-}
-#share-panel .row-actions {
-  margin: 0;
-}
-#share-panel .hint {
-  margin-bottom: 0;
+.tool-card-head select {
+  width: auto;
 }
 #mfa:not(:empty) {
   margin-top: 32px;
