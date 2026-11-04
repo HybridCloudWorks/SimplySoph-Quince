@@ -48,7 +48,9 @@ export async function communicationHistory(root) {
             ? "Published"
             : "Unread");
   const label = (row) =>
-    row.to || row.title || row.subject || row.name || row.kind || "Record";
+    (row.to || row.title || row.subject || row.name || row.kind || "Record") +
+    // The automatic SMS invitation after SOPHIA (server/sms.mjs).
+    (row.auto ? " · Automatic (texted SOPHIA)" : "");
   function render() {
     const search = root.querySelector('[name="search"]').value.toLowerCase(),
       selected = root.querySelector('[name="state"]').value;

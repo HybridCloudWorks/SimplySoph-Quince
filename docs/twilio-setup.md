@@ -33,6 +33,25 @@ Twilio only answers an opt-in keyword after a STOP, so a brand-new subscriber wo
 
 The opt-in reply in Twilio's Opt-Out Management was aligned with the registered text (with the Terms and Privacy links) on 2026-10-12, so both paths send the same words.
 
+## Automatic invitation after SOPHIA
+
+**Off by default.** When the family turns it on, a household that texts SOPHIA gets the welcome text and then its own private RSVP link by text, in its own language, without waiting for a batch. It is the one exception to sending by hand: the owner amended decision 7 of [v1/access-model.md](v1/access-model.md) on **November 3, 2026** for this one case (that record is kept as written; this note is the amendment).
+
+**Turning it on.** On the SMS page, the card **Automatic invitation when someone texts SOPHIA** shows the English and Spanish texts (editable; both must start with "Simply Soph Media:", include STOP and `{link}`, and the preview under them says the encoding and segment count as a batch preview does). Tick **I reviewed both texts; send them automatically to every household that texts SOPHIA from now on** and press **Turn on**. The card then says it is on, who turned it on and when. Any administrator may change it; every change is recorded in the audit log. **Turn off** stops it at once; the texts stay for next time.
+
+**What it checks before sending.** All of these must hold, otherwise nothing is sent and the event log records the reason (never the phone or the text):
+
+- the phone that texted SOPHIA is the Phone of exactly one household row in Notion;
+- that row's head count is valid (otherwise a notification asks the family to review it);
+- the household has an active private link (otherwise a notification says to issue its invitation first);
+- the RSVP deadline has not passed (the card says **Paused** from then on, and the switch does nothing);
+- SMS Opt Out is not ticked on the row, and the keyword receipt is bound to the row;
+- no invitation text with a link has been sent to the household already, so a second SOPHIA, or STOP and then SOPHIA, never sends one twice.
+
+The text is drafted and sent through the same path as a batch text: it appears under **Latest five texts** and in the SMS history labelled **Automatic (texted SOPHIA)**, Twilio's delivery status updates it, an uncertain result is never retried, and the household's Notion Status flips to Invited. If Notion cannot be read at that moment, nothing is sent: the household stays Subscribed and the family's next batch covers it.
+
+**Order of the two texts.** The website answers Twilio's webhook with the welcome text and sends the invitation through Twilio's API during that same request (Cloud Run may pause the service once the reply is written, so nothing can run after it). The two texts therefore leave within a second of each other and may arrive in either order, occasionally the invitation just before the welcome. That is expected.
+
 ## If something looks wrong
 
 - **Someone texted SOPHIA but shows "Hasn't texted SOPHIA yet":** the phone they texted from is not the Phone on their Notion row (or it lacks `+1`). Fix the row, then press **Match texted phones to their rows now**.
@@ -55,6 +74,7 @@ The opt-in reply in Twilio's Opt-Out Management was aligned with the registered 
 | Message content | Must start with `Simply Soph Media:` and contain `STOP` (`smsCompliantText()`); enforced at draft and review | Approved Content API template with one private-link variable |
 | Sending | Per text: review token, claim before the provider call, uncertain results never retried. Per batch (`confirmBatch`/`sendBatch`): typed count must equal the pending drafts; chunks of 10 per request with a 2-minute lease; stale or opted-out drafts are archived, never sent | One reviewed draft at a time |
 | Test to self | `sendTest`: any US/CA phone whose newest keyword is START; no household row | — |
+| Automatic invitation | `sendAutoInvite` in the inbound webhook, only while the reviewed setting (`site.sms.autoInvite`, `server/site-settings.mjs`) is on: one draft (`auto: true`, `campaignId: "auto-invite"`) dispatched through `send()`; skips are logged as `auto-invite.skipped` with a reason code | — |
 | Opt-out | Twilio Advanced Opt-Out replies; the app records STOP first, then mirrors to Notion | `STOP`/`BAJA`, local suppression first |
 | Callbacks | `POST /api/twilio/inbound`, `POST /api/twilio/status` | `POST /api/whatsapp/inbound`, `POST /api/whatsapp/status` |
 | Signature URL | `PUBLIC_ORIGIN` + fixed path (never the Host header), so it validates behind the Firebase Hosting rewrite. URLs must match exactly: no trailing slash, no query string | Same |
@@ -92,7 +112,7 @@ Find the live identifiers in `ops/event-resources.json`. Never put secret values
 ### Technical checks
 
 - An unsigned POST to each callback returns 403. A correctly signed but malformed POST returns 422 and writes nothing. Both are covered by the automated tests (`tests/sms.test.mjs`, `tests/sms-http.test.mjs`, `tests/application.test.mjs`).
-- Twilio times out after 15 s (error 11200). A START waits on a Twilio REST call and a Notion write before replying; watch **Monitor → Logs → Errors** after the first real guests subscribe.
+- Twilio times out after 15 s (error 11200). A START waits on a Twilio REST call and a Notion write before replying, and, while the automatic invitation is on, on one Notion read and one Twilio send more; watch **Monitor → Logs → Errors** after the first real guests subscribe.
 - Never click **Continue registration** on Twilio's A2P overview page: it deletes the approved campaign.
 
 ### Known limits

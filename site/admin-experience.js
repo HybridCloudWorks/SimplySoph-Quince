@@ -186,6 +186,7 @@ const noticeLinks = {
   rsvp: ["/admin/guests/", "Open invitations"],
   drift: ["/admin/guests/", "Open invitations"],
   sync: ["/admin/", "Open overview to retry"],
+  "sms-auto": ["/admin/updates/?tab=sms", "Open the SMS tab"],
   security: ["/admin/access/", "Open guest access"],
   photo: ["/admin/photos/", "Open review queue"],
   video: ["/admin/photos/", "Open review queue"],

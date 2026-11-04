@@ -49,7 +49,10 @@ async function fixture(options = {}) {
   const sms = createSms({
     ledger,
     webhook,
-    now: () => Date.parse("2026-09-28"),
+    now: options.now || (() => Date.parse("2026-09-28")),
+    ...(options.autoInvite && { autoInvite: options.autoInvite }),
+    ...(options.invitationsOpen && { invitationsOpen: options.invitationsOpen }),
+    ...(options.render && { render: options.render }),
     notion: {
       projectSmsConsent: async () => {
         projects++;
@@ -60,7 +63,10 @@ async function fixture(options = {}) {
         await options.beforeRead?.();
         return structuredClone(row);
       },
-      list: async () => [row],
+      list: async () => {
+        if (options.listFails) throw Error("notion down");
+        return options.rows ? options.rows() : [row];
+      },
       projectSmsOptOut: async () => {
         projects++;
         if (options.notionFails) throw Error();
@@ -68,10 +74,12 @@ async function fixture(options = {}) {
       },
     },
     transport: {
-      inboundTime: async () => options.inboundAt ?? Date.parse("2026-09-27"),
+      inboundTime: async () =>
+        (typeof options.inboundAt === "function" ? options.inboundAt() : options.inboundAt) ?? Date.parse("2026-09-27"),
       enabled: options.enabled !== false,
-      send: async () => {
+      send: async (m) => {
         sends++;
+        options.sent?.push(m);
         if (options.sendFails) throw options.sendFails === true ? Error("secret") : options.sendFails;
         return { state: "accepted", providerId: sid, provider: "twilio" };
       },
@@ -501,4 +509,165 @@ test("a STOP that lands between review and send wins inside the send transaction
   });
   await assert.rejects(() => f.sms.send("draft", p.reviewToken, "admin"), (e) => e.code === "SMS_OPTED_OUT");
   assert.equal(f.sends(), 0);
+});
+
+// The automatic invitation after SOPHIA (owner decision, November 3, 2026):
+// the reviewed setting on, every condition met, exactly one text goes out
+// through the batch path's send; otherwise nothing but the welcome.
+function autoInviteFixture(options = {}) {
+  const sent = [],
+    refreshed = [];
+  return fixture({
+    keywordConsent: false,
+    sent,
+    render: (d) => (d.link ? d.text.replaceAll("{link}", d.link) : d.text),
+    autoInvite: {
+      setting: (s) => s.site?.sms?.autoInvite,
+      name: (row) => row.name || "Household",
+      mintLink: (s, { row, invite, draftId, locale }) => {
+        s.invitationLinks ??= {};
+        s.invitationLinks["minted-" + draftId] = { householdId: row.id, generation: invite.generation, channel: "sms", draftId };
+        return "https://example.com" + (locale === "es" ? "/es" : "") + "/rsvp/#" + draftId;
+      },
+      onSent: async (ids) => {
+        refreshed.push(...ids);
+      },
+    },
+    ...options,
+  }).then((f) => Object.assign(f, { sent, refreshed }));
+}
+const autoSetting = {
+  enabled: true,
+  text: "Simply Soph Media: You're invited! RSVP: {link} Reply STOP to opt out.",
+  textEs: "Simply Soph Media: Confirma tu asistencia: {link} Responde STOP para cancelar.",
+  reviewedAt: 1,
+  reviewedBy: "organizer",
+};
+async function arm(f, { setting = autoSetting, invite = { active: true, generation: 1, locale: "es" } } = {}) {
+  f.row.validCapacity = true;
+  await f.ledger.transaction((s) => {
+    s.site = { sms: { autoInvite: setting } };
+    s.invitations = invite ? { [f.row.id]: { id: f.row.id, ...invite } } : {};
+  });
+}
+const sophia = (f, n = 1) =>
+  f.callback("inbound", { Body: "SOPHIA", OptOutType: "START", MessageSid: "SM" + String(n).repeat(32) });
+const autoDrafts = (s) => Object.values(s.smsDrafts).filter((d) => d.auto);
+const skipReasons = (s) => (s.eventLog || []).filter((e) => e.type === "auto-invite.skipped").map((e) => e.data.reason);
+
+test("auto-invite off: a SOPHIA gets the welcome and nothing else", async () => {
+  const f = await autoInviteFixture();
+  await arm(f, { setting: { ...autoSetting, enabled: false } });
+  const r = await sophia(f);
+  assert.match(r.binary.toString(), /<Message>Simply Soph Media: You&apos;re subscribed/);
+  const s = await f.ledger.read();
+  assert.equal(f.sends(), 0);
+  assert.equal(autoDrafts(s).length, 0);
+  assert.deepEqual(skipReasons(s), []);
+});
+
+test("auto-invite on: one text with the sealed link in the household's language, sent through the batch path, never twice", async () => {
+  // The clock moves on with each keyword text, so the SOPHIA after the STOP
+  // below is newer than it and counts as a re-subscribe.
+  let clock = Date.parse("2026-09-28");
+  const f = await autoInviteFixture({ now: () => clock, inboundAt: () => (clock += 3600000) - 1 });
+  await arm(f);
+  const r = await sophia(f);
+  // The welcome still goes back as TwiML.
+  assert.match(r.binary.toString(), /<Message>Simply Soph Media: You&apos;re subscribed/);
+  let s = await f.ledger.read();
+  const [d] = autoDrafts(s);
+  assert.equal(autoDrafts(s).length, 1);
+  assert.deepEqual(
+    [d.state, d.campaignId, d.directlySelected, d.groups, d.generation, d.householdId, d.actor],
+    ["accepted", "auto-invite", true, [], 1, f.row.id, "website"],
+  );
+  // Spanish (the invitation's locale), the link filled only in the sent text.
+  assert.equal(d.text, autoSetting.textEs);
+  assert.deepEqual(f.sent, [{ to: f.row.phone, text: autoSetting.textEs.replace("{link}", "https://example.com/es/rsvp/#" + d.id) }]);
+  assert.equal(s.invitationLinks["minted-" + d.id].draftId, d.id);
+  // The ledger states and events are the batch path's; the Status hook ran.
+  assert.ok(s.smsClaims[hash(JSON.stringify(["auto-invite", f.row.phone]))]);
+  assert.deepEqual(
+    s.eventLog.filter((e) => e.deliveryId === d.id).map((e) => e.type),
+    ["delivery.claimed", "delivery.accepted"],
+  );
+  assert.deepEqual(f.refreshed, [f.row.id]);
+  // The automatic text is no batch to confirm, but it is listed.
+  assert.deepEqual(f.sms.batches(s).map((b) => b.id), ["campaign"]);
+  // A second SOPHIA, then STOP and SOPHIA again: no second invitation.
+  await sophia(f, 2);
+  await f.callback("inbound", { Body: "STOP", OptOutType: "STOP", MessageSid: "SM" + "b".repeat(32) });
+  await sophia(f, 3);
+  s = await f.ledger.read();
+  assert.equal(f.sends(), 1);
+  assert.equal(autoDrafts(s).length, 1);
+  assert.deepEqual(skipReasons(s), ["ALREADY_INVITED", "ALREADY_INVITED"]);
+  // English when the invitation has no locale and WhatsApp Language is not Spanish.
+  const g = await autoInviteFixture();
+  await arm(g, { invite: { active: true, generation: 2 } });
+  await sophia(g);
+  assert.equal(autoDrafts(await g.ledger.read())[0].text, autoSetting.text);
+  assert.match(g.sent[0].text, /https:\/\/example\.com\/rsvp\/#/);
+  // Spanish from WhatsApp Language when the invitation says nothing.
+  const h = await autoInviteFixture();
+  h.row.whatsappLanguage = "es";
+  await arm(h, { invite: { active: true, generation: 1 } });
+  await sophia(h);
+  assert.equal(autoDrafts(await h.ledger.read())[0].text, autoSetting.textEs);
+});
+
+test("auto-invite skips, with a reason code only, when any condition fails; the welcome still goes back", async () => {
+  const cases = [
+    ["NO_ROW", {}, { rows: () => [] }],
+    ["PHONE_SHARED", {}, { rows: () => [{ id: "a", phone: "+14155552671" }, { id: "b", phone: "+14155552671" }] }],
+    ["CAPACITY_NEEDS_REVIEW", { capacity: false }, {}],
+    ["NO_ACTIVE_LINK", { invite: { active: false, generation: 1 } }, {}],
+    ["NO_ACTIVE_LINK", { invite: null }, {}],
+    ["INVITATIONS_CLOSED", {}, { invitationsOpen: () => false }],
+    ["SMS_OPTED_OUT", { optOut: true }, {}],
+    ["SMS_NOT_ENABLED", {}, { enabled: false }],
+    ["NOTION_UNAVAILABLE", {}, { listFails: true }],
+  ];
+  for (const [reason, tweak, options] of cases) {
+    const f = await autoInviteFixture(options);
+    await arm(f, tweak.invite !== undefined ? { invite: tweak.invite } : {});
+    if (tweak.capacity === false) f.row.validCapacity = false;
+    if (tweak.optOut) f.row.smsOptOut = true;
+    const r = await sophia(f);
+    assert.match(r.binary.toString(), /<Message>Simply Soph Media: You&apos;re subscribed/, reason);
+    const s = await f.ledger.read();
+    assert.equal(f.sends(), 0, reason);
+    assert.equal(autoDrafts(s).length, 0, reason);
+    assert.deepEqual(skipReasons(s), [reason]);
+    const event = s.eventLog.find((e) => e.type === "auto-invite.skipped");
+    assert.equal(JSON.stringify(event).includes("4155552671"), false, "no phone in the event");
+    // The family hears once about what it can fix, not about the rest.
+    const notes = Object.values(s.notifications || {}).filter((n) => n.kind === "sms-auto");
+    assert.equal(notes.length, ["CAPACITY_NEEDS_REVIEW", "NO_ACTIVE_LINK"].includes(reason) ? 1 : 0, reason);
+    if (notes.length) {
+      assert.equal(notes[0].householdId, f.row.id);
+      await sophia(f, 2);
+      assert.equal(Object.values((await f.ledger.read()).notifications).filter((n) => n.kind === "sms-auto").length, 1);
+    }
+  }
+});
+
+test("auto-invite: a Twilio refusal is recorded on the draft and reported once; a failing Status hook never blocks the reply", async () => {
+  const f = await autoInviteFixture({ sendFails: Object.assign(Error("no"), { code: "SMS_REJECTED", providerCode: 21610 }) });
+  await arm(f);
+  const r = await sophia(f);
+  assert.match(r.binary.toString(), /<Message>/);
+  const s = await f.ledger.read();
+  const [d] = autoDrafts(s);
+  assert.deepEqual([d.state, d.error, d.providerError], ["rejected", "SMS_REJECTED", 21610]);
+  assert.equal(Object.values(s.notifications).filter((n) => n.kind === "sms-auto").length, 1);
+  assert.deepEqual(f.refreshed, []);
+  const h = await autoInviteFixture();
+  await arm(h);
+  h.refreshed.push = () => {
+    throw Error("status refresh down");
+  };
+  assert.match((await sophia(h)).binary.toString(), /<Message>/);
+  assert.equal(autoDrafts(await h.ledger.read())[0].state, "accepted");
 });

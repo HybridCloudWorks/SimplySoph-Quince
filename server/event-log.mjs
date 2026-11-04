@@ -12,7 +12,9 @@ import { createHmac } from "node:crypto";
 //
 // Types: invitation.issued|opened|revoked, rsvp.submitted|updated,
 // delivery.claimed|accepted|failed|rejected|unknown|<provider status>,
-// consent.granted|revoked, role.<change>, notion.synced|sync_pending.
+// consent.granted|revoked, role.<change>, notion.synced|sync_pending,
+// auto-invite.skipped (the automatic SMS invitation after SOPHIA was not
+// sent; data.reason names why, server/sms.mjs).
 
 // About 3 MB at the cap. Older entries are compacted away in the ledger; the
 // mirrored log lines keep them for the Cloud Logging retention period.
