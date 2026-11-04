@@ -3716,3 +3716,37 @@ test("an emailed invitation batch and a text batch set the households just sent 
   assert.deepEqual([r.accepted, r.done], [1, true]);
   assert.equal(broken.sends(), 1);
 });
+
+test("admin guests and the SMS household list carry the Notion Status as notionStatus, '' when absent", async () => {
+  const f = await fixture();
+  // The fixture row has no Status column; a second row carries "Waiting".
+  f.extraRows.push({
+    id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    name: "Waiting family",
+    capacity: { adultsTeens: 1, kids: 0 },
+    email: "waiting@example.com",
+    phone: "+18175550199",
+    validCapacity: true,
+    archived: false,
+    status: "Waiting",
+    statusColumnPresent: true,
+    whatsappLanguage: "es",
+  });
+  const guests = (await f.admin("guests")).guests,
+    byName = Object.fromEntries(guests.map((g) => [g.name, g]));
+  assert.equal(byName["Test family"].notionStatus, "");
+  assert.equal(byName["Waiting family"].notionStatus, "Waiting");
+  // The link status keeps its own field: Notion's word never replaces it.
+  assert.equal(byName["Test family"].status, "opened");
+  assert.equal(byName["Waiting family"].status, "not-issued");
+  // "Share by text" needs the phone and the language sources per row.
+  assert.equal(byName["Waiting family"].phone, "+18175550199");
+  assert.equal(byName["Waiting family"].whatsappLanguage, "es");
+  const households = (await f.admin("audience", undefined, { channel: "sms" })).households;
+  assert.deepEqual(
+    Object.fromEntries(households.map((h) => [h.id, [h.status, h.notionStatus]])),
+    { [household]: ["no-phone", ""], "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa": ["waiting", "Waiting"] },
+  );
+  // Email audiences are unchanged: no household list at all.
+  assert.equal((await f.admin("audience")).households, undefined);
+});
