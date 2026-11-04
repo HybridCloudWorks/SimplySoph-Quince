@@ -51,6 +51,7 @@ import { event as eventInfo, ready } from "../site/content.mjs";
 import { previewRoutes } from "../site/preview-content.mjs";
 import { notionOutage } from "./notion.mjs";
 import { attendanceOf, dinnerSeats } from "./attendance.mjs";
+import { statusOf } from "./status.mjs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -60,7 +61,9 @@ import { createAccounts, accountActive, rosterMatch } from "./accounts.mjs";
 // in site/api-contract.mjs, and scripts/deploy-hosting.mjs refuses to publish
 // pages that need more than the live API reports. 1: the API of the round 2
 // review (the clock, channels, the note's audience, the table card, …).
-export const apiVersion = 1;
+// 2: POST /api/admin/status/sync ("Check statuses now" on Invitations) and
+// the schema action's { added, options } answer.
+export const apiVersion = 2;
 const events = ["ceremony", "dinner", "dance"];
 const safeText = (s, max = 1000) => {
   if (
@@ -1117,6 +1120,63 @@ export function createApplication({
       return { removed: remove.length, pending: flag.length };
     });
   }
+  // Keeps Notion's Status column (server/status.mjs) in step with the ledger:
+  // every non-archived row is read fresh, its status computed, and only rows
+  // whose Status differs are written, at most `cap` per run and none after
+  // `until`. Rows Notion edited in the last 2 minutes are skipped, like the
+  // drift check: a write of ours, or a family edit still in progress. The
+  // first Notion failure ends the run with the counts so far and its code; the
+  // next run carries on. Nothing here sends a message to a guest.
+  async function reconcileStatuses({ cap = 25, until = Infinity } = {}) {
+    const started = now();
+    const rows = (await notion.list({ fresh: true })).filter((r) => !r.archived);
+    const result = { checked: 0, updated: 0, skipped: 0 };
+    if (rows.some((r) => r.statusColumnPresent === false))
+      return { ...result, skipped: rows.length, error: "NOTION_STATUS_COLUMN_MISSING" };
+    const s = await ledger.read();
+    for (const row of rows) {
+      if (Date.parse(row.lastEdited) >= started - 120000) {
+        result.skipped++;
+        continue;
+      }
+      result.checked++;
+      const status = statusOf(s, row);
+      if (status === row.status) continue;
+      if (result.updated >= cap || Date.now() > until) {
+        result.skipped++;
+        continue;
+      }
+      try {
+        await notion.projectStatus(row.id, status);
+      } catch (e) {
+        return { ...result, error: e.code || "FAILED" };
+      }
+      result.updated++;
+    }
+    return result;
+  }
+  // Right after a send: the Status of the households just sent to, best
+  // effort. A Notion failure is logged by code only and never changes the
+  // send's result; the scheduled drain catches up.
+  async function refreshStatuses(householdIds) {
+    const ids = [...new Set(householdIds.filter((id) => typeof id === "string"))];
+    if (!ids.length) return;
+    try {
+      const s = await ledger.read();
+      for (const id of ids) {
+        const row = await notion.read(id, { fresh: true });
+        if (row.archived || row.statusColumnPresent === false) continue;
+        const status = statusOf(s, row);
+        if (status !== row.status) await notion.projectStatus(id, status);
+      }
+    } catch (e) {
+      log({ severity: "WARNING", message: "status refresh", code: e.code || "FAILED" });
+    }
+  }
+  // Households whose drafts in one batch were attempted since `since`: the
+  // chunk a send request just worked through.
+  const attemptedSince = (drafts, since) =>
+    drafts.filter((d) => d && (d.attemptAt ?? d.attemptedAt ?? 0) >= since).map((d) => d.householdId);
   // Scheduled catch-up for projections that failed earlier (Notion outage,
   // rate limit). Each step is bounded and independent: one failing step never
   // blocks the others, and nothing here sends a message to a guest.
@@ -1132,6 +1192,7 @@ export function createApplication({
       whatsapp: () => whatsapp.retrySync({ until }),
       planning: () => planning.retryPending({ until }),
       drift: checkDrift,
+      status: () => reconcileStatuses({ until }),
       admins: pruneAdmins,
       // Privacy's "a week after the celebration" (P5-04), also run by the
       // media job: whichever scheduled job is set up keeps the promise.
@@ -2849,10 +2910,19 @@ export function createApplication({
       if (path === "/api/admin/schema" && method === "POST") {
         // Changes the Notion database structure: owners only.
         if (!ownerSession(session)) throw error(403, "OWNER_REQUIRED");
-        return { added: await notion.prepareSchema() };
+        // { added: [columns], options: { column: [option names] } }; an older
+        // adapter answered with the column list alone.
+        const prepared = await notion.prepareSchema();
+        return Array.isArray(prepared) ? { added: prepared, options: {} } : prepared;
       }
       if (path === "/api/admin/sync" && method === "POST")
         return retryPendingRsvps({ includeFailed: true });
+      // "Check statuses now" on Invitations: the drain's status step with a
+      // larger cap. Any administrator; it writes only the Status column.
+      if (path === "/api/admin/status/sync" && method === "POST") {
+        await ledger.transaction((s) => audit(s, session.actor, "status-sync", "notion", now()));
+        return reconcileStatuses({ cap: 200 });
+      }
       // NOTION-8: the admin decides one household's difference. "website" writes
       // the website's answer to Notion again; "notion" keeps Notion's version and
       // stops reporting this difference (a new, different one is reported).
@@ -3309,7 +3379,9 @@ export function createApplication({
         return whatsapp.review(req.query?.id);
       if (path === "/api/admin/whatsapp/send" && method === "POST") {
         if (body.confirm !== true) throw error(422, "CONFIRM_RECIPIENT");
-        return whatsapp.send(body.id, body.reviewToken, session.actor);
+        const result = await whatsapp.send(body.id, body.reviewToken, session.actor);
+        await refreshStatuses([(await ledger.read()).whatsappDrafts?.[body.id]?.householdId]);
+        return result;
       }
       if (path === "/api/admin/whatsapp/sync" && method === "POST")
         return whatsapp.retrySync();
@@ -3342,8 +3414,15 @@ export function createApplication({
       }
       if (path === "/api/admin/sms/batch/confirm" && method === "POST")
         return sms.confirmBatch(body.id, body.count, session.actor);
-      if (path === "/api/admin/sms/batch/send" && method === "POST")
-        return sms.sendBatch(body.id, session.actor);
+      if (path === "/api/admin/sms/batch/send" && method === "POST") {
+        const since = now();
+        const result = await sms.sendBatch(body.id, session.actor);
+        const drafts = Object.values((await ledger.read()).smsDrafts || {}).filter(
+          (d) => d.campaignId === body.id && !d.test,
+        );
+        await refreshStatuses(attemptedSince(drafts, since));
+        return result;
+      }
       if (path === "/api/admin/sms/batch/cancel" && method === "POST")
         return sms.cancelBatch(body.id, session.actor);
       if (path === "/api/admin/sms/sync" && method === "POST")
@@ -3358,8 +3437,14 @@ export function createApplication({
         return batches.detail(ctx.state, req.query?.id, (c) => unseal(c, key));
       if (path === "/api/admin/mail/batch/confirm" && method === "POST")
         return batches.confirm(body, session.actor);
-      if (path === "/api/admin/mail/batch/send" && method === "POST")
-        return batches.send(body, session.actor);
+      if (path === "/api/admin/mail/batch/send" && method === "POST") {
+        const since = now();
+        const result = await batches.send(body, session.actor);
+        const s = await ledger.read();
+        const drafts = (s.mailBatches?.[body.id]?.draftIds || []).map((id) => s.outbox[id]);
+        await refreshStatuses(attemptedSince(drafts, since));
+        return result;
+      }
       if (path === "/api/admin/mail/batch/cancel" && method === "POST")
         return batches.cancel(body, session.actor);
       if (path === "/api/admin/mail/preview" && method === "GET") {

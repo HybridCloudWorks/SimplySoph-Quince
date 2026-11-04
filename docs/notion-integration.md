@@ -20,6 +20,19 @@ The API commits a response in the private durable Google ledger before acknowled
 
 The drain also compares each answered household's Notion RSVP and head counts with the website's answer. A difference is reported once in Notifications and shown on Invitations, where an admin keeps Notion's version or writes the website's answer again. Dashboard totals, seating and reminders use the answer the family goes by: the website's, or Notion's for phone answers and kept differences. Original Notion source rows are preserved.
 
+## Status column
+
+`Status` is a select column the website keeps up to date for every household, so the family can see at a glance where things stand without opening the admin pages. Its five values, and the rules behind them in the order they are tried (the first that fits wins):
+
+1. **Missing**: the row has no phone number.
+2. **Attending** or **Not Attending**: the household has answered, on the website or by Yes/No typed into the RSVP column.
+3. **Invited**: an invitation or reminder was sent on any channel (an email the mail service accepted, or a text or WhatsApp message the provider took), under any link generation. Tests to the organizer's own phone do not count.
+4. **Waiting**: everything else, including a household whose link exists but was never sent.
+
+The website owns this column: a value changed by hand is set back at the next check. It is updated every 10 minutes by the scheduled drain (up to 25 rows a run, skipping rows edited in the last 2 minutes), right after an RSVP is written (in the same write as the answer), right after an emailed invitation batch, a text batch or a WhatsApp message is sent (best effort; the drain catches up if Notion is down), and from **Check statuses now** on Admin → Invitations, which checks every household and says how many it updated. None of these sends anything to a guest.
+
+The family created the column with the Missing, Invited and Attending options. The owner presses **Prepare RSVP columns in Notion** on the Overview once: it adds the two options the website also needs, **Waiting** (yellow) and **Not Attending** (red), keeping the existing options and their colors exactly as they are. Until the column exists, the website writes no status. If the website writes a status before the owner has pressed the button, Notion creates that option with a default color; the button then leaves it as it is.
+
 ## Checking the database's columns
 
 `npm run notion:inspect` reads the database's structure (its data sources and columns, never guest rows) and saves it to `work/notion/schema.json`, which git ignores. Run it when a column may have been renamed or the website reports a schema problem, and compare the result with the columns above. It needs the website's Notion token and the database ID or URL. In PowerShell, take the token from Secret Manager rather than pasting it:
