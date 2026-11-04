@@ -32,7 +32,7 @@ const m = milestones({ deadline: event.deadline, site: celebration });
 const at = (iso) => Date.parse(iso);
 
 test("boundary instants come from the inputs, in Fort Worth time", () => {
-  assert.equal(m.deadline, at("2026-11-15T23:59:00-06:00"));
+  assert.equal(m.deadline, at("2026-12-01T23:59:00-06:00"));
   assert.equal(m.dayStart, at("2027-01-15T00:00:00-06:00"));
   assert.equal(m.ceremonyStart, at("2027-01-15T16:00:00-06:00"));
   assert.equal(m.ceremonyEnd, at("2027-01-15T17:00:00-06:00"));
@@ -80,7 +80,7 @@ test("the party upload window: from the ceremony to the end of January 17", () =
 test("the clock walk from the review, phase by phase", () => {
   const walk = {
     "2026-10-17T10:00:00-05:00": "rsvp-open",
-    "2026-11-08T12:00:00-06:00": "rsvp-open",
+    "2026-11-24T12:00:00-06:00": "rsvp-open",
     "2027-01-08T12:00:00-06:00": "rsvp-closed",
     "2027-01-15T09:00:00-06:00": "day-of",
     "2027-01-15T16:30:00-06:00": "live",
@@ -171,7 +171,7 @@ test("a long wait is clamped so setTimeout cannot fire at once", () => {
 });
 
 test("the server's clock wins, measured at the request midpoint", () => {
-  const server = at("2026-11-15T23:58:00-06:00");
+  const server = at("2026-12-01T23:58:00-06:00");
   // A device 2 minutes fast, with a 200 ms round trip.
   const r = clockOffset({ before: server + 120000 - 100, after: server + 120000 + 100, server: new Date(server).toISOString() });
   assert.equal(r.offset, -120000);
@@ -188,7 +188,7 @@ test("without a confirmed reception end, the evening ends at the next local midn
 
 test("settings out of order or without an offset fail loudly instead of showing the wrong state", () => {
   assert.throws(() => milestones({ deadline: "2027-01-20T00:00:00-06:00", site: celebration }), /out of order/);
-  assert.throws(() => milestones({ deadline: "2026-11-15T23:59:00", site: celebration }), /explicit offset/);
+  assert.throws(() => milestones({ deadline: "2026-12-01T23:59:00", site: celebration }), /explicit offset/);
   assert.throws(() => milestones({ deadline: event.deadline, site: celebration }, { shareFrom: "noon" }), /shareFrom/);
   assert.throws(() => milestones({ deadline: event.deadline, site: celebration }, { uploadDays: 0 }), /uploadDays/);
   assert.throws(

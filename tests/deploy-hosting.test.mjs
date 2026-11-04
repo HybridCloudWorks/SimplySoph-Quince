@@ -105,7 +105,7 @@ test('publishing refuses unless the live API reports the contract these pages ne
   assert.equal(await assertLiveApi('https://example.org', {fetchImpl: config({apiVersion: 3}), needs: 2}), 3);
   assert.deepEqual(asked, ['https://example.org/api/config', 'https://example.org/api/config']);
   // Revision 00031 answers /api/config without apiVersion.
-  await assert.rejects(assertLiveApi('https://example.org', {fetchImpl: config({live: true, deadline: '2026-11-16T05:59:00Z'}), needs: 1}),
+  await assert.rejects(assertLiveApi('https://example.org', {fetchImpl: config({live: true, deadline: '2026-12-02T05:59:00Z'}), needs: 1}),
     (e) => /reports no apiVersion/.test(e.message) && first.test(e.message));
   await assert.rejects(assertLiveApi('https://example.org', {fetchImpl: config({apiVersion: 1}), needs: 2}),
     (e) => /is apiVersion 1, and these pages need 2/.test(e.message) && first.test(e.message));

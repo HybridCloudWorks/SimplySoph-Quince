@@ -20,7 +20,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 // The phases the site goes through, at the times the owner re-publishes and
 // past every date the tests' fixtures use.
 const instants = [
-  "2026-11-16T10:00:00-06:00", // RSVPs closed: the first re-publish
+  "2026-12-02T10:00:00-06:00", // RSVPs closed: the first re-publish
   "2027-01-15T15:30:00-06:00", // the day itself, before the ceremony and the upload window
   "2027-01-15T21:15:00-06:00", // party night, inside the upload window
   "2027-01-16T10:00:00-06:00", // the morning after: the second re-publish, still in the window

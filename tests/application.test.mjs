@@ -2911,7 +2911,7 @@ test("an RSVP receipt repeats the answer for the invited events and how to chang
   assert.ok(html.includes(">Ceremony</td>") && html.includes(">1 adult/teen</td>"));
   assert.ok(html.includes(">Dinner</td>") && html.includes(">2 adults/teens, 1 child</td>"));
   assert.ok(!html.includes("Reception"));
-  assert.ok(html.includes("You can change it until Sunday, November 15, 2026"));
+  assert.ok(html.includes("You can change it until Tuesday, December 1, 2026"));
   assert.ok(html.includes("open your invitation link again, from the email or message we sent you"));
   // The private link is not stored, so there is no button to the bare code form.
   assert.ok(!html.includes(origin + "/rsvp/") && html.includes(origin + "/details/"));
@@ -3418,7 +3418,7 @@ test("after the RSVP deadline no text or typed email with a private RSVP link is
   });
   f.row.phone = "+18175550100";
   await keywordOptIn(f, f.row.phone);
-  const deadline = Date.parse("2026-11-15T23:59:00-06:00");
+  const deadline = Date.parse("2026-12-01T23:59:00-06:00");
   const linkText = "Simply Soph Media: Your family's private RSVP link: {link} Reply STOP to opt out.";
   const draft = (requestId, text, channel = "sms") =>
     f.admin("mail/batch-draft", { requestId, groups: [], ids: [household], subject: "RSVP", text, channel });

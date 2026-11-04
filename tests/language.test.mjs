@@ -264,7 +264,7 @@ const english = /\b(?:the|your|you|please|with|our|we|will|here|this|that|and|fo
 // ---- Every email a household or a guest receives, rendered in both languages ----
 const people = { ceremony: { adultsTeens: 2, kids: 1 }, dinner: { adultsTeens: 2, kids: 0 }, dance: { adultsTeens: 0, kids: 0 } };
 const nobody = { ceremony: { adultsTeens: 0, kids: 0 }, dinner: { adultsTeens: 0, kids: 0 }, dance: { adultsTeens: 0, kids: 0 } };
-const deadline = "2026-11-15T23:59:00-06:00";
+const deadline = "2026-12-01T23:59:00-06:00";
 // The way the server composes them (emails/templates.mjs householdEmail, used
 // by server/application.mjs), from the event settings and the deadline.
 function emails(locale) {
