@@ -67,6 +67,9 @@ async function fixture(options = {}) {
     async prepareSchema() {
       return [];
     },
+    async projectStatus() {
+      if (failing) throw { code: "NOTION_UNAVAILABLE" };
+    },
   };
   const mailer = {
     configured: true,
@@ -2908,7 +2911,7 @@ test("an RSVP receipt repeats the answer for the invited events and how to chang
   assert.ok(html.includes(">Ceremony</td>") && html.includes(">1 adult/teen</td>"));
   assert.ok(html.includes(">Dinner</td>") && html.includes(">2 adults/teens, 1 child</td>"));
   assert.ok(!html.includes("Reception"));
-  assert.ok(html.includes("You can change it until Sunday, November 15, 2026"));
+  assert.ok(html.includes("You can change it until Tuesday, December 1, 2026"));
   assert.ok(html.includes("open your invitation link again, from the email or message we sent you"));
   // The private link is not stored, so there is no button to the bare code form.
   assert.ok(!html.includes(origin + "/rsvp/") && html.includes(origin + "/details/"));
@@ -3415,7 +3418,7 @@ test("after the RSVP deadline no text or typed email with a private RSVP link is
   });
   f.row.phone = "+18175550100";
   await keywordOptIn(f, f.row.phone);
-  const deadline = Date.parse("2026-11-15T23:59:00-06:00");
+  const deadline = Date.parse("2026-12-01T23:59:00-06:00");
   const linkText = "Simply Soph Media: Your family's private RSVP link: {link} Reply STOP to opt out.";
   const draft = (requestId, text, channel = "sms") =>
     f.admin("mail/batch-draft", { requestId, groups: [], ids: [household], subject: "RSVP", text, channel });
@@ -3560,4 +3563,190 @@ test("saving event settings or an announcement warns about retired Spanish words
   assert.ok(posted.warnings.some((w) => /^Uses tú .* speaks to the family \(ustedes\)/.test(w.note)));
   const clean = await f.admin("updates", { title: "Hi", text: "See you soon.", titleEs: "Hola", textEs: "Los esperamos pronto." });
   assert.deepEqual(clean.warnings, []);
+});
+
+// Notion's Status column (server/status.mjs): the drain's status step, the
+// Invitations button and the writes right after a send.
+const statusFixture = async (options = {}) => {
+  const writes = [];
+  const f = await fixture({
+    verifyScheduler: async () => true,
+    mailSleep: async () => {},
+    ...options,
+    notion: {
+      async projectStatus(id, status) {
+        if (options.statusFailure) throw { code: options.statusFailure };
+        writes.push([id, status]);
+      },
+      ...options.notion,
+    },
+  });
+  return { ...f, writes };
+};
+const statusRow = (n, extra = {}) => ({
+  id: `aaaaaaaa-0000-4000-8000-${String(n).padStart(12, "0")}`,
+  name: "Household " + n,
+  capacity: { adultsTeens: 2, kids: 0 },
+  email: "",
+  phone: "+1817555" + String(n).padStart(4, "0"),
+  validCapacity: true,
+  archived: false,
+  status: "",
+  ...extra,
+});
+
+test("the drain keeps Notion's Status column in step: only differing rows are written, recent edits and archived rows are left", async () => {
+  const f = await statusFixture();
+  // The fixture household has no phone: Missing. Then a row that is already
+  // right, one Notion edited a minute ago, one archived, and one waiting.
+  f.extraRows.push(
+    statusRow(1, { status: "Waiting" }),
+    statusRow(2, { lastEdited: new Date(f.now() - 60000).toISOString() }),
+    statusRow(3, { archived: true }),
+    statusRow(4, { lastEdited: new Date(f.now() - 600000).toISOString() }),
+  );
+  assert.deepEqual((await drain(f)).status, { checked: 3, updated: 2, skipped: 1 });
+  assert.deepEqual(f.writes, [
+    [household, "Missing"],
+    [statusRow(4).id, "Waiting"],
+  ]);
+  assert.equal(f.sends(), 0, "nothing is sent to a guest");
+  // The rules: a text the provider took makes a household Invited; an answer
+  // on the website or in Notion makes it Attending or Not Attending.
+  f.writes.length = 0;
+  f.row.phone = "+18175550100";
+  f.row.status = "Missing";
+  await f.ledger.transaction((s) => {
+    s.smsDrafts = { d1: { id: "d1", householdId: statusRow(4).id, state: "accepted", acceptedAt: 1 } };
+    s.whatsappDrafts = { w1: { id: "w1", householdId: statusRow(1).id, state: "unknown" } };
+  });
+  f.extraRows.push(statusRow(5, { invitationStatus: "No", status: "Invited" }));
+  await drain(f);
+  assert.deepEqual(f.writes, [
+    [household, "Waiting"],
+    [statusRow(1).id, "Invited"],
+    [statusRow(4).id, "Invited"],
+    [statusRow(5).id, "Not Attending"],
+  ]);
+  f.writes.length = 0;
+  await f.guest("rsvp", f.input(), { "idempotency-key": "status-rsvp-1" });
+  await drain(f);
+  assert.ok(f.writes.some(([id, status]) => id === household && status === "Attending"));
+  // A hand-typed value is set back at the next check.
+  f.writes.length = 0;
+  f.row.status = "Waiting";
+  await drain(f);
+  assert.deepEqual(f.writes.filter(([id]) => id === household), [[household, "Attending"]]);
+});
+
+test("the drain's status step writes at most 25 rows a run, stops at a Notion failure and never blocks the other steps", async () => {
+  const f = await statusFixture();
+  for (let n = 1; n <= 40; n++) f.extraRows.push(statusRow(n));
+  const first = await drain(f);
+  assert.deepEqual(first.status, { checked: 41, updated: 25, skipped: 16 });
+  assert.equal(f.writes.length, 25);
+  // An outage ends the step with the counts so far; the drift and admin
+  // checks still run, and the next run carries on.
+  const out = await statusFixture({ statusFailure: "NOTION_503" });
+  out.extraRows.push(statusRow(1));
+  const r = await drain(out);
+  // The first row (no phone: Missing) fails to write, so the step ends there.
+  assert.deepEqual(r.status, { checked: 1, updated: 0, skipped: 0, error: "NOTION_503" });
+  assert.deepEqual(r.drift, { differing: 0 });
+  assert.deepEqual(r.admins, { removed: 0 });
+  // Until the family has the column, nothing is written.
+  const none = await statusFixture();
+  none.extraRows.push(statusRow(1, { statusColumnPresent: false }));
+  assert.deepEqual((await drain(none)).status, { checked: 0, updated: 0, skipped: 2, error: "NOTION_STATUS_COLUMN_MISSING" });
+  assert.deepEqual(none.writes, []);
+});
+
+test("Check statuses now: any administrator runs the same check with a larger cap, and it is audited", async () => {
+  const f = await statusFixture();
+  for (let n = 1; n <= 30; n++) f.extraRows.push(statusRow(n));
+  const { as } = await adminSignIn(f, "test@example.com");
+  assert.deepEqual(await as("admin/status/sync", {}), { checked: 31, updated: 31, skipped: 0 });
+  assert.equal(f.writes.length, 31);
+  const s = await f.ledger.read();
+  const entry = s.audit.find((a) => a.action === "status-sync");
+  assert.ok(entry && typeof entry.actor === "string" && entry.actor.length, "audited with its actor");
+  assert.equal(entry.id, "notion");
+  assert.equal(f.sends(), 1, "only the admin's own sign-in link was emailed");
+  await assert.rejects(() => f.guest("admin/status/sync", {}), (e) => e.status === 401 || e.status === 403);
+});
+
+test("an emailed invitation batch and a text batch set the households just sent to Invited at once; a Notion failure never fails the send", async () => {
+  const f = await statusFixture();
+  f.row.phone = "+18175550100";
+  await f.admin("mail/invitation-batch", { requestId: batchId(80), type: "invitation", ids: [household] });
+  await f.admin("mail/batch/confirm", { id: batchId(80), count: 1 });
+  assert.equal((await f.admin("mail/batch/send", { id: batchId(80) })).accepted, 1);
+  assert.deepEqual(f.writes, [[household, "Invited"]]);
+
+  const sent = [];
+  const t = await statusFixture({
+    smsTransport: {
+      enabled: true,
+      async send(m) {
+        sent.push(m);
+        return { state: "accepted", provider: "twilio", providerId: "SM" + String(sent.length).repeat(32) };
+      },
+    },
+  });
+  t.row.phone = "+18175550100";
+  await keywordOptIn(t, t.row.phone);
+  const id = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  await t.admin("mail/batch-draft", {
+    requestId: id,
+    groups: [],
+    ids: [household],
+    subject: "Text",
+    text: "Simply Soph Media: RSVP at {link} Reply STOP to opt out.",
+    channel: "sms",
+  });
+  await t.admin("sms/batch/confirm", { id, count: 1 });
+  assert.equal((await t.admin("sms/batch/send", { id })).accepted, 1);
+  assert.deepEqual(t.writes, [[household, "Invited"]]);
+
+  const broken = await statusFixture({ statusFailure: "NOTION_UNAVAILABLE" });
+  broken.row.phone = "+18175550100";
+  await broken.admin("mail/invitation-batch", { requestId: batchId(81), type: "invitation", ids: [household] });
+  await broken.admin("mail/batch/confirm", { id: batchId(81), count: 1 });
+  const r = await broken.admin("mail/batch/send", { id: batchId(81) });
+  assert.deepEqual([r.accepted, r.done], [1, true]);
+  assert.equal(broken.sends(), 1);
+});
+
+test("admin guests and the SMS household list carry the Notion Status as notionStatus, '' when absent", async () => {
+  const f = await fixture();
+  // The fixture row has no Status column; a second row carries "Waiting".
+  f.extraRows.push({
+    id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    name: "Waiting family",
+    capacity: { adultsTeens: 1, kids: 0 },
+    email: "waiting@example.com",
+    phone: "+18175550199",
+    validCapacity: true,
+    archived: false,
+    status: "Waiting",
+    statusColumnPresent: true,
+    whatsappLanguage: "es",
+  });
+  const guests = (await f.admin("guests")).guests,
+    byName = Object.fromEntries(guests.map((g) => [g.name, g]));
+  assert.equal(byName["Test family"].notionStatus, "");
+  assert.equal(byName["Waiting family"].notionStatus, "Waiting");
+  // The link status keeps its own field: Notion's word never replaces it.
+  assert.equal(byName["Test family"].status, "opened");
+  assert.equal(byName["Waiting family"].status, "not-issued");
+  // "Share by text" needs the phone and the language sources per row.
+  assert.equal(byName["Waiting family"].phone, "+18175550199");
+  assert.equal(byName["Waiting family"].whatsappLanguage, "es");
+  const households = (await f.admin("audience", undefined, { channel: "sms" })).households;
+  assert.deepEqual(
+    Object.fromEntries(households.map((h) => [h.id, [h.status, h.notionStatus]])),
+    { [household]: ["no-phone", ""], "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa": ["waiting", "Waiting"] },
+  );
+  // Email audiences are unchanged: no household list at all.
+  assert.equal((await f.admin("audience")).households, undefined);
 });

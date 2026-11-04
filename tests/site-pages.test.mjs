@@ -157,8 +157,8 @@ test("the home page puts the name, date and RSVP before the schedule, words and 
   // home page speaks to the household (ustedes), and the deadline sentence is
   // "Please RSVP by" (site/lexicon.mjs).
   for (const [file, deadline, note] of [
-    ["index.html", "Please RSVP by Sunday, November 15", 'href="/guestbook/">Leave Sophia a note'],
-    ["es/index.html", "Por favor, confirmen su asistencia a más tardar el domingo 15 de noviembre", 'href="/es/guestbook/">Déjenle un mensaje a Sophia'],
+    ["index.html", "Please RSVP by Tuesday, December 1", 'href="/guestbook/">Leave Sophia a note'],
+    ["es/index.html", "Por favor, confirmen su asistencia a más tardar el martes 1 de diciembre", 'href="/es/guestbook/">Déjenle un mensaje a Sophia'],
   ]) {
     const html = main(await page(file));
     const at = (needle) => {
@@ -265,7 +265,7 @@ test("every page has a title, link preview and icons, and stays out of search", 
     } else {
       assert.equal(og(html, "og:title"), es ? "Los XV de Sophia · 15 de enero de 2027" : "Sophia’s Quinceañera · January 15, 2027");
       if (route === "" || route === "rsvp")
-        assert.match(og(html, "og:description"), es ? /confirmen su asistencia a más tardar el domingo 15 de noviembre de 2026/ : /Please RSVP by Sunday, November 15, 2026/);
+        assert.match(og(html, "og:description"), es ? /confirmen su asistencia a más tardar el martes 1 de diciembre de 2026/ : /Please RSVP by Tuesday, December 1, 2026/);
       else assert.doesNotMatch(og(html, "og:description"), /RSVP|confirm/i, file);
     }
     assert.equal(html.match(/<meta name="description" content="([^"]+)">/)[1], og(html, "og:description"));
@@ -394,7 +394,7 @@ test("each “soon” promise is said once, in today's words, and the venue note
       const html = main(await page(`${lang}${route}/index.html`));
       // Once on the page (the venue pages also carry it for the live redraw).
       assert.equal(html.split(sentence).length - 1, ["ceremony", "reception"].includes(route) ? 2 : 1, `${lang}${route}`);
-      assert.doesNotMatch(html, /a más tardar el (?!domingo 15 de noviembre)|here by /, `${lang}${route}: no date invented`);
+      assert.doesNotMatch(html, /a más tardar el (?!martes 1 de diciembre)|here by /, `${lang}${route}: no date invented`);
     }
   // The parking promise is its own line now, not part of the venue notes,
   // and marked as a promise, which ends with the party (L10N-10).
@@ -423,8 +423,8 @@ test("the Schedule says the two places are a drive apart, without a drive time, 
 
 test("Questions links the RSVP while it is open and has the closed answer ready for the deadline", async () => {
   for (const [lang, open, closed] of [
-    ["", /<p data-rsvp-while="open">By Sunday, November 15, 2026\. Open the invitation link we sent your family, or go to <a href="\/rsvp\/">RSVP<\/a>\.<\/p>/, /<p data-rsvp-while="closed" hidden>RSVPs closed on Sunday, November 15, 2026\. To reply or change your RSVP now, please <a href="\/contact\/">contact us<\/a>\.<\/p>/],
-    ["es/", /<p data-rsvp-while="open">A más tardar el domingo 15 de noviembre de 2026\. Abre el enlace de invitación que le enviamos a tu familia, o ve a <a href="\/es\/rsvp\/">Confirmar asistencia<\/a>\.<\/p>/, /<p data-rsvp-while="closed" hidden>El plazo para confirmar terminó el domingo 15 de noviembre de 2026\. Para confirmar tu asistencia o cambiar tu respuesta, <a href="\/es\/contact\/">escríbenos<\/a>\.<\/p>/],
+    ["", /<p data-rsvp-while="open">By Tuesday, December 1, 2026\. Open the invitation link we sent your family, or go to <a href="\/rsvp\/">RSVP<\/a>\.<\/p>/, /<p data-rsvp-while="closed" hidden>RSVPs closed on Tuesday, December 1, 2026\. To reply or change your RSVP now, please <a href="\/contact\/">contact us<\/a>\.<\/p>/],
+    ["es/", /<p data-rsvp-while="open">A más tardar el martes 1 de diciembre de 2026\. Abre el enlace de invitación que le enviamos a tu familia, o ve a <a href="\/es\/rsvp\/">Confirmar asistencia<\/a>\.<\/p>/, /<p data-rsvp-while="closed" hidden>El plazo para confirmar terminó el martes 1 de diciembre de 2026\. Para confirmar tu asistencia o cambiar tu respuesta, <a href="\/es\/contact\/">escríbenos<\/a>\.<\/p>/],
   ]) {
     const html = main(await page(`${lang}faq/index.html`));
     assert.match(html, open, lang);

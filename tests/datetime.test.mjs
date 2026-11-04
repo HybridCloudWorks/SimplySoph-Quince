@@ -7,14 +7,14 @@ import { date, dayMonth, time, at, timeRange, nextDayNote, capitalize, parts } f
 const ceremony = "2027-01-15T16:00:00-06:00",
   dinnerEnd = "2027-01-15T19:30:00-06:00",
   receptionEnd = "2027-01-16T00:30:00-06:00",
-  deadline = "2026-11-15T23:59:00-06:00";
+  deadline = "2026-12-01T23:59:00-06:00";
 
 test("long dates: English with commas, Spanish lowercase with 'de'", () => {
   assert.equal(date(ceremony, "en"), "Friday, January 15, 2027");
   assert.equal(date(ceremony, "es"), "viernes 15 de enero de 2027");
   assert.equal(capitalize(date(ceremony, "es")), "Viernes 15 de enero de 2027");
-  assert.equal(date(deadline, "en", { year: false }), "Sunday, November 15");
-  assert.equal(date(deadline, "es", { year: false }), "domingo 15 de noviembre");
+  assert.equal(date(deadline, "en", { year: false }), "Tuesday, December 1");
+  assert.equal(date(deadline, "es", { year: false }), "martes 1 de diciembre");
   assert.equal(date(ceremony, "en", { weekday: false }), "January 15, 2027");
   assert.equal(date(ceremony, "es", { weekday: false }), "15 de enero de 2027");
   assert.equal(dayMonth("2026-10-16T12:00:00-05:00", "en"), "October 16");

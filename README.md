@@ -3,7 +3,7 @@
 [![Website and service checks](https://github.com/HybridCloudWorks/SimplySoph-Quince/actions/workflows/check.yml/badge.svg?branch=main)](https://github.com/HybridCloudWorks/SimplySoph-Quince/actions/workflows/check.yml)
 [![Website](https://img.shields.io/website?url=https%3A%2F%2Fmisxv.simplysoph.com&label=website)](https://misxv.simplysoph.com)
 ![Celebration](https://img.shields.io/badge/celebration-January%2015%2C%202027-7a1f35)
-![RSVP by](https://img.shields.io/badge/RSVP%20by-November%2015%2C%202026-b8892b)
+![RSVP by](https://img.shields.io/badge/RSVP%20by-December%201%2C%202026-b8892b)
 ![Languages](https://img.shields.io/badge/languages-English%20%7C%20Espa%C3%B1ol-2f5d50)
 ![Last commit](https://img.shields.io/github/last-commit/HybridCloudWorks/SimplySoph-Quince/main)
 
@@ -14,7 +14,7 @@ The bilingual website for **Sophia Isabel's quinceañera**, on **Friday, January
 ## What guests can do
 
 - **Read about the celebration:** the schedule, the church and reception, travel, and answers to common questions, all in English and Spanish.
-- **RSVP:** open the private link from their invitation (or paste it, or type its code) and answer for their household by **November 15, 2026**: one tap for **Everyone's coming** or **We can't make it** (or the matching links in the invitation email), or event by event. Nothing is saved until they confirm, and answers in progress survive a reload. They can change the answer until the deadline, get a receipt that repeats it, and add the events to their calendar.
+- **RSVP:** open the private link from their invitation (or paste it, or type its code) and answer for their household by **December 1, 2026**: one tap for **Everyone's coming** or **We can't make it** (or the matching links in the invitation email), or event by event. Nothing is saved until they confirm, and answers in progress survive a reload. They can change the answer until the deadline, get a receipt that repeats it, and add the events to their calendar.
 - **Sign in with their email:** the address where they received their invitation, with a one-time emailed link (in their language), Google or Microsoft. No password; the link brings them back to the page they started from. Signed in, they can see their RSVP, share photos and videos, write in the guestbook, message the family and update their contact details.
 - **Share photos and videos** straight from their phone, on the Share page or from the QR code on the tables: up to 10 at a time, videos up to 60 seconds (iPhone and Android videos alike), with progress for each file and a retry that picks up where it stopped. The family reviews everything first; approved photos and videos appear in the gallery for signed-in guests only, with videos converted to play in every browser.
 - **Get text updates** (US and Canada): text SOPHIA to the number on the [SMS page](https://misxv.simplysoph.com/sms/).
@@ -28,9 +28,9 @@ The guest list lives in **Notion**. The website reads it and writes the answers 
 |---|---|
 | Add a household | Add a row to the Invitations database in Notion, with its people, counts and **Email** |
 | Let someone else in the household sign in | Add their address to **Additional Emails** on that row |
-| Send invitations | **Admin → Invitations**: create the private links, then review and send the emails |
-| Send text reminders | **Admin → Communications → SMS reminders**: every household's status, a test to your own phone, then a reviewed batch |
-| See who's coming | **Admin → Overview**: head counts per event, who answered and who hasn't |
+| Send invitations | **Admin → Invitations**: filter by Notion **Status**, create the private links, then review and send the emails; **Share by text** opens a text on your own phone asking a household to text SOPHIA |
+| Send text reminders | **Admin → Communications → SMS reminders**: every household's texting status and Notion Status, a test to your own phone, then a reviewed batch |
+| See who's coming | **Admin → Overview**: head counts per event, who answered and who hasn't. In Notion, each row's **Status** (Missing, Waiting, Invited, Attending, Not Attending) is kept up to date by the website |
 | Record an answer taken by phone | Type **Yes** or **No** in that row's RSVP column in Notion, with the head counts |
 | Make someone an administrator | Tick **Administrator Eligible** on their row. They set up an authenticator app at their first sign-in |
 | Approve photos, read messages, plan seating | **Admin → Photo & video review**, **Messages**, **Seating** |

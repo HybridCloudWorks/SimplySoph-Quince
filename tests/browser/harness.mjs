@@ -32,7 +32,7 @@ const dist = path.resolve(
 const SOURCE_ID = "harness-guest-list";
 export const OWNER_EMAIL = "owner@example.com";
 export const DEADLINE = Date.parse(event.deadline);
-// Six weeks before the RSVP deadline, and one minute after it.
+// Two months before the RSVP deadline (December 1, 2026), and one minute after it.
 export const BEFORE_DEADLINE = Date.parse("2026-10-01T18:00:00Z");
 export const AFTER_DEADLINE = DEADLINE + 60_000;
 
@@ -142,6 +142,12 @@ function fakeNotionApi(rows) {
     page: (id) => structuredClone(pages.get(id).properties),
     setAdministrator(id, value) {
       pages.get(id).properties["Administrator Eligible"].checkbox = value;
+    },
+    // The website-owned Status column (server/status.mjs), as the family would
+    // see it; only rows given one carry the column, like a database before the
+    // family adds it. Set it before the first request: the API caches the list.
+    setStatus(id, value) {
+      pages.get(id).properties.Status = { type: "select", select: value ? { name: value } : null };
     },
   };
 }

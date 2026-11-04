@@ -27,18 +27,18 @@ test('schedule lists only the events the household is invited to',()=>{
   assert.equal(emailSchedule(celebration,{ceremony:true},'es')[0].time,'4:00 p. m.');
 });
 test('dates and times stay in Windows-1252 and read naturally',()=>{
-  assert.equal(date('2026-11-15T23:59:00-06:00'),'Sunday, November 15, 2026');
-  assert.equal(date('2026-11-15T23:59:00-06:00','es'),'domingo 15 de noviembre de 2026');
+  assert.equal(date('2026-12-01T23:59:00-06:00'),'Tuesday, December 1, 2026');
+  assert.equal(date('2026-12-01T23:59:00-06:00','es'),'martes 1 de diciembre de 2026');
   assert.equal(emailSchedule(celebration,{ceremony:true,dinner:true,dance:true},'es')[1].text.split(' · ')[0],'Cena y, a las 7:30 p. m., la recepción y el baile');
   for(const r of emailSchedule(celebration,{ceremony:true,dinner:true,dance:true},'es'))assert.ok(!/[\u202f\u00a0]/.test(r.time+r.text));
 });
 test('invitation reads like a letter: date subject, places, Sophia’s words, contacts line',()=>{
-  const r=renderEmail({...base,eventDate:'Friday, January 15, 2027',rsvpDeadline:'Sunday, November 15, 2026',schedule:emailSchedule(celebration,{ceremony:true,dinner:true,dance:true}),note:firstSentence(celebration.quote.en)});
+  const r=renderEmail({...base,eventDate:'Friday, January 15, 2027',rsvpDeadline:'Tuesday, December 1, 2026',schedule:emailSchedule(celebration,{ceremony:true,dinner:true,dance:true}),note:firstSentence(celebration.quote.en)});
   assert.equal(r.subject,'Sophia’s quinceañera · Friday, January 15, 2027');
   assert.ok(r.html.includes('Our Lady of Guadalupe Church')&&r.html.includes('4:00 PM'));
   assert.ok(r.html.includes('Turning 15 is such a special moment in my life'));
   // The deadline sentence of the site, the previews and the WhatsApp templates (R-036).
-  assert.ok(r.html.includes('Please RSVP by <strong>Sunday, November 15, 2026</strong>.'));
+  assert.ok(r.html.includes('Please RSVP by <strong>Tuesday, December 1, 2026</strong>.'));
   assert.ok(r.text.includes('Add misxv@simplysoph.com to your contacts'));
   assert.ok(!/view your invitation|keep it private/i.test(r.html));
   assert.ok(!renderEmail({...base,type:'receipt'}).html.includes('Our Lady of Guadalupe'));
@@ -46,21 +46,21 @@ test('invitation reads like a letter: date subject, places, Sophia’s words, co
 test('a receipt lists the answer for the invited events, until when it can change and how',()=>{
   const attendance={ceremony:{adultsTeens:2,kids:1},dinner:{adultsTeens:2,kids:0},dance:{adultsTeens:0,kids:0}};
   const invited={ceremony:true,dinner:true,dance:false};
-  const en=renderEmail({...base,type:'receipt',url:'https://misxv.example/details/',attendance,invited,rsvpDeadline:'Sunday, November 15, 2026'});
+  const en=renderEmail({...base,type:'receipt',url:'https://misxv.example/details/',attendance,invited,rsvpDeadline:'Tuesday, December 1, 2026'});
   assert.ok(en.text.includes('Ceremony: 2 adults/teens, 1 child')&&en.text.includes('Dinner: 2 adults/teens'));
   assert.ok(en.html.includes('>Ceremony</td>')&&en.html.includes('>2 adults/teens, 1 child</td>'));
   for(const out of [en.text,en.html]){
     assert.ok(!/Reception/.test(out),'only the events on the invitation');
     // L10N-28: households invited by text or WhatsApp have no invitation email.
-    assert.ok(out.includes('You can change it until Sunday, November 15, 2026')&&out.includes('open your invitation link again, from the email or message we sent you'));
+    assert.ok(out.includes('You can change it until Tuesday, December 1, 2026')&&out.includes('open your invitation link again, from the email or message we sent you'));
     assert.ok(!/permitted|Review your response/.test(out));
   }
   assert.ok(!en.html.includes('/rsvp/'),'no button to the generic code form');
-  const es=renderEmail({...base,type:'update',locale:'es',url:'https://misxv.example/es/details/',attendance,invited,rsvpDeadline:'domingo 15 de noviembre de 2026'});
+  const es=renderEmail({...base,type:'update',locale:'es',url:'https://misxv.example/es/details/',attendance,invited,rsvpDeadline:'martes 1 de diciembre de 2026'});
   assert.ok(es.text.includes('Ceremonia: 2 adultos/jóvenes, 1 niño')&&es.text.includes('Cena: 2 adultos/jóvenes'));
-  assert.ok(es.text.includes('Pueden cambiarla hasta el domingo 15 de noviembre de 2026')&&!/Recepción/.test(es.text));
+  assert.ok(es.text.includes('Pueden cambiarla hasta el martes 1 de diciembre de 2026')&&!/Recepción/.test(es.text));
   const none={ceremony:{adultsTeens:0,kids:0},dinner:{adultsTeens:0,kids:0},dance:{adultsTeens:0,kids:0}};
-  const declined=renderEmail({...base,type:'receipt',url:'https://misxv.example/details/',attendance:none,invited,rsvpDeadline:'Sunday, November 15, 2026'});
+  const declined=renderEmail({...base,type:'receipt',url:'https://misxv.example/details/',attendance:none,invited,rsvpDeadline:'Tuesday, December 1, 2026'});
   assert.ok(declined.text.includes('no one in your family can attend')&&!declined.text.includes('Ceremony:'));
 });
 // R-092: a receipt holds no link to keep private, and the English "no" thanks once.
@@ -69,18 +69,18 @@ test('a receipt has no warning about a link it does not contain, and a decline s
   const none={ceremony:{adultsTeens:0,kids:0},dinner:{adultsTeens:0,kids:0},dance:{adultsTeens:0,kids:0}};
   const invited={ceremony:true,dinner:true,dance:true};
   for(const locale of ['en','es'])for(const type of ['receipt','update'])for(const answer of [attendance,none]){
-    const r=renderEmail({...base,type,locale,url:'https://misxv.example/details/',attendance:answer,invited,rsvpDeadline:'Sunday, November 15, 2026'});
+    const r=renderEmail({...base,type,locale,url:'https://misxv.example/details/',attendance:answer,invited,rsvpDeadline:'Tuesday, December 1, 2026'});
     for(const out of [r.text,r.html]){
       assert.ok(!/Your invitation link is just for your family|El enlace de su invitación es solo para su familia/.test(out),`${locale}/${type}`);
       assert.ok(!/share it|no lo compartan/.test(out),`${locale}/${type}`);
     }
     assert.ok(!/<p style="font-size:14px"><\/p>/.test(r.html),'no empty paragraph in its place');
   }
-  const declined=renderEmail({...base,type:'receipt',url:'https://misxv.example/details/',attendance:none,invited,rsvpDeadline:'Sunday, November 15, 2026'});
+  const declined=renderEmail({...base,type:'receipt',url:'https://misxv.example/details/',attendance:none,invited,rsvpDeadline:'Tuesday, December 1, 2026'});
   assert.equal((declined.text.match(/thank you/gi)||[]).length,1,declined.text);
   assert.ok(declined.text.includes('You let us know no one in your family can attend. We’ll miss you, and we send you our love.'));
   // The Spanish decline thanks once too (the title, "Gracias por responder.").
-  const no=renderEmail({...base,type:'receipt',locale:'es',url:'https://misxv.example/es/details/',attendance:none,invited,rsvpDeadline:'domingo 15 de noviembre de 2026'});
+  const no=renderEmail({...base,type:'receipt',locale:'es',url:'https://misxv.example/es/details/',attendance:none,invited,rsvpDeadline:'martes 1 de diciembre de 2026'});
   assert.equal((no.text.match(/gracias/gi)||[]).length,1,no.text);
   assert.ok(no.text.includes('Los vamos a extrañar y les mandamos todo nuestro cariño.'));
   // Only an email that carries the household's private link asks them to

@@ -477,7 +477,7 @@ test("schema preparation only adds the missing website columns and refuses a col
   });
   const added = await client.prepareSchema();
   const missing = Object.keys(projectionSchema).filter((name) => !(name in existing));
-  assert.deepEqual(added, missing);
+  assert.deepEqual(added, { added: missing, options: {} });
   assert.deepEqual(
     requests.map((r) => r.method + " " + r.path),
     ["GET data_sources/source", "PATCH data_sources/source"],
@@ -492,7 +492,7 @@ test("schema preparation only adds the missing website columns and refuses a col
   }
   // Running it again changes nothing.
   requests.length = 0;
-  assert.deepEqual(await client.prepareSchema(), []);
+  assert.deepEqual(await client.prepareSchema(), { added: [], options: {} });
   assert.deepEqual(
     requests.map((r) => r.method),
     ["GET"],
@@ -509,6 +509,112 @@ test("schema preparation only adds the missing website columns and refuses a col
     requests.map((r) => r.method),
     ["GET"],
   );
+});
+
+test("schema preparation adds the Status options a family-made column lacks, keeping its own options exactly", async () => {
+  const all = Object.fromEntries(Object.entries(projectionSchema).map(([name, spec]) => [name, { type: Object.keys(spec)[0] }]));
+  const family = [
+    { id: "opt-1", name: "Missing", color: "purple", description: null },
+    { id: "opt-2", name: "Invited", color: "pink", description: "sent" },
+    { id: "opt-3", name: "Attending", color: "green", description: null },
+  ];
+  let properties = {
+    ...structuredClone(all),
+    Status: { id: "st", type: "select", select: { options: structuredClone(family) } },
+    "WhatsApp Language": { type: "select", select: { options: [{ id: "l1", name: "en", color: "default" }, { id: "l2", name: "es", color: "default" }] } },
+  };
+  const { client, requests } = recordingClient(({ method, body }) => {
+    if (method === "PATCH")
+      for (const [name, spec] of Object.entries(body.properties)) properties[name] = { ...properties[name], ...spec };
+    return [200, method === "GET" ? { object: "data_source", properties } : {}];
+  });
+  assert.deepEqual(await client.prepareSchema(), { added: [], options: { Status: ["Waiting", "Not Attending"] } });
+  assert.deepEqual(requests.map((r) => r.method + " " + r.path), ["GET data_sources/source", "PATCH data_sources/source"]);
+  // The PATCH carries every existing option as Notion returned it (id, name,
+  // color), then the missing ones with their colors: nothing removed or recolored.
+  assert.deepEqual(requests[1].body, {
+    properties: {
+      Status: {
+        select: {
+          options: [
+            ...family,
+            { name: "Waiting", color: "yellow" },
+            { name: "Not Attending", color: "red" },
+          ],
+        },
+      },
+    },
+  });
+  // Complete now: nothing more is written.
+  requests.length = 0;
+  assert.deepEqual(await client.prepareSchema(), { added: [], options: {} });
+  assert.deepEqual(requests.map((r) => r.method), ["GET"]);
+  // A Status column of another type is refused as before.
+  properties.Status = { type: "status" };
+  await assert.rejects(() => client.prepareSchema(), (e) => e.code === "SCHEMA_CONFLICT");
+  // A select whose options Notion did not list is left alone rather than guessed at.
+  properties.Status = { type: "select" };
+  requests.length = 0;
+  assert.deepEqual(await client.prepareSchema(), { added: [], options: {} });
+  assert.deepEqual(requests.map((r) => r.method), ["GET"]);
+});
+
+test("Status is read from the row, written alone by projectStatus, and alongside an RSVP projection", async () => {
+  const p = page("1");
+  assert.equal(normalizeInvitation(p).status, "");
+  assert.equal(normalizeInvitation(p).statusColumnPresent, false);
+  p.properties.Status = { type: "select", select: { name: "Waiting" } };
+  assert.equal(normalizeInvitation(p).status, "Waiting");
+  assert.equal(normalizeInvitation(p).statusColumnPresent, true);
+  p.properties.Status = { type: "select", select: null };
+  assert.equal(normalizeInvitation(p).status, "");
+
+  let current = { ...page("1"), parent: { data_source_id: "source" } };
+  const { client, requests } = recordingClient(({ method }) => [200, method === "GET" ? current : {}]);
+  await client.projectStatus(page("1").id, "Not Attending");
+  assert.deepEqual(requests.at(-1), {
+    method: "PATCH",
+    path: "pages/" + page("1").id,
+    body: { properties: { Status: { select: { name: "Not Attending" } } } },
+  });
+  await assert.rejects(() => client.projectStatus(page("1").id, "Maybe"), (e) => e.code === "INVALID_STATUS");
+
+  const response = {
+    id: "receipt-1",
+    submittedAt: "2026-10-01T00:00:00Z",
+    contact: { email: "", phone: "", address: null },
+    requests: "",
+    attendance: {
+      ceremony: { adultsTeens: 1, kids: 0 },
+      dinner: { adultsTeens: 0, kids: 0 },
+      dance: { adultsTeens: 0, kids: 0 },
+    },
+  };
+  const declined = { ...response, attendance: { ceremony: { adultsTeens: 0, kids: 0 }, dinner: { adultsTeens: 0, kids: 0 }, dance: { adultsTeens: 0, kids: 0 } } };
+  const written = () => JSON.parse(JSON.stringify(requests.at(-1).body.properties));
+  // No Status column on the row: the RSVP write never names it.
+  await client.project(page("1").id, response);
+  assert.ok(!("Status" in written()));
+  assert.equal(written().RSVP.select.name, "Yes");
+  // With the column but no phone on the row: Missing, whatever the answer.
+  current.properties.Status = { type: "select", select: null };
+  await client.project(page("1").id, response);
+  assert.equal(written().Status.select.name, "Missing");
+  current.properties.Phone = { type: "phone_number", phone_number: "+18175550100" };
+  await client.project(page("1").id, response);
+  assert.equal(written().Status.select.name, "Attending");
+  assert.equal(written().RSVP.select.name, "Yes");
+  await client.project(page("1").id, declined);
+  assert.equal(written().Status.select.name, "Not Attending");
+  assert.equal(written().RSVP.select.name, "No");
+  // Held back (the family's own answer stays): Status follows Notion's Yes/No.
+  current.properties.RSVP = { type: "select", select: { name: "No" } };
+  await client.project(page("1").id, response, { answer: false });
+  assert.equal(written().Status.select.name, "Not Attending");
+  assert.ok(!("RSVP" in written()));
+  current.properties.RSVP = { type: "select", select: { name: "Not sent" } };
+  await client.project(page("1").id, response, { answer: false });
+  assert.ok(!("Status" in written()));
 });
 
 test("guest import creates one page with the invitation's column types (#74)", async () => {

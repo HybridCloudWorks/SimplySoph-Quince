@@ -36,8 +36,8 @@ export const terms = {
   // the accessible name equal to rsvpAction.
   rsvpPill: { en: "RSVP", es: "Confirmar" },
   rsvpPillHidden: { en: "", es: " asistencia" },
-  // The deadline sentence, before the date: "Please RSVP by Sunday, November
-  // 15." (the approved WhatsApp templates' verb too).
+  // The deadline sentence, before the date: "Please RSVP by Tuesday, December
+  // 1." (the approved WhatsApp templates' verb too).
   rsvpBy: {
     en: "Please RSVP by",
     es: {
