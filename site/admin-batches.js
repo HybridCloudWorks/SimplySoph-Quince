@@ -38,7 +38,7 @@ export function batchToolbar(root, guests, reload) {
     bar.querySelector("[data-selected-count]").textContent = n
       ? `${n} selected`
       : "Select households to act on them together";
-    for (const b of bar.querySelectorAll("button")) b.disabled = !n;
+    for (const b of bar.querySelectorAll("[data-batch]")) b.disabled = !n;
   };
   root.querySelector("[data-select-all]").onchange = (e) => {
     for (const box of root.querySelectorAll("[data-select]"))

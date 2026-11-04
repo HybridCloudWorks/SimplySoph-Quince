@@ -1340,14 +1340,31 @@ blockquote {
   min-height: 44px;
   padding: 8px 0;
 }
-/* "Share by text" lives once, beside the batch buttons; each row keeps
-   only its link (site/admin.js sharePanel). */
+/* The batch buttons and the "Share by text" card share one row on a wide
+   screen, top-aligned with the same gap as the filters above; they stack on
+   a narrow one. The card lives once; each row keeps only its link
+   (site/admin.js sharePanel). */
+#batch-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  align-items: start;
+  margin: 20px 0 12px;
+}
+@media (min-width: 60em) {
+  #batch-row {
+    grid-template-columns: 1fr minmax(320px, 460px);
+  }
+}
+#batch-row > .row-actions {
+  margin: 0;
+  min-height: 44px;
+}
 #share-panel {
-  margin-left: auto;
-  flex: 0 1 460px;
-  min-width: min(100%, 300px);
+  background: var(--surface);
   border: 1px solid var(--line);
-  padding: 12px 16px;
+  padding: 16px 20px;
+  min-width: 0;
 }
 #share-panel .share-title {
   display: flex;
