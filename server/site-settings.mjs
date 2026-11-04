@@ -75,7 +75,7 @@ export const AUTO_INVITE_TEXT_MAX = 320;
 export const autoInviteDefaults = () => ({
   enabled: false,
   text: `${smsProgram.name}: You're invited to Sophia's quinceanera on ${date(event.startsAt, "en")}! RSVP by ${date(event.deadline, "en", { weekday: false })}: {link} Reply STOP to opt out.`,
-  textEs: `${smsProgram.name}: Confirma tu asistencia a los XV de Sophia antes del ${date(event.deadline, "es", { weekday: false })}: {link} Responde STOP para cancelar.`,
+  textEs: `${smsProgram.name}: Confirma tu asistencia a los XV de Sophia hasta el ${date(event.deadline, "es", { weekday: false })}: {link} Responde STOP para cancelar.`,
   reviewedAt: null,
   reviewedBy: null,
 });

@@ -33,7 +33,7 @@ test("the automatic invitation is off by default, with compliant texts carrying 
   }
   assert.match(d.text, /RSVP by December 1, 2026: \{link\}/);
   assert.match(d.text, /Friday, January 15, 2027/);
-  assert.match(d.textEs, /antes del 1 de diciembre de 2026: \{link\}/);
+  assert.match(d.textEs, /hasta el 1 de diciembre de 2026: \{link\}/);
   // Validation accepts its own defaults.
   assert.deepEqual(validateAutoInvite(d), d);
   // Unsaved: the defaults; saved: what was saved, over the defaults.
