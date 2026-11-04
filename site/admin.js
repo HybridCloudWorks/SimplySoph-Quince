@@ -4,6 +4,8 @@ import { communicationHistory } from "./admin-history.js";
 import { audienceComposer } from "./admin-audience.js";
 import { smsComposer } from "./admin-sms.js";
 import { batchToolbar, eventNames } from "./admin-batches.js";
+import { householdMatches, notionStatusOf, notionStatusOptions } from "./admin-filter.mjs";
+import { shareByText } from "./share-by-text.mjs";
 import { startPulse, activityBanner } from "./admin-pulse.js";
 import { websiteEditor, notificationInbox, copyWarnings } from "./admin-experience.js";
 import {
@@ -353,9 +355,24 @@ const statusLabels = {
 };
 const when = (iso) => (iso ? recordedAt(iso) : "");
 let guests = [];
+// "Share by text" (site/share-by-text.mjs): a text from the family's own
+// phone, person to person, asking the household to text the keyword. The
+// keyword and program number come from the API's config; the day of the
+// celebration from the page (built from content.mjs). Nothing is sent or
+// recorded by the website.
+function shareCell(r, program) {
+  if (!r.phone || !program) return "";
+  const share = shareByText(r, program);
+  if (!share.link) return '<p class="hint" data-share-text="needs-review">Phone needs review</p>';
+  return `<div data-share-text="${esc(r.id)}"><a class="button outline compact" href="${esc(share.link)}" data-share-link lang="${share.lang}">Share by text</a>${button("Copy text", "copy-share-text", r.id)}<details><summary>The text</summary><p lang="${share.lang}" data-share-words>${esc(share.text)}</p></details><p class="hint">Sent from your own phone; the website records nothing. When they text ${esc(program.keyword)} they show as Subscribed on the SMS tab.</p></div>`;
+}
 async function guestList() {
-  const data = await api("admin/guests");
+  const [data, cfg] = await Promise.all([api("admin/guests"), api("config")]);
   guests = data.guests;
+  const program =
+    cfg.channels?.smsKeyword && cfg.channels?.smsNumber && root.dataset.eventStartsAt
+      ? { keyword: cfg.channels.smsKeyword, number: cfg.channels.smsNumber, startsAt: root.dataset.eventStartsAt }
+      : null;
   root.innerHTML = `<p>Review household capacity and event eligibility before creating a private invitation. Blank Kids values need correction in Notion.</p><div class="row-actions">${button("Export CSV", "export", "")}${button("Import CSV", "import-form", "")}${button("Check statuses now", "status-sync", "")}</div><div id="guest-editor"></div><div id="batch-panel"></div><div id="guest-area"><div class="field-grid">${field("Filter guests", "filter")}<label>Status<select name="status"><option value="">All statuses</option>${Object.entries(
     statusLabels,
   )
@@ -363,11 +380,16 @@ async function guestList() {
       ([k, v]) =>
         `<option value="${k}">${esc(v)} (${guests.filter((g) => g.status === k).length})</option>`,
     )
+    .join("")}</select></label><label>Notion status<select name="notion-status">${notionStatusOptions
+    .map(
+      ([k, v]) =>
+        `<option value="${esc(k)}">${esc(v)}${k ? ` (${guests.filter((g) => householdMatches(g, { notionStatus: k })).length})` : ""}</option>`,
+    )
     .join("")}</select></label></div><div id="batch-toolbar" class="row-actions"><span data-selected-count></span><button type="button" class="button outline" data-batch="issue">Create links</button><button type="button" class="button burgundy" data-batch="invitation">Email invitation</button><button type="button" class="button outline" data-batch="reminder">Email reminder</button></div><p class="hint">Emails are drafted for review first. Nothing sends until you check the recipients and sample and type the number to confirm.</p>${table(
     ['<input type="checkbox" data-select-all aria-label="Select all shown households">', "Household", "Status", "Invited capacity", "Email", "Response / sync", "Actions"],
     guests.map(
       (r) =>
-        `<tr data-guest-row data-name="${esc(r.name)}" data-status="${esc(r.status)}"><td><input type="checkbox" data-select value="${esc(r.id)}" aria-label="Select ${esc(r.name)}"></td><td>${esc(r.name)}<br><span class="badge">${esc(r.role)}</span></td><td><span class="badge">${esc(statusLabels[r.status] || r.status)}</span>${r.respondedAt || r.openedAt ? `<br><small>${esc(when(r.respondedAt || r.openedAt))}</small>` : ""}</td><td>${r.capacity.adultsTeens ?? "?"} adults/teens · ${r.capacity.kids ?? "?"} ${r.capacity.kids === 1 ? "child" : "children"}${r.validCapacity ? "" : "<br>Needs review"}</td><td>${esc(r.email)}</td><td>${
+        `<tr data-guest-row data-name="${esc(r.name)}" data-status="${esc(r.status)}" data-notion-status="${esc(notionStatusOf(r))}"><td><input type="checkbox" data-select value="${esc(r.id)}" aria-label="Select ${esc(r.name)}"></td><td>${esc(r.name)}<br><span class="badge">${esc(r.role)}</span></td><td><span class="badge">${esc(statusLabels[r.status] || r.status)}</span>${notionStatusOf(r) ? `<br><span class="badge" data-notion-status-badge>Notion: ${esc(notionStatusOf(r))}</span>` : ""}${r.respondedAt || r.openedAt ? `<br><small>${esc(when(r.respondedAt || r.openedAt))}</small>` : ""}</td><td>${r.capacity.adultsTeens ?? "?"} adults/teens · ${r.capacity.kids ?? "?"} ${r.capacity.kids === 1 ? "child" : "children"}${r.validCapacity ? "" : "<br>Needs review"}</td><td>${esc(r.email)}</td><td>${
           r.response
             ? Object.entries(r.response.attendance)
                 .map(([e, v]) => `${esc(eventNames[e] || e)}: ${v.adultsTeens + v.kids}`)
@@ -379,16 +401,30 @@ async function guestList() {
                   .map(([e, v]) => `${esc(eventNames[e] || e)}: ${(v.adultsTeens ?? 0) + (v.kids ?? 0)}`)
                   .join("<br>")
               : "No response"
-        }<br>${esc(r.syncState)}${r.notionDiffers ? `<p class="notice">Notion differs: ${esc(r.notionDiffers)}.</p>${button("Keep Notion's version", "drift-notion", r.id)}${button("Write the website's answer", "drift-website", r.id)}` : ""}</td><td><a href="https://www.notion.so/${encodeURIComponent(r.id.replaceAll("-", ""))}" target="_blank" rel="noopener noreferrer">Edit household in Notion</a>${button("Review / create link", "invite-form", r.id)}${r.active ? button("Revoke link", "revoke", r.id) : ""}</td></tr>`,
+        }<br>${esc(r.syncState)}${r.notionDiffers ? `<p class="notice">Notion differs: ${esc(r.notionDiffers)}.</p>${button("Keep Notion's version", "drift-notion", r.id)}${button("Write the website's answer", "drift-website", r.id)}` : ""}</td><td><a href="https://www.notion.so/${encodeURIComponent(r.id.replaceAll("-", ""))}" target="_blank" rel="noopener noreferrer">Edit household in Notion</a>${button("Review / create link", "invite-form", r.id)}${r.active ? button("Revoke link", "revoke", r.id) : ""}${shareCell(r, program)}</td></tr>`,
     ),
   )}</div><div id="recent-batches"></div>`;
   const text = root.querySelector("[name=filter]"),
-    status = root.querySelector("[name=status]");
-  text.oninput = status.onchange = () => {
-    for (const row of root.querySelectorAll("[data-guest-row]"))
-      row.hidden =
-        !row.textContent.toLowerCase().includes(text.value.toLowerCase()) ||
-        (status.value && row.dataset.status !== status.value);
+    status = root.querySelector("[name=status]"),
+    notionStatus = root.querySelector("[name=notion-status]");
+  // All three filters at once (site/admin-filter.mjs). A hidden row drops out
+  // of the selection, so "select all" and the batch buttons only ever cover
+  // the households in view.
+  text.oninput = status.onchange = notionStatus.onchange = () => {
+    for (const row of root.querySelectorAll("[data-guest-row]")) {
+      row.hidden = !householdMatches(
+        { status: row.dataset.status, notionStatus: row.dataset.notionStatus },
+        { text: text.value, status: status.value, notionStatus: notionStatus.value },
+        row.textContent,
+      );
+      if (row.hidden) {
+        const box = row.querySelector("[data-select]");
+        if (box.checked) {
+          box.checked = false;
+          box.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+      }
+    }
   };
   batchToolbar(root.querySelector("#guest-area"), guests, guestList);
 }
@@ -753,6 +789,18 @@ root.addEventListener("click", (e) => {
   run(async () => {
     if (action === "invite-form") invitationEditor(id);
     if (action === "import-form") importForm();
+    if (action === "copy-share-text") {
+      // On a computer the sms: link may do nothing: the words go to the
+      // clipboard, and stay readable in the expandable beside the button.
+      const words = b.closest("[data-share-text]").querySelector("[data-share-words]").textContent;
+      try {
+        await navigator.clipboard.writeText(words);
+        notify("Text copied. Paste it into a message from your own phone.");
+      } catch {
+        b.nextElementSibling.open = true;
+        notify("Could not copy here. The text is shown under “The text”; select and copy it.");
+      }
+    }
     if (action === "export")
       download(
         "misxv-guests.csv",

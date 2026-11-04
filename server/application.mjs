@@ -63,7 +63,7 @@ import { createAccounts, accountActive, rosterMatch } from "./accounts.mjs";
 // review (the clock, channels, the note's audience, the table card, …).
 // 2: POST /api/admin/status/sync ("Check statuses now" on Invitations) and
 // the schema action's { added, options } answer.
-export const apiVersion = 2;
+export const apiVersion = 3;
 const events = ["ceremony", "dinner", "dance"];
 const safeText = (s, max = 1000) => {
   if (
@@ -2743,6 +2743,9 @@ export function createApplication({
           guests: rows.map((row) => ({
             ...row,
             displayName: recipientName(row),
+            // The Notion Status column (server/status.mjs), "" when the
+            // column or its value is absent; `status` below is the link status.
+            notionStatus: row.status || "",
             ...(s.invitations[row.id]
               ? {
                   active: s.invitations[row.id].active,
@@ -3249,6 +3252,7 @@ export function createApplication({
                 phone: r.phone || "",
                 groups: r.distributionGroups || [],
                 status: smsStatus(ctx.state, r),
+                notionStatus: r.status || "",
               }))
               .sort((a, b) => a.name.localeCompare(b.name)),
           }),

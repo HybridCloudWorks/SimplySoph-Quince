@@ -28,8 +28,8 @@ The guest list lives in **Notion**. The website reads it and writes the answers 
 |---|---|
 | Add a household | Add a row to the Invitations database in Notion, with its people, counts and **Email** |
 | Let someone else in the household sign in | Add their address to **Additional Emails** on that row |
-| Send invitations | **Admin → Invitations**: create the private links, then review and send the emails |
-| Send text reminders | **Admin → Communications → SMS reminders**: every household's status, a test to your own phone, then a reviewed batch |
+| Send invitations | **Admin → Invitations**: filter by Notion **Status**, create the private links, then review and send the emails; **Share by text** opens a text on your own phone asking a household to text SOPHIA |
+| Send text reminders | **Admin → Communications → SMS reminders**: every household's texting status and Notion Status, a test to your own phone, then a reviewed batch |
 | See who's coming | **Admin → Overview**: head counts per event, who answered and who hasn't. In Notion, each row's **Status** (Missing, Waiting, Invited, Attending, Not Attending) is kept up to date by the website |
 | Record an answer taken by phone | Type **Yes** or **No** in that row's RSVP column in Notion, with the head counts |
 | Make someone an administrator | Tick **Administrator Eligible** on their row. They set up an authenticator app at their first sign-in |

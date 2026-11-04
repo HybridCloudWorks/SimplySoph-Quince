@@ -700,7 +700,7 @@ function document({ route, title, lang = "en", admin = false }) {
           )
           .join(
             "",
-          )}<button class="plain-button" id="logout">Sign out</button><button class="plain-button" id="logout-all">Sign out everywhere</button></aside><div><p class="eyebrow">SOPHIA · MIS XV</p><h1 class="page-title">${title}</h1><div id="admin-app" data-view="${route}"><p role="status">Loading secure workspace…</p></div></div></section>`
+          )}<button class="plain-button" id="logout">Sign out</button><button class="plain-button" id="logout-all">Sign out everywhere</button></aside><div><p class="eyebrow">SOPHIA · MIS XV</p><h1 class="page-title">${title}</h1><div id="admin-app" data-view="${route}"${route === "admin/guests" ? ` data-event-starts-at="${esc(event.startsAt)}"` : ""}><p role="status">Loading secure workspace…</p></div></div></section>`
       : contents(route, lang)
   }</main><footer class="site-footer"><nav class="footer-nav" aria-label="${lang === "es" ? "Políticas y avisos" : "Policies and updates"}"><ul>${["privacy", "terms", "whatsapp", "sms", "contact"].map((r) => `<li><a href="${href(r, lang)}"${r === route && !admin ? ' aria-current="page"' : ""}>${esc(routeTitle(r, lang))}</a></li>`).join("")}</ul></nav><p class="copyright">© 2026 Simply Soph Media (${lang === "es" ? "la familia de Sophia" : "Sophia’s family"})</p></footer><div id="status" role="status" aria-live="polite"></div><div id="announce" class="visually-hidden" role="status"></div></body></html>`;
 }
@@ -785,6 +785,8 @@ for (const file of [
   "admin-audience.js",
   "admin-sms.js",
   "admin-batches.js",
+  "admin-filter.mjs",
+  "share-by-text.mjs",
   "admin-pulse.js",
   "sso.js",
   "admin-history.js",

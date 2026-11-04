@@ -1,5 +1,6 @@
 import { api, esc, submit, notify } from "./client.js";
 import { date, stamp } from "./datetime.mjs";
+import { matchesNotionStatus, notionStatusOf, notionStatusOptions } from "./admin-filter.mjs";
 
 // Text messages, all from this one page: who can be texted and why not, a test
 // to the organizer's own phone, and batches with one typed-count confirmation.
@@ -50,13 +51,13 @@ export async function smsComposer(root) {
     data.groups.length
       ? `<h3>Distribution groups</h3><p>Picks the subscribed households in each group.</p>${data.groups.map((g) => `<label class="check"><input type="checkbox" name="group" value="${esc(g)}">${esc(g)}</label>`).join("")}`
       : ""
-  }<h3>Households</h3><label class="check"><input type="checkbox" data-select-all>Select all subscribed</label><label class="check"><input type="checkbox" data-only-subscribed>Show only subscribed</label><div class="table-wrap"><table><thead><tr><th scope="col"></th><th scope="col">Household</th><th scope="col">Phone</th><th scope="col">Status</th></tr></thead><tbody>${
+  }<h3>Households</h3><label class="check"><input type="checkbox" data-select-all>Select all subscribed in view</label><label class="check"><input type="checkbox" data-only-subscribed>Show only subscribed</label><label>Notion status<select name="notion-status">${notionStatusOptions.map(([k, v]) => `<option value="${esc(k)}">${esc(v)}</option>`).join("")}</select></label><p class="hint" data-filter-note>${households.length} households in view, ${subscribed} subscribed.</p><div class="table-wrap"><table><thead><tr><th scope="col"></th><th scope="col">Household</th><th scope="col">Phone</th><th scope="col">Status</th><th scope="col">Notion status</th></tr></thead><tbody>${
     households
       .map(
         (h) =>
-          `<tr data-status="${esc(h.status)}"><td><input type="checkbox" name="recipient" value="${esc(h.id)}" aria-label="${esc(h.name)}"${h.status === "subscribed" ? "" : " disabled"}></td><td>${esc(h.name)}</td><td>${esc(h.phone || "")}</td><td>${esc(statusWords[h.status] || h.status)}</td></tr>`,
+          `<tr data-status="${esc(h.status)}" data-notion-status="${esc(notionStatusOf(h))}"><td><input type="checkbox" name="recipient" value="${esc(h.id)}" aria-label="${esc(h.name)}"${h.status === "subscribed" ? "" : " disabled"}></td><td>${esc(h.name)}</td><td>${esc(h.phone || "")}</td><td>${esc(statusWords[h.status] || h.status)}</td><td>${esc(notionStatusOf(h) || "—")}</td></tr>`,
       )
-      .join("") || '<tr><td colspan="4">No households in Notion yet.</td></tr>'
+      .join("") || '<tr><td colspan="5">No households in Notion yet.</td></tr>'
   }</tbody></table></div>${
     count("syncing")
       ? '<button type="button" class="button outline" data-sync>Match texted phones to their rows now</button>'
@@ -99,13 +100,34 @@ export async function smsComposer(root) {
 
   // Household table helpers.
   const compose = root.querySelector("#sms-compose");
-  const boxes = () => [...compose.querySelectorAll('[name="recipient"]:not(:disabled)')];
+  // Only subscribed phones have a checkbox at all (the server refuses the
+  // rest again when a batch is drafted); the filters below narrow the view,
+  // and "select all" covers the subscribed households in view.
+  const boxes = () =>
+    [...compose.querySelectorAll('[name="recipient"]:not(:disabled)')].filter((b) => !b.closest("tr").hidden);
   compose.querySelector("[data-select-all]").onchange = (e) => {
     for (const b of boxes()) b.checked = e.target.checked;
   };
-  compose.querySelector("[data-only-subscribed]").onchange = (e) => {
-    for (const tr of compose.querySelectorAll("tbody tr[data-status]"))
-      tr.hidden = e.target.checked && tr.dataset.status !== "subscribed";
+  const onlySubscribed = compose.querySelector("[data-only-subscribed]"),
+    notionStatus = compose.querySelector("[name=notion-status]"),
+    note = compose.querySelector("[data-filter-note]");
+  onlySubscribed.onchange = notionStatus.onchange = () => {
+    let shown = 0,
+      shownSubscribed = 0;
+    for (const tr of compose.querySelectorAll("tbody tr[data-status]")) {
+      tr.hidden =
+        (onlySubscribed.checked && tr.dataset.status !== "subscribed") ||
+        !matchesNotionStatus({ notionStatus: tr.dataset.notionStatus }, notionStatus.value);
+      if (tr.hidden) {
+        // A household out of view is never in the batch.
+        const box = tr.querySelector('[name="recipient"]');
+        if (box) box.checked = false;
+      } else {
+        shown++;
+        if (tr.dataset.status === "subscribed") shownSubscribed++;
+      }
+    }
+    note.textContent = `${shown} household${shown === 1 ? "" : "s"} in view, ${shownSubscribed} subscribed.`;
   };
   compose.querySelector("[data-sync]")?.addEventListener("click", async (e) => {
     e.target.disabled = true;

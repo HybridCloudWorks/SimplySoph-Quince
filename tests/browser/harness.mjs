@@ -143,6 +143,12 @@ function fakeNotionApi(rows) {
     setAdministrator(id, value) {
       pages.get(id).properties["Administrator Eligible"].checkbox = value;
     },
+    // The website-owned Status column (server/status.mjs), as the family would
+    // see it; only rows given one carry the column, like a database before the
+    // family adds it. Set it before the first request: the API caches the list.
+    setStatus(id, value) {
+      pages.get(id).properties.Status = { type: "select", select: value ? { name: value } : null };
+    },
   };
 }
 
