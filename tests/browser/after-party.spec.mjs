@@ -17,7 +17,7 @@ for (const lang of ["en", "es"]) {
     // Questions: the closed answer without "contact us", no "Can I change my RSVP?", no dress code promise.
     await page.goto(harness.url(p("/faq/")));
     const when = page.locator("details", { has: page.locator("summary", { hasText: es ? "¿Hasta cuándo puedo confirmar?" : "When do I need to RSVP?" }) });
-    await expect(when.locator("p:not([hidden])")).toHaveText(es ? "El plazo para confirmar terminó el domingo 15 de noviembre de 2026." : "RSVPs closed on Sunday, November 15, 2026.");
+    await expect(when.locator("p:not([hidden])")).toHaveText(es ? "El plazo para confirmar terminó el martes 1 de diciembre de 2026." : "RSVPs closed on Tuesday, December 1, 2026.");
     await expect(page.locator("summary", { hasText: es ? "¿Puedo cambiar mi respuesta?" : "Can I change my RSVP?" })).toBeHidden();
     await expect(when.locator("summary")).toBeVisible();
     await expect(page.locator("summary", { hasText: es ? "¿Cómo debo vestirme?" : "What should I wear?" })).toBeHidden();
@@ -36,7 +36,7 @@ for (const lang of ["en", "es"]) {
     await page.goto(harness.url(p("/rsvp/")));
     const closed = page.locator("#portal .notice").first();
     await expect(closed.getByRole("heading")).toHaveText(es ? "Ya no se reciben respuestas" : "RSVPs are closed");
-    await expect(closed).toContainText(es ? "El plazo para confirmar terminó el domingo 15 de noviembre." : "RSVPs closed on Sunday, November 15.");
+    await expect(closed).toContainText(es ? "El plazo para confirmar terminó el martes 1 de diciembre." : "RSVPs closed on Tuesday, December 1.");
     await expect(closed).not.toContainText(es ? /escríbannos|cambiar su respuesta/ : /contact us|change your RSVP/i);
     await expect(closed.getByRole("link", { name: es ? "Escríbannos" : "Contact us" })).toHaveCount(0);
   });

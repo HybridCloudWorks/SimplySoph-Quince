@@ -24,7 +24,7 @@ Link previews are different. WhatsApp, iMessage and Facebook read only the `<met
 
 | Phase at build time | Home and RSVP preview | Every page |
 |---|---|---|
-| Before November 15, 2026, 11:59 PM Central | "Friday, January 15, 2027 in Fort Worth, Texas. Please RSVP by Sunday, November 15, 2026." | `<meta name="misxv-phase" content="rsvp-open">` |
+| Before December 1, 2026, 11:59 PM Central | "Friday, January 15, 2027 in Fort Worth, Texas. Please RSVP by Tuesday, December 1, 2026." | `<meta name="misxv-phase" content="rsvp-open">` |
 | From the deadline to the end of the party | "Friday, January 15, 2027 in Fort Worth, Texas." (no RSVP line anywhere) | `rsvp-closed`, `day-of` or `live` |
 | From January 16, 2027, 12:30 AM Central | "Thank you for celebrating with us on Friday, January 15, 2027." | `after` |
 
@@ -34,7 +34,7 @@ Share your photos, the gallery, the note for Sophia and the thank-you page have 
 
 The site is published only by a push to `main`, so the previews change at the next publish after each boundary. If nothing is merged in the hours after a boundary, re-run the latest publish:
 
-1. After **Sunday, November 15, 2026, 11:59 PM Central**, and again after **Saturday, January 16, 2027, 12:30 AM Central** (the end of the reception), open GitHub → Actions → **Website and service checks**, choose the most recent run on `main` and select **Re-run all jobs**. Re-run the latest one: an older run's publish step skips itself because `main` has moved on.
+1. After **Tuesday, December 1, 2026, 11:59 PM Central**, and again after **Saturday, January 16, 2027, 12:30 AM Central** (the end of the reception), open GitHub → Actions → **Website and service checks**, choose the most recent run on `main` and select **Re-run all jobs**. Re-run the latest one: an older run's publish step skips itself because `main` has moved on.
 2. When it finishes, check the phase the live site was built in:
    `curl -s https://misxv.simplysoph.com/ | grep -o '<meta name="misxv-phase" content="[^"]*">'`
    It should say `rsvp-closed` after the first re-run and `after` after the second. The job's own check compares only `X-Release-Commit`, which is the same commit before and after a re-run, so this line is the one that shows the new release is live.
@@ -44,11 +44,11 @@ If the re-run's checks fail on something unrelated to the site (for example a ne
 
 ### The checks on the night of a boundary
 
-A re-publish needs `npm run check` to pass on the day it runs, so no test may depend on today's date. `npm run check:clock` (`scripts/test-at.mjs`) runs the same checks with the clock moved to the dates the site goes through: November 16, 2026 (RSVPs closed), January 15, 2027 at 3:30 PM (before the ceremony) and 9:15 PM (party night), January 16 at 10:00 AM (the second re-publish), February 15, 2027, and January 20, 2028 (past every date the tests use). Every process the checks start sees that date (`tests/support/fake-now.mjs`); `node scripts/test-at.mjs <ISO time with offset>` runs one date.
+A re-publish needs `npm run check` to pass on the day it runs, so no test may depend on today's date. `npm run check:clock` (`scripts/test-at.mjs`) runs the same checks with the clock moved to the dates the site goes through: December 2, 2026 (RSVPs closed), January 15, 2027 at 3:30 PM (before the ceremony) and 9:15 PM (party night), January 16 at 10:00 AM (the second re-publish), February 15, 2027, and January 20, 2028 (past every date the tests use). Every process the checks start sees that date (`tests/support/fake-now.mjs`); `node scripts/test-at.mjs <ISO time with offset>` runs one date.
 
 CI's **Checks at …** jobs run four of those dates on every pull request and push, beside `check`. The publish job waits only for `check`, so they never delay or block a re-publish; they exist to catch a date-dependent test before it merges.
 
-Before each boundary (a few days before November 15 and before January 15), confirm the latest **Checks at …** jobs on `main` passed, or run `npm run check:clock`. If a date fails, a test is reading today's date: make it pin its own instant (as `tests/upload-quota.test.mjs` does) before the boundary, never loosen what it checks.
+Before each boundary (a few days before December 1 and before January 15), confirm the latest **Checks at …** jobs on `main` passed, or run `npm run check:clock`. If a date fails, a test is reading today's date: make it pin its own instant (as `tests/upload-quota.test.mjs` does) before the boundary, never loosen what it checks.
 
 ### Automatic publishing at the boundaries (owner decision, not built)
 
@@ -121,7 +121,7 @@ Admin now checks them for you. **Admin → Website & event** shows "Check the Sp
    - **Contact page · who reads the messages (Español)**, if you write one, appears on Contact (tú).
    - **Homepage message** is Sophia's own words; only retired words are flagged there, never her tú.
 2. Write each new announcement's Spanish to the family (ustedes: "Los esperamos", "confirmen"), as the home page does; the form says so too. Announcements already published cannot be edited: if one of them uses tú (for example "Confirma tu asistencia"), archive it on **Record history → Announcements** and publish it again in ustedes.
-3. Leave alone what is registered elsewhere, word for word: the Meta-approved WhatsApp templates ("Confirma tu asistencia antes del 15 de noviembre de 2026", one phone, tú; resubmitting needs a new approval, `docs/whatsapp-activation.md`) and the three SMS replies, which stay in English (`docs/sms-campaign-registration.md`). The Spanish SMS pages say the replies arrive in English.
+3. Leave alone what is registered elsewhere, word for word: the Meta-approved WhatsApp templates ("Confirma tu asistencia antes del 15 de noviembre de 2026", one phone, tú; they still show the old deadline, so WhatsApp stays refused until the December 1 resubmission is approved, `docs/whatsapp-activation.md`) and the three SMS replies, which stay in English (`docs/sms-campaign-registration.md`). The Spanish SMS pages say the replies arrive in English.
 
 Three wording questions are the family's and are not decided here: whether the church service is a Mass ("Ceremonia religiosa" until then, one entry in `site/lexicon.mjs`), whether "mensaje" stays the Spanish name of the note, and whether the Spanish SMS page should keep its current casing (the registered campaign quotes the English page).
 

@@ -90,7 +90,7 @@ test("ES: two days later, a bookmarked RSVP page says the family replied (from t
   // Without the device note, the page asks as before.
   await page.evaluate(() => localStorage.clear());
   await page.goto(harness.url("/es/rsvp/"));
-  await expect(page.locator("#portal")).toContainText("Por favor, confirmen su asistencia a más tardar el domingo 15 de noviembre.");
+  await expect(page.locator("#portal")).toContainText("Por favor, confirmen su asistencia a más tardar el martes 1 de diciembre.");
   await expect(page.locator("#portal .home-replied")).toHaveCount(0);
 });
 

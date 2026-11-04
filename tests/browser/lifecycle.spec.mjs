@@ -49,36 +49,36 @@ const church = "Our Lady of Guadalupe Church",
 const walk = [
   ["today, unanswered", "2026-10-17T10:00:00-05:00", {
     phase: "rsvp-open",
-    countdown: "Time left to RSVP 29 days 14 hours 59 minutes",
-    replyBy: "Please RSVP by Sunday, November 15.",
+    countdown: "Time left to RSVP 45 days 14 hours 59 minutes",
+    replyBy: "Please RSVP by Tuesday, December 1.",
     actions: ["RSVP", "See the schedule→"],
     href: "/rsvp/",
     pill: true,
   }],
-  ["a week before the deadline", "2026-11-08T12:00:00-06:00", {
+  ["a week before the deadline", "2026-11-24T12:00:00-06:00", {
     phase: "rsvp-open",
     countdown: "Time left to RSVP 7 days 11 hours 59 minutes",
-    replyBy: "Please RSVP by Sunday, November 15.",
+    replyBy: "Please RSVP by Tuesday, December 1.",
     actions: ["RSVP", "See the schedule→"],
     pill: true,
   }],
   ["one second before the deadline", new Date(DEADLINE - 1000).toISOString(), {
     phase: "rsvp-open",
     countdown: "Time left to RSVP 0 days 0 hours 1 minute",
-    replyBy: "Please RSVP by Sunday, November 15.",
+    replyBy: "Please RSVP by Tuesday, December 1.",
     actions: ["RSVP", "See the schedule→"],
     pill: true,
   }],
   ["the deadline itself", new Date(DEADLINE).toISOString(), {
     phase: "rsvp-closed",
-    countdown: "Until the celebration 60 days 16 hours 1 minute",
+    countdown: "Until the celebration 44 days 16 hours 1 minute",
     actions: ["See the schedule"],
     href: "/details/",
     pill: true,
   }],
   ["one second after the deadline", new Date(DEADLINE + 1000).toISOString(), {
     phase: "rsvp-closed",
-    countdown: "Until the celebration 60 days 16 hours 1 minute",
+    countdown: "Until the celebration 44 days 16 hours 1 minute",
     actions: ["See the schedule"],
     pill: true,
   }],
@@ -179,15 +179,15 @@ test.describe("the same states in Spanish, speaking to the household", () => {
   const es = [
     ["2026-10-17T10:00:00-05:00", {
       phase: "rsvp-open",
-      countdown: "Para confirmar quedan 29 días 14 horas 59 minutos",
-      replyBy: "Por favor, confirmen su asistencia a más tardar el domingo 15 de noviembre.",
+      countdown: "Para confirmar quedan 45 días 14 horas 59 minutos",
+      replyBy: "Por favor, confirmen su asistencia a más tardar el martes 1 de diciembre.",
       actions: ["Confirmar asistencia", "Ver el programa→"],
       href: "/es/rsvp/",
       pill: true,
     }],
     [new Date(DEADLINE + 1000).toISOString(), {
       phase: "rsvp-closed",
-      countdown: "Para la celebración faltan 60 días 16 horas 1 minuto",
+      countdown: "Para la celebración faltan 44 días 16 horas 1 minuto",
       actions: ["Ver el programa"],
       pill: true,
     }],
@@ -225,7 +225,7 @@ test.describe("the same states in Spanish, speaking to the household", () => {
 test("the home page changes at each boundary without a reload", async ({ context, harness }) => {
   // Two seconds before each boundary, then the page's clock runs past it.
   for (const [iso, part, before, after] of [
-    [new Date(DEADLINE).toISOString(), "countdown", "Time left to RSVP 0 days 0 hours 1 minute", "Until the celebration 60 days 16 hours 1 minute"],
+    [new Date(DEADLINE).toISOString(), "countdown", "Time left to RSVP 0 days 0 hours 1 minute", "Until the celebration 44 days 16 hours 1 minute"],
     ["2027-01-15T18:30:00-06:00", "primary", "Directions to the reception", "Share your photos"],
     ["2027-01-16T00:30:00-06:00", "primary", "Share your photos", "See the photos"],
   ]) {
@@ -250,13 +250,13 @@ test("a countdown changes once a minute (no timer storm), and with reduced motio
   await page.clock.install({ time: start });
   await page.clock.pauseAt(start);
   await openHome(page, harness);
-  await expect(home.countdown(page)).toHaveText("Time left to RSVP 29 days 14 hours 59 minutes");
+  await expect(home.countdown(page)).toHaveText("Time left to RSVP 45 days 14 hours 59 minutes");
   await page.evaluate(() => {
     window.changes = 0;
     new MutationObserver(() => window.changes++).observe(document.querySelector("[data-countdown]"), { childList: true, subtree: true, characterData: true });
   });
   await page.clock.runFor(120_000);
-  await expect(home.countdown(page)).toHaveText("Time left to RSVP 29 days 14 hours 57 minutes");
+  await expect(home.countdown(page)).toHaveText("Time left to RSVP 45 days 14 hours 57 minutes");
   expect(await page.evaluate(() => window.changes)).toBeLessThanOrEqual(2);
 
   const calm = await context.newPage();
@@ -273,7 +273,7 @@ test("a countdown changes once a minute (no timer storm), and with reduced motio
   // ...but a change of state is not motion: it still flips at the deadline.
   harness.setNow(DEADLINE + 1000);
   await calm.clock.runFor(31_000);
-  await expect(home.countdown(calm)).toHaveText("Until the celebration 60 days 16 hours 1 minute");
+  await expect(home.countdown(calm)).toHaveText("Until the celebration 44 days 16 hours 1 minute");
 });
 
 test.describe("on a wrong device clock the page follows the server", () => {
@@ -292,20 +292,20 @@ test.describe("on a wrong device clock the page follows the server", () => {
       });
     });
 
-  test("a phone two minutes fast still saves its RSVP at 11:58 PM on November 15", async ({ page, harness }) => {
+  test("a phone two minutes fast still saves its RSVP at 11:58 PM on December 1", async ({ page, harness }) => {
     const { link } = await harness.issueInvitation(households.rivera);
     harness.setNow(DEADLINE - 60_000);
     await page.clock.setFixedTime(DEADLINE + 60_000);
     await page.goto(harness.forBrowser(link));
     await expect(page.getByRole("heading", { name: "Rivera Family" })).toBeVisible();
-    await expect(page.locator("#portal .deadline")).toHaveText("Please RSVP by Sunday, November 15.");
+    await expect(page.locator("#portal .deadline")).toHaveText("Please RSVP by Tuesday, December 1.");
     await page.getByRole("button", { name: "Everyone’s coming" }).click();
     await page.getByRole("button", { name: "Save my RSVP" }).click();
     await expect(page).toHaveURL(harness.url("/rsvp/confirmed/"));
-    await expect(page.getByText("Saved November 15 · you can change it until Sunday, November 15")).toBeVisible();
+    await expect(page.getByText("Saved December 1 · you can change it until Tuesday, December 1")).toBeVisible();
     // The home page counts the last minute on the server's clock.
     await page.goto(harness.url("/"));
-    await expect(home.status(page)).toHaveText(["You replied ✓ · you can change it until Sunday, November 15"]);
+    await expect(home.status(page)).toHaveText(["You replied ✓ · you can change it until Tuesday, December 1"]);
   });
 
   test("a phone two minutes slow sees RSVPs closed once the server has closed them", async ({ page, harness }) => {
@@ -355,7 +355,7 @@ test.describe("a household that replied", () => {
     await openHome(page, harness);
     await expectHome(page, {
       phase: "rsvp-open",
-      status: ["You replied ✓ · you can change it until Sunday, November 15"],
+      status: ["You replied ✓ · you can change it until Tuesday, December 1"],
       actions: ["See the schedule", "Change your RSVP→"],
       href: "/details/",
       pill: false,
@@ -377,7 +377,7 @@ test.describe("a household that replied", () => {
     await visit.clock.setFixedTime(harness.now());
     await openHome(visit, harness);
     expect((await (await visit.request.get(harness.url("/api/session"))).json()).kind).toBe(null);
-    await expect(home.status(visit)).toHaveText(["You replied ✓ · you can change it until Sunday, November 15"]);
+    await expect(home.status(visit)).toHaveText(["You replied ✓ · you can change it until Tuesday, December 1"]);
     await expect(home.countdown(visit)).toBeHidden();
     await expect(home.pill(visit)).toBeHidden();
     // After the deadline: "You replied ✓", without "change until".
@@ -385,7 +385,7 @@ test.describe("a household that replied", () => {
     await visit.clock.setFixedTime(AFTER_DEADLINE);
     await openHome(visit, harness);
     await expect(home.status(visit)).toHaveText(["You replied ✓"]);
-    await expect(home.countdown(visit)).toHaveText("Until the celebration 60 days 16 hours 0 minutes");
+    await expect(home.countdown(visit)).toHaveText("Until the celebration 44 days 16 hours 0 minutes");
     await next.close();
 
     // A different browser knows nothing: the honest default.
@@ -405,7 +405,7 @@ test.describe("a household that replied", () => {
     await answer(page, harness, households.rivera, { button: "We can’t make it" });
     expect((await marker(page)).answer).toBe("no");
     await openHome(page, harness);
-    await expect(home.status(page)).toHaveText(["Thank you for letting us know · you can change your RSVP until Sunday, November 15"]);
+    await expect(home.status(page)).toHaveText(["Thank you for letting us know · you can change your RSVP until Tuesday, December 1"]);
     await expect(home.primary(page)).toHaveText("See the schedule");
   });
 
@@ -415,7 +415,7 @@ test.describe("a household that replied", () => {
     await openHome(page, harness, "es");
     await expectHome(page, {
       phase: "rsvp-open",
-      status: ["Ya respondieron ✓ · pueden cambiar su respuesta hasta el domingo 15 de noviembre"],
+      status: ["Ya respondieron ✓ · pueden cambiar su respuesta hasta el martes 1 de diciembre"],
       actions: ["Ver el programa", "Cambiar la respuesta→"],
       pill: false,
     }, "es");
@@ -426,7 +426,7 @@ test.describe("a household that replied", () => {
     // The note says yes; the signed-in household said no.
     await page.evaluate(() => localStorage.setItem("misxv-replied", JSON.stringify({ v: 1, answer: "yes", savedAt: "x", until: "2027-01-16T06:30:00.000Z" })));
     await openHome(page, harness);
-    await expect(home.status(page)).toHaveText(["Thank you for letting us know · you can change your RSVP until Sunday, November 15"]);
+    await expect(home.status(page)).toHaveText(["Thank you for letting us know · you can change your RSVP until Tuesday, December 1"]);
     expect((await marker(page)).answer).toBe("no");
     // A household that has not replied, signed in on a device with a stale note.
     const { link } = await harness.issueInvitation(households.morales, { locale: "es" });
@@ -470,19 +470,19 @@ test.describe("the RSVP page on the server's clock", () => {
     await setNow(DEADLINE - 1000);
     await page.goto(harness.url("/rsvp/"));
     await expect(page.getByRole("heading", { name: "Open your invitation" })).toBeVisible();
-    await expect(page.locator("#portal .deadline")).toHaveText("Please RSVP by Sunday, November 15.");
+    await expect(page.locator("#portal .deadline")).toHaveText("Please RSVP by Tuesday, December 1.");
     await expect(page.getByRole("heading", { name: "RSVPs are closed" })).toHaveCount(0);
     await setNow(DEADLINE);
     await page.goto(harness.url("/rsvp/"));
     await expect(page.getByRole("heading", { level: 2 }).first()).toHaveText("RSVPs are closed");
-    await expect(page.getByText("RSVPs closed on Sunday, November 15. To reply or change your RSVP now, please contact us.")).toBeVisible();
+    await expect(page.getByText("RSVPs closed on Tuesday, December 1. To reply or change your RSVP now, please contact us.")).toBeVisible();
     await expect(page.getByRole("main").getByRole("link", { name: "Contact us" })).toHaveAttribute("href", "/contact/");
     await expect(page.locator("#portal .deadline")).toHaveCount(0);
     // The link or code still opens the household's saved answer.
     await expect(page.getByRole("heading", { name: "Open your invitation" })).toBeVisible();
     await page.goto(harness.url("/es/rsvp/"));
     await expect(page.getByRole("heading", { level: 2 }).first()).toHaveText("Ya no se reciben respuestas");
-    await expect(page.getByText("El plazo para confirmar terminó el domingo 15 de noviembre. Para confirmar su asistencia o cambiar su respuesta, escríbannos.")).toBeVisible();
+    await expect(page.getByText("El plazo para confirmar terminó el martes 1 de diciembre. Para confirmar su asistencia o cambiar su respuesta, escríbannos.")).toBeVisible();
   });
 
   test("a form left open across the deadline turns into the closed note with the saved answer", async ({ context, harness }) => {
@@ -718,8 +718,8 @@ test.describe("parking on the day itself, once the family posts it", () => {
 // clear the device's "you replied" note, so the home page offers it.
 test.describe("a reply this device remembers can be forgotten here", () => {
   for (const [lang, household, quick, save, replied, prompt, button, countdown] of [
-    ["en", households.rivera, "Everyone’s coming", "Save my RSVP", "You replied ✓ · you can change it until Sunday, November 15", "Not your family?", "Forget this reply on this device", /^Time left to RSVP/],
-    ["es", households.morales, "Vamos todos", "Guardar la respuesta", "Ya respondieron ✓ · pueden cambiar su respuesta hasta el domingo 15 de noviembre", "¿No es su familia?", "Olvidar esta respuesta en este dispositivo", /^Para confirmar quedan/],
+    ["en", households.rivera, "Everyone’s coming", "Save my RSVP", "You replied ✓ · you can change it until Tuesday, December 1", "Not your family?", "Forget this reply on this device", /^Time left to RSVP/],
+    ["es", households.morales, "Vamos todos", "Guardar la respuesta", "Ya respondieron ✓ · pueden cambiar su respuesta hasta el martes 1 de diciembre", "¿No es su familia?", "Olvidar esta respuesta en este dispositivo", /^Para confirmar quedan/],
   ])
     test(`${lang}: "${prompt} ${button}" clears the note and shows the honest unknown state`, async ({ page, context, harness }) => {
       const { link } = await harness.issueInvitation(household, { locale: lang });
@@ -842,7 +842,7 @@ test("switched off in Admin, no page keeps, shows or leaves a note that the hous
   expect(JSON.parse(await note())).toMatchObject({ v: 1, answer: "yes" });
   await context.clearCookies();
   await openHome(page, harness);
-  await expect(home.status(page)).toHaveText(["You replied ✓ · you can change it until Sunday, November 15"]);
+  await expect(home.status(page)).toHaveText(["You replied ✓ · you can change it until Tuesday, December 1"]);
   await expect(page.locator(".home-forget")).toHaveText("Not your family? Forget this reply on this device");
   await privacySays("on");
 });
@@ -873,14 +873,14 @@ test("after the party the home page says the family's sentence when they write o
 const repliedNote = (answer) => ({ v: 1, answer, savedAt: "2026-10-01T18:00:00.000Z", until: "2027-01-16T06:30:00.000Z" });
 test.describe("the walk for a household that replied, in English and Spanish", () => {
   const rows = [
-    ["en", "yes", "2026-11-15T20:00:00-06:00", { phase: "rsvp-open", status: ["You replied ✓ · you can change it until Sunday, November 15"], actions: ["See the schedule", "Change your RSVP→"], pill: false }],
-    ["en", "no", "2026-11-15T20:00:00-06:00", { phase: "rsvp-open", status: ["Thank you for letting us know · you can change your RSVP until Sunday, November 15"], actions: ["See the schedule", "Change your RSVP→"], pill: false }],
-    ["en", "yes", "2026-11-16T00:01:00-06:00", { phase: "rsvp-closed", countdown: "Until the celebration 60 days 15 hours 59 minutes", status: ["You replied ✓"], actions: ["See the schedule"], pill: false }],
+    ["en", "yes", "2026-12-01T20:00:00-06:00", { phase: "rsvp-open", status: ["You replied ✓ · you can change it until Tuesday, December 1"], actions: ["See the schedule", "Change your RSVP→"], pill: false }],
+    ["en", "no", "2026-12-01T20:00:00-06:00", { phase: "rsvp-open", status: ["Thank you for letting us know · you can change your RSVP until Tuesday, December 1"], actions: ["See the schedule", "Change your RSVP→"], pill: false }],
+    ["en", "yes", "2026-12-02T00:01:00-06:00", { phase: "rsvp-closed", countdown: "Until the celebration 44 days 15 hours 59 minutes", status: ["You replied ✓"], actions: ["See the schedule"], pill: false }],
     ["en", "yes", "2027-01-15T15:00:00-06:00", { phase: "day-of", countdown: "Today is the day!", status: [`Next Religious ceremony · 4:00 PM · ${church}`], actions: ["Directions to the ceremony ↗", "See the schedule→"], pill: false }],
     ["en", "yes", "2027-01-15T21:15:00-06:00", { phase: "live", countdown: "Today is the day!", status: [`Now Reception & dance · 7:30 PM – 12:30 AM (Jan 16) · ${hall}`], actions: ["Share your photos", "Directions to the reception ↗", "See the schedule→"], pill: false }],
     ["en", "no", "2027-01-16T10:00:00-06:00", { phase: "after", line: "Thank you for celebrating with us.", actions: ["See the photos", "Share your photos→", "Leave Sophia a note→"], pill: false }],
-    ["es", "yes", "2026-11-15T20:00:00-06:00", { phase: "rsvp-open", status: ["Ya respondieron ✓ · pueden cambiar su respuesta hasta el domingo 15 de noviembre"], actions: ["Ver el programa", "Cambiar la respuesta→"], pill: false }],
-    ["es", "no", "2026-11-16T00:01:00-06:00", { phase: "rsvp-closed", countdown: "Para la celebración faltan 60 días 15 horas 59 minutos", status: ["Gracias por avisarnos"], actions: ["Ver el programa"], pill: false }],
+    ["es", "yes", "2026-12-01T20:00:00-06:00", { phase: "rsvp-open", status: ["Ya respondieron ✓ · pueden cambiar su respuesta hasta el martes 1 de diciembre"], actions: ["Ver el programa", "Cambiar la respuesta→"], pill: false }],
+    ["es", "no", "2026-12-02T00:01:00-06:00", { phase: "rsvp-closed", countdown: "Para la celebración faltan 44 días 15 horas 59 minutos", status: ["Gracias por avisarnos"], actions: ["Ver el programa"], pill: false }],
     ["es", "yes", "2027-01-15T15:00:00-06:00", { phase: "day-of", countdown: "¡Hoy es el gran día!", status: [`A continuación Ceremonia religiosa · 4:00 p. m. · ${church}`], actions: ["Cómo llegar a la ceremonia ↗", "Ver el programa→"], pill: false }],
     ["es", "yes", "2027-01-15T21:15:00-06:00", { phase: "live", countdown: "¡Hoy es el gran día!", status: [`Ahora Recepción y baile · 7:30 p. m. – 12:30 a. m. (16 de enero) · ${hall}`], actions: ["Compartir fotos", "Cómo llegar a la recepción ↗", "Ver el programa→"], pill: false }],
     ["es", "yes", "2027-01-16T10:00:00-06:00", { phase: "after", line: "Gracias por celebrar con nosotros.", actions: ["Ver las fotos", "Compartir fotos→", "Déjenle un mensaje a Sophia→"], pill: false }],
@@ -895,8 +895,8 @@ test.describe("the walk for a household that replied, in English and Spanish", (
 });
 test.describe("the same states in Spanish at the review's other instants", () => {
   const es = [
-    ["2026-11-15T20:00:00-06:00", { phase: "rsvp-open", countdown: "Para confirmar quedan 0 días 3 horas 59 minutos", replyBy: "Por favor, confirmen su asistencia a más tardar el domingo 15 de noviembre.", actions: ["Confirmar asistencia", "Ver el programa→"], pill: true }],
-    [new Date(DEADLINE).toISOString(), { phase: "rsvp-closed", countdown: "Para la celebración faltan 60 días 16 horas 1 minuto", actions: ["Ver el programa"], pill: true }],
+    ["2026-12-01T20:00:00-06:00", { phase: "rsvp-open", countdown: "Para confirmar quedan 0 días 3 horas 59 minutos", replyBy: "Por favor, confirmen su asistencia a más tardar el martes 1 de diciembre.", actions: ["Confirmar asistencia", "Ver el programa→"], pill: true }],
+    [new Date(DEADLINE).toISOString(), { phase: "rsvp-closed", countdown: "Para la celebración faltan 44 días 16 horas 1 minuto", actions: ["Ver el programa"], pill: true }],
     ["2027-01-08T12:00:00-06:00", { phase: "rsvp-closed", countdown: "Para la celebración faltan 7 días 4 horas 0 minutos", actions: ["Ver el programa"], pill: true }],
     ["2027-01-15T15:00:00-06:00", { phase: "day-of", countdown: "¡Hoy es el gran día!", status: [`A continuación Ceremonia religiosa · 4:00 p. m. · ${church}`], actions: ["Cómo llegar a la ceremonia ↗", "Ver el programa→"], pill: true }],
     ["2027-01-15T18:30:00-06:00", { phase: "live", countdown: "¡Hoy es el gran día!", status: [`Ahora Cena · 6:30 p. m. – 7:30 p. m. · ${hall}`, `A continuación Recepción y baile · 7:30 p. m. · ${hall}`], actions: ["Compartir fotos", "Cómo llegar a la recepción ↗", "Ver el programa→"], pill: true }],

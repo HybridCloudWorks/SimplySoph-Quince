@@ -1,7 +1,7 @@
 // What the API tells browsers about time (site/now.mjs, site/lifecycle.mjs):
 // its own clock, whether the session's household replied, dated
 // announcements newest first, and no invitation or reminder once the RSVP
-// deadline has passed (they would still ask for an answer "by November 15").
+// deadline has passed (they would still ask for an answer "by December 1").
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Ledger, memoryAdapter } from "../server/store.mjs";

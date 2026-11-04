@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import twilio from "twilio";
-import { createWhatsapp } from "../server/whatsapp.mjs";
+import { createWhatsapp, deadlineText } from "../server/whatsapp.mjs";
+import { event } from "../site/content.mjs";
 import {
   whatsappTransport,
   whatsappDestination,
@@ -368,20 +369,31 @@ test("WhatsApp sign-up refuses US and Canadian (+1) numbers and new sign-ups whi
 });
 
 test("WhatsApp cannot be switched on while an approved template shows another RSVP deadline (re-audit N5)", () => {
-  const deadline = "2026-11-15T23:59:00-06:00";
+  // The site's deadline (site/content.mjs), so the fixtures follow it when it
+  // moves; a template is current only if it shows that date in its language.
+  const deadline = event.deadline;
+  assert.equal(deadlineText("2026-12-01T23:59:00-06:00", "en"), "December 1, 2026");
+  assert.equal(deadlineText("2026-12-01T23:59:00-06:00", "es"), "1 de diciembre de 2026");
   const template = (key, language, body) => ({
     key, language, body, status: "approved", category: "MARKETING",
     contentSid: "HX" + "5".repeat(32), variables: ["1"],
   });
   const old = [
     template("invitation_en", "en", "Simply Soph Media: Please RSVP by October 31, 2026 using your private link: {{1}}"),
-    template("invitation_es", "es", "Simply Soph Media: Confirma antes del 15 de noviembre de 2026: {{1}}"),
+    template("invitation_es", "es", `Simply Soph Media: Confirma antes del ${deadlineText(deadline, "es")}: {{1}}`),
   ];
   const build = (templates, enabled) =>
     createWhatsapp({ ledger: null, notion: null, transport: { enabled }, templates, deadline });
   assert.throws(() => build(old, true), /another RSVP deadline: invitation_en$/);
   assert.doesNotThrow(() => build(old, false), "switched off, the catalog may still be updated");
-  const current = [old[1], template("invitation_en", "en", "Simply Soph Media: Please RSVP by November 15, 2026 using your private link: {{1}}")];
+  // The Meta-approved templates still say "November 15, 2026" / "15 de
+  // noviembre de 2026" (docs/whatsapp-activation.md): they are refused too.
+  const approved = [
+    template("invitation_en", "en", "Simply Soph Media: Please RSVP by November 15, 2026 using your private link: {{1}}"),
+    template("reminder_es", "es", "Simply Soph Media: Confirma tu asistencia antes del 15 de noviembre de 2026 aquí: {{1}}"),
+  ];
+  assert.throws(() => build(approved, true), /another RSVP deadline: invitation_en, reminder_es$/);
+  const current = [old[1], template("invitation_en", "en", `Simply Soph Media: Please RSVP by ${deadlineText(deadline, "en")} using your private link: {{1}}`)];
   assert.doesNotThrow(() => build(current, true));
 });
 

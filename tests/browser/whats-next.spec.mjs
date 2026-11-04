@@ -185,8 +185,8 @@ test("editing a saved answer in English says it replaces it; the first answer do
 
 test("Questions links the RSVP until the deadline, then says RSVPs are closed, in English and Spanish", async ({ page, harness, setNow }) => {
   for (const [path, open, rsvp, closed] of [
-    ["/faq/", "By Sunday, November 15, 2026.", "/rsvp/", "RSVPs closed on Sunday, November 15, 2026."],
-    ["/es/faq/", "A más tardar el domingo 15 de noviembre de 2026.", "/es/rsvp/", "El plazo para confirmar terminó el domingo 15 de noviembre de 2026."],
+    ["/faq/", "By Tuesday, December 1, 2026.", "/rsvp/", "RSVPs closed on Tuesday, December 1, 2026."],
+    ["/es/faq/", "A más tardar el martes 1 de diciembre de 2026.", "/es/rsvp/", "El plazo para confirmar terminó el martes 1 de diciembre de 2026."],
   ]) {
     await setNow(DEADLINE - 60_000);
     await page.goto(harness.url(path));

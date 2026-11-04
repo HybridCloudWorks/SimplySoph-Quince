@@ -25,7 +25,7 @@ const xml = (text = "") => ({
   contentType: "text/xml; charset=utf-8",
 });
 // The RSVP deadline as a template must show it, in the template's language:
-// "November 15, 2026" or "15 de noviembre de 2026" (site/datetime.mjs).
+// "December 1, 2026" or "1 de diciembre de 2026" (site/datetime.mjs).
 export const deadlineText = (deadline, language) => date(deadline, language, { weekday: false });
 // The automatic replies to STOP, START and HELP, in English and Spanish. The
 // Spanish ones speak to the one person who owns the phone (tú).
@@ -88,7 +88,9 @@ export function createWhatsapp({
   // Templates repeat the RSVP deadline, which Meta freezes at approval. WhatsApp
   // cannot be switched on while an approved template shows another date, so
   // guests are never told the wrong day (re-audit N5; templates resubmitted
-  // after the deadline moved to November 15).
+  // after the deadline moved to November 15, and again when it moved to
+  // December 1: docs/whatsapp-activation.md, "Resubmission for the December 1
+  // deadline").
   const outdated = deadline
     ? templates.filter((t) => t.status === "approved" && !t.body.includes(deadlineText(deadline, t.language)))
     : [];
