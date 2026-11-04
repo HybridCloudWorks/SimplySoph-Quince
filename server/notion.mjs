@@ -7,6 +7,28 @@ const text = (p) =>
   (p?.title || p?.rich_text || [])
     .map((t) => t.plain_text ?? t.text?.content ?? "")
     .join("");
+// A row's phone as E.164, from Notion's Phone and Country Code columns: the
+// family types 10 digits and keeps the country code in its own column, so
+// "6825550123" with no code, or with 1, becomes "+16825550123"; "5512345678"
+// with 52 becomes "+525512345678". A number already written with "+" is kept
+// as it is, and anything that cannot be read that way is returned as typed,
+// so the pages still say it needs review.
+export function phoneE164(phone, countryCode) {
+  const raw = String(phone ?? "").trim();
+  if (!raw) return "";
+  const compact = raw.replace(/[\s().-]/g, "");
+  if (/^\+\d{8,15}$/.test(compact)) return compact;
+  if (!/^\d{6,15}$/.test(compact)) return raw;
+  const code = String(countryCode ?? "").replace(/\D/g, "");
+  if (code && code !== "0") {
+    // An 11-digit "1…" number with code 1 already carries the code.
+    if (compact.startsWith(code) && compact.length === code.length + 10) return "+" + compact;
+    return "+" + code + compact;
+  }
+  if (compact.length === 10) return "+1" + compact;
+  if (compact.length === 11 && compact.startsWith("1")) return "+" + compact;
+  return raw;
+}
 export function normalizeInvitation(page) {
   const p = page.properties ?? {},
     adults = p["Adults/Teens"]?.number,
@@ -28,7 +50,11 @@ export function normalizeInvitation(page) {
       .split(/[\s,;]+/)
       .map((v) => v.trim().toLowerCase())
       .filter((v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)),
-    phone: p.Phone?.phone_number ?? "",
+    phone: phoneE164(
+      p.Phone?.phone_number ?? "",
+      p["Country Code"]?.number ?? text(p["Country Code"]) ?? "",
+    ),
+    phoneRaw: p.Phone?.phone_number ?? "",
     administratorEligible: p["Administrator Eligible"]?.checkbox === true,
     // Notion returns every column on every row, empty or not: a missing one
     // was renamed or deleted, so admin flags read from it mean nothing.

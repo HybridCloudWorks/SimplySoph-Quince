@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
+import { phoneE164,
   normalizeInvitation,
   notionClient,
   notionRetryable,
@@ -754,4 +754,30 @@ test("contact projection refuses a page from another data source or a malformed 
     (e) => e.status === 404 && e.code === "INVITATION_NOT_FOUND",
   );
   assert.equal(none.requests.length, 0);
+});
+
+test("a row's phone is E.164 from Notion's Phone and Country Code columns", () => {
+  assert.equal(phoneE164("6825550123", null), "+16825550123");
+  assert.equal(phoneE164("(682) 555-0123", 1), "+16825550123");
+  assert.equal(phoneE164("16825550123", 1), "+16825550123");
+  assert.equal(phoneE164("5512345678", 52), "+525512345678");
+  assert.equal(phoneE164("+525512345678", 52), "+525512345678");
+  assert.equal(phoneE164("+1 682 555 0123", ""), "+16825550123");
+  // Not a number the program could text: returned as typed, so it reads as
+  // "needs review" rather than being silently mangled.
+  assert.equal(phoneE164("555-0123", null), "555-0123");
+  assert.equal(phoneE164("guest@example.net", null), "guest@example.net");
+  assert.equal(phoneE164("", 1), "");
+  const row = normalizeInvitation({
+    id: "11111111-1111-4111-8111-111111111111",
+    properties: {
+      Guest: { title: [{ plain_text: "Fixture" }] },
+      "Adults/Teens": { number: 2 },
+      Kids: { rich_text: [{ plain_text: "0" }] },
+      Phone: { phone_number: "6825550123" },
+      "Country Code": { number: 1 },
+    },
+  });
+  assert.equal(row.phone, "+16825550123");
+  assert.equal(row.phoneRaw, "6825550123");
 });
