@@ -74,7 +74,8 @@ test("serif times, dates and counts use lining figures, in English and Spanish",
     await expect(page.locator("[data-whats-next] p").first()).toContainText("2026");
     expect((await oldStyleFigures(page)).bad, `${lang} What's next`).toEqual([]);
     await page.goto(harness.url(pathOf("", lang)));
-    await expect(page.locator(".home-replied")).toContainText("15");
+    // The deadline day ("until Tuesday, December 1" / "hasta el martes 1 de diciembre").
+    await expect(page.locator(".home-replied")).toContainText(/December 1|1 de diciembre/);
     await expect(page.locator("[data-latest-update] time")).toContainText("1");
     expect((await oldStyleFigures(page)).bad, `${lang} answered, announcement`).toEqual([]);
   }

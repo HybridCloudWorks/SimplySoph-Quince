@@ -790,7 +790,7 @@ export function createApplication({
     } else if (!invite?.active || invite.generation !== j.generation)
       throw error(409, "MAIL_DRAFT_STALE");
     // Drafted before the deadline, sent after it: it would still say "by
-    // November 15", so it is set aside instead. The same for a typed email
+    // December 1", so it is set aside instead. The same for a typed email
     // with a private RSVP link ({link}: a custom draft with a generation).
     refuseLateInvitations(j.type);
     refuseLateLink(j.type === "custom" && j.generation !== undefined);

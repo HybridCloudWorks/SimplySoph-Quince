@@ -155,7 +155,7 @@ test.describe("on a phone", () => {
     const rsvp = page.getByRole("main").getByRole("link", { name: "RSVP", exact: true });
     const box = await rsvp.boundingBox();
     expect(box.y + box.height).toBeLessThan(844);
-    await expect(page.getByText("Please RSVP by Sunday, November 15")).toBeVisible();
+    await expect(page.getByText("Please RSVP by Tuesday, December 1")).toBeVisible();
     // R-131: where round 1 left it, top at 312 px under the 64 px header,
     // in English and Spanish, on a 390 px and a 320 px phone.
     for (const [width, height] of [
@@ -348,13 +348,13 @@ test.describe("the home page countdown", () => {
   const countdown = (page) => page.locator("[data-countdown]");
 
   test("counts the time left to reply, by the minute", async ({ page, harness }) => {
-    // October 1, 18:00 UTC; the deadline is November 15, 11:59 PM Central.
+    // October 1, 18:00 UTC; the deadline is December 1, 11:59 PM Central.
     await page.goto(harness.url("/"));
-    await expect(countdown(page)).toHaveText("Time left to RSVP 45 days 11 hours 59 minutes");
-    await expect(page.getByText("Please RSVP by Sunday, November 15")).toBeVisible();
+    await expect(countdown(page)).toHaveText("Time left to RSVP 61 days 11 hours 59 minutes");
+    await expect(page.getByText("Please RSVP by Tuesday, December 1")).toBeVisible();
     await page.goto(harness.url("/es/"));
-    await expect(countdown(page)).toHaveText("Para confirmar quedan 45 días 11 horas 59 minutos");
-    await expect(page.getByText("Por favor, confirmen su asistencia a más tardar el domingo 15 de noviembre")).toBeVisible();
+    await expect(countdown(page)).toHaveText("Para confirmar quedan 61 días 11 horas 59 minutos");
+    await expect(page.getByText("Por favor, confirmen su asistencia a más tardar el martes 1 de diciembre")).toBeVisible();
   });
 
   test("then counts to the celebration, and disappears once it is over", async ({
@@ -364,7 +364,7 @@ test.describe("the home page countdown", () => {
   }) => {
     await setNow(AFTER_DEADLINE);
     await page.goto(harness.url("/"));
-    await expect(countdown(page)).toHaveText("Until the celebration 60 days 16 hours 0 minutes");
+    await expect(countdown(page)).toHaveText("Until the celebration 44 days 16 hours 0 minutes");
     // No "Please RSVP by" a date that has passed. The schedule leads now
     // (site/lifecycle.mjs homeState); the header's RSVP pill stays and opens
     // the closed note with the household's saved answer.
