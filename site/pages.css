@@ -865,6 +865,13 @@ blockquote {
   .field-grid {
     grid-template-columns: 1fr;
   }
+  #share-panel {
+    grid-column: auto;
+    grid-row: auto;
+  }
+  .field-grid > #batch-toolbar {
+    grid-column: auto;
+  }
   .page-heading {
     margin-bottom: 24px;
   }
@@ -1349,6 +1356,15 @@ blockquote {
   padding: 16px 20px;
   min-width: 0;
   align-self: start;
+  grid-column: 2;
+  grid-row: 2 / span 2;
+}
+/* The batch buttons take the cell under the Notion status filter, beside
+   the card, so the card never pushes them down. */
+.field-grid > #batch-toolbar {
+  grid-column: 1;
+  margin: 0;
+  align-self: end;
 }
 #share-panel .share-title {
   display: flex;
