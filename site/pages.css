@@ -1340,31 +1340,15 @@ blockquote {
   min-height: 44px;
   padding: 8px 0;
 }
-/* The batch buttons and the "Share by text" card share one row on a wide
-   screen, top-aligned with the same gap as the filters above; they stack on
-   a narrow one. The card lives once; each row keeps only its link
-   (site/admin.js sharePanel). */
-#batch-row {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 16px;
-  align-items: start;
-  margin: 20px 0 12px;
-}
-@media (min-width: 60em) {
-  #batch-row {
-    grid-template-columns: 1fr minmax(320px, 460px);
-  }
-}
-#batch-row > .row-actions {
-  margin: 0;
-  min-height: 44px;
-}
+/* The "Share by text" card fills the empty cell beside the Notion status
+   filter; it lives once, each row keeps only its link (site/admin.js
+   sharePanel). */
 #share-panel {
   background: var(--surface);
   border: 1px solid var(--line);
   padding: 16px 20px;
   min-width: 0;
+  align-self: start;
 }
 #share-panel .share-title {
   display: flex;
