@@ -5,7 +5,7 @@ import { audienceComposer } from "./admin-audience.js";
 import { smsComposer } from "./admin-sms.js";
 import { batchToolbar, eventNames } from "./admin-batches.js";
 import { householdMatches, notionStatusOf, notionStatusOptions } from "./admin-filter.mjs";
-import { shareByText } from "./share-by-text.mjs";
+import { shareLink, shareNumber, shareText } from "./share-by-text.mjs";
 import { startPulse, activityBanner } from "./admin-pulse.js";
 import { websiteEditor, notificationInbox, copyWarnings } from "./admin-experience.js";
 import {
@@ -360,11 +360,17 @@ let guests = [];
 // keyword and program number come from the API's config; the day of the
 // celebration from the page (built from content.mjs). Nothing is sent or
 // recorded by the website.
+// The words are shown once, in the panel beside the batch buttons, in the
+// language chosen there; each row keeps only the link, which follows that
+// choice (sharePanel below).
 function shareCell(r, program) {
   if (!r.phone || !program) return "";
-  const share = shareByText(r, program);
-  if (!share.link) return '<p class="hint" data-share-text="needs-review">Phone needs review</p>';
-  return `<div data-share-text="${esc(r.id)}"><a class="button outline compact" href="${esc(share.link)}" data-share-link lang="${share.lang}">Share by text</a>${button("Copy text", "copy-share-text", r.id)}<details><summary>The text</summary><p lang="${share.lang}" data-share-words>${esc(share.text)}</p></details><p class="hint">Sent from your own phone; the website records nothing. When they text ${esc(program.keyword)} they show as Subscribed on the SMS tab.</p></div>`;
+  if (!shareNumber(r.phone)) return '<p class="hint" data-share-text="needs-review">Phone needs review</p>';
+  return `<a class="button outline compact" href="${esc(shareLink(r.phone, shareText({ lang: "en", ...program })))}" data-share-link data-share-phone="${esc(r.phone)}" lang="en">Share by text</a>`;
+}
+function sharePanel(program) {
+  if (!program) return "";
+  return `<div id="share-panel" data-share-text="panel"><p class="share-title">Share by text <label>Language<select name="share-lang"><option value="en">English</option><option value="es">Español</option></select></label></p><p lang="en" data-share-words>${esc(shareText({ lang: "en", ...program }))}</p><p class="row-actions">${button("Copy text", "copy-share-text", "")}</p><p class="hint">Sent from your own phone; the website records nothing. When they text ${esc(program.keyword)} they show as Subscribed on the SMS tab.</p></div>`;
 }
 async function guestList() {
   const [data, cfg] = await Promise.all([api("admin/guests"), api("config")]);
@@ -385,7 +391,7 @@ async function guestList() {
       ([k, v]) =>
         `<option value="${esc(k)}">${esc(v)}${k ? ` (${guests.filter((g) => householdMatches(g, { notionStatus: k })).length})` : ""}</option>`,
     )
-    .join("")}</select></label></div><div id="batch-toolbar" class="row-actions"><span data-selected-count></span><button type="button" class="button outline" data-batch="issue">Create links</button><button type="button" class="button burgundy" data-batch="invitation">Email invitation</button><button type="button" class="button outline" data-batch="reminder">Email reminder</button></div><p class="hint">Emails are drafted for review first. Nothing sends until you check the recipients and sample and type the number to confirm.</p>${table(
+    .join("")}</select></label></div><div id="batch-toolbar" class="row-actions"><span data-selected-count></span><button type="button" class="button outline" data-batch="issue">Create links</button><button type="button" class="button burgundy" data-batch="invitation">Email invitation</button><button type="button" class="button outline" data-batch="reminder">Email reminder</button>${sharePanel(program)}</div><p class="hint">Emails are drafted for review first. Nothing sends until you check the recipients and sample and type the number to confirm.</p>${table(
     ['<input type="checkbox" data-select-all aria-label="Select all shown households">', "Household", "Status", "Invited capacity", "Email", "Response / sync", "Actions"],
     guests.map(
       (r) =>
@@ -426,6 +432,20 @@ async function guestList() {
       }
     }
   };
+  // One language for the shared text and every row's link.
+  const shareLang = root.querySelector("[name=share-lang]");
+  if (shareLang)
+    shareLang.onchange = () => {
+      const lang = shareLang.value === "es" ? "es" : "en",
+        words = shareText({ lang, ...program }),
+        panelWords = root.querySelector("#share-panel [data-share-words]");
+      panelWords.textContent = words;
+      panelWords.lang = lang;
+      for (const a of root.querySelectorAll("[data-share-link]")) {
+        a.href = shareLink(a.dataset.sharePhone, words);
+        a.lang = lang;
+      }
+    };
   batchToolbar(root.querySelector("#guest-area"), guests, guestList);
 }
 function invitationEditor(id) {
@@ -791,14 +811,13 @@ root.addEventListener("click", (e) => {
     if (action === "import-form") importForm();
     if (action === "copy-share-text") {
       // On a computer the sms: link may do nothing: the words go to the
-      // clipboard, and stay readable in the expandable beside the button.
+      // clipboard, and stay readable in the panel above the button.
       const words = b.closest("[data-share-text]").querySelector("[data-share-words]").textContent;
       try {
         await navigator.clipboard.writeText(words);
         notify("Text copied. Paste it into a message from your own phone.");
       } catch {
-        b.nextElementSibling.open = true;
-        notify("Could not copy here. The text is shown under “The text”; select and copy it.");
+        notify("Could not copy here. Select the text in the Share by text box and copy it.");
       }
     }
     if (action === "export")

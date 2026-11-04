@@ -76,21 +76,37 @@ test("Invitations: Notion Status badges, filters, select-all in view, Share by t
 
   // Share by text: an sms: link in the household's language, from the
   // family's own phone; the website sends nothing and the status stays.
+  // The words are shown once, in a panel beside the batch buttons, in the
+  // language chosen there; every row's link follows that choice.
   const share = (h) => row(h).getByRole("link", { name: "Share by text" });
-  await expect(share(rivera)).toHaveAttribute("href", /^sms:\+18175550101\?&body=You%27re%20invited/);
-  await expect(share(morales)).toHaveAttribute("href", /^sms:\+18175550102\?&body=%C2%A1Est%C3%A1s%20invitado/);
-  await expect(share(morales)).toHaveAttribute("href", /SOPHIA%20al%20682-786-8002/);
-  await row(morales).getByText("The text").click();
-  await expect(row(morales).locator("[data-share-words]")).toHaveText(
-    "¡Estás invitado a los XV de Sophia el 15 de enero! Manda SOPHIA al 682-786-8002 para recibir tu enlace de invitación y avisos por texto.",
-  );
-  await expect(row(rivera)).toContainText("Sent from your own phone; the website records nothing.");
-  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-  await row(rivera).getByRole("button", { name: "Copy text" }).click();
-  await expect(page.locator("#status")).toContainText("Text copied.");
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+  const panel = page.locator("#share-panel"),
+    panelWords = panel.locator("[data-share-words]"),
+    language = panel.getByLabel("Language");
+  await expect(panel).toContainText("Sent from your own phone; the website records nothing.");
+  await expect(row(rivera)).not.toContainText("Sent from your own phone");
+  await expect(row(rivera).locator("[data-share-words]")).toHaveCount(0);
+  await expect(language).toHaveValue("en");
+  await expect(panelWords).toHaveText(
     "You're invited to Sophia's quinceañera on January 15! Text SOPHIA to 682-786-8002 to get your invitation link and updates by text.",
   );
+  await expect(share(rivera)).toHaveAttribute("href", /^sms:\+18175550101\?&body=You%27re%20invited/);
+  await expect(share(morales)).toHaveAttribute("href", /^sms:\+18175550102\?&body=You%27re%20invited/);
+  await language.selectOption("es");
+  await expect(panelWords).toHaveText(
+    "¡Estás invitado a los XV de Sophia el 15 de enero! Manda SOPHIA al 682-786-8002 para recibir tu enlace de invitación y avisos por texto.",
+  );
+  await expect(panelWords).toHaveAttribute("lang", "es");
+  await expect(share(rivera)).toHaveAttribute("href", /^sms:\+18175550101\?&body=%C2%A1Est%C3%A1s%20invitado/);
+  await expect(share(morales)).toHaveAttribute("href", /SOPHIA%20al%20682-786-8002/);
+  await expect(share(morales)).toHaveAttribute("lang", "es");
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await panel.getByRole("button", { name: "Copy text" }).click();
+  await expect(page.locator("#status")).toContainText("Text copied.");
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    "¡Estás invitado a los XV de Sophia el 15 de enero! Manda SOPHIA al 682-786-8002 para recibir tu enlace de invitación y avisos por texto.",
+  );
+  await language.selectOption("en");
+  await expect(share(rivera)).toHaveAttribute("href", /^sms:\+18175550101\?&body=You%27re%20invited/);
   expect(harness.sent).toEqual([]);
   expect(harness.notion.patches.map((p) => p.properties.Status).filter(Boolean)).toEqual([]);
   expect(harness.notion.page(rivera.id).Status.select.name).toBe("Waiting");
