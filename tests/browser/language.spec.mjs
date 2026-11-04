@@ -45,7 +45,7 @@ test("the Spanish RSVP speaks to the household on every screen: the code entry, 
   await page.goto(harness.forBrowser(link));
   await expect(page.getByRole("heading", { name: "Familia Morales" })).toBeVisible();
   await expect(page.locator("#portal .deadline")).toHaveText(
-    "Por favor, confirmen su asistencia a más tardar el domingo 15 de noviembre.",
+    "Por favor, confirmen su asistencia a más tardar el martes 1 de diciembre.",
   );
   await speaksTo(page, "ustedes", "form");
   await page.getByRole("button", { name: "Revisar la respuesta" }).click();
@@ -89,7 +89,7 @@ test("a Spanish “no”, its confirmation and the closed RSVP speak to the hous
   await page.goto(harness.url("/es/rsvp/"));
   await expect(page.getByRole("heading", { name: "Ya no se reciben respuestas" })).toBeVisible();
   await expect(
-    page.getByText("El plazo para confirmar terminó el domingo 15 de noviembre. Para confirmar su asistencia o cambiar su respuesta, escríbannos."),
+    page.getByText("El plazo para confirmar terminó el martes 1 de diciembre. Para confirmar su asistencia o cambiar su respuesta, escríbannos."),
   ).toBeVisible();
   await speaksTo(page, "ustedes", "closed");
 });
@@ -121,7 +121,7 @@ test("My account in Spanish speaks to one person, and so does the note page reac
   await expect(page.getByRole("heading", { name: "Familia Morales" })).toBeVisible();
   await expect(page.locator(".rsvp-status")).toContainText("Aún no recibimos tu respuesta.");
   await expect(page.locator(".rsvp-status .deadline")).toHaveText(
-    "Por favor, confirma tu asistencia a más tardar el domingo 15 de noviembre.",
+    "Por favor, confirma tu asistencia a más tardar el martes 1 de diciembre.",
   );
   await expect(page.locator(".rsvp-status").getByRole("link", { name: "Confirmar asistencia", exact: true })).toHaveAttribute("href", "/es/rsvp/");
   await speaksTo(page, "tu", "My account");

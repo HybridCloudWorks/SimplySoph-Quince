@@ -34,14 +34,37 @@ What Meta rejected along the way, so it is not repeated:
 
 Once Meta approves them, send the four `HX…` Content SIDs for the `WHATSAPP_TEMPLATES_JSON` update. The server refuses to start with WhatsApp switched on while an approved template shows a date other than the current RSVP deadline, so the old templates can never go out with the wrong day.
 
-### Owner action: the Spanish deadline wording (optional resubmission)
+### Resubmission for the December 1 deadline (owner action, pending)
 
-The approved Spanish templates say "Confirma tu asistencia **antes del** 15 de noviembre de 2026". In Spanish, "antes del 15" leaves the 15th out, while the English says "by November 15" and the RSVP stays open until 11:59 PM that day (Fort Worth time); the website says "a más tardar el" (round 2 wording review, L10N-09). The code keeps sending the approved text exactly, because a template must match what Meta approved. To fix the meaning, the owner resubmits both Spanish templates under new names (a changed template is a new submission; see the rejections above) with this one change, then updates `WHATSAPP_TEMPLATES_JSON`:
+The RSVP deadline moved again, to **Tuesday, December 1, 2026, 11:59 PM Central** (`site/content.mjs` `event.deadline`). The four templates approved on Oct 11, 2026 still say "November 15, 2026" / "15 de noviembre de 2026", and a Meta-approved template cannot be edited, so all four must be resubmitted under new names (a rejected or deleted name cannot be reused for up to 30 days; see the rejections above). Submit them the same way as the October 11 set (Twilio Console → Messaging → Content Template Builder: content type Text, category Marketing, one variable `{{1}}` for the household's link, sample `https://misxv.simplysoph.com/rsvp/`, no `#` in the sample, no "private link" wording).
 
-- `invitation_es`: … Confirma tu asistencia **a más tardar el** 15 de noviembre de 2026 aquí: {{1}} Responde STOP para darte de baja o HELP para ayuda.
-- `reminder_es`: … Confirma tu asistencia **a más tardar el** 15 de noviembre de 2026 aquí: {{1}} Responde STOP para darte de baja o HELP para ayuda.
+Or submit them with the script, which does the same four submissions through Twilio's Content API and never sends a message (`scripts/whatsapp-templates.mjs`, `tests/whatsapp-templates.test.mjs`). It reads the deadline from `site/content.mjs` and writes it the way the server's date check expects, so the texts below and the script agree by construction. Credentials come from the environment and are never printed: the account SID with the auth token, or an API key with the Content permission (the runtime key has none). In PowerShell, with the token read straight from Secret Manager:
 
-The rest of each template stays word for word. The server's date check (`server/whatsapp.mjs` deadlineText) finds "15 de noviembre de 2026" in both wordings, so either the current or the resubmitted templates pass it. Until the new ones are approved, keep the approved ones.
+```powershell
+npm run whatsapp:templates -- plan      # prints the four drafts; calls nothing
+$env:TWILIO_ACCOUNT_SID = "<the account SID>"
+$env:TWILIO_AUTH_TOKEN = (gcloud secrets versions access 2 --secret=misxv-twilio-auth-token --project=simplysoph-66c78)
+npm run whatsapp:templates -- submit    # creates the missing templates and requests Meta approval; safe to run again
+npm run whatsapp:templates -- status    # approval state per template and the WHATSAPP_TEMPLATES_JSON value to deploy
+Remove-Item Env:TWILIO_AUTH_TOKEN
+```
+
+`submit` skips a template whose name already exists and an approval already requested, so a second run changes nothing. `status` exits 0 only when all four are approved; its `WHATSAPP_TEMPLATES_JSON` lists only templates that were submitted, with their current status, and is the value to pin on the next API deploy. Names get the deadline's month as a suffix (`_dec`); pass `--suffix=dec2` if a name was ever rejected and must not be reused.
+
+**Until the new templates are approved and `WHATSAPP_TEMPLATES_JSON` points at them, WhatsApp sends stay refused:** the server's date check (`server/whatsapp.mjs` `deadlineText`) requires every approved template to contain "December 1, 2026" (English) or "1 de diciembre de 2026" (Spanish), and the November 15 templates no longer do. With `WHATSAPP_ENABLED` on, the API refuses to start ("WhatsApp templates show another RSVP deadline: …"); with it off, the catalog can be updated but nothing is sent. Do not weaken or bypass the check; keep WhatsApp off until the four Content SIDs below exist.
+
+The proposed texts. The Spanish ones also carry the "a más tardar el" fix from the section below, so one resubmission settles both:
+
+- `invitation_en` (English, new name such as `sophia_rsvp_invite_en_dec`): Simply Soph Media: You're invited to Sophia Isabel's quinceañera on January 15, 2027 in Fort Worth! We would love to celebrate with your family. Please RSVP by December 1, 2026 here: {{1}} Reply STOP to unsubscribe or HELP for help.
+- `invitation_es` (Spanish, new name such as `sophia_rsvp_invite_es_dec`): Simply Soph Media: ¡Te invitamos a los quince años de Sophia Isabel el 15 de enero de 2027 en Fort Worth! Nos encantaría celebrar con tu familia. Confirma tu asistencia a más tardar el 1 de diciembre de 2026 aquí: {{1}} Responde STOP para darte de baja o HELP para ayuda.
+- `reminder_en` (English, new name such as `sophia_rsvp_reminder_en_dec`): Simply Soph Media: A friendly reminder about Sophia Isabel's quinceañera on January 15, 2027. We hope to see your family there! Please RSVP by December 1, 2026 here: {{1}} Reply STOP to unsubscribe or HELP for help.
+- `reminder_es` (Spanish, new name such as `sophia_rsvp_reminder_es_dec`): Simply Soph Media: Un recordatorio de la fiesta de quince años de Sophia Isabel el 15 de enero de 2027. ¡Esperamos ver a tu familia ahí! Confirma tu asistencia a más tardar el 1 de diciembre de 2026 aquí: {{1}} Responde STOP para darte de baja o HELP para ayuda.
+
+Everything except the date (and "antes del" → "a más tardar el" in Spanish) stays word for word with the approved October 11 texts. When Meta approves them: record the four `HX…` Content SIDs, update `WHATSAPP_TEMPLATES_JSON` with the new names and bodies, redeploy the API (the deadline is baked into the image from `site/content.mjs`), and only then switch `WHATSAPP_ENABLED` on. The `tests/whatsapp.test.mjs` check "cannot be switched on while an approved template shows another RSVP deadline" derives its fixtures from `site/content.mjs`, so it keeps holding whichever date the site has.
+
+### The Spanish deadline wording (folded into the December 1 resubmission)
+
+The October 11 Spanish templates say "Confirma tu asistencia **antes del** 15 de noviembre de 2026". In Spanish, "antes del 15" leaves the 15th out, while the English says "by November 15" and the RSVP stays open until 11:59 PM that day (Fort Worth time); the website says "a más tardar el" (round 2 wording review, L10N-09). The code keeps sending the approved text exactly, because a template must match what Meta approved. This one-word fix is already included in the December 1 texts above, so no separate resubmission is needed; the server's date check (`server/whatsapp.mjs` `deadlineText`) looks only for "1 de diciembre de 2026", and accepts either wording around it.
 
 Meta currently blocks marketing-template delivery to US numbers. A US owner can test verified inbound opt-in/help/opt-out replies; full international invitation delivery needs a separately authorized eligible non-US test recipient. Do not classify invitations as utility to bypass this restriction.
 

@@ -26,7 +26,7 @@ test("an English guest answers for each event from the invitation link and sees 
     page.getByText("Your invitation includes up to 2 adults/teens and 1 child."),
   ).toBeVisible();
   await expect(page.locator("#portal .deadline")).toHaveText(
-    "Please RSVP by Sunday, November 15.",
+    "Please RSVP by Tuesday, December 1.",
   );
   await expect(page.getByRole("main").getByRole("group")).toHaveText([
     /^Ceremony · 4:00\sPM · Our Lady of Guadalupe Church/,
@@ -63,7 +63,7 @@ test("an English guest answers for each event from the invitation link and sees 
   await expect(page).toHaveTitle(/^We can’t wait to celebrate with you! · /);
   await expect(page.getByText("Thank you, Rivera Family.")).toBeVisible();
   await expect(
-    page.getByText("Saved October 1 · you can change it until Sunday, November 15"),
+    page.getByText("Saved October 1 · you can change it until Tuesday, December 1"),
   ).toBeVisible();
   const edit = page.getByRole("link", { name: "Change your RSVP" });
   await expect(edit).toHaveAttribute("href", "/rsvp/");
@@ -126,7 +126,7 @@ test("a Spanish guest completes the same journey on /es/ and sees the Spanish co
     page.getByText("Su invitación incluye hasta 2 adultos/jóvenes y 2 niños."),
   ).toBeVisible();
   await expect(page.locator("#portal .deadline")).toHaveText(
-    "Por favor, confirmen su asistencia a más tardar el domingo 15 de noviembre.",
+    "Por favor, confirmen su asistencia a más tardar el martes 1 de diciembre.",
   );
   await expect(page.getByRole("main").getByRole("group")).toHaveText([
     /^Ceremonia · 4:00\sp\.\s?m\. · Our Lady of Guadalupe Church/,
@@ -153,7 +153,7 @@ test("a Spanish guest completes the same journey on /es/ and sees the Spanish co
   ).toBeVisible();
   await expect(page.getByText("Gracias, Familia Morales.")).toBeVisible();
   await expect(
-    page.getByText("Guardada el 1 de octubre · pueden cambiarla hasta el domingo 15 de noviembre"),
+    page.getByText("Guardada el 1 de octubre · pueden cambiarla hasta el martes 1 de diciembre"),
   ).toBeVisible();
   await expect(page.getByRole("main").getByRole("listitem")).toHaveText([
     "Ceremonia: 2 adultos/jóvenes, 2 niños",
@@ -190,7 +190,7 @@ test("after the deadline a household that never answered sees the closed note, n
   ).toBeVisible();
   await expect(
     page.getByText(
-      "RSVPs closed on Sunday, November 15. To reply or change your RSVP now, please contact us.",
+      "RSVPs closed on Tuesday, December 1. To reply or change your RSVP now, please contact us.",
     ),
   ).toBeVisible();
   await expect(
@@ -220,7 +220,7 @@ test("after the deadline the Spanish page shows the closed note in Spanish", asy
   ).toBeVisible();
   await expect(
     page.getByText(
-      "El plazo para confirmar terminó el domingo 15 de noviembre. Para confirmar su asistencia o cambiar su respuesta, escríbannos.",
+      "El plazo para confirmar terminó el martes 1 de diciembre. Para confirmar su asistencia o cambiar su respuesta, escríbannos.",
     ),
   ).toBeVisible();
   await expect(

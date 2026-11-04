@@ -31,9 +31,9 @@ async function build(name, now) {
   };
 }
 const phases = [
-  // One second before the deadline (11:59 PM Central, November 15).
-  ["before-deadline", "2026-11-16T05:58:59Z", "rsvp-open"],
-  ["after-deadline", "2026-11-16T05:59:00Z", "rsvp-closed"],
+  // One second before the deadline (11:59 PM Central, December 1).
+  ["before-deadline", "2026-12-02T05:58:59Z", "rsvp-open"],
+  ["after-deadline", "2026-12-02T05:59:00Z", "rsvp-closed"],
   // The reception ends at 12:30 AM on January 16.
   ["party-night", "2027-01-16T06:29:59Z", "live"],
   ["after-party", "2027-01-16T06:30:00Z", "after"],
@@ -54,12 +54,12 @@ test("before the deadline home and RSVP invite, with the deadline, in both langu
   for (const file of ["index.html", "rsvp/index.html"])
     assert.equal(
       (await b.meta(file)).description,
-      "Friday, January 15, 2027, in Fort Worth, Texas. Please RSVP by Sunday, November 15, 2026.",
+      "Friday, January 15, 2027, in Fort Worth, Texas. Please RSVP by Tuesday, December 1, 2026.",
     );
   // Spanish speaks to the household (ustedes: "confirmen").
   assert.equal(
     (await b.meta("es/index.html")).description,
-    "Viernes 15 de enero de 2027 en Fort Worth, Texas. Por favor, confirmen su asistencia a más tardar el domingo 15 de noviembre de 2026.",
+    "Viernes 15 de enero de 2027 en Fort Worth, Texas. Por favor, confirmen su asistencia a más tardar el martes 1 de diciembre de 2026.",
   );
   // Other pages carry the event, not the deadline.
   assert.equal((await b.meta("details/index.html")).description, "Friday, January 15, 2027, in Fort Worth, Texas.");
@@ -71,7 +71,7 @@ test("from the deadline no preview asks for an RSVP", async () => {
     for (const file of ["index.html", "rsvp/index.html", "es/index.html", "es/rsvp/index.html", "share/index.html", "faq/index.html"]) {
       const { description, og } = await b.meta(file);
       assert.equal(og, description, file);
-      assert.doesNotMatch(description, /RSVP|confirm|November|noviembre/i, `${name} ${file}`);
+      assert.doesNotMatch(description, /RSVP|confirm|November|noviembre|December|diciembre/i, `${name} ${file}`);
     }
     assert.equal((await b.meta("index.html")).description, "Friday, January 15, 2027, in Fort Worth, Texas.");
     assert.equal((await b.meta("es/index.html")).description, "Viernes 15 de enero de 2027 en Fort Worth, Texas.");

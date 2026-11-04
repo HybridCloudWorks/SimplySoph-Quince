@@ -151,7 +151,7 @@ const es = renderEmail({
   url: "https://misxv.example/es/details/",
   attendance: { ceremony: { adultsTeens: 2, kids: 1 }, dinner: { adultsTeens: 2, kids: 0 }, dance: { adultsTeens: 0, kids: 0 } },
   invited: { ceremony: true, dinner: true, dance: false },
-  rsvpDeadline: "domingo 15 de noviembre de 2026",
+  rsvpDeadline: "martes 1 de diciembre de 2026",
 });
 
 test("Graph sends the text and HTML versions as one MIME message, Spanish subject intact (R-122)", { skip: !python && "python3 is not installed" }, async () => {

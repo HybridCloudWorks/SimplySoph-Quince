@@ -5,7 +5,7 @@ export const event = {
   name: "Sophia",
   date: "2027-01-15",
   startsAt: "2027-01-15T16:00:00-06:00",
-  deadline: "2026-11-15T23:59:00-06:00",
+  deadline: "2026-12-01T23:59:00-06:00",
   timezone: "America/Chicago",
   sender: "misxv@simplysoph.com",
 };
@@ -164,7 +164,7 @@ export const adminRoutes = [
 ];
 // The date lines come from site/datetime.mjs: "Friday, January 15, 2027" /
 // "Viernes 15 de enero de 2027" (a line of its own, so a capital), and the
-// deadline inside a sentence ("domingo 15 de noviembre de 2026").
+// deadline inside a sentence ("martes 1 de diciembre de 2026").
 export const copy = {
   en: {
     date: date(event.startsAt, "en"),

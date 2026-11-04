@@ -516,7 +516,7 @@ test("a pasted invitation link works without https://, with stray spaces, or as 
     "For example misxv.simplysoph.com/rsvp/#… from your invitation email or message, or a code of 16 letters and numbers, like ABCD-EFGH-…",
   );
   await expect(page.locator("#portal .deadline")).toHaveText(
-    "Please RSVP by Sunday, November 15.",
+    "Please RSVP by Tuesday, December 1.",
   );
   const continueButton = page.getByRole("button", { name: "Continue" });
 

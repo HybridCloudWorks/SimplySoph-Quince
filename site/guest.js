@@ -91,15 +91,15 @@ const statusError = (message) =>
 // takes the server's clock from it).
 const config = serverConfig;
 // Dates are written by site/datetime.mjs, in Fort Worth time (the deadline is
-// 11:59 PM there, already the next day in some time zones): "Sunday,
-// November 15" / "domingo 15 de noviembre".
+// 11:59 PM there, already the next day in some time zones): "Tuesday,
+// December 1" / "martes 1 de diciembre".
 const deadlineDay = (iso) => date(iso, lang, { year: false });
 // Same cut-off as the server, on the server's clock (site/now.mjs): a phone
 // that runs fast can still answer until the real deadline.
 const rsvpOpen = (inv) => rsvpOpenNow(inv.deadline);
 // The page after the party speaks in the past tense (site/lifecycle.mjs).
 const partyOver = () => ["after", "archived"].includes(lifecycleState()?.phase);
-// "Please RSVP by Sunday, November 15.", on the form, the code entry and My
+// "Please RSVP by Tuesday, December 1.", on the form, the code entry and My
 // account, until the deadline passes (site/lexicon.mjs rsvpBy: "confirmen su
 // asistencia" to the household, "confirma tu asistencia" on My account).
 function replyBy(deadline) {

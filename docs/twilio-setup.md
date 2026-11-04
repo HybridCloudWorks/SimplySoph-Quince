@@ -21,9 +21,9 @@ A guest joins by texting **SOPHIA** to **+1 682-786-8002** from their own phone.
 | Not a US/Canada number | The campaign only covers US carriers | Use WhatsApp or email |
 | No phone in Notion | Empty Phone column | Add the phone (with `+1`) to their Notion row |
 
-**Send a test to my phone.** Text SOPHIA from your own phone, enter that number, confirm, send. No guest row is involved. Use this whenever you want to see what guests see.
+**Inviting someone to text SOPHIA.** That ask must come from a personal phone, never from the program number: the registered campaign allows texts only to people who texted the keyword first, so the website cannot text a household that has not. **Share by text** on Admin → Invitations opens a ready-made text on your own phone (or copies it on a computer) in the household's language, with the keyword and number; the website sends nothing, records nothing and leaves the Notion Status as it is. When they text SOPHIA they show as Subscribed here.
 
-**Text guests.** Tick the subscribed households (or **Select all subscribed**, or distribution groups), write the message, press **Review before sending**. The batch panel shows the exact message and every recipient. Tick the review box, type the number of texts, press **Confirm and send**. Keep the tab open until it says done; closing it or pressing **Stop** halts sending. `{link}` becomes each household's private invitation link.
+**Text guests.** Tick the subscribed households (or **Select all subscribed in view**, or distribution groups), write the message, press **Review before sending**. The **Notion status** filter and **Show only subscribed** narrow the list, and the line above it says how many households in view are subscribed; a household out of view is never in the batch. The batch panel shows the exact message and every recipient. Tick the review box, type the number of texts, press **Confirm and send**. Keep the tab open until it says done; closing it or pressing **Stop** halts sending. `{link}` becomes each household's private invitation link.
 
 **Recent text batches** shows every batch with how many texts were accepted, rejected or still waiting, and **Latest five texts** lets you review and send one text at a time.
 
