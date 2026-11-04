@@ -370,7 +370,7 @@ function shareCell(r, program) {
 }
 function sharePanel(program) {
   if (!program) return "";
-  return `<div id="share-panel" data-share-text="panel"><p class="share-title">Share by text <label>Language<select name="share-lang"><option value="en">English</option><option value="es">Español</option></select></label></p><p lang="en" data-share-words>${esc(shareText({ lang: "en", ...program }))}</p><p class="row-actions">${button("Copy text", "copy-share-text", "")}</p><p class="hint">Sent from your own phone; the website records nothing. When they text ${esc(program.keyword)} they show as Subscribed on the SMS tab.</p></div>`;
+  return `<section id="share-panel" class="card tool-card" data-share-text="panel" aria-labelledby="share-title"><div class="tool-card-head"><h3 id="share-title">Share by text</h3><label>Language<select name="share-lang"><option value="en">English</option><option value="es">Español</option></select></label></div><p lang="en" data-share-words>${esc(shareText({ lang: "en", ...program }))}</p><div class="row-actions">${button("Copy text", "copy-share-text", "")}</div><p class="hint">Sent from your own phone; the website records nothing. When they text ${esc(program.keyword)} they show as Subscribed on the SMS tab.</p></section>`;
 }
 async function guestList() {
   const [data, cfg] = await Promise.all([api("admin/guests"), api("config")]);
@@ -379,7 +379,7 @@ async function guestList() {
     cfg.channels?.smsKeyword && cfg.channels?.smsNumber && root.dataset.eventStartsAt
       ? { keyword: cfg.channels.smsKeyword, number: cfg.channels.smsNumber, startsAt: root.dataset.eventStartsAt }
       : null;
-  root.innerHTML = `<p>Review household capacity and event eligibility before creating a private invitation. Blank Kids values need correction in Notion.</p><div class="row-actions">${button("Export CSV", "export", "")}${button("Import CSV", "import-form", "")}${button("Check statuses now", "status-sync", "")}</div><div id="guest-editor"></div><div id="batch-panel"></div><div id="guest-area"><div class="field-grid">${field("Filter guests", "filter")}<label>Status<select name="status"><option value="">All statuses</option>${Object.entries(
+  root.innerHTML = `<p>Review household capacity and event eligibility before creating a private invitation. Blank Kids values need correction in Notion.</p><div class="row-actions">${button("Export CSV", "export", "")}${button("Import CSV", "import-form", "")}${button("Check statuses now", "status-sync", "")}</div><div id="guest-editor"></div><div id="batch-panel"></div><div id="guest-area"><div class="field-grid filters-3">${field("Filter guests", "filter")}<label>Status<select name="status"><option value="">All statuses</option>${Object.entries(
     statusLabels,
   )
     .map(
@@ -391,7 +391,7 @@ async function guestList() {
       ([k, v]) =>
         `<option value="${esc(k)}">${esc(v)}${k ? ` (${guests.filter((g) => householdMatches(g, { notionStatus: k })).length})` : ""}</option>`,
     )
-    .join("")}</select></label>${sharePanel(program)}<div id="batch-toolbar" class="row-actions"><span data-selected-count></span><button type="button" class="button outline" data-batch="issue">Create links</button><button type="button" class="button burgundy" data-batch="invitation">Email invitation</button><button type="button" class="button outline" data-batch="reminder">Email reminder</button></div></div><p class="hint">Emails are drafted for review first. Nothing sends until you check the recipients and sample and type the number to confirm.</p>${table(
+    .join("")}</select></label></div><div id="batch-row"><section id="batch-toolbar" class="card tool-card" aria-labelledby="batch-title"><h3 id="batch-title">Act on households</h3><p data-selected-count></p><div class="row-actions"><button type="button" class="button outline" data-batch="issue">Create links</button><button type="button" class="button burgundy" data-batch="invitation">Email invitation</button><button type="button" class="button outline" data-batch="reminder">Email reminder</button></div><p class="hint">Emails are drafted for review first. Nothing sends until you check the recipients and sample and type the number to confirm.</p></section>${sharePanel(program)}</div>${table(
     ['<input type="checkbox" data-select-all aria-label="Select all shown households">', "Household", "Status", "Invited capacity", "Email", "Response / sync", "Actions"],
     guests.map(
       (r) =>
