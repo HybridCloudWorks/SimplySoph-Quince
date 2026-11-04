@@ -86,14 +86,16 @@ test("Invitations: Notion Status badges, filters, select-all in view, Share by t
   await expect(row(rivera)).not.toContainText("Sent from your own phone");
   await expect(row(rivera).locator("[data-share-words]")).toHaveCount(0);
   await expect(language).toHaveValue("en");
+  // Copy text is not a batch action: it stays usable whatever is selected.
+  await expect(panel.getByRole("button", { name: "Copy text" })).toBeEnabled();
   await expect(panelWords).toHaveText(
-    "You're invited to Sophia's quinceañera on January 15! Text SOPHIA to 682-786-8002 to get your invitation link and updates by text.",
+    "You're invited to Sophia's quinceañera on January 15! Text SOPHIA to 682-786-8002 to join her event texts. Your invitation link will follow by text.",
   );
   await expect(share(rivera)).toHaveAttribute("href", /^sms:\+18175550101\?&body=You%27re%20invited/);
   await expect(share(morales)).toHaveAttribute("href", /^sms:\+18175550102\?&body=You%27re%20invited/);
   await language.selectOption("es");
   await expect(panelWords).toHaveText(
-    "¡Estás invitado a los XV de Sophia el 15 de enero! Manda SOPHIA al 682-786-8002 para recibir tu enlace de invitación y avisos por texto.",
+    "¡Estás invitado a los XV de Sophia el 15 de enero! Manda SOPHIA al 682-786-8002 para unirte a los avisos por texto. Tu enlace de invitación te llegará después por texto.",
   );
   await expect(panelWords).toHaveAttribute("lang", "es");
   await expect(share(rivera)).toHaveAttribute("href", /^sms:\+18175550101\?&body=%C2%A1Est%C3%A1s%20invitado/);
@@ -103,7 +105,7 @@ test("Invitations: Notion Status badges, filters, select-all in view, Share by t
   await panel.getByRole("button", { name: "Copy text" }).click();
   await expect(page.locator("#status")).toContainText("Text copied.");
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
-    "¡Estás invitado a los XV de Sophia el 15 de enero! Manda SOPHIA al 682-786-8002 para recibir tu enlace de invitación y avisos por texto.",
+    "¡Estás invitado a los XV de Sophia el 15 de enero! Manda SOPHIA al 682-786-8002 para unirte a los avisos por texto. Tu enlace de invitación te llegará después por texto.",
   );
   await language.selectOption("en");
   await expect(share(rivera)).toHaveAttribute("href", /^sms:\+18175550101\?&body=You%27re%20invited/);

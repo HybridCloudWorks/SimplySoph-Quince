@@ -33,9 +33,12 @@ export function shareLanguage(row) {
 export function shareText({ lang = "en", keyword, number, startsAt, name = "Sophia" }) {
   const when = dayMonth(startsAt, lang),
     to = displayNumber(number);
+  // Texting the keyword brings the registered welcome text only; the
+  // invitation link comes in the SMS batch the family sends afterwards, so
+  // the words promise exactly that order.
   return lang === "es"
-    ? `¡Estás invitado a los XV de ${name} el ${when}! Manda ${keyword} al ${to} para recibir tu enlace de invitación y avisos por texto.`
-    : `You're invited to ${name}'s quinceañera on ${when}! Text ${keyword} to ${to} to get your invitation link and updates by text.`;
+    ? `¡Estás invitado a los XV de ${name} el ${when}! Manda ${keyword} al ${to} para unirte a los avisos por texto. Tu enlace de invitación te llegará después por texto.`
+    : `You're invited to ${name}'s quinceañera on ${when}! Text ${keyword} to ${to} to join her event texts. Your invitation link will follow by text.`;
 }
 
 // The body as a URL component with nothing left to chance: encodeURIComponent

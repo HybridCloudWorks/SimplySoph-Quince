@@ -19,11 +19,11 @@ test("US and Canada numbers normalize to E.164; anything else is not shareable",
 test("the English and Spanish words, with the date, keyword and number from their sources", () => {
   assert.equal(
     shareText({ lang: "en", ...program }),
-    "You're invited to Sophia's quinceañera on January 15! Text SOPHIA to 682-786-8002 to get your invitation link and updates by text.",
+    "You're invited to Sophia's quinceañera on January 15! Text SOPHIA to 682-786-8002 to join her event texts. Your invitation link will follow by text.",
   );
   assert.equal(
     shareText({ lang: "es", ...program }),
-    "¡Estás invitado a los XV de Sophia el 15 de enero! Manda SOPHIA al 682-786-8002 para recibir tu enlace de invitación y avisos por texto.",
+    "¡Estás invitado a los XV de Sophia el 15 de enero! Manda SOPHIA al 682-786-8002 para unirte a los avisos por texto. Tu enlace de invitación te llegará después por texto.",
   );
 });
 
