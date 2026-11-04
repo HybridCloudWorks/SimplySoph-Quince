@@ -38,6 +38,19 @@ Once Meta approves them, send the four `HX…` Content SIDs for the `WHATSAPP_TE
 
 The RSVP deadline moved again, to **Tuesday, December 1, 2026, 11:59 PM Central** (`site/content.mjs` `event.deadline`). The four templates approved on Oct 11, 2026 still say "November 15, 2026" / "15 de noviembre de 2026", and a Meta-approved template cannot be edited, so all four must be resubmitted under new names (a rejected or deleted name cannot be reused for up to 30 days; see the rejections above). Submit them the same way as the October 11 set (Twilio Console → Messaging → Content Template Builder: content type Text, category Marketing, one variable `{{1}}` for the household's link, sample `https://misxv.simplysoph.com/rsvp/`, no `#` in the sample, no "private link" wording).
 
+Or submit them with the script, which does the same four submissions through Twilio's Content API and never sends a message (`scripts/whatsapp-templates.mjs`, `tests/whatsapp-templates.test.mjs`). It reads the deadline from `site/content.mjs` and writes it the way the server's date check expects, so the texts below and the script agree by construction. Credentials come from the environment and are never printed: the account SID with the auth token, or an API key with the Content permission (the runtime key has none). In PowerShell, with the token read straight from Secret Manager:
+
+```powershell
+npm run whatsapp:templates -- plan      # prints the four drafts; calls nothing
+$env:TWILIO_ACCOUNT_SID = "<the account SID>"
+$env:TWILIO_AUTH_TOKEN = (gcloud secrets versions access 2 --secret=misxv-twilio-auth-token --project=simplysoph-66c78)
+npm run whatsapp:templates -- submit    # creates the missing templates and requests Meta approval; safe to run again
+npm run whatsapp:templates -- status    # approval state per template and the WHATSAPP_TEMPLATES_JSON value to deploy
+Remove-Item Env:TWILIO_AUTH_TOKEN
+```
+
+`submit` skips a template whose name already exists and an approval already requested, so a second run changes nothing. `status` exits 0 only when all four are approved; its `WHATSAPP_TEMPLATES_JSON` lists only templates that were submitted, with their current status, and is the value to pin on the next API deploy. Names get the deadline's month as a suffix (`_dec`); pass `--suffix=dec2` if a name was ever rejected and must not be reused.
+
 **Until the new templates are approved and `WHATSAPP_TEMPLATES_JSON` points at them, WhatsApp sends stay refused:** the server's date check (`server/whatsapp.mjs` `deadlineText`) requires every approved template to contain "December 1, 2026" (English) or "1 de diciembre de 2026" (Spanish), and the November 15 templates no longer do. With `WHATSAPP_ENABLED` on, the API refuses to start ("WhatsApp templates show another RSVP deadline: …"); with it off, the catalog can be updated but nothing is sent. Do not weaken or bypass the check; keep WhatsApp off until the four Content SIDs below exist.
 
 The proposed texts. The Spanish ones also carry the "a más tardar el" fix from the section below, so one resubmission settles both:
