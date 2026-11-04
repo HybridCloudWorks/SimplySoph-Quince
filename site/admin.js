@@ -356,7 +356,7 @@ let guests = [];
 async function guestList() {
   const data = await api("admin/guests");
   guests = data.guests;
-  root.innerHTML = `<p>Review household capacity and event eligibility before creating a private invitation. Blank Kids values need correction in Notion.</p><div class="row-actions">${button("Export CSV", "export", "")}${button("Import CSV", "import-form", "")}</div><div id="guest-editor"></div><div id="batch-panel"></div><div id="guest-area"><div class="field-grid">${field("Filter guests", "filter")}<label>Status<select name="status"><option value="">All statuses</option>${Object.entries(
+  root.innerHTML = `<p>Review household capacity and event eligibility before creating a private invitation. Blank Kids values need correction in Notion.</p><div class="row-actions">${button("Export CSV", "export", "")}${button("Import CSV", "import-form", "")}${button("Check statuses now", "status-sync", "")}</div><div id="guest-editor"></div><div id="batch-panel"></div><div id="guest-area"><div class="field-grid">${field("Filter guests", "filter")}<label>Status<select name="status"><option value="">All statuses</option>${Object.entries(
     statusLabels,
   )
     .map(
@@ -810,8 +810,26 @@ root.addEventListener("click", (e) => {
       await dashboard();
     }
     if (action === "schema") {
-      await api("admin/schema", {});
-      notify("Website RSVP columns are ready. Existing fields were preserved.");
+      const r = await api("admin/schema", {});
+      const options = Object.entries(r.options || {})
+        .map(([column, names]) => `${names.join(" and ")} added to ${column}`)
+        .join("; ");
+      notify(
+        "Website RSVP columns are ready. Existing fields were preserved." +
+          (options ? ` Options: ${options}.` : ""),
+      );
+    }
+    // Notion's Status column, recomputed for every household (docs/notion-integration.md).
+    if (action === "status-sync") {
+      const r = await api("admin/status/sync", {});
+      notify(
+        `Checked ${r.checked}, updated ${r.updated}.` +
+          (r.error === "NOTION_STATUS_COLUMN_MISSING"
+            ? " Notion has no Status column yet: the owner adds it with Prepare RSVP columns on the Overview."
+            : r.error
+              ? " Notion didn't answer for the rest; they will be checked again automatically."
+              : ""),
+      );
     }
     if (action === "approve" || action === "reject") {
       await api("admin/moderation", {

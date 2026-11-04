@@ -1,6 +1,7 @@
 import { planningNotion } from "./planning-notion.mjs";
 import { planningFields } from "./planning.mjs";
 import { error } from "./auth.mjs";
+import { statusForAnswer, statusNames, statusOptions } from "./status.mjs";
 const version = "2025-09-03";
 const text = (p) =>
   (p?.title || p?.rich_text || [])
@@ -49,6 +50,10 @@ export function normalizeInvitation(page) {
     whatsappConsentVersion: text(p["WhatsApp Consent Version"]),
     whatsappOptOut: p["WhatsApp Opt Out"]?.checkbox === true,
     invitationStatus: p.RSVP?.select?.name ?? "",
+    // The website-owned Status column (server/status.mjs). Absent until the
+    // family adds it: then nothing writes it (statusColumnPresent).
+    status: p.Status?.select?.name ?? "",
+    statusColumnPresent: Object.hasOwn(p, "Status"),
     // The head counts Notion currently shows, for the drift check (NOTION-8).
     notionCounts: Object.fromEntries(
       ["ceremony", "dinner", "dance"].map((event) => {
@@ -69,6 +74,7 @@ export function normalizeInvitation(page) {
 }
 export const projectionSchema = {
   "Administrator Eligible": { checkbox: {} },
+  Status: { select: { options: statusOptions } },
   "WhatsApp Phone": { phone_number: {} },
   "WhatsApp Language": {
     select: { options: [{ name: "en" }, { name: "es" }] },
@@ -353,26 +359,53 @@ export function notionClient({
     async schema() {
       return call("data_sources/" + sourceId);
     },
+    // Adds the website's missing columns and, for a select column that already
+    // exists (the family made Status before the website knew it), the options
+    // it lacks. Notion's select options are replaced as a whole by a PATCH, so
+    // the existing options are sent back exactly as Notion returned them (id,
+    // name, color) plus the missing ones: nothing is removed or recolored. A
+    // select whose options Notion did not list is left alone.
     async prepareSchema() {
       const current = await call("data_sources/" + sourceId);
-      const properties = {};
+      const properties = {},
+        options = {};
       for (const [name, spec] of Object.entries(projectionSchema)) {
-        if (
-          current.properties[name] &&
-          current.properties[name].type !== Object.keys(spec)[0]
-        )
-          throw error(409, "SCHEMA_CONFLICT");
-        if (!current.properties[name]) properties[name] = spec;
+        const existing = current.properties[name],
+          type = Object.keys(spec)[0];
+        if (existing && existing.type !== type) throw error(409, "SCHEMA_CONFLICT");
+        if (!existing) {
+          properties[name] = spec;
+          continue;
+        }
+        if (type !== "select" || !Array.isArray(existing.select?.options)) continue;
+        const have = new Set(existing.select.options.map((o) => o.name));
+        const missing = spec.select.options.filter((o) => !have.has(o.name));
+        if (!missing.length) continue;
+        options[name] = missing.map((o) => o.name);
+        properties[name] = {
+          select: { options: [...existing.select.options, ...missing] },
+        };
       }
       if (Object.keys(properties).length)
         await call("data_sources/" + sourceId, "PATCH", { properties });
-      return Object.keys(properties);
+      return {
+        added: Object.keys(properties).filter((name) => !(name in options)),
+        options,
+      };
+    },
+    // The Status column alone (server/status.mjs).
+    async projectStatus(id, status) {
+      if (!statusNames.includes(status)) throw error(422, "INVALID_STATUS");
+      await call("pages/" + id, "PATCH", {
+        properties: { Status: { select: { name: status } } },
+      });
     },
     // `answer: false` writes the Website columns only, leaving RSVP and the
     // head counts as the family set them in Notion (application.mjs, holdBack).
     async project(id, response, { answer = true } = {}) {
-      await this.read(id);
+      const row = await this.read(id);
       const a = response.attendance,
+        attending = Object.values(a).some((v) => v.adultsTeens + v.kids > 0),
         r = (value) => ({
           rich_text: value ? [{ text: { content: value } }] : [],
         });
@@ -384,13 +417,16 @@ export function notionClient({
         "Website address": r(response.contact.address),
         "Website requests": r(response.requests),
       };
+      // Status goes with the answer, in the same write (server/status.mjs):
+      // from the row's phone and this answer, or Notion's own Yes/No when the
+      // website's answer is held back. Only once the family has the column.
+      const status = row.statusColumnPresent
+        ? statusForAnswer(row, answer ? attending : null)
+        : null;
+      if (status) properties.Status = { select: { name: status } };
       if (answer) {
         // The family's own RSVP column: Yes when anyone attends, otherwise No.
-        properties.RSVP = {
-          select: {
-            name: Object.values(a).some((v) => v.adultsTeens + v.kids > 0) ? "Yes" : "No",
-          },
-        };
+        properties.RSVP = { select: { name: attending ? "Yes" : "No" } };
         for (const event of ["ceremony", "dinner", "dance"]) {
           const name = event[0].toUpperCase() + event.slice(1);
           properties[name + " adults"] = { number: a[event].adultsTeens };
