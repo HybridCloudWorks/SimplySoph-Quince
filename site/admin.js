@@ -366,11 +366,54 @@ let guests = [];
 function shareCell(r, program) {
   if (!r.phone || !program) return "";
   if (!shareNumber(r.phone)) return '<p class="hint" data-share-text="needs-review">Phone needs review</p>';
-  return `<a class="button outline compact" href="${esc(shareLink(r.phone, shareText({ lang: "en", ...program })))}" data-share-link data-share-phone="${esc(r.phone)}" lang="en">Share by text</a>`;
+  const lang = r.language === "es" ? "es" : "en";
+  return `<a class="button outline compact" href="${esc(shareLink(r.phone, shareText({ lang, ...program })))}" data-share-link data-share-phone="${esc(r.phone)}" lang="${lang}">Share by text</a>`;
 }
 function sharePanel(program) {
   if (!program) return "";
   return `<section id="share-panel" class="card tool-card" data-share-text="panel" aria-labelledby="share-title"><div class="tool-card-head"><h3 id="share-title">Share by text</h3><label>Language<select name="share-lang"><option value="en">English</option><option value="es">Español</option></select></label></div><p lang="en" data-share-words>${esc(shareText({ lang: "en", ...program }))}</p><div class="row-actions">${button("Copy text", "copy-share-text", "")}</div><p class="hint">Sent from your own phone; the website records nothing. When they text ${esc(program.keyword)} they show as Subscribed on the SMS tab.</p></section>`;
+}
+// The Invitations table's own styles, kept here rather than in pages.css so
+// the guest pages never download them (tests/home-weight.test.mjs): tighter
+// cells, and the More menu opening over the rows below.
+document.head.append(
+  Object.assign(document.createElement("style"), {
+    textContent: ".guest-table th,.guest-table td{padding:8px 8px;font-size:0.8rem;line-height:1.35;} .guest-table td small{font-size:0.72rem;opacity:0.85;} .guest-table .badge{margin:1px 0;} .guest-table select{min-height:40px;padding:4px 6px;font-size:0.8rem;width:auto;} .guest-table .row-actions{flex-wrap:nowrap;align-items:flex-start;gap:6px;} .row-menu{position:relative;} .row-menu > summary{list-style:none;cursor:pointer;min-height:40px;display:inline-flex;align-items:center;padding:0 12px;border:1px solid currentColor;font-size:0.8rem;white-space:nowrap;} .row-menu > summary::-webkit-details-marker{display:none;} .row-menu > summary::after{content:\"\";width:6px;height:6px;margin-left:8px;border-right:2px solid;border-bottom:2px solid;transform:translateY(-2px) rotate(45deg);} .row-menu[open] > summary::after{transform:translateY(2px) rotate(-135deg);} .row-menu-items{position:absolute;right:0;z-index:5;display:grid;gap:6px;min-width:190px;margin-top:4px;padding:8px;background:var(--surface);color:var(--ink);border:1px solid var(--line);box-shadow:0 6px 18px rgb(0 0 0 / 0.25);} .row-menu-items > a{min-height:40px;display:flex;align-items:center;} .guest-table .row-actions{margin:0;} .guest-table [data-share-link]{white-space:nowrap;} .row-menu > summary::after{transition:none;}",
+  }),
+);
+// The Invitations table, narrow enough for a laptop: email under the name,
+// counts and answers in short lines, the Language column, and Share by text
+// beside a "More" menu holding the rarer actions.
+function guestTable(guests, program) {
+  const answer = (r) =>
+    r.response
+      ? Object.entries(r.response.attendance)
+          .map(([e, v]) => `${esc(eventNames[e] || e)}: ${v.adultsTeens + v.kids}`)
+          .join("<br>")
+      : r.answeredIn === "notion"
+        ? // An answer typed into Notion, say after a phone call.
+          `Answered in Notion: ${esc(r.invitationStatus)}<br>` +
+          Object.entries(r.notionCounts || {})
+            .map(([e, v]) => `${esc(eventNames[e] || e)}: ${(v.adultsTeens ?? 0) + (v.kids ?? 0)}`)
+            .join("<br>")
+        : "No response";
+  const language = (r) =>
+    `<select data-household-language="${esc(r.id)}" aria-label="Language for ${esc(r.name)}">${[
+      ["en", "Eng"],
+      ["es", "Spn"],
+    ]
+      .map(([v, label]) => `<option value="${v}"${(r.language || "en") === v ? " selected" : ""}>${label}</option>`)
+      .join("")}</select>`;
+  const more = (r) =>
+    `<details class="row-menu"><summary aria-label="More actions for ${esc(r.name)}">More</summary><div class="row-menu-items">${button("Review / create link", "invite-form", r.id)}${r.active ? button("Revoke link", "revoke", r.id) : ""}<a href="https://www.notion.so/${encodeURIComponent(r.id.replaceAll("-", ""))}" target="_blank" rel="noopener noreferrer">Edit in Notion</a>${button("Reset household", "reset-household", r.id)}</div></details>`;
+  return `<div class="table-wrap guest-table">${`<table><thead><tr>${['<input type="checkbox" data-select-all aria-label="Select all shown households">', "Household", "Status", "Guests", "Response", "Language", "Actions"]
+    .map((x) => `<th scope="col">${x}</th>`)
+    .join("")}</tr></thead><tbody>${guests
+    .map(
+      (r) =>
+        `<tr data-guest-row data-name="${esc(r.name)}" data-status="${esc(r.status)}" data-notion-status="${esc(notionStatusOf(r))}"><td><input type="checkbox" data-select value="${esc(r.id)}" aria-label="Select ${esc(r.name)}"></td><td><strong>${esc(r.name)}</strong>${r.role ? ` <span class="badge">${esc(r.role)}</span>` : ""}${r.email ? `<br><small class="break">${esc(r.email)}</small>` : ""}</td><td><span class="badge">${esc(statusLabels[r.status] || r.status)}</span>${notionStatusOf(r) ? `<br><span class="badge" data-notion-status-badge>Notion: ${esc(notionStatusOf(r))}</span>` : ""}${r.respondedAt || r.openedAt ? `<br><small>${esc(when(r.respondedAt || r.openedAt))}</small>` : ""}</td><td>${r.capacity.adultsTeens ?? "?"} ${r.capacity.adultsTeens === 1 ? "adult" : "adults"}<br>${r.capacity.kids ?? "?"} ${r.capacity.kids === 1 ? "child" : "children"}${r.validCapacity ? "" : '<br><span class="badge">Needs review</span>'}</td><td>${answer(r)}${r.syncState ? `<br><small>${esc(r.syncState)}</small>` : ""}${r.notionDiffers ? `<p class="notice">Notion differs: ${esc(r.notionDiffers)}.</p>${button("Keep Notion's version", "drift-notion", r.id)}${button("Write the website's answer", "drift-website", r.id)}` : ""}</td><td>${language(r)}</td><td><div class="row-actions">${shareCell(r, program)}${more(r)}</div></td></tr>`,
+    )
+    .join("")}</tbody></table>`}</div>`;
 }
 async function guestList() {
   const [data, cfg] = await Promise.all([api("admin/guests"), api("config")]);
@@ -391,25 +434,7 @@ async function guestList() {
       ([k, v]) =>
         `<option value="${esc(k)}">${esc(v)}${k ? ` (${guests.filter((g) => householdMatches(g, { notionStatus: k })).length})` : ""}</option>`,
     )
-    .join("")}</select></label></div><div id="batch-row"><section id="batch-toolbar" class="card tool-card" aria-labelledby="batch-title"><h3 id="batch-title">Act on households</h3><p data-selected-count></p><div class="row-actions"><button type="button" class="button outline" data-batch="issue">Create links</button><button type="button" class="button burgundy" data-batch="invitation">Email invitation</button><button type="button" class="button outline" data-batch="reminder">Email reminder</button></div><p class="hint">Emails are drafted for review first. Nothing sends until you check the recipients and sample and type the number to confirm.</p></section>${sharePanel(program)}</div>${table(
-    ['<input type="checkbox" data-select-all aria-label="Select all shown households">', "Household", "Status", "Invited capacity", "Email", "Response / sync", "Actions"],
-    guests.map(
-      (r) =>
-        `<tr data-guest-row data-name="${esc(r.name)}" data-status="${esc(r.status)}" data-notion-status="${esc(notionStatusOf(r))}"><td><input type="checkbox" data-select value="${esc(r.id)}" aria-label="Select ${esc(r.name)}"></td><td>${esc(r.name)}<br><span class="badge">${esc(r.role)}</span></td><td><span class="badge">${esc(statusLabels[r.status] || r.status)}</span>${notionStatusOf(r) ? `<br><span class="badge" data-notion-status-badge>Notion: ${esc(notionStatusOf(r))}</span>` : ""}${r.respondedAt || r.openedAt ? `<br><small>${esc(when(r.respondedAt || r.openedAt))}</small>` : ""}</td><td>${r.capacity.adultsTeens ?? "?"} adults/teens · ${r.capacity.kids ?? "?"} ${r.capacity.kids === 1 ? "child" : "children"}${r.validCapacity ? "" : "<br>Needs review"}</td><td>${esc(r.email)}</td><td>${
-          r.response
-            ? Object.entries(r.response.attendance)
-                .map(([e, v]) => `${esc(eventNames[e] || e)}: ${v.adultsTeens + v.kids}`)
-                .join("<br>")
-            : r.answeredIn === "notion"
-              ? // An answer typed into Notion, say after a phone call.
-                `Answered in Notion: ${esc(r.invitationStatus)}<br>` +
-                Object.entries(r.notionCounts || {})
-                  .map(([e, v]) => `${esc(eventNames[e] || e)}: ${(v.adultsTeens ?? 0) + (v.kids ?? 0)}`)
-                  .join("<br>")
-              : "No response"
-        }<br>${esc(r.syncState)}${r.notionDiffers ? `<p class="notice">Notion differs: ${esc(r.notionDiffers)}.</p>${button("Keep Notion's version", "drift-notion", r.id)}${button("Write the website's answer", "drift-website", r.id)}` : ""}</td><td><a href="https://www.notion.so/${encodeURIComponent(r.id.replaceAll("-", ""))}" target="_blank" rel="noopener noreferrer">Edit household in Notion</a>${button("Review / create link", "invite-form", r.id)}${r.active ? button("Revoke link", "revoke", r.id) : ""}${shareCell(r, program)}${button("Reset household", "reset-household", r.id)}</td></tr>`,
-    ),
-  )}</div><div id="recent-batches"></div>`;
+    .join("")}</select></label></div><div id="batch-row"><section id="batch-toolbar" class="card tool-card" aria-labelledby="batch-title"><h3 id="batch-title">Act on households</h3><p data-selected-count></p><div class="row-actions"><button type="button" class="button outline" data-batch="issue">Create links</button><button type="button" class="button burgundy" data-batch="invitation">Email invitation</button><button type="button" class="button outline" data-batch="reminder">Email reminder</button></div><p class="hint">Emails are drafted for review first. Nothing sends until you check the recipients and sample and type the number to confirm.</p></section>${sharePanel(program)}</div>${guestTable(guests, program)}</div><div id="recent-batches"></div>`;
   const text = root.querySelector("[name=filter]"),
     status = root.querySelector("[name=status]"),
     notionStatus = root.querySelector("[name=notion-status]");
@@ -432,18 +457,37 @@ async function guestList() {
       }
     }
   };
-  // One language for the shared text and every row's link.
+  // The panel's language is for its own words only (a one-off text to copy);
+  // each row's Share by text follows that household's Language column.
   const shareLang = root.querySelector("[name=share-lang]");
   if (shareLang)
     shareLang.onchange = () => {
       const lang = shareLang.value === "es" ? "es" : "en",
-        words = shareText({ lang, ...program }),
         panelWords = root.querySelector("#share-panel [data-share-words]");
-      panelWords.textContent = words;
+      panelWords.textContent = shareText({ lang, ...program });
       panelWords.lang = lang;
-      for (const a of root.querySelectorAll("[data-share-link]")) {
-        a.href = shareLink(a.dataset.sharePhone, words);
-        a.lang = lang;
+    };
+  // The Language column: saved at once; the row's Share by text follows.
+  for (const select of root.querySelectorAll("[data-household-language]"))
+    select.onchange = async () => {
+      const r = guests.find((g) => g.id === select.dataset.householdLanguage),
+        language = select.value === "es" ? "es" : "en";
+      select.disabled = true;
+      try {
+        await api("admin/household-language", { id: r.id, language });
+        r.language = language;
+        if (r.locale) r.locale = language;
+        const share = select.closest("tr").querySelector("[data-share-link]");
+        if (share && program) {
+          share.href = shareLink(share.dataset.sharePhone, shareText({ lang: language, ...program }));
+          share.lang = language;
+        }
+        notify(`${r.name}: ${language === "es" ? "Spanish" : "English"}. Their Share by text${r.locale ? ", invitation link and automatic invitation" : " and the link you create for them"} will be in ${language === "es" ? "Spanish" : "English"}.`);
+      } catch (e) {
+        select.value = r.language;
+        notify(e.message);
+      } finally {
+        select.disabled = false;
       }
     };
   batchToolbar(root.querySelector("#guest-area"), guests, guestList);
@@ -496,7 +540,7 @@ async function revokedList() {
 function invitationEditor(id) {
   const r = guests.find((r) => r.id === id),
     box = document.querySelector("#guest-editor");
-  box.innerHTML = `<form id="invitation" class="card"><h2>${esc(r.name)}</h2><p>Creating a link replaces any previous link. Review the eligible events.</p>${Object.entries(eventNames).map(([e, name]) => `<label class="check"><input type="checkbox" name="${e}" ${r.invited?.[e] ? "checked" : ""}>${name}</label>`).join("")}<label>Language<select name="locale"><option value="en">English</option><option value="es"${r.locale === "es" ? " selected" : ""}>Español</option></select></label>${formEnd("Create private invitation link")}`;
+  box.innerHTML = `<form id="invitation" class="card"><h2>${esc(r.name)}</h2><p>Creating a link replaces any previous link. Review the eligible events.</p>${Object.entries(eventNames).map(([e, name]) => `<label class="check"><input type="checkbox" name="${e}" ${r.invited?.[e] ? "checked" : ""}>${name}</label>`).join("")}<label>Language<select name="locale"><option value="en">English</option><option value="es"${(r.locale || r.language) === "es" ? " selected" : ""}>Español</option></select></label>${formEnd("Create private invitation link")}`;
   submit(document.querySelector("#invitation"), async (f) => {
     const result = await api("admin/invitation", {
       id,
@@ -851,6 +895,8 @@ root.addEventListener("click", (e) => {
   const b = e.target.closest("[data-action]");
   if (!b) return;
   const { action, id } = b.dataset;
+  // An action picked from a row's More menu closes the menu.
+  b.closest("details.row-menu")?.removeAttribute("open");
   run(async () => {
     if (action === "invite-form") invitationEditor(id);
     if (action === "import-form") importForm();

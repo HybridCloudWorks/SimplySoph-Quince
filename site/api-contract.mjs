@@ -14,4 +14,5 @@
 // 6: the SMS page's revoked households and automatic-invitation outcomes
 // (GET /api/admin/audience?channel=sms, GET /api/admin/sms/drafts).
 // 7: Invitations' "Reset household" (POST /api/admin/household-reset).
-export const pagesNeedApi = 7;
+// 8: Invitations' Language column (POST /api/admin/household-language).
+export const pagesNeedApi = 8;

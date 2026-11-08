@@ -9,7 +9,8 @@
 // (sessions, verified accounts, profile), the emails, texts and WhatsApp
 // messages drafted or sent to it with their send-once claims, its SMS and
 // WhatsApp opt-in bindings (and the SOPHIA receipt of its phone), its
-// notifications, its seat at a table, and its contact and guestbook messages.
+// notifications, its seat at a table, its contact and guestbook messages, and
+// the language chosen for it on Invitations.
 //
 // Kept on purpose: a STOP (an opt-out is never undone by the website), the
 // event log and the audit trail (history of what happened, plus this reset),
@@ -68,7 +69,7 @@ export function resetHouseholdState(s, id, phones = []) {
     const claim = hash(JSON.stringify(["auto-invite", phone]));
     if (s.smsClaims?.[claim]) drop("smsClaims", [[claim]]);
   }
-  for (const map of ["smsConsentPhones", "whatsappConsentPhones"])
+  for (const map of ["smsConsentPhones", "whatsappConsentPhones", "householdLanguages"])
     if (s[map]?.[id]) {
       delete s[map][id];
       removed[map] = 1;

@@ -74,41 +74,49 @@ test("Invitations: Notion Status badges, filters, select-all in view, Share by t
   await notionFilter.selectOption("");
   await expect(page.getByRole("button", { name: "Create links" })).toBeEnabled();
 
-  // Share by text: an sms: link in the household's language, from the
-  // family's own phone; the website sends nothing and the status stays.
-  // The words are shown once, in a panel beside the batch buttons, in the
-  // language chosen there; every row's link follows that choice.
+  // Share by text: an sms: link from the family's own phone, in each
+  // household's Language (the column on its row); the website sends nothing
+  // and the status stays. The panel above has its own language for a one-off
+  // text to copy, and never changes the rows.
   const share = (h) => row(h).getByRole("link", { name: "Share by text" });
   const panel = page.locator("#share-panel"),
     panelWords = panel.locator("[data-share-words]"),
-    language = panel.getByLabel("Language");
+    language = panel.getByLabel("Language"),
+    rowLanguage = (h) => row(h).getByLabel(`Language for ${h.name}`);
   await expect(panel).toContainText("Sent from your own phone; the website records nothing.");
-  await expect(row(rivera)).not.toContainText("Sent from your own phone");
   await expect(row(rivera).locator("[data-share-words]")).toHaveCount(0);
   await expect(language).toHaveValue("en");
-  // Copy text is not a batch action: it stays usable whatever is selected.
   await expect(panel.getByRole("button", { name: "Copy text" })).toBeEnabled();
   await expect(panelWords).toHaveText(
     "You're invited to Sophia's quinceañera on January 15! Text SOPHIA to 682-786-8002 to join her event texts. Your invitation link will follow by text.",
   );
+  // Morales has a Spanish link, so its row starts in Spanish; Rivera in English.
+  await expect(rowLanguage(morales)).toHaveValue("es");
+  await expect(rowLanguage(rivera)).toHaveValue("en");
   await expect(share(rivera)).toHaveAttribute("href", /^sms:\+18175550101\?&body=You%27re%20invited/);
-  await expect(share(morales)).toHaveAttribute("href", /^sms:\+18175550102\?&body=You%27re%20invited/);
+  await expect(share(morales)).toHaveAttribute("href", /^sms:\+18175550102\?&body=%C2%A1Est%C3%A1s%20invitado/);
+  await expect(share(morales)).toHaveAttribute("lang", "es");
+  // The panel's language changes its words only.
   await language.selectOption("es");
   await expect(panelWords).toHaveText(
     "¡Estás invitado a los XV de Sophia el 15 de enero! Manda SOPHIA al 682-786-8002 para unirte a los avisos por texto. Tu enlace de invitación te llegará después por texto.",
   );
   await expect(panelWords).toHaveAttribute("lang", "es");
-  await expect(share(rivera)).toHaveAttribute("href", /^sms:\+18175550101\?&body=%C2%A1Est%C3%A1s%20invitado/);
-  await expect(share(morales)).toHaveAttribute("href", /SOPHIA%20al%20682-786-8002/);
-  await expect(share(morales)).toHaveAttribute("lang", "es");
+  await expect(share(rivera)).toHaveAttribute("href", /body=You%27re%20invited/);
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await panel.getByRole("button", { name: "Copy text" }).click();
   await expect(page.locator("#status")).toContainText("Text copied.");
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
     "¡Estás invitado a los XV de Sophia el 15 de enero! Manda SOPHIA al 682-786-8002 para unirte a los avisos por texto. Tu enlace de invitación te llegará después por texto.",
   );
-  await language.selectOption("en");
-  await expect(share(rivera)).toHaveAttribute("href", /^sms:\+18175550101\?&body=You%27re%20invited/);
+  // A row's Language is saved and its Share by text follows at once, and
+  // after a reload.
+  await rowLanguage(rivera).selectOption("es");
+  await expect(page.locator("#status")).toContainText("Spanish");
+  await expect(share(rivera)).toHaveAttribute("href", /^sms:\+18175550101\?&body=%C2%A1Est%C3%A1s%20invitado/);
+  await page.reload();
+  await expect(rowLanguage(rivera)).toHaveValue("es");
+  await expect(share(rivera)).toHaveAttribute("lang", "es");
   expect(harness.sent).toEqual([]);
   expect(harness.notion.patches.map((p) => p.properties.Status).filter(Boolean)).toEqual([]);
   expect(harness.notion.page(rivera.id).Status.select.name).toBe("Waiting");

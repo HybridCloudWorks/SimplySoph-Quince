@@ -151,7 +151,17 @@ for (const [lang, size] of [
     await signIn(page, harness, households.morales.email, { es });
     await expect(page).toHaveURL(harness.url(es ? "/es/gallery/" : "/gallery/"));
     await expect(page.locator("[data-gallery] figure")).toHaveCount(2);
-    const s = await structure(page);
+    // Read the settled layout: while the photos load and the notes above the
+    // grid arrive, the controls move (by up to ~450px) and can briefly sit
+    // out of reading order, which once failed this test about one run in
+    // twenty. Wait until two readings 150 ms apart agree.
+    let s = await structure(page);
+    for (let tries = 0; tries < 40; tries++) {
+      await page.waitForTimeout(150);
+      const next = await structure(page);
+      if (JSON.stringify(next.order) === JSON.stringify(s.order)) break;
+      s = next;
+    }
     expect(s.overflow, "no sideways scrolling").toBeLessThanOrEqual(0);
     expect(s.unnamedButtons).toBe(0);
     expect(s.imagesWithoutAlt).toBe(0);

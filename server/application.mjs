@@ -77,8 +77,9 @@ import { createAccounts, accountActive, rosterMatch } from "./accounts.mjs";
 // settings and GET /api/court-photo/<id>, #108). 6: the SMS page's revoked
 // households, Guest-column names and automatic-invitation outcomes
 // (`households[].autoInvite`, `autoInviteRecent`). 7: POST
-// /api/admin/household-reset (owner only).
-export const apiVersion = 7;
+// /api/admin/household-reset (owner only). 8: Invitations' Language column
+// (`language` on GET /api/admin/guests, POST /api/admin/household-language).
+export const apiVersion = 8;
 const events = ["ceremony", "dinner", "dance"];
 const safeText = (s, max = 1000) => {
   if (
@@ -557,6 +558,12 @@ export function createApplication({
   ];
   // `row` is the household's Notion row: an answer typed into Notion counts
   // too (attendanceOf), even before a link is issued.
+  // A household's language: the family's choice on Invitations, else its
+  // invitation's, else Notion's WhatsApp Language, else English.
+  const householdLanguage = (s, row) =>
+    s.householdLanguages?.[row.id] ||
+    s.invitations[row.id]?.locale ||
+    (row.whatsappLanguage === "es" ? "es" : "en");
   function householdStatus(s, row) {
     const id = row.id,
       invite = s.invitations[id];
@@ -2800,6 +2807,9 @@ export function createApplication({
           guests: rows.map((row) => ({
             ...row,
             displayName: recipientName(row),
+            // The household's language (Invitations' Language column):
+            // what Share by text, its link and its automatic invitation use.
+            language: householdLanguage(s, row),
             // The Notion Status column (server/status.mjs), "" when the
             // column or its value is absent; `status` below is the link status.
             notionStatus: row.status || "",
@@ -2897,6 +2907,8 @@ export function createApplication({
           };
           const link =
             origin + (body.locale === "es" ? "/es" : "") + "/rsvp/#" + value;
+          s.householdLanguages ??= {};
+          s.householdLanguages[row.id] = s.invitations[row.id].locale;
           audit(s, session.actor, "invitation-issued", row.id, now());
           logEvent(s, now(), "invitation.issued", {
             actor: session.actor,
@@ -2934,6 +2946,20 @@ export function createApplication({
           return { removed, notion: "failed", code: e.code || "NOTION_UNAVAILABLE" };
         }
         return { removed, notion: "cleared", notionColumns: notionCleared };
+      }
+      // Invitations' Language column: the household's language for Share by
+      // text, and, when it has a link, for that link's emails and its
+      // automatic invitation text (the invitation's locale follows).
+      if (path === "/api/admin/household-language" && method === "POST") {
+        if (!["en", "es"].includes(body.language)) throw error(422, "INVALID_LANGUAGE");
+        const row = await notion.read(body.id, { allowStale: true });
+        return ledger.transaction((s) => {
+          s.householdLanguages ??= {};
+          s.householdLanguages[row.id] = body.language;
+          if (s.invitations[row.id]) s.invitations[row.id].locale = body.language;
+          audit(s, session.actor, "household-language-" + body.language, row.id, now());
+          return { id: row.id, language: body.language };
+        });
       }
       if (path === "/api/admin/revoke" && method === "POST") {
         return ledger.transaction((s) => {

@@ -3470,6 +3470,22 @@ test("any administrator from Notion can reset a household (name typed); a guest 
   assert.ok(s.eventLog.some((e) => e.type === "household.reset" && e.householdId === household));
 });
 
+test("Invitations' Language column: saved per household, carried to its invitation, cleared by a reset", async () => {
+  const f = await fixture({ notion: { async resetProjection() { return []; } } });
+  const lang = async () => (await f.admin("guests")).guests.find((g) => g.id === household).language;
+  assert.equal(await lang(), (await f.ledger.read()).invitations[household]?.locale || "en");
+  await assert.rejects(() => f.admin("household-language", { id: household, language: "fr" }), (e) => e.code === "INVALID_LANGUAGE");
+  await f.admin("household-language", { id: household, language: "es" });
+  assert.equal(await lang(), "es");
+  assert.equal((await f.ledger.read()).invitations[household].locale, "es", "the existing link's emails and texts follow");
+  // A new link records its own language choice.
+  await f.admin("invitation", { id: household, invited: { ceremony: true, dinner: true, dance: true }, locale: "en" });
+  assert.equal(await lang(), "en");
+  await f.admin("household-language", { id: household, language: "es" });
+  await f.admin("household-reset", { id: household, confirmName: "Test family" });
+  assert.equal((await f.ledger.read()).householdLanguages?.[household], undefined);
+});
+
 test("texts to guests: draft, type the count, send in one confirmed batch from the page", async () => {
   const sent = [];
   const f = await fixture({
