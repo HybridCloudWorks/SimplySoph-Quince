@@ -7,6 +7,7 @@ import {
   escapeHtml as esc,
 } from "./celebration.mjs";
 import { date, capitalize } from "./datetime.mjs";
+import { courtSection, courtPhotoUrl } from "./court.mjs";
 import { sample, setSite, siteSettled, state, deviceRule } from "./now.mjs";
 import { announce, redraw } from "./client.js";
 // For site/guest.js (one import, one round trip fewer on every page).
@@ -60,6 +61,24 @@ document.addEventListener("click", async (e) => {
     button.style.minInlineSize = "";
   }, wait);
 });
+// The header's "Sophia" item, added at runtime when the court is the
+// section's only page with content: the build cannot know about a court that
+// lives in the event settings (site/content.mjs waitsFor). The item goes where
+// the build puts that section, before the Schedule's.
+function linkCourt() {
+  const list = document.querySelector(".site-nav ul"),
+    base = lang === "es" ? "/es/" : "/",
+    section = ["sophia", "court", "padrinos"].map((r) => base + r + "/");
+  if (!list || [...list.querySelectorAll("a")].some((a) => section.includes(a.getAttribute("href")))) return;
+  const item = document.createElement("li"),
+    a = document.createElement("a");
+  a.href = base + "court/";
+  a.textContent = "Sophia";
+  if (location.pathname === a.getAttribute("href")) a.setAttribute("aria-current", "page");
+  item.append(a);
+  const details = [...list.querySelectorAll("a")].find((x) => x.getAttribute("href") === base + "details/");
+  list.insertBefore(item, details?.closest("li") || list.querySelector(".nav-signin"));
+}
 export const experienceReady = (async () => {
   try {
     const before = Date.now(),
@@ -97,6 +116,19 @@ export const experienceReady = (async () => {
     const host = document.querySelector("[data-contact-host]"),
       line = c.contact?.host?.[lang] || "";
     if (host) [host.textContent, host.hidden] = [line, !line];
+    // The court of honor, from the event settings too (#108): drawn into the
+    // court page in place of its waiting text, and linked from the header
+    // under "Sophia" when that section has no page of its own yet.
+    const court = Array.isArray(c.court) ? c.court : [],
+      drawn = courtSection(court, lang, { photoSrc: (p) => (p.photo ? esc(courtPhotoUrl(p.photo)) : "") }),
+      slot = document.querySelector("[data-court]");
+    if (slot) {
+      redraw(slot, drawn);
+      slot.hidden = !drawn;
+      const waiting = document.querySelector("[data-court-waiting]");
+      if (waiting) waiting.hidden = !!drawn;
+    }
+    if (drawn) linkCourt();
     // The phase follows the live times (the home page redraws).
     setSite(c);
   } catch {

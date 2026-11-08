@@ -36,6 +36,7 @@ import { milestones, phaseAt, previewKey } from "../site/lifecycle.mjs";
 import { date as longDate, time, at, capitalize } from "../site/datetime.mjs";
 import { promised, coming, posted } from "../site/promises.mjs";
 import { calendar } from "../site/calendar-file.mjs";
+import { courtSection } from "../site/court.mjs";
 // Times on a page never split from their "PM" (site/datetime.mjs).
 const nb = { nbsp: true };
 // The celebration's phase at the time of the build (--now=<ISO>, default the
@@ -234,19 +235,6 @@ function contents(route, lang) {
       throw new Error("Content links must use HTTPS");
     return esc(url.href);
   };
-  // Initials stand in for photos so pages can go live before portraits arrive.
-  const monogram = (person) =>
-    person.photo
-      ? `<img class="monogram" loading="lazy" src="${safeLink(person.photo)}" alt="">`
-      : `<span class="monogram" aria-hidden="true">${esc(person.name.trim()[0] || "")}</span>`;
-  const courtRole = {
-    escort: say("Chambelán de honor", "Chambelán de honor"),
-    dama: "Dama",
-    chambelan: "Chambelán",
-  };
-  // Names are the court page's only headings, so they follow its h1 directly.
-  const person = (p) =>
-    `<div class="person">${monogram(p)}<div><p class="person-role">${esc(courtRole[p.role] || localized(p.role))}</p><h2>${esc(p.name)}</h2>${p.line ? `<p>${esc(localized(p.line))}</p>` : ""}</div></div>`;
   if (
     route === "sophia" &&
     (family.bio || family.parentsMessage || family.moments.length)
@@ -264,24 +252,15 @@ function contents(route, lang) {
         ? `<div class="letter"><p class="eyebrow">${say("A letter from her parents", "Una carta de sus papás")}</p><p class="letter-text">${esc(localized(family.parentsMessage))}</p>${family.parentsSignature ? `<p class="signature">${esc(localized(family.parentsSignature))}</p>` : ""}</div>`
         : ""
     }</article>`;
-  if (route === "court" && family.court.length) {
-    const escorts = family.court.filter((p) => p.role === "escort"),
-      paired = new Map();
-    for (const p of family.court.filter((p) => p.role !== "escort" && p.pair))
-      paired.set(p.pair, [...(paired.get(p.pair) || []), p]);
-    const single = family.court.filter((p) => p.role !== "escort" && !p.pair);
-    body = `${escorts.map((p) => `<div class="court-escort">${person(p)}</div>`).join("")}<div class="court-pairs">${[
-      ...paired.values(),
-    ]
-      .map(
-        (pair) =>
-          `<div class="pair">${pair
-            .sort((a, b) => (a.role === "dama" ? -1 : b.role === "dama" ? 1 : 0))
-            .map(person)
-            .join(`<span class="amp" aria-hidden="true">&amp;</span>`)}</div>`,
-      )
-      .join("")}${single.map((p) => `<div class="pair">${person(p)}</div>`).join("")}</div>`;
-  }
+  // The court comes from the runtime event settings (site/court.mjs, #108):
+  // the built page keeps its waiting text in data-court-waiting, and
+  // site/experience.js draws the family's court into data-court once
+  // GET /api/site has one. Content built in (previews, test fixtures) is drawn
+  // here by the same code.
+  if (route === "court")
+    body = family.court.length
+      ? courtSection(family.court, lang, { photoSrc: (p) => (p.photo ? safeLink(p.photo) : "") })
+      : `<div data-court-waiting>${body}</div><div class="court" data-court hidden></div>`;
   // Public thank-you cards: who gave each tradition and what it means. Gratitude
   // only, so the admin planning list's amounts and status never appear here.
   if (route === "padrinos" && family.padrinos.length)
@@ -799,6 +778,7 @@ for (const file of [
   "guest-gallery.js",
   "promises.mjs",
   "lifespan.mjs",
+  "court.mjs",
 ])
   await copyFile(
     new URL("../site/" + file, import.meta.url),

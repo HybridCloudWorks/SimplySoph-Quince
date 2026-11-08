@@ -9,4 +9,6 @@
 // 4: the SMS tab's "Automatic invitation when someone texts SOPHIA" card
 // (POST /api/admin/sms/auto-invite, its preview, and `autoInvite` on
 // GET /api/admin/sms/drafts).
-export const pagesNeedApi = 4;
+// 5: the court of honor drawn from the event settings (`court` on
+// GET /api/site, GET /api/court-photo/<id>, Admin → Website & event; #108).
+export const pagesNeedApi = 5;
