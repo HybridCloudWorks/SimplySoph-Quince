@@ -407,7 +407,7 @@ async function guestList() {
                   .map(([e, v]) => `${esc(eventNames[e] || e)}: ${(v.adultsTeens ?? 0) + (v.kids ?? 0)}`)
                   .join("<br>")
               : "No response"
-        }<br>${esc(r.syncState)}${r.notionDiffers ? `<p class="notice">Notion differs: ${esc(r.notionDiffers)}.</p>${button("Keep Notion's version", "drift-notion", r.id)}${button("Write the website's answer", "drift-website", r.id)}` : ""}</td><td><a href="https://www.notion.so/${encodeURIComponent(r.id.replaceAll("-", ""))}" target="_blank" rel="noopener noreferrer">Edit household in Notion</a>${button("Review / create link", "invite-form", r.id)}${r.active ? button("Revoke link", "revoke", r.id) : ""}${shareCell(r, program)}</td></tr>`,
+        }<br>${esc(r.syncState)}${r.notionDiffers ? `<p class="notice">Notion differs: ${esc(r.notionDiffers)}.</p>${button("Keep Notion's version", "drift-notion", r.id)}${button("Write the website's answer", "drift-website", r.id)}` : ""}</td><td><a href="https://www.notion.so/${encodeURIComponent(r.id.replaceAll("-", ""))}" target="_blank" rel="noopener noreferrer">Edit household in Notion</a>${button("Review / create link", "invite-form", r.id)}${r.active ? button("Revoke link", "revoke", r.id) : ""}${shareCell(r, program)}${button("Reset household", "reset-household", r.id)}</td></tr>`,
     ),
   )}</div><div id="recent-batches"></div>`;
   const text = root.querySelector("[name=filter]"),
@@ -881,6 +881,27 @@ root.addEventListener("click", (e) => {
           .map((r) => r.map(csvCell).join(","))
           .join("\r\n"),
       );
+    // Owner only (the server refuses others): back to "never invited" in the
+    // website and in Notion's RSVP columns, for rehearsing with test
+    // households. The household's exact name must be typed.
+    if (action === "reset-household") {
+      const r = guests.find((g) => g.id === id);
+      const typed = prompt(
+        `Reset ${r.name} COMPLETELY?\n\nThis deletes their invitation link and code, RSVP answer, sign-ins, emails, texts and WhatsApp messages sent to them, their SOPHIA sign-up, notes and seat, and clears the RSVP columns on their Notion row. A STOP and their uploaded photos are kept. It cannot be undone.\n\nType the household name exactly to confirm:`,
+      );
+      if (typed === null) return;
+      const result = await api("admin/household-reset", { id, confirmName: typed }).catch((e) => {
+        if (e.code === "CONFIRM_NAME") e.message = `Nothing was reset: the name typed doesn't match “${r.name}”.`;
+        if (e.code === "OWNER_REQUIRED") e.message = "Only the site owner can reset a household. Nothing was reset.";
+        throw e;
+      });
+      await guestList();
+      notify(
+        result.notion === "cleared"
+          ? `${r.name} is reset: no link, no answer, nothing sent. Their next SOPHIA counts as a first sign-up.`
+          : `${r.name} is reset on the website, but Notion could not be updated. Press Reset household again to clear Notion.`,
+      );
+    }
     if (action === "revoke") {
       // One click used to revoke at once; name the household and ask first.
       // From data-name: the name cell's text also holds the role badge.
