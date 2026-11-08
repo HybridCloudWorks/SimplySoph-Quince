@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import twilio from "twilio";
-import { createSms, smsPreview } from "../server/sms.mjs";
+import { createSms, smsPreview, autoInviteOutcomes } from "../server/sms.mjs";
 import { Ledger, memoryAdapter } from "../server/store.mjs";
 import { hash } from "../server/auth.mjs";
 const sid = "SM" + "4".repeat(32);
@@ -555,7 +555,7 @@ const sophia = (f, n = 1) =>
 const autoDrafts = (s) => Object.values(s.smsDrafts).filter((d) => d.auto);
 const skipReasons = (s) => (s.eventLog || []).filter((e) => e.type === "auto-invite.skipped").map((e) => e.data.reason);
 
-test("auto-invite off: a SOPHIA gets the welcome and nothing else", async () => {
+test("auto-invite off: a SOPHIA gets the welcome and nothing else, and the skip says it was off", async () => {
   const f = await autoInviteFixture();
   await arm(f, { setting: { ...autoSetting, enabled: false } });
   const r = await sophia(f);
@@ -563,7 +563,8 @@ test("auto-invite off: a SOPHIA gets the welcome and nothing else", async () => 
   const s = await f.ledger.read();
   assert.equal(f.sends(), 0);
   assert.equal(autoDrafts(s).length, 0);
-  assert.deepEqual(skipReasons(s), []);
+  assert.deepEqual(skipReasons(s), ["OFF"]);
+  assert.deepEqual(autoInviteOutcomes(s).map((o) => o.outcome), ["OFF"]);
 });
 
 test("auto-invite on: one text with the sealed link in the household's language, sent through the batch path, never twice", async () => {
@@ -642,11 +643,18 @@ test("auto-invite skips, with a reason code only, when any condition fails; the 
     assert.deepEqual(skipReasons(s), [reason]);
     const event = s.eventLog.find((e) => e.type === "auto-invite.skipped");
     assert.equal(JSON.stringify(event).includes("4155552671"), false, "no phone in the event");
-    // The family hears once about what it can fix, not about the rest.
+    // The family hears once about what it can fix, not about the rest. A
+    // number on no row (or on several) is named by its last four digits only.
     const notes = Object.values(s.notifications || {}).filter((n) => n.kind === "sms-auto");
-    assert.equal(notes.length, ["CAPACITY_NEEDS_REVIEW", "NO_ACTIVE_LINK"].includes(reason) ? 1 : 0, reason);
+    const unmatched = ["NO_ROW", "PHONE_SHARED"].includes(reason);
+    assert.equal(notes.length, unmatched || ["CAPACITY_NEEDS_REVIEW", "NO_ACTIVE_LINK"].includes(reason) ? 1 : 0, reason);
+    assert.deepEqual(autoInviteOutcomes(s).map((o) => o.outcome), [reason]);
     if (notes.length) {
-      assert.equal(notes[0].householdId, f.row.id);
+      assert.equal(notes[0].householdId, unmatched ? null : f.row.id, reason);
+      if (unmatched) {
+        assert.match(notes[0].title, /ending in 2671/);
+        assert.equal(JSON.stringify(notes[0]).includes("4155552671"), false, "never the whole number");
+      }
       await sophia(f, 2);
       assert.equal(Object.values((await f.ledger.read()).notifications).filter((n) => n.kind === "sms-auto").length, 1);
     }
