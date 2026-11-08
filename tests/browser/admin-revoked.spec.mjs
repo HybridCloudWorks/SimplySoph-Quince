@@ -29,11 +29,14 @@ test("Reset household (owner) needs the exact name, then the household is back t
   const row = page.locator(`tr[data-guest-row][data-name="${morales.name}"]`);
   await expect(row).not.toContainText("No link yet");
   // A wrong name resets nothing.
+  // Reset household is in the row's More menu.
   page.once("dialog", (d) => d.accept("Someone else"));
+  await row.getByText("More", { exact: true }).click();
   await row.getByRole("button", { name: "Reset household" }).click();
   await expect(page.getByText("Nothing was reset")).toBeVisible();
   await expect(row).not.toContainText("No link yet");
   page.once("dialog", (d) => d.accept(morales.name));
+  await row.getByText("More", { exact: true }).click();
   await row.getByRole("button", { name: "Reset household" }).click();
   await expect(page.getByText(`${morales.name} is reset`)).toBeVisible();
   await expect(page.locator(`tr[data-guest-row][data-name="${morales.name}"]`)).toContainText("No link yet");
