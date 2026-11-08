@@ -1502,6 +1502,25 @@ test("bulk link creation only covers households without a link and sends nothing
   );
 });
 
+test("bulk link creation can use each household's own Language", async () => {
+  const mk = (n, extra = {}) => ({ id: `${n}${n}${n}${n}${n}${n}${n}${n}-${n}${n}${n}${n}-4${n}${n}${n}-8${n}${n}${n}-${n.repeat(12)}`, name: `Family ${n}`, capacity: { adultsTeens: 2, kids: 0 }, email: `f${n}@example.com`, phone: "", validCapacity: true, administratorEligible: false, archived: false, ...extra });
+  const chosenEs = mk("3"), notionEs = mk("4", { whatsappLanguage: "es" }), plain = mk("5");
+  const f = await fixture({ notion: { list: async () => [chosenEs, notionEs, plain].map((r) => structuredClone(r)) } });
+  // Chosen on its Invitations row (the route itself is tested above).
+  await f.ledger.transaction((st) => {
+    st.householdLanguages = { [chosenEs.id]: "es" };
+  });
+  const r = await f.admin("invitations/issue-batch", {
+    ids: [chosenEs.id, notionEs.id, plain.id],
+    invited: { ceremony: true, dinner: true, dance: true },
+    locale: "household",
+  });
+  assert.equal(r.issued, 3);
+  const s = await f.ledger.read();
+  assert.deepEqual([chosenEs, notionEs, plain].map((h) => s.invitations[h.id].locale), ["es", "es", "en"]);
+  assert.deepEqual([chosenEs, notionEs, plain].map((h) => s.householdLanguages[h.id]), ["es", "es", "en"]);
+});
+
 test("invitation batches skip households that already responded", async () => {
   const f = await fixture({ mailSleep: async () => {} });
   await f.guest("rsvp", f.input(), { "idempotency-key": "55555555-5555-4555-8555-555555555555" });

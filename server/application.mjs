@@ -79,7 +79,8 @@ import { createAccounts, accountActive, rosterMatch } from "./accounts.mjs";
 // (`households[].autoInvite`, `autoInviteRecent`). 7: POST
 // /api/admin/household-reset (owner only). 8: Invitations' Language column
 // (`language` on GET /api/admin/guests, POST /api/admin/household-language).
-export const apiVersion = 8;
+// 9: Create links with `locale: "household"` (each household's Language).
+export const apiVersion = 9;
 const events = ["ceremony", "dinner", "dance"];
 const safeText = (s, max = 1000) => {
   if (

@@ -297,12 +297,20 @@ export function createMailBatches({
             name: row.name,
             active: true,
             invited: Object.fromEntries(events.map((e) => [e, body.invited[e]])),
-            locale: body.locale === "es" ? "es" : "en",
+            // "household": the language its Invitations row shows (the
+            // family's choice, else Notion's WhatsApp Language, else
+            // English); otherwise one language for the whole batch.
+            locale:
+              body.locale === "household"
+                ? (s.householdLanguages?.[id] || (row.whatsappLanguage === "es" ? "es" : "en"))
+                : body.locale === "es" ? "es" : "en",
             generation: 1,
             tokenHash: hash(token()),
             codeHash: hash(randomUUID()),
             openedAt: null,
           };
+          s.householdLanguages ??= {};
+          s.householdLanguages[id] = s.invitations[id].locale;
           issued.push(id);
           audit(s, actor, "invitation-issued", id, now());
           logEvent(s, now(), "invitation.issued", {
