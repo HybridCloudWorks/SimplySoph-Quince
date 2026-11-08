@@ -1,4 +1,4 @@
-// Reset one household to "never invited" (owner only; POST
+// Reset one household to "never invited" (any administrator; POST
 // /api/admin/household-reset). For rehearsing the guest journey with the
 // family's own test households: the next SOPHIA, link or batch treats them as
 // brand new. Runs inside one ledger transaction (no side effects); the Notion

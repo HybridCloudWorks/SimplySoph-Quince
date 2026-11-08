@@ -2907,11 +2907,11 @@ export function createApplication({
         });
       }
       // Reset a household to "never invited" (server/household-reset.mjs):
-      // owner only, and only with the household's exact name typed, so a real
-      // guest's answer is never wiped by a slip. Safe to repeat: a second run
-      // finds nothing left and clears Notion again.
+      // any administrator (owner decision, 2026-11-08), and only with the
+      // household's exact name typed, so a real guest's answer is never wiped
+      // by a slip. Audited with who did it. Safe to repeat: a second run finds
+      // nothing left and clears Notion again.
       if (path === "/api/admin/household-reset" && method === "POST") {
-        if (!ownerSession(session)) throw error(403, "OWNER_REQUIRED");
         const row = await notion.read(body.id, { fresh: true });
         if (typeof body.confirmName !== "string" || body.confirmName.trim() !== row.name.trim())
           throw error(422, "CONFIRM_NAME");
