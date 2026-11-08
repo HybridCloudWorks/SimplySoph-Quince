@@ -13,4 +13,5 @@
 // GET /api/site, GET /api/court-photo/<id>, Admin → Website & event; #108).
 // 6: the SMS page's revoked households and automatic-invitation outcomes
 // (GET /api/admin/audience?channel=sms, GET /api/admin/sms/drafts).
-export const pagesNeedApi = 6;
+// 7: Invitations' "Reset household" (POST /api/admin/household-reset).
+export const pagesNeedApi = 7;

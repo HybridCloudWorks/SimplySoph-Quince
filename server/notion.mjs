@@ -475,6 +475,47 @@ export function notionClient({
       });
       return normalizeInvitation(result);
     },
+    // Household reset (server/household-reset.mjs): clears what the website
+    // wrote to this row, so it reads as never invited, never answered. Only
+    // columns the row has are sent (Notion refuses unknown names). The opt-out
+    // checkboxes stay: an opt-out is never undone by the website. Status goes
+    // back to its starting value (Waiting with a phone, Missing without).
+    async resetProjection(id) {
+      const page = await call("pages/" + id);
+      if (page.parent?.data_source_id !== sourceId) throw error(403, "WRONG_DATA_SOURCE");
+      const has = (name) => Object.hasOwn(page.properties || {}, name),
+        empty = { rich_text: [] },
+        clear = {
+          RSVP: { select: null },
+          "Website response ID": empty,
+          "Website response at": { date: null },
+          "Website contact email": { email: null },
+          "Website phone": { phone_number: null },
+          "Website address": empty,
+          "Website requests": empty,
+          "SMS Consent": { checkbox: false },
+          "SMS Consent Date": { date: null },
+          "WhatsApp Consent": { checkbox: false },
+          "WhatsApp Consent Date": { date: null },
+          "WhatsApp Consent Source": empty,
+          "WhatsApp Consent Version": empty,
+          ...Object.fromEntries(
+            ["Ceremony", "Dinner", "Dance"].flatMap((e) => [
+              [e + " adults", { number: null }],
+              [e + " kids", { number: null }],
+            ]),
+          ),
+        };
+      const properties = Object.fromEntries(Object.entries(clear).filter(([name]) => has(name)));
+      if (has("Status"))
+        properties.Status = {
+          select: { name: page.properties.Phone?.phone_number ? "Waiting" : "Missing" },
+        };
+      await call("pages/" + id, "PATCH", { properties });
+      cache.delete("list");
+      cache.delete("page:" + id);
+      return Object.keys(properties);
+    },
     async projectContact(id, contact) {
       await this.read(id);
       await call("pages/" + id, "PATCH", {

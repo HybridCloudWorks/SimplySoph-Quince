@@ -58,6 +58,7 @@ import { event as eventInfo, ready } from "../site/content.mjs";
 import { previewRoutes } from "../site/preview-content.mjs";
 import { notionOutage } from "./notion.mjs";
 import { attendanceOf, dinnerSeats } from "./attendance.mjs";
+import { resetHouseholdState } from "./household-reset.mjs";
 import { statusOf } from "./status.mjs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -75,8 +76,9 @@ import { createAccounts, accountActive, rosterMatch } from "./accounts.mjs";
 // GET /api/admin/sms/drafts). 5: the court of honor (`court` in the event
 // settings and GET /api/court-photo/<id>, #108). 6: the SMS page's revoked
 // households, Guest-column names and automatic-invitation outcomes
-// (`households[].autoInvite`, `autoInvite.recent`).
-export const apiVersion = 6;
+// (`households[].autoInvite`, `autoInviteRecent`). 7: POST
+// /api/admin/household-reset (owner only).
+export const apiVersion = 7;
 const events = ["ceremony", "dinner", "dance"];
 const safeText = (s, max = 1000) => {
   if (
@@ -2903,6 +2905,35 @@ export function createApplication({
           });
           return { link, code: code.match(/.{4}/g).join("-"), id: row.id };
         });
+      }
+      // Reset a household to "never invited" (server/household-reset.mjs):
+      // owner only, and only with the household's exact name typed, so a real
+      // guest's answer is never wiped by a slip. Safe to repeat: a second run
+      // finds nothing left and clears Notion again.
+      if (path === "/api/admin/household-reset" && method === "POST") {
+        if (!ownerSession(session)) throw error(403, "OWNER_REQUIRED");
+        const row = await notion.read(body.id, { fresh: true });
+        if (typeof body.confirmName !== "string" || body.confirmName.trim() !== row.name.trim())
+          throw error(422, "CONFIRM_NAME");
+        const phones = [...new Set([row.phone, row.whatsappPhone].map((p) => String(p || "").replace(/[ ()-]/g, "")).filter(Boolean))];
+        const removed = await ledger.transaction((s) => {
+          const r = resetHouseholdState(s, row.id, phones);
+          audit(s, session.actor, "household-reset", row.id, now());
+          logEvent(s, now(), "household.reset", {
+            actor: session.actor,
+            householdId: row.id,
+            data: { removed: r },
+          });
+          return r;
+        });
+        let notionCleared = [];
+        try {
+          notionCleared = (await notion.resetProjection?.(row.id)) || [];
+        } catch (e) {
+          // The website side is already reset; running it again clears Notion.
+          return { removed, notion: "failed", code: e.code || "NOTION_UNAVAILABLE" };
+        }
+        return { removed, notion: "cleared", notionColumns: notionCleared };
       }
       if (path === "/api/admin/revoke" && method === "POST") {
         return ledger.transaction((s) => {

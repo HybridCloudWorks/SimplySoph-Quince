@@ -20,3 +20,21 @@ test("Revoked invitations lists revoked households and restores one with a new l
   await expect(row).toHaveCount(0);
   await expect(page.getByText("No revoked invitations.")).toBeVisible();
 });
+
+test("Reset household (owner) needs the exact name, then the household is back to no link", async ({ page, context, harness }) => {
+  const { morales } = households;
+  await harness.issueInvitation(morales);
+  await context.addCookies([harness.ownerCookie()]);
+  await page.goto(harness.url("/admin/guests/"));
+  const row = page.locator(`tr[data-guest-row][data-name="${morales.name}"]`);
+  await expect(row).not.toContainText("No link yet");
+  // A wrong name resets nothing.
+  page.once("dialog", (d) => d.accept("Someone else"));
+  await row.getByRole("button", { name: "Reset household" }).click();
+  await expect(page.getByText("Nothing was reset")).toBeVisible();
+  await expect(row).not.toContainText("No link yet");
+  page.once("dialog", (d) => d.accept(morales.name));
+  await row.getByRole("button", { name: "Reset household" }).click();
+  await expect(page.getByText(`${morales.name} is reset`)).toBeVisible();
+  await expect(page.locator(`tr[data-guest-row][data-name="${morales.name}"]`)).toContainText("No link yet");
+});

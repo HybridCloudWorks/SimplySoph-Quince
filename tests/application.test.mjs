@@ -1979,6 +1979,7 @@ test("Notion admins are not owners: schema, import, resets and history stay owne
     ["admin/import", { rows: [] }],
     ["admin/authenticator-reset", { email: "x@example.com", code: "000000" }],
     ["admin/role-events", undefined],
+    ["admin/household-reset", { id: household, confirmName: "Test family" }],
   ])
     await assert.rejects(() => as(path, body), (e) => e.code === "OWNER_REQUIRED", path);
   const list = await f.admin("accounts");
@@ -3416,6 +3417,45 @@ test("the SMS page keeps a revoked household in view, says so, and shows the lat
   // Restoring (a new link with the same events) brings it back.
   await f.admin("invitation", { id: household, invited: { ceremony: true, dinner: true, dance: true }, locale: "en" });
   assert.notEqual((await f.admin("audience", undefined, { channel: "sms" })).households.find((h) => h.id === household).status, "revoked");
+});
+
+test("the owner resets a household completely: link, answer, texts and SOPHIA sign-up go, Notion is cleared, a STOP stays", async () => {
+  const cleared = [];
+  const f = await fixture({ notion: { async resetProjection(id) { cleared.push(id); return ["RSVP", "Status"]; } } });
+  f.row.phone = "+18175550100";
+  await f.admin("invitation", { id: household, invited: { ceremony: true, dinner: true, dance: true }, locale: "en" });
+  await keywordOptIn(f, f.row.phone);
+  const other = "+18175550111";
+  await f.ledger.transaction((s) => {
+    s.responses.r1 = { id: "r1", householdId: household, attendance: {}, submittedAt: "2026-10-01T00:00:00Z" };
+    s.invitations[household].latestSubmissionId = "r1";
+    s.smsDrafts = { d1: { id: "d1", householdId: household, to: f.row.phone, state: "accepted", link: true, generation: 2 } };
+    s.smsClaims = { [hash(JSON.stringify(["auto-invite", f.row.phone]))]: "d1", keepMe: "other-draft" };
+    s.smsPreferences[hash(other)] = { phone: other, type: "STOP", at: 1 };
+    s.tables = { t: { id: "t", name: "T", capacity: 8, households: [household, "someone-else"] } };
+    s.notifications = { n1: { id: "n1", kind: "sms-auto", householdId: household } };
+  });
+  await assert.rejects(() => f.admin("household-reset", { id: household, confirmName: "Wrong name" }), (e) => e.code === "CONFIRM_NAME");
+  assert.ok((await f.ledger.read()).invitations[household], "a wrong name resets nothing");
+  const r = await f.admin("household-reset", { id: household, confirmName: " Test family " });
+  assert.equal(r.notion, "cleared");
+  assert.deepEqual(cleared, [household]);
+  const s = await f.ledger.read();
+  assert.equal(s.invitations[household], undefined);
+  assert.equal(s.responses.r1, undefined);
+  assert.equal(s.smsDrafts.d1, undefined);
+  assert.deepEqual(Object.keys(s.smsClaims), ["keepMe"]);
+  assert.equal(s.smsConsentPhones[household], undefined);
+  assert.equal(s.smsPreferences[hash(f.row.phone)], undefined, "the SOPHIA receipt goes");
+  assert.equal(s.smsPreferences[hash(other)].type, "STOP", "a STOP is never undone");
+  assert.deepEqual(s.tables.t.households, ["someone-else"]);
+  assert.equal(s.notifications.n1, undefined);
+  assert.ok(s.audit.some((a) => a.action === "household-reset" || a.type === "household-reset" || JSON.stringify(a).includes("household-reset")));
+  const guest = (await f.admin("guests")).guests.find((g) => g.id === household);
+  assert.equal(guest.status, "not-issued");
+  // Notion failing after the website reset says so; running it again is safe.
+  const g = await fixture({ notion: { async resetProjection() { throw Object.assign(Error("down"), { code: "NOTION_UNAVAILABLE" }); } } });
+  assert.equal((await g.admin("household-reset", { id: household, confirmName: "Test family" })).notion, "failed");
 });
 
 test("texts to guests: draft, type the count, send in one confirmed batch from the page", async () => {
