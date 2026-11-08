@@ -378,7 +378,7 @@ function sharePanel(program) {
 // cells, and the More menu opening over the rows below.
 document.head.append(
   Object.assign(document.createElement("style"), {
-    textContent: ".guest-table th,.guest-table td{padding:8px 8px;font-size:0.8rem;line-height:1.35;} .guest-table td small{font-size:0.72rem;opacity:0.85;} .guest-table .badge{margin:1px 0;} .guest-table select{min-height:40px;padding:4px 6px;font-size:0.8rem;width:auto;} .guest-table .row-actions{flex-wrap:nowrap;align-items:flex-start;gap:6px;} .row-menu{position:relative;} .row-menu > summary{list-style:none;cursor:pointer;min-height:40px;display:inline-flex;align-items:center;padding:0 12px;border:1px solid currentColor;font-size:0.8rem;white-space:nowrap;} .row-menu > summary::-webkit-details-marker{display:none;} .row-menu > summary::after{content:\"\";width:6px;height:6px;margin-left:8px;border-right:2px solid;border-bottom:2px solid;transform:translateY(-2px) rotate(45deg);} .row-menu[open] > summary::after{transform:translateY(2px) rotate(-135deg);} .row-menu-items{position:absolute;right:0;z-index:5;display:grid;gap:6px;min-width:190px;margin-top:4px;padding:8px;background:var(--surface);color:var(--ink);border:1px solid var(--line);box-shadow:0 6px 18px rgb(0 0 0 / 0.25);} .row-menu-items > a{min-height:40px;display:flex;align-items:center;} .guest-table .row-actions{margin:0;} .guest-table [data-share-link]{white-space:nowrap;} .row-menu > summary::after{transition:none;}",
+    textContent: ".guest-table th,.guest-table td{padding:8px 8px;font-size:0.8rem;line-height:1.35;} .guest-table td small{font-size:0.72rem;opacity:0.85;} .guest-table .badge{margin:1px 0;} .guest-table select{min-height:40px;padding:4px 6px;font-size:0.8rem;width:auto;} .guest-table .row-actions{flex-wrap:nowrap;align-items:flex-start;gap:6px;} .row-menu{position:relative;} .row-menu > summary{list-style:none;cursor:pointer;min-height:40px;display:inline-flex;align-items:center;padding:0 12px;border:1px solid currentColor;font-size:0.8rem;white-space:nowrap;} .row-menu > summary::-webkit-details-marker{display:none;} .row-menu > summary::after{content:\"\";width:6px;height:6px;margin-left:8px;border-right:2px solid;border-bottom:2px solid;transform:translateY(-2px) rotate(45deg);} .row-menu[open] > summary::after{transform:translateY(2px) rotate(-135deg);} .row-menu-items{position:absolute;right:0;z-index:5;display:grid;gap:6px;min-width:190px;margin-top:4px;padding:8px;background:var(--surface);color:var(--ink);border:1px solid var(--line);box-shadow:0 6px 18px rgb(0 0 0 / 0.25);} .row-menu-items > a{min-height:40px;display:flex;align-items:center;} .guest-table .row-actions{margin:0;} .guest-table [data-share-link]{white-space:nowrap;} .row-menu > summary::after{transition:none;} .admin-shell.nav-folded{grid-template-columns:44px minmax(0,1fr);gap:16px;} .admin-shell.nav-folded aside > :not(.nav-collapse){display:none !important;} .nav-collapse{display:flex;align-items:center;gap:10px;width:100%;min-height:44px;padding:0 10px;margin:0 0 8px;border:1px solid var(--line);background:transparent;color:inherit;font:inherit;font-size:0.8rem;cursor:pointer;grid-column:1/-1;} .nav-collapse::before{content:\"\";flex:none;width:8px;height:8px;border-left:2px solid;border-bottom:2px solid;transform:translateX(2px) rotate(45deg);} .nav-folded .nav-collapse{justify-content:center;padding:0;} .nav-folded .nav-collapse::before{transform:translateX(-2px) rotate(-135deg);}",
   }),
 );
 // The Invitations table, narrow enough for a laptop: email under the name,
@@ -415,6 +415,41 @@ function guestTable(guests, program) {
     )
     .join("")}</tbody></table>`}</div>`;
 }
+// The admin menu folds to a narrow strip (the arrow at its top) to give the
+// page more room; the choice is remembered on this device only.
+function sidebarToggle() {
+  const shell = document.querySelector(".admin-shell"),
+    aside = shell?.querySelector("aside");
+  if (!aside || aside.querySelector(".nav-collapse")) return;
+  aside.id ||= "admin-nav";
+  const toggle = document.createElement("button"),
+    label = document.createElement("span");
+  toggle.type = "button";
+  toggle.className = "nav-collapse";
+  toggle.setAttribute("aria-controls", aside.id);
+  toggle.append(label);
+  const set = (folded) => {
+    shell.classList.toggle("nav-folded", folded);
+    toggle.setAttribute("aria-expanded", String(!folded));
+    toggle.setAttribute("aria-label", folded ? "Show the admin menu" : "Hide the admin menu");
+    label.textContent = folded ? "" : "Hide menu";
+    try {
+      localStorage.setItem("misxv-admin-menu", folded ? "folded" : "open");
+    } catch {
+      /* Private browsing: the choice lasts this page only. */
+    }
+  };
+  toggle.onclick = () => set(!shell.classList.contains("nav-folded"));
+  aside.prepend(toggle);
+  let folded = false;
+  try {
+    folded = localStorage.getItem("misxv-admin-menu") === "folded";
+  } catch {
+    /* Nothing remembered. */
+  }
+  set(folded);
+}
+let shareProgram = null;
 async function guestList() {
   const [data, cfg] = await Promise.all([api("admin/guests"), api("config")]);
   guests = data.guests;
@@ -422,6 +457,7 @@ async function guestList() {
     cfg.channels?.smsKeyword && cfg.channels?.smsNumber && root.dataset.eventStartsAt
       ? { keyword: cfg.channels.smsKeyword, number: cfg.channels.smsNumber, startsAt: root.dataset.eventStartsAt }
       : null;
+  shareProgram = program;
   root.innerHTML = `<p>Review household capacity and event eligibility before creating a private invitation. Blank Kids values need correction in Notion.</p><div class="row-actions">${button("Export CSV", "export", "")}${button("Import CSV", "import-form", "")}${button("Check statuses now", "status-sync", "")}</div><div id="guest-editor"></div><div id="batch-panel"></div><div id="guest-area"><div class="field-grid filters-3">${field("Filter guests", "filter")}<label>Status<select name="status"><option value="">All statuses</option>${Object.entries(
     statusLabels,
   )
@@ -549,6 +585,19 @@ function invitationEditor(id) {
       ),
       locale: f.get("locale"),
     });
+    // The household's language is the one just chosen: its row's Language
+    // and Share by text follow at once, without a reload.
+    r.locale = r.language = f.get("locale") === "es" ? "es" : "en";
+    r.active = true;
+    const row = document.querySelector(`[data-household-language="${CSS.escape(id)}"]`)?.closest("tr");
+    if (row) {
+      row.querySelector("[data-household-language]").value = r.language;
+      const share = row.querySelector("[data-share-link]");
+      if (share && shareProgram) {
+        share.href = shareLink(share.dataset.sharePhone, shareText({ lang: r.language, ...shareProgram }));
+        share.lang = r.language;
+      }
+    }
     box.innerHTML = `<div class="notice success"><p>This link and code are shown once and open this household’s RSVP; creating a new link revokes older ones. To email the invitation, use “Draft invitation email” — the email carries its own private link and quick-answer buttons, so you never need to copy this one. Keep the code only for a printed invitation.</p><textarea id="private-link" readonly>${esc(result.link)}</textarea><p>Invitation code: <code>${esc(result.code)}</code></p><p>No email has been sent.</p>${button("Draft invitation email", "draft-invitation", id)}</div>`;
   });
   box.scrollIntoView({ block: "nearest" });
@@ -1041,6 +1090,7 @@ try {
         '<p class="notice">Please sign in as an administrator to see this page.</p><a class="button burgundy" href="/admin/login/">Administrator sign-in</a>';
     } else {
       document.querySelector(".admin-shell aside").hidden = false;
+      sidebarToggle();
       if (view === "admin/site") await websiteEditor(root);
       if (view === "admin/notifications") await notificationInbox(root);
       if (view === "admin") await dashboard();

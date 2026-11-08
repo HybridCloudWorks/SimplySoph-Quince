@@ -15,4 +15,5 @@
 // (GET /api/admin/audience?channel=sms, GET /api/admin/sms/drafts).
 // 7: Invitations' "Reset household" (POST /api/admin/household-reset).
 // 8: Invitations' Language column (POST /api/admin/household-language).
-export const pagesNeedApi = 8;
+// 9: Create links defaults to each household's Language (`locale: "household"`).
+export const pagesNeedApi = 9;
