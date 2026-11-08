@@ -1,7 +1,8 @@
 // "Share by text" on Admin → Invitations: a text the family sends from their
 // OWN phone, person to person, asking a household to text the keyword and so
-// opt in to the SMS program. The website sends nothing, records nothing and
+// opt in to the SMS program. The website sends nothing and
 // changes no status: this only builds the words and the phone's `sms:` link.
+// (Admin → Invitations notes that a row's link was opened: its Texted mark.)
 // The registered campaign allows program texts only to people who texted the
 // keyword first (docs/twilio-setup.md), so an invitation to join must come
 // from a personal phone, never from the program number.

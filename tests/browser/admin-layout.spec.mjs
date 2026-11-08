@@ -41,3 +41,34 @@ test("a link created in Spanish makes the row's Share by text Spanish at once", 
   await expect(share).toHaveAttribute("lang", "es");
   await expect(share).toHaveAttribute("href", /body=%C2%A1Est%C3%A1s%20invitado/);
 });
+
+test("opening Share by text marks the household Texted; the filter shows who is left; the mark can be cleared", async ({ page, context, harness }) => {
+  const { rivera, morales } = households;
+  await context.addCookies([harness.ownerCookie()]);
+  // The sms: link must not leave the page in the test browser.
+  await page.route(/^sms:/, (route) => route.abort());
+  await page.goto(harness.url("/admin/guests/"));
+  const row = (h) => page.locator(`tr[data-guest-row][data-name="${h.name}"]`),
+    filter = page.locator("select[name=texted]");
+  await expect(row(rivera)).not.toContainText("Texted");
+  await row(rivera).getByRole("link", { name: "Share by text" }).evaluate((a) => {
+    a.addEventListener("click", (e) => e.preventDefault(), { once: true });
+    a.click();
+  });
+  await expect(row(rivera).locator("[data-texted-badge]")).toContainText("Texted");
+  // The counts follow the mark at once.
+  await expect(filter.locator("option[value=texted]")).toHaveText("Texted (1)");
+  await filter.selectOption("not-texted");
+  await expect(row(rivera)).toBeHidden();
+  await expect(row(morales)).toBeVisible();
+  await filter.selectOption("texted");
+  await expect(row(rivera)).toBeVisible();
+  await expect(row(morales)).toBeHidden();
+  // Still marked after a reload: it is saved.
+  await page.reload();
+  await expect(row(rivera).locator("[data-texted-badge]")).toBeVisible();
+  await row(rivera).getByText("More", { exact: true }).click();
+  await row(rivera).getByRole("button", { name: "Clear texted mark" }).click();
+  await expect(row(rivera).locator("[data-texted-badge]")).toHaveCount(0);
+  expect(harness.sent).toEqual([]);
+});

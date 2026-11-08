@@ -16,4 +16,5 @@
 // 7: Invitations' "Reset household" (POST /api/admin/household-reset).
 // 8: Invitations' Language column (POST /api/admin/household-language).
 // 9: Create links defaults to each household's Language (`locale: "household"`).
-export const pagesNeedApi = 9;
+// 10: Invitations' Texted mark and filter (POST /api/admin/text-share).
+export const pagesNeedApi = 10;

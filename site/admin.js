@@ -27,7 +27,7 @@ import {
   googleButton,
 } from "./sso.js";
 import { contactTopics, contactTopicsEn } from "./celebration.mjs";
-import { date, time, stamp as recordedAt } from "./datetime.mjs";
+import { date, time, dayMonth, stamp as recordedAt } from "./datetime.mjs";
 import { adminMessages } from "./admin-messages.js";
 import { audienceOf, consentOf } from "./notes.mjs";
 // Admin's own error wording (guest pages never load it).
@@ -371,19 +371,24 @@ function shareCell(r, program) {
 }
 function sharePanel(program) {
   if (!program) return "";
-  return `<section id="share-panel" class="card tool-card" data-share-text="panel" aria-labelledby="share-title"><div class="tool-card-head"><h3 id="share-title">Share by text</h3><label>Language<select name="share-lang"><option value="en">English</option><option value="es">Español</option></select></label></div><p lang="en" data-share-words>${esc(shareText({ lang: "en", ...program }))}</p><div class="row-actions">${button("Copy text", "copy-share-text", "")}</div><p class="hint">Sent from your own phone; the website records nothing. When they text ${esc(program.keyword)} they show as Subscribed on the SMS tab.</p></section>`;
+  return `<section id="share-panel" class="card tool-card" data-share-text="panel" aria-labelledby="share-title"><div class="tool-card-head"><h3 id="share-title">Share by text</h3><label>Language<select name="share-lang"><option value="en">English</option><option value="es">Español</option></select></label></div><p lang="en" data-share-words>${esc(shareText({ lang: "en", ...program }))}</p><div class="row-actions">${button("Copy text", "copy-share-text", "")}</div><p class="hint">Sent from your own phone. Opening a household’s Share by text marks it Texted, so the Texted filter shows who is left. When they text ${esc(program.keyword)} they show as Subscribed on the SMS tab.</p></section>`;
 }
 // The Invitations table's own styles, kept here rather than in pages.css so
 // the guest pages never download them (tests/home-weight.test.mjs): tighter
 // cells, and the More menu opening over the rows below.
 document.head.append(
   Object.assign(document.createElement("style"), {
-    textContent: ".guest-table th,.guest-table td{padding:8px 8px;font-size:0.8rem;line-height:1.35;} .guest-table td small{font-size:0.72rem;opacity:0.85;} .guest-table .badge{margin:1px 0;} .guest-table select{min-height:40px;padding:4px 6px;font-size:0.8rem;width:auto;} .guest-table .row-actions{flex-wrap:nowrap;align-items:flex-start;gap:6px;} .row-menu{position:relative;} .row-menu > summary{list-style:none;cursor:pointer;min-height:40px;display:inline-flex;align-items:center;padding:0 12px;border:1px solid currentColor;font-size:0.8rem;white-space:nowrap;} .row-menu > summary::-webkit-details-marker{display:none;} .row-menu > summary::after{content:\"\";width:6px;height:6px;margin-left:8px;border-right:2px solid;border-bottom:2px solid;transform:translateY(-2px) rotate(45deg);} .row-menu[open] > summary::after{transform:translateY(2px) rotate(-135deg);} .row-menu-items{position:absolute;right:0;z-index:5;display:grid;gap:6px;min-width:190px;margin-top:4px;padding:8px;background:var(--surface);color:var(--ink);border:1px solid var(--line);box-shadow:0 6px 18px rgb(0 0 0 / 0.25);} .row-menu-items > a{min-height:40px;display:flex;align-items:center;} .guest-table .row-actions{margin:0;} .guest-table [data-share-link]{white-space:nowrap;} .row-menu > summary::after{transition:none;} .admin-shell.nav-folded{grid-template-columns:44px minmax(0,1fr);gap:16px;} .admin-shell.nav-folded aside > :not(.nav-collapse){display:none !important;} .nav-collapse{display:flex;align-items:center;gap:10px;width:100%;min-height:44px;padding:0 10px;margin:0 0 8px;border:1px solid var(--line);background:transparent;color:inherit;font:inherit;font-size:0.8rem;cursor:pointer;grid-column:1/-1;} .nav-collapse::before{content:\"\";flex:none;width:8px;height:8px;border-left:2px solid;border-bottom:2px solid;transform:translateX(2px) rotate(45deg);} .nav-folded .nav-collapse{justify-content:center;padding:0;} .nav-folded .nav-collapse::before{transform:translateX(-2px) rotate(-135deg);}",
+    textContent: ".guest-table th,.guest-table td{padding:8px 8px;font-size:0.8rem;line-height:1.35;} .guest-table td small{font-size:0.72rem;opacity:0.85;} .guest-table .badge{margin:1px 0;} .guest-table select{min-height:40px;padding:4px 6px;font-size:0.8rem;width:auto;} .guest-table .row-actions{flex-wrap:nowrap;align-items:flex-start;gap:6px;} .row-menu{position:relative;} .row-menu > summary{list-style:none;cursor:pointer;min-height:40px;display:inline-flex;align-items:center;padding:0 12px;border:1px solid currentColor;font-size:0.8rem;white-space:nowrap;} .row-menu > summary::-webkit-details-marker{display:none;} .row-menu > summary::after{content:\"\";width:6px;height:6px;margin-left:8px;border-right:2px solid;border-bottom:2px solid;transform:translateY(-2px) rotate(45deg);} .row-menu[open] > summary::after{transform:translateY(2px) rotate(-135deg);} .row-menu-items{position:absolute;right:0;z-index:5;display:grid;gap:6px;min-width:190px;margin-top:4px;padding:8px;background:var(--surface);color:var(--ink);border:1px solid var(--line);box-shadow:0 6px 18px rgb(0 0 0 / 0.25);} .row-menu-items > a{min-height:40px;display:flex;align-items:center;} .guest-table .row-actions{margin:0;} .guest-table [data-share-link]{white-space:nowrap;} .row-menu > summary::after{transition:none;} .admin-shell.nav-folded{grid-template-columns:44px minmax(0,1fr);gap:16px;} .admin-shell.nav-folded aside > :not(.nav-collapse){display:none !important;} .nav-collapse{display:flex;align-items:center;gap:10px;width:100%;min-height:44px;padding:0 10px;margin:0 0 8px;border:1px solid var(--line);background:transparent;color:inherit;font:inherit;font-size:0.8rem;cursor:pointer;grid-column:1/-1;} .nav-collapse::before{content:\"\";flex:none;width:8px;height:8px;border-left:2px solid;border-bottom:2px solid;transform:translateX(2px) rotate(45deg);} .nav-folded .nav-collapse{justify-content:center;padding:0;} .nav-folded .nav-collapse::before{transform:translateX(-2px) rotate(-135deg);} @media (min-width:53.1875em){.field-grid.filters-4{grid-template-columns:1.6fr 1fr 1fr 1fr;}}",
   }),
 );
 // The Invitations table, narrow enough for a laptop: email under the name,
 // counts and answers in short lines, the Language column, and Share by text
 // beside a "More" menu holding the rarer actions.
+// The Texted mark: the day the family last opened Share by text for it.
+const textedBadge = (r) =>
+  r.textedAt
+    ? `<br><span class="badge" data-texted-badge>Texted ${esc(dayMonth(r.textedAt, "en"))}</span>`
+    : "";
 function guestTable(guests, program) {
   const answer = (r) =>
     r.response
@@ -405,13 +410,13 @@ function guestTable(guests, program) {
       .map(([v, label]) => `<option value="${v}"${(r.language || "en") === v ? " selected" : ""}>${label}</option>`)
       .join("")}</select>`;
   const more = (r) =>
-    `<details class="row-menu"><summary aria-label="More actions for ${esc(r.name)}">More</summary><div class="row-menu-items">${button("Review / create link", "invite-form", r.id)}${r.active ? button("Revoke link", "revoke", r.id) : ""}<a href="https://www.notion.so/${encodeURIComponent(r.id.replaceAll("-", ""))}" target="_blank" rel="noopener noreferrer">Edit in Notion</a>${button("Reset household", "reset-household", r.id)}</div></details>`;
+    `<details class="row-menu"><summary aria-label="More actions for ${esc(r.name)}">More</summary><div class="row-menu-items">${button("Review / create link", "invite-form", r.id)}${r.active ? button("Revoke link", "revoke", r.id) : ""}<a href="https://www.notion.so/${encodeURIComponent(r.id.replaceAll("-", ""))}" target="_blank" rel="noopener noreferrer">Edit in Notion</a>${r.textedAt ? button("Clear texted mark", "clear-texted", r.id) : ""}${button("Reset household", "reset-household", r.id)}</div></details>`;
   return `<div class="table-wrap guest-table">${`<table><thead><tr>${['<input type="checkbox" data-select-all aria-label="Select all shown households">', "Household", "Status", "Guests", "Response", "Language", "Actions"]
     .map((x) => `<th scope="col">${x}</th>`)
     .join("")}</tr></thead><tbody>${guests
     .map(
       (r) =>
-        `<tr data-guest-row data-name="${esc(r.name)}" data-status="${esc(r.status)}" data-notion-status="${esc(notionStatusOf(r))}"><td><input type="checkbox" data-select value="${esc(r.id)}" aria-label="Select ${esc(r.name)}"></td><td><strong>${esc(r.name)}</strong>${r.role ? ` <span class="badge">${esc(r.role)}</span>` : ""}${r.email ? `<br><small class="break">${esc(r.email)}</small>` : ""}</td><td><span class="badge">${esc(statusLabels[r.status] || r.status)}</span>${notionStatusOf(r) ? `<br><span class="badge" data-notion-status-badge>Notion: ${esc(notionStatusOf(r))}</span>` : ""}${r.respondedAt || r.openedAt ? `<br><small>${esc(when(r.respondedAt || r.openedAt))}</small>` : ""}</td><td>${r.capacity.adultsTeens ?? "?"} ${r.capacity.adultsTeens === 1 ? "adult" : "adults"}<br>${r.capacity.kids ?? "?"} ${r.capacity.kids === 1 ? "child" : "children"}${r.validCapacity ? "" : '<br><span class="badge">Needs review</span>'}</td><td>${answer(r)}${r.syncState ? `<br><small>${esc(r.syncState)}</small>` : ""}${r.notionDiffers ? `<p class="notice">Notion differs: ${esc(r.notionDiffers)}.</p>${button("Keep Notion's version", "drift-notion", r.id)}${button("Write the website's answer", "drift-website", r.id)}` : ""}</td><td>${language(r)}</td><td><div class="row-actions">${shareCell(r, program)}${more(r)}</div></td></tr>`,
+        `<tr data-guest-row data-name="${esc(r.name)}" data-status="${esc(r.status)}" data-notion-status="${esc(notionStatusOf(r))}" data-texted="${r.textedAt ? esc(String(r.textedAt)) : ""}"><td><input type="checkbox" data-select value="${esc(r.id)}" aria-label="Select ${esc(r.name)}"></td><td><strong>${esc(r.name)}</strong>${r.role ? ` <span class="badge">${esc(r.role)}</span>` : ""}${r.email ? `<br><small class="break">${esc(r.email)}</small>` : ""}</td><td><span class="badge">${esc(statusLabels[r.status] || r.status)}</span>${notionStatusOf(r) ? `<br><span class="badge" data-notion-status-badge>Notion: ${esc(notionStatusOf(r))}</span>` : ""}${textedBadge(r)}${r.respondedAt || r.openedAt ? `<br><small>${esc(when(r.respondedAt || r.openedAt))}</small>` : ""}</td><td>${r.capacity.adultsTeens ?? "?"} ${r.capacity.adultsTeens === 1 ? "adult" : "adults"}<br>${r.capacity.kids ?? "?"} ${r.capacity.kids === 1 ? "child" : "children"}${r.validCapacity ? "" : '<br><span class="badge">Needs review</span>'}</td><td>${answer(r)}${r.syncState ? `<br><small>${esc(r.syncState)}</small>` : ""}${r.notionDiffers ? `<p class="notice">Notion differs: ${esc(r.notionDiffers)}.</p>${button("Keep Notion's version", "drift-notion", r.id)}${button("Write the website's answer", "drift-website", r.id)}` : ""}</td><td>${language(r)}</td><td><div class="row-actions">${shareCell(r, program)}${more(r)}</div></td></tr>`,
     )
     .join("")}</tbody></table>`}</div>`;
 }
@@ -458,7 +463,7 @@ async function guestList() {
       ? { keyword: cfg.channels.smsKeyword, number: cfg.channels.smsNumber, startsAt: root.dataset.eventStartsAt }
       : null;
   shareProgram = program;
-  root.innerHTML = `<p>Review household capacity and event eligibility before creating a private invitation. Blank Kids values need correction in Notion.</p><div class="row-actions">${button("Export CSV", "export", "")}${button("Import CSV", "import-form", "")}${button("Check statuses now", "status-sync", "")}</div><div id="guest-editor"></div><div id="batch-panel"></div><div id="guest-area"><div class="field-grid filters-3">${field("Filter guests", "filter")}<label>Status<select name="status"><option value="">All statuses</option>${Object.entries(
+  root.innerHTML = `<p>Review household capacity and event eligibility before creating a private invitation. Blank Kids values need correction in Notion.</p><div class="row-actions">${button("Export CSV", "export", "")}${button("Import CSV", "import-form", "")}${button("Check statuses now", "status-sync", "")}</div><div id="guest-editor"></div><div id="batch-panel"></div><div id="guest-area"><div class="field-grid filters-4">${field("Filter guests", "filter")}<label>Texted<select name="texted"><option value="">All</option><option value="not-texted">Not texted yet (${guests.filter((g) => !g.textedAt).length})</option><option value="texted">Texted (${guests.filter((g) => g.textedAt).length})</option></select></label><label>Status<select name="status"><option value="">All statuses</option>${Object.entries(
     statusLabels,
   )
     .map(
@@ -473,15 +478,16 @@ async function guestList() {
     .join("")}</select></label></div><div id="batch-row"><section id="batch-toolbar" class="card tool-card" aria-labelledby="batch-title"><h3 id="batch-title">Act on households</h3><p data-selected-count></p><div class="row-actions"><button type="button" class="button outline" data-batch="issue">Create links</button><button type="button" class="button burgundy" data-batch="invitation">Email invitation</button><button type="button" class="button outline" data-batch="reminder">Email reminder</button></div><p class="hint">Emails are drafted for review first. Nothing sends until you check the recipients and sample and type the number to confirm.</p></section>${sharePanel(program)}</div>${guestTable(guests, program)}</div><div id="recent-batches"></div>`;
   const text = root.querySelector("[name=filter]"),
     status = root.querySelector("[name=status]"),
-    notionStatus = root.querySelector("[name=notion-status]");
-  // All three filters at once (site/admin-filter.mjs). A hidden row drops out
+    notionStatus = root.querySelector("[name=notion-status]"),
+    texted = root.querySelector("[name=texted]");
+  // All four filters at once (site/admin-filter.mjs). A hidden row drops out
   // of the selection, so "select all" and the batch buttons only ever cover
   // the households in view.
-  text.oninput = status.onchange = notionStatus.onchange = () => {
+  const applyFilters = (text.oninput = status.onchange = notionStatus.onchange = texted.onchange = () => {
     for (const row of root.querySelectorAll("[data-guest-row]")) {
       row.hidden = !householdMatches(
-        { status: row.dataset.status, notionStatus: row.dataset.notionStatus },
-        { text: text.value, status: status.value, notionStatus: notionStatus.value },
+        { status: row.dataset.status, notionStatus: row.dataset.notionStatus, textedAt: row.dataset.texted || null },
+        { text: text.value, status: status.value, notionStatus: notionStatus.value, texted: texted.value },
         row.textContent,
       );
       if (row.hidden) {
@@ -492,7 +498,7 @@ async function guestList() {
         }
       }
     }
-  };
+  });
   // The panel's language is for its own words only (a one-off text to copy);
   // each row's Share by text follows that household's Language column.
   const shareLang = root.querySelector("[name=share-lang]");
@@ -503,6 +509,20 @@ async function guestList() {
       panelWords.textContent = shareText({ lang, ...program });
       panelWords.lang = lang;
     };
+  // Opening a row's Share by text marks the household Texted (the text goes
+  // from the family's own phone, so the site records only that it was opened).
+  for (const share of root.querySelectorAll("[data-guest-row] [data-share-link]"))
+    share.addEventListener("click", () => {
+      const tr = share.closest("tr"),
+        r = guests.find((g) => g.id === tr.querySelector("[data-select]").value);
+      api("admin/text-share", { id: r.id, texted: true, language: share.lang })
+        .then(({ textedAt }) => {
+          r.textedAt = textedAt;
+          markTexted(tr, r);
+          notify(`${r.name} marked Texted. Not sent? Use More → Clear texted mark.`);
+        })
+        .catch((e) => notify(e.message));
+    });
   // The Language column: saved at once; the row's Share by text follows.
   for (const select of root.querySelectorAll("[data-household-language]"))
     select.onchange = async () => {
@@ -527,7 +547,26 @@ async function guestList() {
       }
     };
   batchToolbar(root.querySelector("#guest-area"), guests, guestList);
+  markTexted = (tr, r) => {
+    tr.dataset.texted = r.textedAt ? String(r.textedAt) : "";
+    tr.querySelector("[data-texted-badge]")?.previousElementSibling?.remove();
+    tr.querySelector("[data-texted-badge]")?.remove();
+    const notionBadge = tr.children[2].querySelector("[data-notion-status-badge]");
+    if (notionBadge) notionBadge.insertAdjacentHTML("afterend", textedBadge(r));
+    else tr.children[2].querySelector(".badge")?.insertAdjacentHTML("afterend", textedBadge(r));
+    const menu = tr.querySelector(".row-menu-items"),
+      clear = menu?.querySelector('[data-action="clear-texted"]');
+    if (r.textedAt && menu && !clear)
+      menu.querySelector('[data-action="reset-household"]').insertAdjacentHTML("beforebegin", button("Clear texted mark", "clear-texted", r.id));
+    if (!r.textedAt) clear?.remove();
+    const rows = [...root.querySelectorAll("[data-guest-row]")],
+      done = rows.filter((x) => x.dataset.texted).length;
+    texted.querySelector("option[value=texted]").textContent = `Texted (${done})`;
+    texted.querySelector("option[value=not-texted]").textContent = `Not texted yet (${rows.length - done})`;
+    applyFilters();
+  };
 }
+let markTexted = () => {};
 // Revoked invitations: every household whose private link was revoked, in one
 // place, each with "Restore with a new link". Restoring issues a fresh link
 // (POST /api/admin/invitation) with the household's previous events and
@@ -979,6 +1018,13 @@ root.addEventListener("click", (e) => {
     // Any administrator, name typed: back to "never invited" in the
     // website and in Notion's RSVP columns, for rehearsing with test
     // households. The household's exact name must be typed.
+    if (action === "clear-texted") {
+      const r = guests.find((g) => g.id === id);
+      await api("admin/text-share", { id, texted: false });
+      r.textedAt = null;
+      markTexted(b.closest("tr"), r);
+      notify(`${r.name} is back in “Not texted yet”.`);
+    }
     if (action === "reset-household") {
       const r = guests.find((g) => g.id === id);
       const typed = prompt(

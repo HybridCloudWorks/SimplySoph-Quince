@@ -26,10 +26,13 @@ export function matchesNotionStatus(row, wanted) {
 }
 
 // Every filter on Admin → Invitations at once (AND): the typed text against
-// the row's words, the link status, and the Notion status.
-export function householdMatches(row, { text = "", status = "", notionStatus = "" } = {}, words = "") {
+// the row's words, the link status, the Texted mark ("texted" or "not-texted"
+// from Share by text), and the Notion status.
+export function householdMatches(row, { text = "", status = "", notionStatus = "", texted = "" } = {}, words = "") {
   const needle = text.trim().toLowerCase();
   if (needle && !String(words).toLowerCase().includes(needle)) return false;
   if (status && row.status !== status) return false;
+  if (texted === "texted" && !row.textedAt) return false;
+  if (texted === "not-texted" && row.textedAt) return false;
   return matchesNotionStatus(row, notionStatus);
 }

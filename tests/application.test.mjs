@@ -3505,6 +3505,23 @@ test("Invitations' Language column: saved per household, carried to its invitati
   assert.equal((await f.ledger.read()).householdLanguages?.[household], undefined);
 });
 
+test("Invitations' Texted mark: set when Share by text is opened, cleared on request and by a reset; nothing is sent", async () => {
+  const f = await fixture({ notion: { async resetProjection() { return []; } } });
+  const texted = async () => (await f.admin("guests")).guests.find((g) => g.id === household).textedAt;
+  assert.equal(await texted(), null);
+  await assert.rejects(() => f.admin("text-share", { id: household }), (e) => e.code === "INVALID_TEXT_SHARE");
+  const before = f.sent.length;
+  const r = await f.admin("text-share", { id: household, texted: true, language: "es" });
+  assert.ok(r.textedAt > 0);
+  assert.equal(await texted(), r.textedAt);
+  assert.equal(f.sent.length, before, "nothing is sent");
+  await f.admin("text-share", { id: household, texted: false });
+  assert.equal(await texted(), null);
+  await f.admin("text-share", { id: household, texted: true });
+  await f.admin("household-reset", { id: household, confirmName: "Test family" });
+  assert.equal(await texted(), null);
+});
+
 test("texts to guests: draft, type the count, send in one confirmed batch from the page", async () => {
   const sent = [];
   const f = await fixture({
