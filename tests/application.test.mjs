@@ -3373,10 +3373,11 @@ test("the SMS page lists every household with a plain status and offers a test t
   );
   const status = async () =>
     Object.fromEntries((await f.admin("audience", undefined, { channel: "sms" })).households.map((h) => [h.name, h.status]));
-  // Names come back as "Last, First" like the rest of the admin.
-  assert.deepEqual(await status(), { "family, Test": "waiting", "family, Mexico": "not-us-ca", "phone, No": "no-phone", "out, Opted": "opted-out" });
+  // Names are the Notion Guest column, exactly as the Invitations page shows
+  // them (a name like "Chris Horn (Ava)" is never reordered).
+  assert.deepEqual(await status(), { "Test family": "waiting", "Mexico family": "not-us-ca", "No phone": "no-phone", "Opted out": "opted-out" });
   await keywordOptIn(f, f.row.phone);
-  assert.equal((await status())["family, Test"], "subscribed");
+  assert.equal((await status())["Test family"], "subscribed");
   // The organizer's own phone: subscribed by keyword, no row anywhere.
   const mine = "+18175550199";
   const text = "Simply Soph Media: Test. Reply STOP to opt out.";
@@ -3389,6 +3390,32 @@ test("the SMS page lists every household with a plain status and offers a test t
   assert.equal(r.state, "accepted");
   assert.deepEqual(sent, [{ to: mine, text }]);
   assert.equal((await f.admin("sms/drafts")).drafts.find((d) => d.id === r.id).name, "Test to my phone");
+});
+
+test("the SMS page keeps a revoked household in view, says so, and shows the latest automatic invitation outcome", async () => {
+  const f = await fixture();
+  f.row.phone = "+18175550100";
+  await f.admin("invitation", { id: household, invited: { ceremony: true, dinner: true, dance: true }, locale: "en" });
+  await f.admin("revoke", { id: household });
+  const at = Date.now();
+  await f.ledger.transaction((s) => {
+    s.eventLog ??= [];
+    s.eventLog.push(
+      { seq: 1, at: new Date(at - 1000).toISOString(), type: "auto-invite.skipped", actor: "website", householdId: household, data: { channel: "sms", reason: "NO_ACTIVE_LINK" } },
+      { seq: 2, at: new Date(at).toISOString(), type: "auto-invite.skipped", actor: "website", data: { channel: "sms", reason: "NO_ROW" } },
+    );
+  });
+  const { households, recipients } = await f.admin("audience", undefined, { channel: "sms" });
+  const mine = households.find((h) => h.id === household);
+  assert.equal(mine.status, "revoked");
+  assert.equal(mine.autoInvite.outcome, "NO_ACTIVE_LINK");
+  assert.equal(recipients.some((r) => r.id === household), false, "a revoked household is never a recipient");
+  const recent = (await f.admin("sms/drafts")).autoInviteRecent;
+  assert.deepEqual(recent.map((o) => o.outcome), ["NO_ROW", "NO_ACTIVE_LINK"]);
+  assert.equal(recent[1].householdId, household);
+  // Restoring (a new link with the same events) brings it back.
+  await f.admin("invitation", { id: household, invited: { ceremony: true, dinner: true, dance: true }, locale: "en" });
+  assert.notEqual((await f.admin("audience", undefined, { channel: "sms" })).households.find((h) => h.id === household).status, "revoked");
 });
 
 test("texts to guests: draft, type the count, send in one confirmed batch from the page", async () => {
@@ -3875,6 +3902,7 @@ test("with the automatic invitation on, a SOPHIA sends the household its invitat
   assert.equal(sent.length, 1);
   assert.deepEqual(
     (await f.ledger.read()).eventLog.filter((e) => e.type === "auto-invite.skipped").map((e) => e.data.reason),
-    ["ALREADY_INVITED"],
+    // The first SOPHIA came while it was off; that is recorded too.
+    ["OFF", "ALREADY_INVITED"],
   );
 });

@@ -12,7 +12,29 @@ const statusWords = {
   "opted-out": "Opted out (texted STOP)",
   "not-us-ca": "Not a US/Canada number",
   "no-phone": "No phone in Notion",
+  revoked: "Link revoked · restore it on Revoked invitations",
 };
+// Why the automatic invitation after SOPHIA was or wasn't sent
+// (server/sms.mjs sendAutoInvite and autoInviteOutcomes).
+const autoWords = {
+  SENT: "sent",
+  OFF: "not sent: the automatic invitation was off",
+  NOTION_UNAVAILABLE: "not sent: Notion could not be read at that moment",
+  NO_ROW: "not sent: no household row in Notion has that phone",
+  PHONE_SHARED: "not sent: more than one household row has that phone",
+  CAPACITY_NEEDS_REVIEW: "not sent: the head count on the Notion row needs review",
+  NO_ACTIVE_LINK: "not sent: the household had no active private link",
+  INVITATIONS_CLOSED: "not sent: the RSVP deadline had passed",
+  SMS_OPTED_OUT: "not sent: SMS Opt Out is ticked on the row",
+  SMS_NOT_SUBSCRIBED: "not sent: the SOPHIA text wasn't matched to the row",
+  SMS_NOT_ENABLED: "not sent: sending is switched off on the server",
+  ALREADY_INVITED: "not sent again: an invitation text was already sent to this household",
+  SMS_REJECTED: "rejected by Twilio (see Latest five texts)",
+  SMS_DELIVERY_UNKNOWN: "uncertain: check Twilio's message logs",
+  FAILED: "not sent: an unexpected error (server logs)",
+};
+const autoOutcome = (o) =>
+  `Automatic invitation ${esc(when(o.at))}: ${esc(autoWords[o.outcome] || "not sent: " + o.outcome)}${o.delivery ? ` · ${esc(o.delivery)}` : ""}`;
 // No date in the starting text: a deadline typed here would go stale, and a
 // text with {link} can't be drafted after the RSVP deadline anyway (the server
 // refuses it). Never reuse the registered sample texts, which give an old
@@ -47,7 +69,7 @@ export async function smsComposer(root) {
       : "Sending is switched off on the server; you can prepare and review texts, but nothing can go out."
   }</p><p>Guests subscribe by texting <strong>SOPHIA</strong> to <strong>+1 682-786-8002</strong>. That text is the only way onto the list; nothing on this page or in Notion enrolls anyone. Texts reach US and Canadian numbers; use WhatsApp or email for other countries.</p></section>
 <form id="sms-test" class="card"><h2>Send a test to my phone</h2><p>Text SOPHIA to the event number from your phone first. Then enter that number here.</p><label>My phone<input name="phone" inputmode="tel" autocomplete="tel" placeholder="+1 817 555 0123" required></label><label>Message<textarea name="text" required maxlength="1600">${esc(TEST_TEXT)}</textarea></label><label class="check"><input type="checkbox" name="confirm" required>Send this one text to my phone</label><p class="error" role="alert"></p><button type="submit" class="button outline"${sms.sendingEnabled ? "" : " disabled"}>Send test</button></form>
-<form id="sms-compose" class="card"><h2>Text guests</h2><p><strong>${subscribed}</strong> subscribed · ${count("waiting") + count("syncing")} waiting to text SOPHIA · ${count("opted-out")} opted out · ${count("not-us-ca") + count("no-phone")} without a textable number</p>${
+<form id="sms-compose" class="card"><h2>Text guests</h2><p><strong>${subscribed}</strong> subscribed · ${count("waiting") + count("syncing")} waiting to text SOPHIA · ${count("opted-out")} opted out · ${count("not-us-ca") + count("no-phone")} without a textable number${count("revoked") ? ` · ${count("revoked")} with a revoked link (<a href="/admin/revoked/">Revoked invitations</a>)` : ""}</p>${
     data.groups.length
       ? `<h3>Distribution groups</h3><p>Picks the subscribed households in each group.</p>${data.groups.map((g) => `<label class="check"><input type="checkbox" name="group" value="${esc(g)}">${esc(g)}</label>`).join("")}`
       : ""
@@ -55,7 +77,7 @@ export async function smsComposer(root) {
     households
       .map(
         (h) =>
-          `<tr data-status="${esc(h.status)}" data-notion-status="${esc(notionStatusOf(h))}"><td><input type="checkbox" name="recipient" value="${esc(h.id)}" aria-label="${esc(h.name)}"${h.status === "subscribed" ? "" : " disabled"}></td><td>${esc(h.name)}</td><td>${esc(h.phone || "")}</td><td>${esc(statusWords[h.status] || h.status)}</td><td>${esc(notionStatusOf(h) || "—")}</td></tr>`,
+          `<tr data-status="${esc(h.status)}" data-notion-status="${esc(notionStatusOf(h))}"><td><input type="checkbox" name="recipient" value="${esc(h.id)}" aria-label="${esc(h.name)}"${h.status === "subscribed" ? "" : " disabled"}></td><td>${esc(h.name)}</td><td>${esc(h.phone || "")}</td><td>${esc(statusWords[h.status] || h.status)}${h.autoInvite ? `<br><small>${autoOutcome(h.autoInvite)}</small>` : ""}</td><td>${esc(notionStatusOf(h) || "—")}</td></tr>`,
       )
       .join("") || '<tr><td colspan="5">No households in Notion yet.</td></tr>'
   }</tbody></table></div>${
@@ -64,7 +86,7 @@ export async function smsComposer(root) {
       : ""
   }<label>Message<textarea name="text" required maxlength="1600">${esc(DEFAULT_TEXT)}</textarea></label><p>Every text must start with “Simply Soph Media:” and include STOP. Type <code>{link}</code> where each household's private RSVP link belongs; households without an active link are skipped and listed.</p><p class="error" role="alert"></p><button type="submit" class="button burgundy">Review before sending</button></form>
 <div id="sms-batch-panel"></div>
-${autoInviteCard(sms.autoInvite, sms.sendingEnabled)}
+${autoInviteCard(sms.autoInvite, sms.sendingEnabled, sms.autoInviteRecent)}
 <section class="recent-records"><h2>Recent text batches</h2>${
     sms.batches.length
       ? `<div class="table-wrap"><table><thead><tr><th scope="col">Created</th><th scope="col">Message</th><th scope="col">State</th><th scope="col">Texts</th><th scope="col">Waiting to send</th><th scope="col"></th></tr></thead><tbody>${sms.batches
@@ -265,7 +287,14 @@ function autoInviteProblem(e) {
   return reasons[e.details?.reason] || e.message;
 }
 
-function autoInviteCard(a, sendingEnabled) {
+// The latest attempts after SOPHIA, newest first, matched or not.
+const recentAuto = (recent = []) =>
+  `<h3>Latest automatic invitations</h3>${
+    recent.length
+      ? `<ul>${recent.map((o) => `<li>${esc(o.name || (o.householdId ? "A household" : "A number on no household row"))}: ${autoOutcome(o)}</li>`).join("")}</ul>`
+      : "<p>No one has texted SOPHIA since this list started.</p>"
+  }`;
+function autoInviteCard(a, sendingEnabled, recent) {
   if (!a) return "";
   const state = a.enabled
     ? `<p class="notice"><strong>On</strong> since ${esc(when(a.reviewedAt))}, turned on by ${esc(a.reviewedBy || "an administrator")}.${
@@ -278,7 +307,7 @@ function autoInviteCard(a, sendingEnabled) {
     : `<p><strong>Off.</strong> Households that text SOPHIA wait for a batch from this page.${
         a.paused ? " The RSVP deadline has passed, so it cannot send anything if turned on." : ""
       }</p>`;
-  return `<form id="sms-auto-invite" class="card"><h2>Automatic invitation when someone texts SOPHIA</h2><p>The one exception to sending by hand: when this is on, a household that texts SOPHIA gets the welcome text and then its private RSVP link in its own language, without waiting for a batch. It is sent only when the phone matches exactly one household in Notion, that household has an active link, the head count on its row is valid, the RSVP deadline has not passed, and no invitation text has been sent to it already; otherwise nothing is sent and a notification says what to fix. The two texts may arrive in either order.</p>${state}<label>English text<textarea name="text" required maxlength="320">${esc(a.text)}</textarea></label><label>Spanish text<textarea name="textEs" required maxlength="320">${esc(a.textEs)}</textarea></label><p>Both must start with “Simply Soph Media:”, include STOP and <code>{link}</code>.</p><div data-auto-preview aria-live="polite"></div><label class="check"><input type="checkbox" name="confirm" required>I reviewed both texts; send them automatically to every household that texts SOPHIA from now on</label><p class="error" role="alert"></p><button type="submit" class="button burgundy">${a.enabled ? "Save the texts" : "Turn on"}</button></form>`;
+  return `<form id="sms-auto-invite" class="card"><h2>Automatic invitation when someone texts SOPHIA</h2><p>The one exception to sending by hand: when this is on, a household that texts SOPHIA gets the welcome text and then its private RSVP link in its own language, without waiting for a batch. It is sent only when the phone matches exactly one household in Notion, that household has an active link, the head count on its row is valid, the RSVP deadline has not passed, and no invitation text has been sent to it already; otherwise nothing is sent and a notification says what to fix. The two texts may arrive in either order.</p>${state}<label>English text<textarea name="text" required maxlength="320">${esc(a.text)}</textarea></label><label>Spanish text<textarea name="textEs" required maxlength="320">${esc(a.textEs)}</textarea></label><p>Both must start with “Simply Soph Media:”, include STOP and <code>{link}</code>.</p><div data-auto-preview aria-live="polite"></div>${recentAuto(recent)}<label class="check"><input type="checkbox" name="confirm" required>I reviewed both texts; send them automatically to every household that texts SOPHIA from now on</label><p class="error" role="alert"></p><button type="submit" class="button burgundy">${a.enabled ? "Save the texts" : "Turn on"}</button></form>`;
 }
 
 async function openBatch(panel, id, reload) {

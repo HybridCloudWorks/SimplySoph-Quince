@@ -1,7 +1,7 @@
 import { createAdminRecords } from "./admin-records.mjs";
 import { audience, recipientName, validEmail } from "./audience.mjs";
 import { createWhatsapp } from "./whatsapp.mjs";
-import { createSms, smsCompliantText, smsPreview, smsStatus } from "./sms.mjs";
+import { createSms, smsCompliantText, smsPreview, smsStatus, autoInviteOutcomes } from "./sms.mjs";
 import { createPlanning } from "./planning.mjs";
 import { createAdminEmail } from "./admin-email.mjs";
 import { createAdminAccess, adminRow } from "./admin-access.mjs";
@@ -73,8 +73,10 @@ import { createAccounts, accountActive, rosterMatch } from "./accounts.mjs";
 // and the Notion Status on the audience. 4: the automatic SMS invitation
 // (POST /api/admin/sms/auto-invite and its preview; `autoInvite` on
 // GET /api/admin/sms/drafts). 5: the court of honor (`court` in the event
-// settings and GET /api/court-photo/<id>, #108).
-export const apiVersion = 5;
+// settings and GET /api/court-photo/<id>, #108). 6: the SMS page's revoked
+// households, Guest-column names and automatic-invitation outcomes
+// (`households[].autoInvite`, `autoInvite.recent`).
+export const apiVersion = 6;
 const events = ["ceremony", "dinner", "dance"];
 const safeText = (s, max = 1000) => {
   if (
@@ -3278,9 +3280,11 @@ export function createApplication({
         });
       }
       if (path === "/api/admin/audience" && method === "GET") {
-        const rows = (await notion.list({ allowStale: true })).filter(
-          (r) => !r.archived && ctx.state.invitations[r.id]?.active !== false,
-        );
+        // Every household the Guests page lists; only those whose link is not
+        // revoked can be picked as recipients.
+        const all = (await notion.list({ allowStale: true })).filter((r) => !r.archived),
+          revoked = (r) => ctx.state.invitations[r.id]?.active === false,
+          rows = all.filter((r) => !revoked(r));
         const sms = req.query?.channel === "sms";
         return {
           groups: [
@@ -3297,18 +3301,29 @@ export function createApplication({
             .sort((a, b) => a.name.localeCompare(b.name)),
           // SMS: every household with its plain-words status, so the page can
           // say who is textable and what the others are waiting on.
-          ...(sms && {
-            households: rows
-              .map((r) => ({
-                id: r.id,
-                name: recipientName(r),
-                phone: r.phone || "",
-                groups: r.distributionGroups || [],
-                status: smsStatus(ctx.state, r),
-                notionStatus: r.status || "",
-              }))
-              .sort((a, b) => a.name.localeCompare(b.name)),
-          }),
+          // SMS: every household the Guests page lists, under the same name
+          // (the Notion Guest column), with its plain-words status (a revoked
+          // link is said, not hidden) and its latest automatic-invitation
+          // outcome after SOPHIA.
+          ...(sms &&
+            (() => {
+              const latest = new Map();
+              for (const o of autoInviteOutcomes(ctx.state))
+                if (o.householdId && !latest.has(o.householdId)) latest.set(o.householdId, o);
+              return {
+                households: all
+                  .map((r) => ({
+                    id: r.id,
+                    name: r.name || recipientName(r),
+                    phone: r.phone || "",
+                    groups: r.distributionGroups || [],
+                    status: revoked(r) ? "revoked" : smsStatus(ctx.state, r),
+                    notionStatus: r.status || "",
+                    autoInvite: latest.get(r.id) || null,
+                  }))
+                  .sort((a, b) => a.name.localeCompare(b.name)),
+              };
+            })()),
         };
       }
       if (path === "/api/admin/mail/batch-draft" && method === "POST") {
@@ -3456,6 +3471,11 @@ export function createApplication({
             ...autoInviteSettings(ctx.state),
             paused: !invitationsOpen(),
           },
+          // The latest automatic invitation attempts after SOPHIA, with the
+          // household's name where one matched.
+          autoInviteRecent: autoInviteOutcomes(ctx.state)
+            .slice(0, 10)
+            .map((o) => ({ ...o, name: o.householdId ? ctx.state.invitations[o.householdId]?.name || "" : "" })),
           pendingOptOutSync: Object.values(
             ctx.state.smsSuppression || {},
           ).filter((r) => r.syncState === "pending").length,

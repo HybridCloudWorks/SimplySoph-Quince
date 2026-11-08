@@ -16,6 +16,34 @@ export function smsKeywordConsent(state, householdId, phone) {
   );
 }
 
+// Every automatic invitation attempt after SOPHIA, newest first: the ones
+// skipped (event log "auto-invite.skipped", with the reason) and the ones
+// drafted (smsDrafts with auto: true, with their send state). The SMS tab
+// shows the latest per household and the latest few overall, so "why didn't
+// they get the link?" is answered in the admin, not only in Cloud Logging.
+export function autoInviteOutcomes(state) {
+  const skipped = (state.eventLog || [])
+    .filter((e) => e.type === "auto-invite.skipped")
+    .map((e) => ({
+      at: Date.parse(e.at),
+      householdId: e.householdId || null,
+      outcome: e.data?.reason || "FAILED",
+    }));
+  const drafted = Object.values(state.smsDrafts || {})
+    .filter((d) => d.auto && !d.test)
+    .map((d) => ({
+      at: d.sentAt || d.at || 0,
+      householdId: d.householdId || null,
+      outcome: ["accepted", "sending"].includes(d.state)
+        ? "SENT"
+        : d.state === "unknown"
+          ? "SMS_DELIVERY_UNKNOWN"
+          : d.error || (d.state === "rejected" ? "SMS_REJECTED" : d.state.toUpperCase()),
+      delivery: state.smsDelivery?.[d.providerId]?.status || null,
+    }));
+  return [...skipped, ...drafted].sort((a, b) => b.at - a.at);
+}
+
 // Plain-words status for the admin page, one per household.
 export function smsStatus(state, row) {
   const phone = row.phone?.replace(/[ ()-]/g, "");
@@ -437,12 +465,12 @@ export function createSms({
   // NOTION_UNAVAILABLE: the household stays Subscribed and the family's next
   // batch covers it. Nothing here throws: the welcome reply always goes back.
   const AUTO_CAMPAIGN = "auto-invite";
-  const autoNotify = (s, householdId, name, title, text) => {
-    // One open notice per household: a second SOPHIA with the same problem
-    // does not add another.
+  const autoNotify = (s, householdId, name, title, text, key = householdId) => {
+    // One open notice per household (or, with no household, per number): a
+    // second SOPHIA with the same problem does not add another.
     if (
       Object.values(s.notifications || {}).some(
-        (n) => n.kind === "sms-auto" && n.householdId === householdId && !n.archived && !n.read,
+        (n) => n.kind === "sms-auto" && (n.key ?? n.householdId) === key && !n.archived && !n.read,
       )
     )
       return;
@@ -452,7 +480,8 @@ export function createSms({
       id,
       kind: "sms-auto",
       householdId,
-      title: `${name}: ${title}`,
+      key,
+      title: name ? `${name}: ${title}` : title,
       text,
       at: now(),
       read: false,
@@ -468,12 +497,14 @@ export function createSms({
           ...(householdId && { householdId }),
           data: { channel: "sms", reason },
         });
-        if (notice) autoNotify(s, householdId, notice.name, notice.title, notice.text);
+        if (notice) autoNotify(s, householdId, notice.name, notice.title, notice.text, notice.key);
       });
     try {
       const s = await ledger.read();
       const setting = autoInvite.setting(s);
-      if (!setting?.enabled) return;
+      // Logged too, so "why no invitation?" always has an answer on the SMS
+      // tab, even while the switch is off.
+      if (!setting?.enabled) return skip("OFF");
       let rows;
       try {
         rows = await notion.list();
@@ -483,7 +514,18 @@ export function createSms({
       const matched = rows.filter(
         (r) => !r.archived && r.phone?.replace(/[ ()-]/g, "") === phone,
       );
-      if (matched.length !== 1) return skip(matched.length ? "PHONE_SHARED" : "NO_ROW");
+      if (matched.length !== 1) {
+        // Nobody else would ever know: the guest got the welcome and nothing
+        // more. Only the last four digits go into the notice.
+        const ending = phone.slice(-4);
+        return skip(matched.length ? "PHONE_SHARED" : "NO_ROW", null, {
+          key: "phone:" + ending,
+          title: `Someone texted SOPHIA from a number ending in ${ending}, but no invitation was sent`,
+          text: matched.length
+            ? `${matched.length} household rows in Notion have that Phone. Keep it on one row only, then text them from the SMS tab.`
+            : "No household row in Notion has that Phone. Add it to the right household's row (with +1), then text them from the SMS tab.",
+        });
+      }
       const row = matched[0],
         name = autoInvite.name(row);
       if (!row.validCapacity)

@@ -38,6 +38,7 @@ The court of honor and the padrinos are different: their content is people's nam
 | `/admin/login/` | Administrator sign-in: the main Email of a Notion row with Administrator Eligible ticked (or an owner), plus an authenticator code |
 | `/admin/` | Overview: head counts by event, household statuses, Notion sync and differences, guest requests |
 | `/admin/guests/` | Invitations: current Notion households; issue, reissue and revoke links; invitation and reminder email batches; Notion differences (keep Notion's or write the website's); CSV import/export |
+| `/admin/revoked/` | Revoked invitations: every household whose link was revoked, each with **Restore with a new link** (a fresh private link with the same events and language; the revoked link stays dead) |
 | `/admin/access/` | Guest access: who has signed in, administrators from Notion, authenticator resets and recovery codes (owner) |
 | `/admin/content/` | Accounting & godparents: Budget and Godparents records kept in step with Notion |
 | `/admin/documents/` | Documents attached to accounting and godparent records |

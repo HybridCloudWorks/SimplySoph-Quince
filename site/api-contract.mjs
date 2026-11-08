@@ -11,4 +11,6 @@
 // GET /api/admin/sms/drafts).
 // 5: the court of honor drawn from the event settings (`court` on
 // GET /api/site, GET /api/court-photo/<id>, Admin → Website & event; #108).
-export const pagesNeedApi = 5;
+// 6: the SMS page's revoked households and automatic-invitation outcomes
+// (GET /api/admin/audience?channel=sms, GET /api/admin/sms/drafts).
+export const pagesNeedApi = 6;

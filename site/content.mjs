@@ -152,6 +152,7 @@ export const adminRoutes = [
   ["admin/login", "Administrator sign-in"],
   ["admin", "Overview"],
   ["admin/guests", "Invitations"],
+  ["admin/revoked", "Revoked invitations"],
   ["admin/access", "Guest access"],
   ["admin/content", "Accounting & godparents"],
   ["admin/documents", "Documents"],

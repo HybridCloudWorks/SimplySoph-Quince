@@ -448,6 +448,51 @@ async function guestList() {
     };
   batchToolbar(root.querySelector("#guest-area"), guests, guestList);
 }
+// Revoked invitations: every household whose private link was revoked, in one
+// place, each with "Restore with a new link". Restoring issues a fresh link
+// (POST /api/admin/invitation) with the household's previous events and
+// language; the revoked link stays dead, since a link is often revoked because
+// it was shared too widely.
+async function revokedList() {
+  const { guests: all } = await api("admin/guests"),
+    revoked = all.filter((r) => r.active === false).sort((a, b) => a.name.localeCompare(b.name)),
+    events = (r) =>
+      Object.entries(eventNames)
+        .filter(([e]) => r.invited?.[e])
+        .map(([, name]) => name)
+        .join(", ") || "None chosen";
+  root.innerHTML = `<p>Households whose private invitation link was revoked. Their old link no longer works, they are left out of email and text batches, and an automatic invitation after SOPHIA is not sent to them. <strong>Restore with a new link</strong> gives the household a new private link with the same events and language; the revoked link stays dead.</p><div id="revoked-result" aria-live="polite"></div>${
+    revoked.length
+      ? `<div class="table-wrap"><table><thead><tr><th scope="col">Household</th><th scope="col">Email</th><th scope="col">Phone</th><th scope="col">Events</th><th scope="col">Language</th><th scope="col"></th></tr></thead><tbody>${revoked
+          .map(
+            (r) =>
+              `<tr data-name="${esc(r.name)}"><td>${esc(r.name)}${r.validCapacity ? "" : "<br><span class=\"badge\">Head count needs review</span>"}</td><td>${esc(r.email || "")}</td><td>${esc(r.phone || "")}</td><td>${esc(events(r))}</td><td>${r.locale === "es" ? "Español" : "English"}</td><td>${button("Restore with a new link", "restore", r.id)}</td></tr>`,
+          )
+          .join("")}</tbody></table></div>`
+      : "<p>No revoked invitations.</p>"
+  }`;
+  for (const b of root.querySelectorAll('[data-action="restore"]'))
+    b.onclick = async () => {
+      const r = revoked.find((x) => x.id === b.dataset.id);
+      if (!confirm(`Restore ${r.name}? They get a new private link with the same events and language. The revoked link stays dead.`)) return;
+      b.disabled = true;
+      try {
+        const result = await api("admin/invitation", { id: r.id, invited: r.invited, locale: r.locale });
+        await revokedList();
+        root.querySelector("#revoked-result").innerHTML = `<div class="notice success"><p><strong>${esc(r.name)}</strong> is restored and back on Invitations. This link and code are shown once. To email it, use “Draft invitation email” on Invitations; nothing has been sent.</p><textarea readonly>${esc(result.link)}</textarea><p>Invitation code: <code>${esc(result.code)}</code></p></div>`;
+        focusOn(root.querySelector("#revoked-result .notice"));
+      } catch (e) {
+        b.disabled = false;
+        notify(
+          e.code === "CAPACITY_NEEDS_REVIEW"
+            ? `${r.name}: fix the head count on their Notion row first, then restore.`
+            : e.code === "EVENTS_REQUIRED"
+              ? `${r.name}: their events aren't recorded. Create a new link for them on Invitations and choose the events.`
+              : e.message,
+        );
+      }
+    };
+}
 function invitationEditor(id) {
   const r = guests.find((r) => r.id === id),
     box = document.querySelector("#guest-editor");
@@ -842,7 +887,7 @@ root.addEventListener("click", (e) => {
       const name = b.closest("tr")?.dataset.name || "this household";
       if (
         !confirm(
-          `Revoke the invitation link for ${name}? Their current link will stop working. You can create a new one later.`,
+          `Revoke the invitation link for ${name}? Their current link will stop working. They move to Revoked invitations, where you can restore them with a new link.`,
         )
       )
         return;
@@ -934,6 +979,7 @@ try {
       if (view === "admin/notifications") await notificationInbox(root);
       if (view === "admin") await dashboard();
       if (view === "admin/guests") await guestList();
+      if (view === "admin/revoked") await revokedList();
       if (view === "admin/access") await accountAccess();
       if (view === "admin/content") await planningEditor(root);
       if (view === "admin/documents") await documentWorkspace(root);
