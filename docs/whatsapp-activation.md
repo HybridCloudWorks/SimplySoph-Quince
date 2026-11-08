@@ -87,4 +87,4 @@ References: [WhatsApp API](https://www.twilio.com/docs/whatsapp/api), [Content A
 
 ## Status history
 
-Point-in-time deployment logs were removed from this guide. Live identifiers live in `ops/event-resources.json`; the October 8 gap analysis ([v1/twilio-gap-analysis.md](v1/twilio-gap-analysis.md)) is a historical snapshot. Last recorded before SMS went live (unverified): `reminder_es` rejected by Meta, three templates pending, both activation flags false, runtime key read-only.
+Point-in-time deployment logs were removed from this guide. Live identifiers live in the private `ops/event-resources.json` ([ops-inventory.md](ops-inventory.md)); the October 8 gap analysis ([v1/twilio-gap-analysis.md](v1/twilio-gap-analysis.md)) is a historical snapshot. Last recorded before SMS went live (unverified): `reminder_es` rejected by Meta, three templates pending, both activation flags false, runtime key read-only.

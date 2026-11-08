@@ -1,6 +1,6 @@
 # Production deployment and operating guide
 
-How to configure, deploy, verify, roll back and recover the Mis XV service. This guide states what the **code** does. It does not log what was done in production. Live identifiers (secret versions, revisions, client IDs, Notion IDs, Twilio SIDs) belong in `ops/event-resources.json`. **Nothing listed under "Acceptance gate" counts as working until it is re-verified and recorded there.**
+How to configure, deploy, verify, roll back and recover the Mis XV service. This guide states what the **code** does. It does not log what was done in production. Live identifiers (secret versions, revisions, client IDs, Notion IDs, Twilio SIDs) belong in the private `ops/event-resources.json` ([ops-inventory.md](ops-inventory.md)). **Nothing listed under "Acceptance gate" counts as working until it is re-verified and recorded there.**
 
 Related: [publishing.md](publishing.md) (static release pipeline) · [account-access.md](account-access.md) (guest and admin sign-in) · [twilio-setup.md](twilio-setup.md) (SMS/WhatsApp) · [cleanup.md](cleanup.md) (retirement) · [v1/](v1/README.md) (v1.0 design and plan).
 
@@ -56,7 +56,7 @@ Every variable `server/start.mjs` reads. Secrets come from **pinned** Secret Man
 
 ## Provisioning boundaries
 
-1. Record a scoped baseline before creating anything, and inventory every object, grant, secret version and image in `ops/event-resources.json`. Preserve the shared project, default Hosting site and billing.
+1. Record a scoped baseline before creating anything, and inventory every object, grant, secret version and image in the private `ops/event-resources.json`. Preserve the shared project, default Hosting site and billing.
 2. Runtime service account: `objectUser` on the event bucket only; Secret Accessor on individual event secrets only. No project Editor, no downloadable keys.
 3. Google OAuth client: exact production origin plus explicitly chosen preview origins only. The owner keeps recovery codes (Guest access → Your recovery codes) away from their phone.
 4. Notion connection: read/update/insert on **only** the organizer-approved databases (Invitations, Budget, Godparents). No user profiles, comments or agents.
@@ -112,7 +112,7 @@ gcloud scheduler jobs create http misxv-drain --project=simplysoph-66c78 \
 ```
 
 - Verify: `gcloud scheduler jobs run misxv-drain --location=us-central1 --project=simplysoph-66c78`, then in the request logs find `POST /api/internal/drain` with status 200. An unsigned `curl -X POST $URL/api/internal/drain -H "Content-Type: application/json" -d "{}"` must return 401.
-- Record the service account and the job in `ops/event-resources.json`. Cloud Scheduler includes 3 free jobs per billing account.
+- Record the service account and the job in the private `ops/event-resources.json`. Cloud Scheduler includes 3 free jobs per billing account.
 - Pause with `gcloud scheduler jobs pause misxv-drain …`. Removing the two variables turns the route off again.
 
 ## Media job (video conversion)
@@ -143,7 +143,7 @@ gcloud scheduler jobs create http misxv-media --project=simplysoph-66c78 \
   printf '%s' '{"rule":[{"action":{"type":"Delete"},"condition":{"matchesPrefix":["private/uploads/"],"isLive":false,"daysSinceNoncurrentTime":1}}]}' > misxv-lifecycle.json
   gcloud storage buckets update gs://<EVENT_BUCKET> --lifecycle-file=misxv-lifecycle.json
   ```
-- Record the job (and the rule, if added) in `ops/event-resources.json`. Pause with `gcloud scheduler jobs pause misxv-media …`.
+- Record the job (and the rule, if added) in the private `ops/event-resources.json`. Pause with `gcloud scheduler jobs pause misxv-media …`.
 
 ## Channel activation
 

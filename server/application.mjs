@@ -72,8 +72,9 @@ import { createAccounts, accountActive, rosterMatch } from "./accounts.mjs";
 // the schema action's { added, options } answer. 3: the SMS tab's filters
 // and the Notion Status on the audience. 4: the automatic SMS invitation
 // (POST /api/admin/sms/auto-invite and its preview; `autoInvite` on
-// GET /api/admin/sms/drafts).
-export const apiVersion = 4;
+// GET /api/admin/sms/drafts). 5: the court of honor (`court` in the event
+// settings and GET /api/court-photo/<id>, #108).
+export const apiVersion = 5;
 const events = ["ceremony", "dinner", "dance"];
 const safeText = (s, max = 1000) => {
   if (
@@ -1351,6 +1352,24 @@ export function createApplication({
       };
     if (path === "/api/site" && method === "GET") {
       return { site: siteSettings(await ledger.read()), now: serverTime() };
+    }
+    // A court portrait (#108): public, like the court page, but only for an
+    // approved gallery photo that a saved court entry names. Any other ID,
+    // including every other gallery photo, is 404 without a sign-in.
+    if (path.startsWith("/api/court-photo/") && method === "GET") {
+      const id = path.slice("/api/court-photo/".length),
+        state = await ledger.read();
+      if (
+        !/^[a-f0-9-]{36}$/.test(id) ||
+        !(state.site?.court || []).some((p) => p.photo === id)
+      )
+        throw error(404, "NOT_FOUND");
+      const row = state.photos?.[id];
+      if (!servable(row) || mediaKind(row) !== "photo") throw error(404, "NOT_FOUND");
+      const size = await media.size(id, "photo").catch((e) => {
+        throw e.code === 404 ? error(404, "NOT_FOUND") : e;
+      });
+      return mediaResponse(size, (start, end) => media.stream(id, "photo", start, end), "photo", headers.range, false, id);
     }
     // /api/calendar/ceremony.ics in English, /api/calendar/es/ceremony.ics in
     // Spanish (the /es/ pages link there); same event UID in both.
@@ -2637,6 +2656,8 @@ export function createApplication({
           if (!site.gallery && s.site?.gallery) site.gallery = s.site.gallery;
           // Likewise Contact's named host (R-166): only a save that sends it changes it.
           if (!site.contact && s.site?.contact) site.contact = s.site.contact;
+          // And the court of honor (#108).
+          if (!site.court && s.site?.court) site.court = s.site.court;
           // And the site and photo lifespan (R-171).
           if (site.lifespan === undefined && s.site?.lifespan) site.lifespan = s.site.lifespan;
           // And whether a device remembers a reply (R-160): an older page

@@ -1,7 +1,7 @@
 # Simply Soph Media: A2P campaign resubmission
 
 - **Campaign:** `CMc4a08f0e5cf080f32a30ab202995f92a` (Sole Proprietor, use case STARTER)
-- **Messaging Service:** `MG6d6cc68fbd2ca1c60f35b7698a467049`
+- **Messaging Service:** the SID is in the private inventory ([ops-inventory.md](ops-inventory.md))
 - **Sender:** +1 682-786-8002
 - **Program version:** 2026-10-09
 - **Status:** **Approved.** Twilio's approval email (registered with carriers) arrived by 2026-10-12, after the 30909 rejection and the 2026-10-09 resubmission below.
@@ -117,7 +117,7 @@ HELP,INFO
 Simply Soph Media: Help for Sophia's event texts: misxv@simplysoph.com or https://misxv.simplysoph.com/sms/. Msg frequency varies. Msg & data rates may apply. Reply STOP to cancel.
 ```
 
-Finally, tick **I confirm the information entered here is ready to submit for review** and submit. Editing does not charge a new vetting fee. Sole Proprietor reviews usually take hours to a few days. Record the submission date and the outcome in `ops/event-resources.json`.
+Finally, tick **I confirm the information entered here is ready to submit for review** and submit. Editing does not charge a new vetting fee. Sole Proprietor reviews usually take hours to a few days. Record the submission date and the outcome in the private `ops/event-resources.json` ([ops-inventory.md](ops-inventory.md)).
 
 ## Sources
 

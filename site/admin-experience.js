@@ -50,6 +50,22 @@ const deviceChoice = (site) =>
 // or neither; blank keeps the Contact page as it is.
 const contactHost = (host) =>
   `<fieldset><legend>Contact page · who reads the messages</legend><p class="hint">Optional. Shown under the Contact page’s first line, for example “[your names], Sophia’s parents, read every message.” Write both languages, or leave both blank.</p>${["en", "es"].map((l) => `<label>${l === "en" ? "English" : "Español"}<textarea name="contact.host.${l}" maxlength="300">${esc(host[l])}</textarea></label>`).join("")}</fieldset>`;
+// The court of honor (#108, server/site-settings.mjs `court`): names and
+// portraits live only in these settings, never in the public repository. The
+// court page shows them to anyone who opens it; a portrait is an approved
+// gallery photo, and choosing one makes that one photo public.
+const courtRoleNames = [
+  ["escort", "Chambelán de honor (escort)"],
+  ["dama", "Dama"],
+  ["chambelan", "Chambelán"],
+];
+const courtEditor = (court, photos) =>
+  `<fieldset><legend>Court of honor · public page</legend><p class="hint">Optional. The Court of honor page shows these to anyone who opens it (the site asks search engines not to list it). Names are never saved in the website’s code. Give a dama and her chambelán the same pair number. A portrait must first be an approved photo in the gallery: choosing it here makes that one photo public. With no one listed, the page keeps its “coming soon” text.</p>${court
+    .map(
+      (p, i) =>
+        `<div class="card">${field("Name", `court.${i}.name`, { value: p.name, required: true, max: 100 })}<label>Role<select name="court.${i}.role">${courtRoleNames.map(([value, label]) => `<option value="${value}"${p.role === value ? " selected" : ""}>${label}</option>`).join("")}</select></label>${field("Pair number · blank for none", `court.${i}.pair`, { value: p.pair ?? "", type: "number", max: 2 })}${field("Line · English · optional", `court.${i}.line.en`, { value: p.line.en, max: 300 })}${field("Line · Español · opcional", `court.${i}.line.es`, { value: p.line.es, max: 300 })}<label>Portrait<select name="court.${i}.photo"><option value="">Initial only (no photo)</option>${photos.map((ph) => `<option value="${esc(ph.id)}"${p.photo === ph.id ? " selected" : ""}>${esc(`${ph.album} · ${ph.caption || "Photo " + ph.id.slice(0, 8)}`)}</option>`).join("")}${p.photo && !photos.some((ph) => ph.id === p.photo) ? `<option value="${esc(p.photo)}" selected>Photo no longer approved: choose another</option>` : ""}</select></label><button type="button" data-remove-court="${i}" class="plain-button">Remove person</button></div>`,
+    )
+    .join("")}<button type="button" id="add-court" class="plain-button">Add person</button></fieldset>`;
 // Spanish free text that differs from the site's wording decisions (a
 // retired word, or tú and ustedes mixed: server/copy-check.mjs). A warning,
 // never a refusal: the text is saved and shown as written, and the family
@@ -98,6 +114,11 @@ export async function websiteEditor(root) {
   site.contact ??= { host: { en: "", es: "" } };
   site.lifespan ??= { siteUntil: "", photosUntil: "" };
   site.device ??= { reply: "remember" };
+  site.court = (site.court || []).map((p) => ({ ...p, pair: p.pair ?? "", line: p.line || { en: "", es: "" }, photo: p.photo || "" }));
+  // Approved photos the family can pick a court portrait from.
+  const photos = await api("gallery")
+    .then((g) => (g.media || []).filter((m) => m.kind === "photo"))
+    .catch(() => []);
   function render() {
     const bilingual = (label, key, value) =>
       `<label>${label} · English<textarea name="${key}.en" required maxlength="2000">${esc(value.en)}</textarea></label><label>${label} · Español<textarea name="${key}.es" required maxlength="2000">${esc(value.es)}</textarea></label>`;
@@ -109,7 +130,7 @@ export async function websiteEditor(root) {
       field("End · leave blank until confirmed", key + ".end", {
         value: value.end || "",
       });
-    root.innerHTML = `${copyWarnings(warnings)}${previewCard()}<p>Changes appear on the website and update its calendar downloads together. Use ISO times with an explicit offset, for example <code>2027-01-15T16:00:00-06:00</code> (Central Standard Time). Save before leaving this page.</p><form id="site-settings" class="settings-form"><fieldset><legend>Homepage</legend>${field("Signed name", "name", { value: site.name, required: true, max: 100 })}${bilingual("Message", "quote", site.quote)}${field("Countdown date/time", "countdownAt", { value: site.countdownAt, required: true })}</fieldset>${["ceremony", "reception"].map((k) => `<fieldset><legend>${k === "ceremony" ? "Ceremony" : "Dinner & reception venue"}</legend>${field("Venue name", k + ".name", { value: site[k].name, required: true, max: 200 })}${field("Full address", k + ".address", { value: site[k].address, required: true, max: 400 })}${times(k, site[k])}${bilingual("Guest notes", k + ".notes", site[k].notes)}</fieldset>`).join("")}<fieldset><legend>Dinner</legend>${times("dinner", site.dinner)}</fieldset><fieldset><legend>Gallery albums</legend><p>Album IDs stay unchanged so uploaded media keeps its album.</p>${site.albums.map((a, i) => `<div class="card">${field("Album ID", "albums." + i + ".id", { value: a.id, required: true, max: 40 })}${field("English name", "albums." + i + ".en", { value: a.en, required: true, max: 100 })}${field("Spanish name", "albums." + i + ".es", { value: a.es, required: true, max: 100 })}<button type="button" data-remove-album="${i}" class="plain-button">Remove empty album</button></div>`).join("")}<button type="button" id="add-album" class="plain-button">Add album</button></fieldset>${downloadChoice(site)}${deviceChoice(site)}${contactHost(site.contact.host)}${lifespanFields(site)}<fieldset><legend>Registries · public, no sign-in required</legend>${site.registries.map((r, i) => `<div class="card">${field("Store ID", "registries." + i + ".id", { value: r.id, required: true, max: 40 })}${field("Store name", "registries." + i + ".name", { value: r.name, required: true, max: 100 })}${bilingual("Description", "registries." + i + ".description", r.description)}${field("Registry HTTPS URL · blank hides the visit button", "registries." + i + ".url", { value: r.url, type: "url", max: 2000 })}<button type="button" data-remove-registry="${i}" class="plain-button">Remove registry</button></div>`).join("")}<button type="button" id="add-registry" class="plain-button">Add store</button></fieldset><p class="error" role="alert"></p><button class="button burgundy" type="submit">Save website & calendars</button></form>`;
+    root.innerHTML = `${copyWarnings(warnings)}${previewCard()}<p>Changes appear on the website and update its calendar downloads together. Use ISO times with an explicit offset, for example <code>2027-01-15T16:00:00-06:00</code> (Central Standard Time). Save before leaving this page.</p><form id="site-settings" class="settings-form"><fieldset><legend>Homepage</legend>${field("Signed name", "name", { value: site.name, required: true, max: 100 })}${bilingual("Message", "quote", site.quote)}${field("Countdown date/time", "countdownAt", { value: site.countdownAt, required: true })}</fieldset>${["ceremony", "reception"].map((k) => `<fieldset><legend>${k === "ceremony" ? "Ceremony" : "Dinner & reception venue"}</legend>${field("Venue name", k + ".name", { value: site[k].name, required: true, max: 200 })}${field("Full address", k + ".address", { value: site[k].address, required: true, max: 400 })}${times(k, site[k])}${bilingual("Guest notes", k + ".notes", site[k].notes)}</fieldset>`).join("")}<fieldset><legend>Dinner</legend>${times("dinner", site.dinner)}</fieldset><fieldset><legend>Gallery albums</legend><p>Album IDs stay unchanged so uploaded media keeps its album.</p>${site.albums.map((a, i) => `<div class="card">${field("Album ID", "albums." + i + ".id", { value: a.id, required: true, max: 40 })}${field("English name", "albums." + i + ".en", { value: a.en, required: true, max: 100 })}${field("Spanish name", "albums." + i + ".es", { value: a.es, required: true, max: 100 })}<button type="button" data-remove-album="${i}" class="plain-button">Remove empty album</button></div>`).join("")}<button type="button" id="add-album" class="plain-button">Add album</button></fieldset>${downloadChoice(site)}${deviceChoice(site)}${contactHost(site.contact.host)}${courtEditor(site.court, photos)}${lifespanFields(site)}<fieldset><legend>Registries · public, no sign-in required</legend>${site.registries.map((r, i) => `<div class="card">${field("Store ID", "registries." + i + ".id", { value: r.id, required: true, max: 40 })}${field("Store name", "registries." + i + ".name", { value: r.name, required: true, max: 100 })}${bilingual("Description", "registries." + i + ".description", r.description)}${field("Registry HTTPS URL · blank hides the visit button", "registries." + i + ".url", { value: r.url, type: "url", max: 2000 })}<button type="button" data-remove-registry="${i}" class="plain-button">Remove registry</button></div>`).join("")}<button type="button" id="add-registry" class="plain-button">Add store</button></fieldset><p class="error" role="alert"></p><button class="button burgundy" type="submit">Save website & calendars</button></form>`;
     const capture = () => {
       for (const [key, value] of new FormData(root.querySelector("form"))) {
         const parts = key.split(".");
@@ -144,6 +165,17 @@ export async function websiteEditor(root) {
       });
       again(`[name="registries.${site.registries.length - 1}.id"]`);
     };
+    root.querySelector("#add-court").onclick = () => {
+      capture();
+      site.court.push({ name: "", role: "dama", pair: "", line: { en: "", es: "" }, photo: "" });
+      again(`[name="court.${site.court.length - 1}.name"]`);
+    };
+    for (const b of root.querySelectorAll("[data-remove-court]"))
+      b.onclick = () => {
+        capture();
+        site.court.splice(Number(b.dataset.removeCourt), 1);
+        again("#add-court");
+      };
     for (const b of root.querySelectorAll("[data-remove-album]"))
       b.onclick = () => {
         capture();

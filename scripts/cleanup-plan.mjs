@@ -93,9 +93,22 @@ export function renderPlan(data) {
   return lines.join('\n') + '\n';
 }
 
+// The real inventory is private (docs/ops-inventory.md): it is downloaded
+// from the ops bucket into the git-ignored ops/ folder, or passed with
+// --inventory=<path>. It is never committed to this public repository.
+export const defaultInventory = fileURLToPath(new URL('../ops/event-resources.json', import.meta.url));
+export function inventoryPath(argv) {
+  const flag = argv.find(arg => arg.startsWith('--inventory='));
+  return flag ? resolve(flag.slice('--inventory='.length)) : defaultInventory;
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   try {
-    const raw = await readFile(new URL('../ops/event-resources.json', import.meta.url), 'utf8');
+    const path = inventoryPath(process.argv.slice(2));
+    const raw = await readFile(path, 'utf8').catch(error => {
+      if (error.code !== 'ENOENT') throw error;
+      throw new Error(`No private inventory at ${path}. Download it first: see docs/ops-inventory.md.`);
+    });
     const output = new URL('../work/cleanup/plan.md', import.meta.url);
     const plan = renderPlan(JSON.parse(raw));
     await mkdir(dirname(fileURLToPath(output)), { recursive: true });

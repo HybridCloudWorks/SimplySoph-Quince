@@ -9,6 +9,7 @@ import { event } from "../site/content.mjs";
 import { date } from "../site/datetime.mjs";
 import { smsProgram } from "../site/sms-program.mjs";
 import { smsCompliantText, smsPreview } from "./sms.mjs";
+import { courtRoles, COURT_MAX } from "../site/court.mjs";
 // The saved settings, or the defaults until the family first saves them.
 // site.guestbook.visibility (who can read approved notes for Sophia,
 // site/notes.mjs) is kept apart in the ledger, s.guestbook, and changed only on
@@ -248,6 +249,38 @@ export function validateSettings(input) {
       es = line(input.contact?.host?.es ?? "");
     if (!en !== !es) bad();
     next.contact = { host: { en, es } };
+  }
+  // The court of honor (#108): usually other people's children, so their
+  // names and portraits live only here, in the saved settings, and never in
+  // the public repository (site/content.mjs family.court stays empty). The
+  // public court page draws them at runtime (site/court.mjs). Each entry: a
+  // name, a role, an optional pair number (a dama and her chambelán share
+  // one), an optional line in both languages or neither, and an optional
+  // portrait: the ID of an approved gallery photo, served publicly only while
+  // an entry names it (GET /api/court-photo/<id>). An empty list hides it.
+  if (input.court !== undefined) {
+    if (!Array.isArray(input.court) || input.court.length > COURT_MAX) bad("court");
+    const plain = (v, max) => {
+      if (typeof v !== "string" || v.length > max || /[\x00-\x1f\x7f]/.test(v)) bad("court");
+      return v.trim();
+    };
+    next.court = input.court.map((p) => {
+      const name = plain(p?.name, 100);
+      if (!name || !courtRoles.includes(p?.role)) bad("court");
+      const pair = p.pair === undefined || p.pair === null || p.pair === "" ? null : Number(p.pair);
+      if (pair !== null && (!Number.isInteger(pair) || pair < 1 || pair > COURT_MAX)) bad("court");
+      if (pair !== null && p.role === "escort") bad("court");
+      const en = plain(p.line?.en ?? "", 300),
+        es = plain(p.line?.es ?? "", 300);
+      if (!en !== !es) bad("court");
+      const photo = p.photo ? String(p.photo) : "";
+      if (photo && !/^[a-f0-9-]{36}$/.test(photo)) bad("court");
+      return { name, role: p.role, pair, line: en ? { en, es } : null, photo: photo || null };
+    });
+    for (const [pair, size] of Object.entries(
+      next.court.reduce((n, p) => (p.pair ? { ...n, [p.pair]: (n[p.pair] || 0) + 1 } : n), {}),
+    ))
+      if (size > 2 || !pair) bad("court");
   }
   // How long the site and the photos stay (R-171), the family's decision:
   // "YYYY-MM-DD" days, each blank (null) until decided, and then nothing about

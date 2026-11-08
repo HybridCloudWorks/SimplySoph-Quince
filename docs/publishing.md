@@ -94,7 +94,7 @@ Content that replaces a promise changes the page quietly, and households who rea
 
 ### Names stay out of this repository
 
-This repository is public, so no guest's or helper's name is ever committed to it. The court of honor and the padrinos would list names: `family.court` and `family.padrinos` in `site/content.mjs` stay empty, and `npm run check` fails if either ever gets an entry (`tests/family-slots.test.mjs`). Names belong only in the runtime event settings (`server/site-settings.mjs`, served by `GET /api/site`), like Contact's optional line naming who reads the messages (Admin → Website & event). Pages for the court and the padrinos built from those settings do not exist yet; until they do, both pages keep their waiting text.
+This repository is public, so no guest's or helper's name is ever committed to it. The court of honor and the padrinos would list names: `family.court` and `family.padrinos` in `site/content.mjs` stay empty, and `npm run check` fails if either ever gets an entry (`tests/family-slots.test.mjs`). Names belong only in the runtime event settings (`server/site-settings.mjs`, served by `GET /api/site`), like Contact's optional line naming who reads the messages (Admin → Website & event). The **court of honor** is built that way (#108): in **Admin → Website & event → Court of honor**, list each person's name, role, pair number (a dama and her chambelán share one), an optional line in both languages, and optionally a portrait chosen from the approved gallery photos. The Court of honor page draws them at runtime for anyone who opens it (`site/court.mjs`), and the header gains **Sophia** if that section had no page yet. Choosing a portrait makes that one photo public, through `GET /api/court-photo/<id>`, for as long as a court entry names it; every other gallery photo still needs a sign-in. Clearing the list brings back the waiting text. The padrinos page built from the settings does not exist yet, so it keeps its waiting text.
 
 ### Site and photo lifespan
 
@@ -165,4 +165,4 @@ Check Home, Details, RSVP, FAQ, Spanish and Privacy over HTTPS, an unknown route
 Each procedure is written once:
 
 - **Rolling back** the site, and the API with it: [deployment.md → Release and rollback](deployment.md#release-and-rollback).
-- **Retiring** the site after the event (DNS records, custom domain, the event site, the mailbox): [cleanup.md](cleanup.md). Start with `npm run cleanup:plan` or the manual **Prepare event cleanup review** workflow. Nothing is deleted automatically.
+- **Retiring** the site after the event (DNS records, custom domain, the event site, the mailbox): [cleanup.md](cleanup.md). Start with `npm run cleanup:plan`, run locally against the private inventory ([ops-inventory.md](ops-inventory.md)). Nothing is deleted automatically.

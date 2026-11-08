@@ -93,12 +93,12 @@ Inbound texts never submit an RSVP or sign anyone in. Guests always RSVP on the 
 | `WHATSAPP_FROM` | Cloud Run env | `+16827868002` |
 | `WHATSAPP_TEMPLATES_JSON` | Cloud Run env | JSON array of **approved** templates only. Invalid JSON stops startup |
 
-Find the live identifiers in `ops/event-resources.json`. Never put secret values in Git, chat, screenshots or browser code. `npm run sms:setup` prints an offline checklist with presence/format only.
+Find the live identifiers in the private `ops/event-resources.json` ([ops-inventory.md](ops-inventory.md)). Never put secret values in Git, chat, screenshots or browser code. `npm run sms:setup` prints an offline checklist with presence/format only.
 
 ### Twilio settings that must stay as they are
 
 1. **One account** owns +16827868002, the Sole Proprietor brand, the A2P campaign and the WhatsApp sender. All runtime settings point to it.
-2. **One Messaging Service:** **Sole Proprietor A2P Messaging Service** (`MG6d6cc68fbd2ca1c60f35b7698a467049`), set as `TWILIO_MESSAGING_SERVICE_SID`. It contains only +16827868002 and is the service the campaign is registered against. The earlier empty service (`MG64189f3…`) was deleted on 2026-10-09.
+2. **One Messaging Service:** **Sole Proprietor A2P Messaging Service**, set as `TWILIO_MESSAGING_SERVICE_SID`. It contains only +16827868002 and is the service the campaign is registered against. The earlier empty service (`MG64189f3…`) was deleted on 2026-10-09.
 3. **Advanced Opt-Out** on that service, with replies pasted exactly from `site/sms-program.mjs`:
    - Opt-in keywords: `SOPHIA`, `START`, `UNSTOP`. Reply = `smsProgram.confirmation`.
    - Help keywords: `HELP`, `INFO`. Reply = `smsProgram.help`.
@@ -124,4 +124,4 @@ Find the live identifiers in `ops/event-resources.json`. Never put secret values
 
 ### Retirement
 
-After the family approves retirement: turn off both flags, settle in-flight messages, export approved records privately, release the event number, delete only the event Messaging Service(s), revoke the event API key, remove event secret versions and bindings, and review remaining charges. Preserve shared Twilio/Meta accounts. Follow [cleanup.md](cleanup.md) and reconcile `ops/event-resources.json` before any deletion.
+After the family approves retirement: turn off both flags, settle in-flight messages, export approved records privately, release the event number, delete only the event Messaging Service(s), revoke the event API key, remove event secret versions and bindings, and review remaining charges. Preserve shared Twilio/Meta accounts. Follow [cleanup.md](cleanup.md) and reconcile the private `ops/event-resources.json` before any deletion.

@@ -29,3 +29,6 @@ playwright-report/
 # Local agent tool state
 .agents/
 skills-lock.json
+
+# Private cloud inventory, downloaded from the ops bucket (docs/ops-inventory.md, #109)
+ops/*.json

@@ -11,7 +11,7 @@ The family approved Google hosting and subsequently confirmed its existing Micro
 - Explicitly set both `--project=simplysoph-66c78` and `--billing-project=simplysoph-66c78` alongside the account in commands, rather than relying on local gcloud defaults.
 - The shared project already holds other services, secrets and storage that predate this event and are protected. Only metadata was read, not secret values or guest records.
 - Public DNS reports `ns1.dns-parking.com` and `ns2.dns-parking.com` for the root domain; the event CNAME and certificate TXT now resolve from Hostinger's authoritative nameserver. Existing DNS records were preserved.
-- **Every new resource/change must have a cleanup record.** See [cleanup.md](../cleanup.md) and `ops/event-resources.json`; use dedicated event resources and preserve this shared project.
+- **Every new resource/change must have a cleanup record.** See [cleanup.md](../cleanup.md) and the private `ops/event-resources.json` ([ops-inventory.md](../ops-inventory.md)); use dedicated event resources and preserve this shared project.
 
 ## Selected direction
 

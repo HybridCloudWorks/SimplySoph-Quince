@@ -40,7 +40,7 @@ Nothing else is sent automatically (owner decision 7 in [v1/access-model.md](v1/
 
 ## Domain authentication
 
-DNS for simplysoph.com is served by Cloudflare; the domain is registered at Hostinger. The exact records, and which ones other mail depends on, are in `ops/shared-domain-changes.json`.
+DNS for simplysoph.com is served by Cloudflare; the domain is registered at Hostinger. The exact records, and which ones other mail depends on, are in the private `ops/shared-domain-changes.json` ([ops-inventory.md](ops-inventory.md)).
 
 - **SPF:** one record at the root authorizes Microsoft 365 and Firebase (`include:spf.protection.outlook.com include:_spf.firebasemail.com ~all`, checked October 13, 2026). Never add a second root SPF record. SendGrid uses its own return-path subdomain with its own SPF.
 - **DKIM:** Microsoft signs with `selector1` and `selector2`, SendGrid with `s1` and `s2`. All are CNAMEs, set to DNS only in Cloudflare.

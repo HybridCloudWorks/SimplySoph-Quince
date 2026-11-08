@@ -64,8 +64,30 @@ test('mailbox delegate cleanup requires exact permissions and precedes mailbox r
   data.resources[1].exactScope = 'Example mailbox ID; organizer identity; FullAccess and SendAs only';
   assert.deepEqual(validateInventory(data).map(r => r.id), ['delegate', 'mailbox']);
 });
-test('the real event inventory validates', async () => {
-  const { readFile } = await import('node:fs/promises');
-  const data = JSON.parse(await readFile(new URL('../ops/event-resources.json', import.meta.url), 'utf8'));
-  assert.ok(validateInventory(data).length > 0);
+test('the inventory is read from a private path, never from the repository', async () => {
+  const { execFile } = await import('node:child_process');
+  const { mkdtemp, writeFile, readFile } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const run = (args, cwd) => new Promise(done => execFile(process.execPath, [new URL('../scripts/cleanup-plan.mjs', import.meta.url).pathname, ...args], { cwd }, (error, stdout, stderr) => done({ code: error?.code ?? 0, stdout, stderr })));
+  const dir = await mkdtemp(join(tmpdir(), 'inventory-'));
+  const missing = await run([`--inventory=${join(dir, 'absent.json')}`], dir);
+  assert.equal(missing.code, 1);
+  assert.match(missing.stderr, /docs\/ops-inventory\.md/);
+  const data = inventory(); data.resources = [resource('secret')];
+  await writeFile(join(dir, 'inventory.json'), JSON.stringify(data));
+  assert.equal((await run([`--inventory=${join(dir, 'inventory.json')}`], dir)).code, 0);
+  assert.match(await readFile(new URL('../work/cleanup/plan.md', import.meta.url), 'utf8'), /## secret/);
+});
+test('no cloud inventory is committed to this public repository (#109)', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const repo = new URL('../', import.meta.url).pathname;
+  const tracked = execFileSync('git', ['ls-files'], { cwd: repo, encoding: 'utf8' }).split('\n').filter(Boolean);
+  assert.deepEqual(tracked.filter(file => /^ops\/.*\.json$/.test(file)), []);
+  // Live Twilio SIDs and Microsoft mailbox IDs belong in the private inventory only.
+  const { readFileSync } = await import('node:fs');
+  const leaks = tracked
+    .filter(file => /^(docs|README|CONTRIBUTING|SECURITY|scripts|server|site)/.test(file) && /\.(md|mjs|js|json)$/.test(file))
+    .filter(file => /\b(AC|MG|PN|HX|SK|XE)[0-9a-f]{32}\b|Mailbox ID: `[0-9a-f-]{36}`/.test(readFileSync(repo + file, 'utf8')));
+  assert.deepEqual(leaks, []);
 });

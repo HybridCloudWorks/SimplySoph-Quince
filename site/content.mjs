@@ -19,7 +19,8 @@ export const event = {
 //     layouts that would show them are court: [{ name, role: "escort" | "dama"
 //     | "chambelan", pair, line, photo }] and padrinos: [{ gift: "misa" (a key
 //     of padrinoTraditions), names }]; tests/family-slots.test.mjs fails if
-//     either ever has an entry.
+//     either ever has an entry. The court is entered in Admin → Website &
+//     event and drawn at runtime by site/court.mjs (#108).
 //   parentsSignature: { en, es } — signed in script under the parents' letter
 //   hotels: [{ name, where: { en, es }, notes: { en, es }, url }]
 //   airport: { name, notes: { en, es } } — the "Flying in" card on Travel
