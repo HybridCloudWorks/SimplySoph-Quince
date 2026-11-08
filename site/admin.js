@@ -881,7 +881,7 @@ root.addEventListener("click", (e) => {
           .map((r) => r.map(csvCell).join(","))
           .join("\r\n"),
       );
-    // Owner only (the server refuses others): back to "never invited" in the
+    // Any administrator, name typed: back to "never invited" in the
     // website and in Notion's RSVP columns, for rehearsing with test
     // households. The household's exact name must be typed.
     if (action === "reset-household") {
@@ -892,7 +892,6 @@ root.addEventListener("click", (e) => {
       if (typed === null) return;
       const result = await api("admin/household-reset", { id, confirmName: typed }).catch((e) => {
         if (e.code === "CONFIRM_NAME") e.message = `Nothing was reset: the name typed doesn't match “${r.name}”.`;
-        if (e.code === "OWNER_REQUIRED") e.message = "Only the site owner can reset a household. Nothing was reset.";
         throw e;
       });
       await guestList();

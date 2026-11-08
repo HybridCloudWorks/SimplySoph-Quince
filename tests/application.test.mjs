@@ -1979,7 +1979,6 @@ test("Notion admins are not owners: schema, import, resets and history stay owne
     ["admin/import", { rows: [] }],
     ["admin/authenticator-reset", { email: "x@example.com", code: "000000" }],
     ["admin/role-events", undefined],
-    ["admin/household-reset", { id: household, confirmName: "Test family" }],
   ])
     await assert.rejects(() => as(path, body), (e) => e.code === "OWNER_REQUIRED", path);
   const list = await f.admin("accounts");
@@ -3456,6 +3455,19 @@ test("the owner resets a household completely: link, answer, texts and SOPHIA si
   // Notion failing after the website reset says so; running it again is safe.
   const g = await fixture({ notion: { async resetProjection() { throw Object.assign(Error("down"), { code: "NOTION_UNAVAILABLE" }); } } });
   assert.equal((await g.admin("household-reset", { id: household, confirmName: "Test family" })).notion, "failed");
+});
+
+test("any administrator from Notion can reset a household (name typed); a guest cannot", async () => {
+  const f = await fixture({ notion: { async resetProjection() { return []; } } });
+  await f.admin("invitation", { id: household, invited: { ceremony: true, dinner: true, dance: true }, locale: "en" });
+  const { as } = await adminSignIn(f, "test@example.com");
+  await assert.rejects(() => f.guest("admin/household-reset", { id: household, confirmName: "Test family" }), (e) => [401, 403].includes(e.status));
+  assert.ok((await f.ledger.read()).invitations[household]);
+  const r = await as("admin/household-reset", { id: household, confirmName: "Test family" });
+  assert.equal(r.notion, "cleared");
+  const s = await f.ledger.read();
+  assert.equal(s.invitations[household], undefined);
+  assert.ok(s.eventLog.some((e) => e.type === "household.reset" && e.householdId === household));
 });
 
 test("texts to guests: draft, type the count, send in one confirmed batch from the page", async () => {
