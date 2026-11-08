@@ -64,7 +64,7 @@ Code items 2–8 are **done** on this branch (156/156 tests, 66/66 documents). I
 
 ## Production-readiness validation checklist
 
-Each item needs a date, a tester and evidence recorded in `ops/event-resources.json`. Nothing counts until recorded.
+Each item needs a date, a tester and evidence recorded in the private `ops/event-resources.json` ([ops-inventory.md](../ops-inventory.md)). Nothing counts until recorded.
 
 ### Build and release
 - [ ] CI green on `main` (Node 24): `npm run check` (144+ tests, 66 documents) and `npm audit --omit=dev`.

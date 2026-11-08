@@ -22,7 +22,7 @@ Reference: [SendGrid Mail Send API](https://www.twilio.com/docs/sendgrid/api-ref
 
 ## Setup Evidence — September 28, 2026
 
-All eight organizer-approved DNS records were saved in Cloudflare; CNAMEs are DNS-only and existing Microsoft mail routing/authentication remains intact. Authoritative DNS answers match. SendGrid confirmed domain authentication for simplysoph.com. Branded-link SSL provisioning is separate and may still be pending. Exact records and retirement decisions are in `ops/shared-domain-changes.json`.
+All eight organizer-approved DNS records were saved in Cloudflare; CNAMEs are DNS-only and existing Microsoft mail routing/authentication remains intact. Authoritative DNS answers match. SendGrid confirmed domain authentication for simplysoph.com. Branded-link SSL provisioning is separate and may still be pending. Exact records and retirement decisions are in the private `ops/shared-domain-changes.json` ([ops-inventory.md](ops-inventory.md)).
 
 The signed-in SendGrid account displays a trial ending November 27, 2026. **Owner decision (October 13, 2026): keep the fallback as a standby through the event**, and the owner upgraded the Email API to a paid plan the same day, so the standby keeps working after the trial. Marketing Campaigns is not used and was left to lapse. At setup on September 28 no subscription was purchased; the API key was created and stored by the owner.
 

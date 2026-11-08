@@ -165,4 +165,4 @@ Check Home, Details, RSVP, FAQ, Spanish and Privacy over HTTPS, an unknown route
 Each procedure is written once:
 
 - **Rolling back** the site, and the API with it: [deployment.md → Release and rollback](deployment.md#release-and-rollback).
-- **Retiring** the site after the event (DNS records, custom domain, the event site, the mailbox): [cleanup.md](cleanup.md). Start with `npm run cleanup:plan` or the manual **Prepare event cleanup review** workflow. Nothing is deleted automatically.
+- **Retiring** the site after the event (DNS records, custom domain, the event site, the mailbox): [cleanup.md](cleanup.md). Start with `npm run cleanup:plan`, run locally against the private inventory ([ops-inventory.md](ops-inventory.md)). Nothing is deleted automatically.
