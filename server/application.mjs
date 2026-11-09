@@ -80,7 +80,9 @@ import { createAccounts, accountActive, rosterMatch } from "./accounts.mjs";
 // /api/admin/household-reset (owner only). 8: Invitations' Language column
 // (`language` on GET /api/admin/guests, POST /api/admin/household-language).
 // 9: Create links with `locale: "household"` (each household's Language).
-export const apiVersion = 9;
+// 10: the Texted mark (`textedAt` on GET /api/admin/guests, POST
+// /api/admin/text-share).
+export const apiVersion = 10;
 const events = ["ceremony", "dinner", "dance"];
 const safeText = (s, max = 1000) => {
   if (
@@ -2811,6 +2813,9 @@ export function createApplication({
             // The household's language (Invitations' Language column):
             // what Share by text, its link and its automatic invitation use.
             language: householdLanguage(s, row),
+            // When the family last opened Share by text for it (the text
+            // itself goes from their own phone; the site cannot see it sent).
+            textedAt: s.textShares?.[row.id]?.at || null,
             // The Notion Status column (server/status.mjs), "" when the
             // column or its value is absent; `status` below is the link status.
             notionStatus: row.status || "",
@@ -2960,6 +2965,21 @@ export function createApplication({
           if (s.invitations[row.id]) s.invitations[row.id].locale = body.language;
           audit(s, session.actor, "household-language-" + body.language, row.id, now());
           return { id: row.id, language: body.language };
+        });
+      }
+      // Invitations' "Texted" mark: set when the family opens Share by text
+      // for a household, cleared from its More menu. A note for the family's
+      // own tracking only: nothing is sent and Notion is not changed.
+      if (path === "/api/admin/text-share" && method === "POST") {
+        if (typeof body.texted !== "boolean") throw error(422, "INVALID_TEXT_SHARE");
+        const row = await notion.read(body.id, { allowStale: true });
+        return ledger.transaction((s) => {
+          s.textShares ??= {};
+          if (body.texted)
+            s.textShares[row.id] = { at: now(), by: session.actor, language: body.language === "es" ? "es" : "en" };
+          else delete s.textShares[row.id];
+          audit(s, session.actor, body.texted ? "text-shared" : "text-share-cleared", row.id, now());
+          return { id: row.id, textedAt: s.textShares[row.id]?.at || null };
         });
       }
       if (path === "/api/admin/revoke" && method === "POST") {

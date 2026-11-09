@@ -69,7 +69,7 @@ export function resetHouseholdState(s, id, phones = []) {
     const claim = hash(JSON.stringify(["auto-invite", phone]));
     if (s.smsClaims?.[claim]) drop("smsClaims", [[claim]]);
   }
-  for (const map of ["smsConsentPhones", "whatsappConsentPhones", "householdLanguages"])
+  for (const map of ["smsConsentPhones", "whatsappConsentPhones", "householdLanguages", "textShares"])
     if (s[map]?.[id]) {
       delete s[map][id];
       removed[map] = 1;

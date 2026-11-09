@@ -54,3 +54,16 @@ test("text, link status and Notion status combine with AND", () => {
   assert.ok(!householdMatches(row, { text: "rivera", status: "sent", notionStatus: "Invited" }, words), "one failing filter hides the row");
   assert.ok(householdMatches({ status: "issued" }, { notionStatus: NO_NOTION_STATUS }));
 });
+
+test("the Texted filter keeps the households already texted, or the ones still to text", () => {
+  const texted = { status: "issued", textedAt: 1790000000000 },
+    left = { status: "issued", textedAt: null };
+  assert.ok(householdMatches(texted, { texted: "texted" }));
+  assert.ok(!householdMatches(left, { texted: "texted" }));
+  assert.ok(householdMatches(left, { texted: "not-texted" }));
+  assert.ok(!householdMatches(texted, { texted: "not-texted" }));
+  assert.ok(householdMatches(texted, { texted: "" }) && householdMatches(left, {}));
+  // With the link status too (AND): linked but not texted yet.
+  assert.ok(householdMatches(left, { texted: "not-texted", status: "issued" }));
+  assert.ok(!householdMatches(left, { texted: "not-texted", status: "sent" }));
+});

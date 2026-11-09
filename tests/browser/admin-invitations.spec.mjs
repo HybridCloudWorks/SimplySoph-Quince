@@ -83,7 +83,7 @@ test("Invitations: Notion Status badges, filters, select-all in view, Share by t
     panelWords = panel.locator("[data-share-words]"),
     language = panel.getByLabel("Language"),
     rowLanguage = (h) => row(h).getByLabel(`Language for ${h.name}`);
-  await expect(panel).toContainText("Sent from your own phone; the website records nothing.");
+  await expect(panel).toContainText("Sent from your own phone. Opening a household’s Share by text marks it Texted");
   await expect(row(rivera).locator("[data-share-words]")).toHaveCount(0);
   await expect(language).toHaveValue("en");
   await expect(panel.getByRole("button", { name: "Copy text" })).toBeEnabled();
