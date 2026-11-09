@@ -116,6 +116,27 @@ test("submit creates what is missing, requests approval once, and is idempotent"
   assert.equal(api.calls.slice(before).filter((c) => c.method === "POST").length, 0);
 });
 
+test("a template Twilio reports as \"unsubmitted\" is sent for approval, not skipped", async () => {
+  // What the live account answered on 2026-11-09: the four December templates
+  // existed, and their ApprovalRequests read whatsapp.status "unsubmitted"
+  // (no name, no category), so the earlier script took them as requested and
+  // never asked Meta.
+  const drafts = templateDrafts();
+  const contents = {},
+    approvals = {};
+  drafts.forEach((d, i) => {
+    contents[d.name] = { sid: sid(String(i + 1)), friendly_name: d.name };
+    approvals[sid(String(i + 1))] = { status: "unsubmitted", name: "", category: "", rejection_reason: "" };
+  });
+  const api = fakeContentApi({ contents, approvals });
+  const call = contentClient({ user: "AC" + "a".repeat(32), secret: "fixture-token-value-only" }, api.fetchImpl);
+  const before = await templateStatus({ drafts, call });
+  assert.ok(before.every((r) => r.status === "not-requested"), "unsubmitted is not an approval request");
+  const results = await submitTemplates({ drafts, call });
+  assert.ok(results.every((r) => !r.created && r.requested && r.status === "received"));
+  assert.equal(api.calls.filter((c) => c.path.endsWith("/ApprovalRequests/whatsapp") && c.method === "POST").length, 4);
+});
+
 test("status reports each draft and builds a catalog of the submitted ones", async () => {
   const drafts = templateDrafts();
   const api = fakeContentApi({
