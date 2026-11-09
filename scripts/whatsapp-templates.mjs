@@ -116,12 +116,14 @@ async function existingByName(call) {
   return map;
 }
 
-// A template's approval record: Twilio answers with a `whatsapp` object once
-// an approval was requested, and with none before that.
+// A template's approval record, or null when approval was never requested.
+// Twilio answers with no `whatsapp` object, or with one whose status is
+// "unsubmitted" (no name, no category), until an approval is requested; both
+// mean "not requested yet" (the live account, 2026-11-09).
 async function approvalOf(call, sid) {
   const data = await call(`Content/${sid}/ApprovalRequests`);
   const w = data?.whatsapp;
-  if (!w || !w.status) return null;
+  if (!w || !w.status || String(w.status).toLowerCase() === "unsubmitted") return null;
   return {
     status: String(w.status).toLowerCase(),
     rejectionReason: w.rejection_reason || "",
