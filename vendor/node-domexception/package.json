@@ -1,0 +1,10 @@
+{
+  "name": "node-domexception",
+  "version": "1.0.0",
+  "description": "Local stand-in for the deprecated node-domexception: Node's built-in DOMException (see index.js).",
+  "license": "MIT",
+  "main": "index.js",
+  "engines": {
+    "node": ">=17"
+  }
+}
