@@ -117,7 +117,9 @@ const term = (entry, lang) => label(entry.en, entry.es, lang);
 const nb = { nbsp: true };
 // Link affordances, one meaning each: → goes to another page of this site, ↗
 // opens another site in a new tab (and says so to screen readers), and the
-// calendar mark downloads an .ics file. The marks themselves are decoration.
+// calendar mark opens an .ics file (no download attribute: with one, an
+// iPhone saves the file to Files instead of offering Add to Calendar). The
+// marks themselves are decoration.
 export const pageHref = (route, lang = "en") =>
   `${lang === "es" ? "/es" : ""}/${route ? route + "/" : ""}`;
 export const arrow = '<span class="arrow" aria-hidden="true">→</span>';
@@ -158,7 +160,7 @@ export function calendarLink(kind, c = celebration, lang = "en", live = false) {
     e = escapeHtml;
   if (!item.end)
     return `<p class="hint">${label("Calendar download will be available once the end time is confirmed.", "La descarga del calendario estará disponible cuando se confirme la hora de finalización.", lang)}</p>`;
-  return `<a class="calendar-link" href="${live ? "/api/calendar/" : "/calendar/"}${lang === "es" ? "es/" : ""}${e(kind)}.ics" download>${calendarMark}<span>${label("Add to calendar", "Agregar al calendario", lang)}${subject(label(...calendarNames[kind], lang))}</span></a>`;
+  return `<a class="calendar-link" href="${live ? "/api/calendar/" : "/calendar/"}${lang === "es" ? "es/" : ""}${e(kind)}.ics">${calendarMark}<span>${label("Add to calendar", "Agregar al calendario", lang)}${subject(label(...calendarNames[kind], lang))}</span></a>`;
 }
 // The same event in Google Calendar, which many Android phones use instead of
 // opening a downloaded file: a prefilled event with the .ics file's facts.

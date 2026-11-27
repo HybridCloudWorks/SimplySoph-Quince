@@ -210,7 +210,7 @@ test("the Schedule gives each part of the day its place, map and own calendar fi
       const address = encodeURIComponent(venue === "Our Lady of Guadalupe Church" ? "4100 Blue Mound Rd, Fort Worth, TX 76106" : "5103 Azle Ave, Unit 200, Fort Worth, TX 76114");
       for (const map of [`https://www.google.com/maps/search/?api=1&amp;query=${address}`, `https://maps.apple.com/?q=${address}`, `https://waze.com/ul?q=${address}&amp;navigate=yes`])
         assert.ok(row.includes(`href="${map}" target="_blank" rel="noopener noreferrer"`), map);
-      assert.ok(row.includes(`href="${cal}${kind}.ics" download`), `${file} ${kind}`);
+      assert.ok(row.includes(`href="${cal}${kind}.ics"`), `${file} ${kind}`);
     }
     // Dress code is a small note, never a claim about the website's colors.
     assert.doesNotMatch(html, /site theme|colores del sitio/);

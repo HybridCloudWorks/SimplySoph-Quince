@@ -78,9 +78,9 @@ test("Spanish calendars share each event's identity and hold only confirmed fact
 test("calendar and map links say what they do in the page's language", () => {
   const es = calendarLink("ceremony", celebration, "es"),
     live = calendarLink("dinner", celebration, "es", true);
-  assert.match(es, /href="\/calendar\/es\/ceremony\.ics" download/);
-  assert.match(live, /href="\/api\/calendar\/es\/dinner\.ics" download/);
-  assert.match(calendarLink("ceremony"), /href="\/calendar\/ceremony\.ics" download/);
+  assert.match(es, /href="\/calendar\/es\/ceremony\.ics"/);
+  assert.match(live, /href="\/api\/calendar\/es\/dinner\.ics"/);
+  assert.match(calendarLink("ceremony"), /href="\/calendar\/ceremony\.ics"/);
   assert.match(es, /Agregar al calendario/);
   // A download is not a new tab: no ↗, a calendar mark instead.
   for (const html of [es, live]) {
@@ -229,7 +229,7 @@ test("Google Calendar links carry the calendar file's facts, in the page's langu
     }
   assert.equal(new URL(googleCalendarUrl("reception", celebration, "es")).searchParams.get("text"), "XV de Sophia — Recepción y baile");
   const html = calendarActions("dinner", celebration, "es", true);
-  assert.match(html, /^<span class="calendar-choices"><a class="calendar-link" href="\/api\/calendar\/es\/dinner\.ics" download>/);
+  assert.match(html, /^<span class="calendar-choices"><a class="calendar-link" href="\/api\/calendar\/es\/dinner\.ics">/);
   assert.match(html, /<a class="target" href="https:\/\/calendar\.google\.com\/calendar\/render\?[^"]+" target="_blank" rel="noopener noreferrer">Google Calendar<span class="visually-hidden">: Cena<\/span><span class="ext" aria-hidden="true">↗<\/span><span class="visually-hidden"> \(se abre en otra pestaña\)<\/span><\/a><\/span>$/);
   // The file link itself is still a download, not a new tab.
   assert.doesNotMatch(calendarLink("dinner", celebration, "es", true), /↗/);
