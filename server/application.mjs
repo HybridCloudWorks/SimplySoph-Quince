@@ -1397,7 +1397,9 @@ export function createApplication({
       return {
         binary: Buffer.from(calendar(kind, site, es ? "es" : "en")),
         contentType: "text/calendar; charset=utf-8",
-        disposition: 'attachment; filename="sophia-' + kind + '.ics"',
+        // inline, not attachment: an iPhone saves an attachment to Files
+        // instead of offering to add the event to Calendar.
+        disposition: 'inline; filename="sophia-' + kind + '.ics"',
       };
     }
     if (path === "/api/public" && method === "GET") {
