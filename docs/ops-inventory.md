@@ -13,7 +13,7 @@ The bucket is separate from the media bucket (`misxv-2027-…`) on purpose: the 
 
 ## Public summary
 
-As of 2026-11-08 the inventory records 55 resources: 54 active and 1 removed. By type: 11 IAM bindings, 7 secrets, 4 GitHub deployment grants, 4 Twilio content templates, 3 service accounts, 3 Exchange role assignments, 2 each of DNS records, OAuth grants, Entra applications, Twilio Messaging Services and Scheduler jobs, and 1 each of the shared mailbox, mailbox delegate, Hosting site, custom domain, storage bucket, Notion records, Artifact Registry repository, Cloud Run service, Twilio API key, WhatsApp sender, notification channel, log alert and budget alert. The shared-domain file records 13 DNS changes on simplysoph.com, all preserved at retirement.
+As of 2026-11-27 the inventory records 56 resources: 55 active and 1 removed. By type: 11 IAM bindings, 7 secrets, 4 GitHub deployment grants, 4 Twilio content templates, 3 service accounts, 3 Exchange role assignments, 2 each of DNS records, storage buckets, OAuth grants, Entra applications, Twilio Messaging Services and Scheduler jobs, and 1 each of the shared mailbox, mailbox delegate, Hosting site, custom domain, Notion records, Artifact Registry repository, Cloud Run service, Twilio API key, WhatsApp sender, notification channel, log alert and budget alert. The shared-domain file records 13 DNS changes on simplysoph.com, all preserved at retirement.
 
 Some identifiers stay public because the browser needs them, and they grant nothing on their own: the Entra **sign-in** app's client ID and the tenant ID (`docs/deployment.md`, `.env.example`), the Workload Identity provider path in `.github/workflows/check.yml` (GitHub's OIDC token is still required), and the event phone number guests text.
 
